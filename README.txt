@@ -1,4 +1,4 @@
-Mimar 1.3 — Installer Builder with GitHub Actions
+ Mimar 1.3 — Installer Builder with GitHub Actions
 ------------------------------------------------
 This folder contains the Mimar 1.3 installer-builder and a GitHub Actions workflow to build Windows installers automatically.
 
