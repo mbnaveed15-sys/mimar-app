@@ -14,6 +14,7 @@ import { LayersPanel } from './LayersPanel';
 import { MaterialsPanel } from './MaterialsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { Toolbar } from './Toolbar';
+import { UpdatePanel } from './UpdatePanel';
 import { ViewControls } from './ViewControls';
 
 // three.js is large, so the 3D view loads the first time it is opened.
@@ -94,6 +95,7 @@ export default function PlannerApp() {
             </button>
           </div>
         </div>
+        <UpdatePanel />
       </aside>
 
       <main className="relative flex-1 overflow-hidden">
