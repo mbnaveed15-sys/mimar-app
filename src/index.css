@@ -1,0 +1,19 @@
+@import 'tailwindcss';
+
+/* Keep Tailwind v3 defaults the UI was designed with. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+  body {
+    @apply bg-gray-50;
+  }
+}

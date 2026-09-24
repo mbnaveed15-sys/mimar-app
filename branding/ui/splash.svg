@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <rect width="100%" height="100%" fill="#0b0b0b" />
+  <defs>
+    <pattern id="kufic" width="80" height="80" patternUnits="userSpaceOnUse">
+      <rect width="80" height="80" fill="none"/>
+      <path d="M0 0 H40 V80 H80" stroke="#D4AF37" stroke-width="1" opacity="0.06" />
+    </pattern>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#kufic)" />
+  <!-- center logo -->
+  <g transform="translate(460,300)">
+    <rect x="0" y="0" width="1000" height="480" fill="none" />
+    <g transform="translate(40,40)">
+      <path d="M40 380 L120 40 L200 380 L280 40 L360 380" fill="none" stroke="#D4AF37" stroke-width="28" stroke-linejoin="round" stroke-linecap="round"/>
+      <text x="420" y="260" font-family="Times New Roman, serif" font-size="120" fill="#D4AF37">Mimar</text>
+      <text x="420" y="330" font-family="Times New Roman, serif" font-size="36" fill="#D4AF37" opacity="0.9">مِعمار</text>
+    </g>
+  </g>
+</svg>

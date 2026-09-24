@@ -6,36 +6,73 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "electron ."
+    "app": "vite build && electron .",
+    "start": "electron .",
+    "dist": "vite build && electron-builder --win nsis portable --x64",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "jspdf": "^2.5.1",
-    "html2canvas": "^1.4.1"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "vite": "^5.0.0",
-    "tailwindcss": "^3.4.7",
-    "postcss": "^8.4.20",
-    "autoprefixer": "^10.4.14"
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.56.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^22.20.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.0.0",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.9",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.1"
   },
   "productName": "Mimar",
   "build": {
     "appId": "com.mimar.app",
     "productName": "Mimar",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
     "win": {
       "target": [
-        "nsis"
-      ]
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "artifactName": "Mimar-Setup-${version}.${ext}"
     },
     "files": [
       "dist/**/*",
-      "electron-main.js",
-      "preload.js",
-      "node_modules/**/*",
-      "package.json",
-      "index.html"
-    ]
-  }
+      "electron-main.cjs",
+      "preload.cjs",
+      "branding/**/*",
+      "package.json"
+    ],
+    "portable": {
+      "artifactName": "Mimar-Portable-${version}.${ext}"
+    }
+  },
+  "description": "Mimar 2D floor planner",
+  "main": "electron-main.cjs",
+  "type": "module"
 }
