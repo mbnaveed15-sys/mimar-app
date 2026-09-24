@@ -30,7 +30,7 @@ export function LengthField({ id, label, mm, units, onCommit, min = 10 }: Props)
 
   return (
     <div className="flex flex-col gap-0.5">
-      <label htmlFor={id} className="text-gray-600">
+      <label htmlFor={id} className="text-muted">
         {label}
       </label>
       <input
@@ -47,9 +47,9 @@ export function LengthField({ id, label, mm, units, onCommit, min = 10 }: Props)
           }
         }}
         aria-invalid={error !== null}
-        className={`rounded border p-1 tabular-nums ${error ? 'border-red-500' : ''}`}
+        className={`rounded-sm border p-1 tabular-nums ${error ? 'border-danger' : ''}`}
       />
-      {error && <span className="text-red-700">{error}</span>}
+      {error && <span className="text-danger">{error}</span>}
     </div>
   );
 }

@@ -8,7 +8,7 @@ function Thumbnail({ kind }: { kind: FurnitureKind }) {
   const size = Math.max(w, d) * 1.1;
   return (
     <svg viewBox={`${-size / 2} ${-size / 2} ${size} ${size}`} className="h-10 w-10" aria-hidden="true">
-      <FurnitureSymbol kind={kind} w={w} h={d} fill="#fff" stroke="#374151" sw={size / 40} />
+      <FurnitureSymbol kind={kind} w={w} h={d} fill="var(--surface-raised)" stroke="var(--ink)" sw={size / 40} />
     </svg>
   );
 }
@@ -20,11 +20,14 @@ export function FurnitureLibrary() {
   const units = usePlanner((s) => s.units);
 
   return (
-    <div className="flex flex-col gap-2 rounded border p-2 text-xs" aria-label="Furniture library">
+    <div
+      className="flex flex-col gap-2 rounded-md border border-line bg-raised p-2 text-xs"
+      aria-label="Furniture library"
+    >
       <div className="font-medium">Furniture library</div>
       {FURNITURE_CATEGORIES.map((category) => (
         <div key={category} className="flex flex-col gap-1">
-          <div className="text-[11px] tracking-wide text-gray-500 uppercase">{category}</div>
+          <div className="m-heading">{category}</div>
           <div className="grid grid-cols-3 gap-1">
             {FURNITURE_KINDS.filter((k) => FURNITURE_CATALOG[k].category === category).map((kind) => {
               const item = FURNITURE_CATALOG[kind];
@@ -34,8 +37,10 @@ export function FurnitureLibrary() {
                   onClick={() => setKind(kind)}
                   aria-pressed={selected === kind}
                   title={`${item.name}: ${formatLength(item.w, units)} × ${formatLength(item.d, units)}`}
-                  className={`flex flex-col items-center gap-0.5 rounded border p-1 text-center text-[10px] leading-tight ${
-                    selected === kind ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'hover:bg-gray-50'
+                  className={`flex flex-col items-center gap-0.5 rounded-md border p-1 text-center text-[10px] leading-tight ${
+                    selected === kind
+                      ? 'border-accent bg-accent-soft ring-1 ring-accent'
+                      : 'border-line hover:bg-sunken'
                   }`}
                 >
                   <Thumbnail kind={kind} />

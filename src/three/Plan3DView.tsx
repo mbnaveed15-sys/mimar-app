@@ -5,6 +5,7 @@ import { downloadUrl } from '../lib/exportPng';
 import { baseName } from '../lib/files';
 import { formatLength } from '../lib/units';
 import { usePlanner } from '../store/plannerStore';
+import { themeColor } from '../theme/themes';
 import { buildModel, type Model3D } from './model';
 
 function hasWebGL(): boolean {
@@ -121,6 +122,7 @@ export default function Plan3DView() {
   const setWallHeightMm = usePlanner((s) => s.setWallHeightMm);
   const units = usePlanner((s) => s.units);
   const fileName = usePlanner((s) => s.fileName);
+  const theme = usePlanner((s) => s.theme);
   const hasWalls = doc.elements.some((el) => el.type === 'wall');
 
   // Create the renderer, camera and lights once.
@@ -136,7 +138,7 @@ export default function Plan3DView() {
     host.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#dfe8ef');
+    scene.background = new THREE.Color(themeColor('--canvas', '#dfe8ef'));
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
     // Size now, so the first camera fit knows the real shape of the view.
     if (host.clientWidth && host.clientHeight) {
@@ -159,7 +161,7 @@ export default function Plan3DView() {
 
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
-      new THREE.MeshStandardMaterial({ color: '#dfe5dc', roughness: 1 }),
+      new THREE.MeshStandardMaterial({ color: themeColor('--plan-room', '#dfe5dc'), roughness: 1 }),
     );
     ground.receiveShadow = true;
     scene.add(ground);
@@ -233,6 +235,15 @@ export default function Plan3DView() {
     stage.render();
   }, [doc, wallHeightMm, showFurniture]);
 
+  // Follow the theme: canvas colour for the sky, room floor colour for the ground.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    stage.scene.background = new THREE.Color(themeColor('--canvas', '#dfe8ef'));
+    (stage.ground.material as THREE.MeshStandardMaterial).color.set(themeColor('--plan-room', '#dfe5dc'));
+    stage.render();
+  }, [theme]);
+
   function resetView() {
     const stage = stageRef.current;
     if (stage?.last) {
@@ -250,13 +261,13 @@ export default function Plan3DView() {
 
   if (!supported) {
     return (
-      <div className="flex h-full items-center justify-center bg-white p-6 text-center text-sm text-gray-600">
+      <div className="flex h-full items-center justify-center bg-canvas p-6 text-center text-muted">
         3D view needs graphics support (WebGL), which isn't available on this computer.
       </div>
     );
   }
 
-  const btn = 'rounded border bg-white px-2 py-1 text-xs shadow-sm hover:bg-gray-50';
+  const btn = 'm-btn text-xs shadow-popover';
   return (
     <div className="relative h-full w-full">
       <div ref={hostRef} className="h-full w-full" data-testid="plan-3d" />
@@ -269,7 +280,7 @@ export default function Plan3DView() {
             Save image
           </button>
         </div>
-        <label className="flex items-center gap-2 rounded border bg-white px-2 py-1 text-xs shadow-sm">
+        <label className="flex items-center gap-2 rounded-md border border-line bg-raised px-2 py-1 text-xs shadow-popover">
           Wall height
           <input
             id="wall-height"
@@ -283,12 +294,12 @@ export default function Plan3DView() {
           <span className="w-12 tabular-nums">{formatLength(wallHeightMm, units)}</span>
         </label>
       </div>
-      <div className="pointer-events-none absolute bottom-3 left-3 rounded bg-white/80 px-2 py-1 text-xs text-gray-600">
+      <div className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-raised/85 px-2 py-1 text-xs text-muted">
         Drag to turn · Right-drag to move · Scroll to zoom
       </div>
       {!hasWalls && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="rounded bg-white/90 px-3 py-2 text-sm text-gray-700 shadow">
+          <div className="rounded-md border border-line bg-raised px-3 py-2 text-ink shadow-popover">
             Draw some walls in the 2D plan to see them in 3D.
           </div>
         </div>

@@ -1,5 +1,34 @@
+import { DEFAULT_THEME, isThemeId, type ThemeId } from '../theme/themes';
 import type { MarlaSqFt, Mode, PaperSize, Units } from '../types';
 import { browserStorage } from './storage';
+import { GRID_MM } from './units';
+
+export interface GridPrefs {
+  /** Show the grid on the plan (it still snaps when hidden, if snap is on). */
+  show: boolean;
+  /** Distance between grid lines for each unit system, in millimetres. */
+  spacingMm: Record<Units, number>;
+  /** A heavier line every this many steps, or 0 for none. */
+  major: 0 | 5 | 10;
+  style: 'lines' | 'dots';
+  /** How strong the grid looks, from 0 (faint) to 100 (bold). */
+  strength: number;
+  /** Drawing snaps to grid points when no wall end is nearer. */
+  snap: boolean;
+}
+
+export const DEFAULT_GRID: GridPrefs = {
+  show: true,
+  spacingMm: { ...GRID_MM },
+  major: 5,
+  style: 'lines',
+  strength: 50,
+  snap: true,
+};
+
+/** Grid spacing limits: 1 cm to 10 m. */
+export const GRID_MIN_MM = 10;
+export const GRID_MAX_MM = 10000;
 
 export interface Prefs {
   units: Units;
@@ -14,6 +43,8 @@ export interface Prefs {
   paper: PaperSize;
   /** Wall height in the 3D view, in millimetres. */
   wallHeightMm: number;
+  theme: ThemeId;
+  grid: GridPrefs;
 }
 
 const PREFS_KEY = 'mimar.prefs';
@@ -28,7 +59,31 @@ export const DEFAULT_PREFS: Prefs = {
   marlaSqFt: 225,
   paper: 'A4',
   wallHeightMm: 3048,
+  theme: DEFAULT_THEME,
+  grid: DEFAULT_GRID,
 };
+
+const spacingOk = (mm: unknown): mm is number => typeof mm === 'number' && mm >= GRID_MIN_MM && mm <= GRID_MAX_MM;
+
+/** Grid settings from storage, keeping only valid values. */
+export function readGrid(raw: unknown): GridPrefs {
+  const g = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof GridPrefs, unknown>>;
+  const spacing = (g.spacingMm && typeof g.spacingMm === 'object' ? g.spacingMm : {}) as Partial<
+    Record<Units, unknown>
+  >;
+  const strength = Number(g.strength);
+  return {
+    show: g.show !== false,
+    spacingMm: {
+      imperial: spacingOk(spacing.imperial) ? spacing.imperial : DEFAULT_GRID.spacingMm.imperial,
+      metric: spacingOk(spacing.metric) ? spacing.metric : DEFAULT_GRID.spacingMm.metric,
+    },
+    major: g.major === 0 || g.major === 10 ? g.major : 5,
+    style: g.style === 'dots' ? 'dots' : 'lines',
+    strength: Number.isFinite(strength) ? Math.min(100, Math.max(0, strength)) : DEFAULT_GRID.strength,
+    snap: g.snap !== false,
+  };
+}
 
 export function loadPrefs(storage = browserStorage()): Prefs {
   try {
@@ -48,6 +103,8 @@ export function loadPrefs(storage = browserStorage()): Prefs {
         Number(raw?.wallHeightMm) >= 2000 && Number(raw?.wallHeightMm) <= 6000
           ? Number(raw?.wallHeightMm)
           : DEFAULT_PREFS.wallHeightMm,
+      theme: isThemeId(raw?.theme) ? raw.theme : DEFAULT_THEME,
+      grid: readGrid(raw?.grid),
     };
   } catch {
     return DEFAULT_PREFS;

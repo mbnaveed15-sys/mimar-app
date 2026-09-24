@@ -9,10 +9,14 @@ import { DEFAULT_AREA } from '../lib/view';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import { Canvas } from './Canvas';
 import { FileBar } from './FileBar';
+import { GridSettings } from './GridSettings';
+import { Icon } from './Icon';
 import { Inspector } from './Inspector';
 import { LayersPanel } from './LayersPanel';
+import { Mark } from './Mark';
 import { MaterialsPanel } from './MaterialsPanel';
 import { SettingsPanel } from './SettingsPanel';
+import { ThemePicker } from './ThemePicker';
 import { Toolbar } from './Toolbar';
 import { UpdatePanel } from './UpdatePanel';
 import { ViewControls } from './ViewControls';
@@ -40,8 +44,9 @@ export default function PlannerApp() {
   }
 
   function onExportPng() {
-    const { fileName, gridPx, setWarning } = plannerStore.getState();
-    exportPng(exportContent(), exportArea(), gridPx, `${baseName(fileName)}.png`).catch((e) =>
+    const { fileName, gridPx, grid, setWarning } = plannerStore.getState();
+    const shownGrid = grid.show ? { step: gridPx, look: grid } : null;
+    exportPng(exportContent(), exportArea(), shownGrid, `${baseName(fileName)}.png`).catch((e) =>
       setWarning(`The image could not be created. ${String(e)}`),
     );
   }
@@ -61,14 +66,20 @@ export default function PlannerApp() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50 text-sm">
-      <aside className="flex w-72 flex-col gap-3 overflow-auto border-r bg-white p-3">
-        <h2 className="text-lg font-semibold">Mimar {__APP_VERSION__}</h2>
+    <div className="flex h-screen bg-surface text-ink">
+      <aside className="flex w-72 flex-col gap-3 overflow-auto border-r border-line bg-surface p-3">
+        <header className="flex items-center gap-2">
+          <Mark size={30} />
+          <h1 className="text-[21px] leading-6 font-[650] tracking-[-0.2px]" style={{ fontStretch: '88%' }}>
+            Mimar
+          </h1>
+          <span className="ml-auto font-mono text-[11px] text-muted">{__APP_VERSION__}</span>
+        </header>
         <FileBar />
-        <div className="border-t pt-2">
+        <div className="m-section">
           <Toolbar />
         </div>
-        <div className={mode === 'pro' ? 'mt-2 border-t pt-2' : 'hidden'}>
+        <div className={mode === 'pro' ? 'm-section text-xs' : 'hidden'}>
           <label htmlFor="brush-size" className="block">
             Brush size (px)
           </label>
@@ -80,17 +91,22 @@ export default function PlannerApp() {
             value={brushSize}
             onChange={(e) => setBrushSize(Number(e.target.value))}
           />
-          <div className="text-xs text-gray-600">Brush: {brushSize}px</div>
+          <div className="text-muted">Brush: {brushSize}px</div>
         </div>
         <MaterialsPanel />
         <LayersPanel />
+        <ThemePicker />
+        <GridSettings />
         <SettingsPanel />
-        <div className="mt-2 flex flex-col gap-2 border-t pt-2">
+        <div className="m-section">
+          <span className="m-heading">Export</span>
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={onExportPdf} className="rounded border p-2" title="Print-ready plan at a true scale">
+            <button onClick={onExportPdf} className="m-btn" title="Print-ready plan at a true scale">
+              <Icon name="export" size={16} />
               Export PDF
             </button>
-            <button onClick={onExportPng} className="rounded border p-2">
+            <button onClick={onExportPng} className="m-btn">
+              <Icon name="export" size={16} />
               Export PNG
             </button>
           </div>
@@ -101,7 +117,7 @@ export default function PlannerApp() {
       <main className="relative flex-1 overflow-hidden">
         {view3d ? (
           <Suspense
-            fallback={<div className="flex h-full items-center justify-center text-sm text-gray-500">Loading 3D…</div>}
+            fallback={<div className="flex h-full items-center justify-center bg-canvas text-muted">Loading 3D…</div>}
           >
             <Plan3DView />
           </Suspense>
@@ -111,22 +127,19 @@ export default function PlannerApp() {
             <ViewControls />
           </>
         )}
-        <div
-          role="radiogroup"
-          aria-label="View"
-          className="absolute top-3 left-3 flex overflow-hidden rounded-md border bg-white text-xs shadow-sm"
-        >
+        <div role="radiogroup" aria-label="View" className="m-seg absolute top-3 left-3 text-xs shadow-popover">
           {[
-            { on: false, label: '2D plan' },
-            { on: true, label: '3D view' },
+            { on: false, label: '2D plan', icon: 'view-2d' as const },
+            { on: true, label: '3D view', icon: 'view-3d' as const },
           ].map((v) => (
             <button
               key={v.label}
               role="radio"
               aria-checked={view3d === v.on}
               onClick={() => setView3d(v.on)}
-              className={`px-3 py-1.5 ${view3d === v.on ? 'bg-gray-900 font-medium text-white' : 'hover:bg-gray-50'}`}
+              className="px-3 py-1.5"
             >
+              <Icon name={v.icon} size={16} />
               {v.label}
             </button>
           ))}

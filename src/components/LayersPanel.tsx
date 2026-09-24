@@ -32,8 +32,8 @@ export function LayersPanel() {
   ];
 
   return (
-    <fieldset className="mt-2 flex flex-col gap-1 border-t pt-2 text-xs">
-      <legend className="float-left mb-1 font-medium">Layers</legend>
+    <fieldset className="m-section text-xs">
+      <legend className="float-left m-heading">Layers</legend>
       <div className="clear-both flex flex-col gap-1">
         {layers.map((l) => (
           <label key={l.id} htmlFor={l.id} className="flex items-center gap-2">
@@ -41,7 +41,7 @@ export function LayersPanel() {
             {l.label}
           </label>
         ))}
-        <p className="text-gray-500">PDF and PNG exports show the same layers.</p>
+        <p className="text-muted">PDF and PNG exports show the same layers.</p>
       </div>
     </fieldset>
   );

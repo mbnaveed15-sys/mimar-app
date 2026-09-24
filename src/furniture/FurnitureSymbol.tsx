@@ -16,14 +16,16 @@ interface Props {
 export function FurnitureSymbol({ kind, w, h, fill, stroke, sw }: Props) {
   const L = -w / 2;
   const T = -h / 2;
-  const line = {
+  // Colours go in style, so they can be theme variables (SVG attributes don't accept them everywhere).
+  const lineStyle = {
     fill: 'none',
     stroke,
     strokeWidth: sw,
     strokeLinejoin: 'round' as const,
     strokeLinecap: 'round' as const,
   };
-  const shape = { ...line, fill };
+  const line = { style: lineStyle };
+  const shape = { style: { ...lineStyle, fill } };
   /** Rectangle from fractions of the item's width and depth (0,0 = back left corner). */
   const r = (fx: number, fy: number, fw: number, fh: number, rx = 0, extra: object = {}) => (
     <rect x={L + fx * w} y={T + fy * h} width={fw * w} height={fh * h} rx={rx} {...shape} {...extra} />
@@ -98,7 +100,14 @@ export function FurnitureSymbol({ kind, w, h, fill, stroke, sw }: Props) {
       <>
         {r(0, 0, 1, 1)}
         {ln(0, 0.85, 1, 0.85)}
-        <text x={0} y={-h * 0.05} fontSize={small * 0.22} textAnchor="middle" dominantBaseline="middle" fill={stroke}>
+        <text
+          x={0}
+          y={-h * 0.05}
+          fontSize={small * 0.22}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          style={{ fill: stroke }}
+        >
           FRIDGE
         </text>
       </>

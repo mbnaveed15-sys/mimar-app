@@ -11,7 +11,8 @@ export function SettingsPanel() {
   const setPaper = usePlanner((s) => s.setPaper);
 
   return (
-    <div className="mt-2 flex flex-col gap-2 border-t pt-2 text-xs">
+    <div className="m-section text-xs">
+      <span className="m-heading">Settings</span>
       <label htmlFor="units" className="font-medium">
         Units
       </label>
@@ -19,7 +20,7 @@ export function SettingsPanel() {
         id="units"
         value={units}
         onChange={(e) => setUnits(e.target.value as Units)}
-        className="rounded border bg-white p-1"
+        className="rounded-sm border p-1"
       >
         {(Object.keys(UNIT_LABELS) as Units[]).map((u) => (
           <option key={u} value={u}>
@@ -35,7 +36,7 @@ export function SettingsPanel() {
         id="marla-size"
         value={marlaSqFt}
         onChange={(e) => setMarlaSqFt(Number(e.target.value) as MarlaSqFt)}
-        className="rounded border bg-white p-1"
+        className="rounded-sm border p-1"
       >
         {MARLA_OPTIONS.map((o) => (
           <option key={o.sqft} value={o.sqft}>
@@ -50,7 +51,7 @@ export function SettingsPanel() {
         id="paper-size"
         value={paper}
         onChange={(e) => setPaper(e.target.value as PaperSize)}
-        className="rounded border bg-white p-1"
+        className="rounded-sm border p-1"
       >
         <option value="A4">A4</option>
         <option value="A3">A3</option>

@@ -13,7 +13,9 @@ import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
 import type { Furniture, PlanElement, Point, Wall } from '../types';
 import { PLAN_FONT } from '../lib/planImage';
+import { PLAN } from '../theme/plan';
 import { PlanDrawing } from './PlanDrawing';
+import { PlanGrid } from './PlanGrid';
 
 type Drag =
   | { kind: 'pan'; lastX: number; lastY: number }
@@ -36,10 +38,16 @@ function toPlanPoint(svg: SVGSVGElement, e: { clientX: number; clientY: number }
   return { x: pt.x, y: pt.y };
 }
 
+/** Snap to the grid, when grid snapping is on. */
+function gridSnap(raw: Point): Point {
+  const s = plannerStore.getState();
+  return s.grid.snap ? snap(raw, s.gridPx) : raw;
+}
+
 /** Snap to a nearby wall end (so walls join cleanly), otherwise to the grid. */
 function snapPoint(raw: Point, ignoreId?: string): Point {
   const s = plannerStore.getState();
-  return nearestWallEnd(s.doc.elements, raw, 10 / s.view.zoom, ignoreId) ?? snap(raw, s.gridPx);
+  return nearestWallEnd(s.doc.elements, raw, 10 / s.view.zoom, ignoreId) ?? gridSnap(raw);
 }
 
 interface Props {
@@ -51,6 +59,7 @@ export function Canvas({ svgRef }: Props) {
   const draft = usePlanner((s) => s.draft);
   const selectedId = usePlanner((s) => s.selectedId);
   const gridPx = usePlanner((s) => s.gridPx);
+  const grid = usePlanner((s) => s.grid);
   const view = usePlanner((s) => s.view);
   const viewport = usePlanner((s) => s.viewport);
   const units = usePlanner((s) => s.units);
@@ -66,10 +75,6 @@ export function Canvas({ svgRef }: Props) {
   const k = 1 / view.zoom; // plan units per screen pixel
   const vbW = viewport.width / view.zoom || 1600;
   const vbH = viewport.height / view.zoom || 1000;
-
-  // Coarsen the visible grid when zoomed out so lines stay at least 8 px apart.
-  let shownGrid = gridPx;
-  while (shownGrid * view.zoom < 8) shownGrid *= 5;
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -157,7 +162,7 @@ export function Canvas({ svgRef }: Props) {
         s.placeOpening(s.tool, raw);
         break;
       case 'furniture':
-        s.addFurniture(snap(raw, s.gridPx));
+        s.addFurniture(gridSnap(raw));
         break;
       case 'paint':
         s.paintAt(raw);
@@ -165,11 +170,11 @@ export function Canvas({ svgRef }: Props) {
       case 'brush':
         e.currentTarget.setPointerCapture(e.pointerId);
         s.beginBatch();
-        s.brushAt(snap(raw, s.gridPx));
+        s.brushAt(gridSnap(raw));
         s.setDraft({ type: 'brush' });
         break;
       case 'mask':
-        s.addMaskPoint(snap(raw, s.gridPx));
+        s.addMaskPoint(gridSnap(raw));
         break;
       case 'erase':
         s.eraseAt(raw);
@@ -198,7 +203,7 @@ export function Canvas({ svgRef }: Props) {
           } else {
             const anchor = orig.type === 'wall' ? { x: orig.x1, y: orig.y1 } : { x: orig.x, y: orig.y };
             const moved = { x: anchor.x + raw.x - drag.start.x, y: anchor.y + raw.y - drag.start.y };
-            const target = orig.type === 'wall' ? snapPoint(moved, orig.id) : snap(moved, s.gridPx);
+            const target = orig.type === 'wall' ? snapPoint(moved, orig.id) : gridSnap(moved);
             s.updateElement(translateElement(orig, target.x - anchor.x, target.y - anchor.y));
           }
           break;
@@ -232,8 +237,8 @@ export function Canvas({ svgRef }: Props) {
     if (d.type === 'wall') {
       const p = snapPoint(raw);
       s.setDraft({ ...d, x2: p.x, y2: p.y });
-    } else if (d.type === 'brush') s.brushAt(snap(raw, s.gridPx));
-    else if (d.type === 'mask') s.setDraft({ ...d, cursor: snap(raw, s.gridPx) });
+    } else if (d.type === 'brush') s.brushAt(gridSnap(raw));
+    else if (d.type === 'mask') s.setDraft({ ...d, cursor: gridSnap(raw) });
   }
 
   function onPointerUp() {
@@ -267,7 +272,7 @@ export function Canvas({ svgRef }: Props) {
       ref={svgRef}
       data-testid="plan-canvas"
       viewBox={`${view.x} ${view.y} ${vbW} ${vbH}`}
-      className={`h-full w-full touch-none bg-white select-none ${cursor}`}
+      className={`h-full w-full touch-none bg-canvas select-none ${cursor}`}
       fontFamily={PLAN_FONT}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -275,12 +280,15 @@ export function Canvas({ svgRef }: Props) {
       onPointerCancel={onPointerUp}
       onDoubleClick={onDoubleClick}
     >
-      <defs>
-        <pattern id="grid" width={shownGrid} height={shownGrid} patternUnits="userSpaceOnUse">
-          <path d={`M ${shownGrid} 0 L 0 0 0 ${shownGrid}`} fill="none" stroke="#e5e7eb" strokeWidth={k} />
-        </pattern>
-      </defs>
-      <rect x={view.x} y={view.y} width={vbW} height={vbH} fill="url(#grid)" />
+      {grid.show && (
+        <PlanGrid
+          id="plan"
+          area={{ minX: view.x, minY: view.y, maxX: view.x + vbW, maxY: view.y + vbH }}
+          step={gridPx}
+          look={grid}
+          k={k}
+        />
+      )}
 
       <PlanDrawing
         doc={doc}
@@ -310,7 +318,7 @@ export function Canvas({ svgRef }: Props) {
               y1={draft.y1}
               x2={draft.x2}
               y2={draft.y2}
-              stroke="#ff7b7b"
+              style={{ stroke: PLAN.draft }}
               strokeWidth={2 * k}
               strokeDasharray={`${6 * k} ${4 * k}`}
             />
@@ -318,8 +326,7 @@ export function Canvas({ svgRef }: Props) {
               x={draft.x2 + 10 * k}
               y={draft.y2 - 10 * k}
               fontSize={12 * k}
-              fill="#b91c1c"
-              stroke="#fff"
+              style={{ fill: PLAN.draft, stroke: PLAN.paper }}
               strokeWidth={3 * k}
               paintOrder="stroke"
             >
@@ -331,7 +338,7 @@ export function Canvas({ svgRef }: Props) {
           <polyline
             points={[...draft.points, ...(draft.cursor ? [draft.cursor] : [])].map((p) => `${p.x},${p.y}`).join(' ')}
             fill="none"
-            stroke="#ff7b7b"
+            style={{ stroke: PLAN.draft }}
             strokeWidth={2 * k}
             strokeDasharray={`${6 * k} ${4 * k}`}
           />
@@ -348,8 +355,7 @@ function Handle({ name, p, k }: { name: string; p: Point; k: number }) {
       cx={p.x}
       cy={p.y}
       r={6 * k}
-      fill="#fff"
-      stroke="#2563eb"
+      style={{ fill: PLAN.paper, stroke: PLAN.selection }}
       strokeWidth={2 * k}
       className={name === 'rotate' ? 'cursor-grab' : 'cursor-move'}
     />
@@ -361,7 +367,14 @@ function FurnitureHandles({ item, k }: { item: Furniture; k: number }) {
   const rotate = fromFurnitureLocal(item, { x: 0, y: -item.h / 2 - 24 * k });
   return (
     <>
-      <line x1={top.x} y1={top.y} x2={rotate.x} y2={rotate.y} stroke="#2563eb" strokeWidth={1.5 * k} />
+      <line
+        x1={top.x}
+        y1={top.y}
+        x2={rotate.x}
+        y2={rotate.y}
+        style={{ stroke: PLAN.selection }}
+        strokeWidth={1.5 * k}
+      />
       <Handle name="rotate" p={rotate} k={k} />
       <Handle name="resize" p={fromFurnitureLocal(item, { x: item.w / 2, y: item.h / 2 })} k={k} />
     </>

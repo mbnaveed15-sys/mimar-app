@@ -12,13 +12,13 @@ import {
 } from '../geometry';
 import { DEFAULT_FILE_NAME } from '../lib/files';
 import { newId } from '../lib/ids';
-import { loadPrefs, savePrefs, type Prefs } from '../lib/prefs';
+import { GRID_MAX_MM, GRID_MIN_MM, loadPrefs, savePrefs, type GridPrefs, type Prefs } from '../lib/prefs';
 import { emptyDoc, loadPlan, savePlan } from '../lib/storage';
 import { MM_PER_UNIT } from '../lib/scale';
-import { GRID_MM } from '../lib/units';
 import { DEFAULT_AREA, fitView, zoomAt, type Size } from '../lib/view';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { detectRoom } from '../rooms';
+import { applyTheme, type ThemeId } from '../theme/themes';
 import { SIMPLE_TOOLS } from '../types';
 import type {
   Draft,
@@ -69,6 +69,8 @@ export interface PlannerState {
   wallHeightMm: number;
   /** True while the 3D view is shown instead of the 2D plan. */
   view3d: boolean;
+  theme: ThemeId;
+  grid: GridPrefs;
   view: View;
   viewport: Size;
 
@@ -119,6 +121,9 @@ export interface PlannerState {
   setPaper: (paper: PaperSize) => void;
   setWallHeightMm: (mm: number) => void;
   setView3d: (on: boolean) => void;
+  setTheme: (theme: ThemeId) => void;
+  /** Change some grid settings; spacing is for the current units. */
+  setGrid: (patch: Partial<Omit<GridPrefs, 'spacingMm'>> & { spacingMm?: number }) => void;
 
   /** Make a room from the area enclosed by walls around p. */
   addRoomAt: (p: Point) => void;
@@ -143,7 +148,7 @@ export interface PlannerState {
   markSaved: (file: { name: string; path?: string }) => void;
 }
 
-const gridFor = (units: Units) => GRID_MM[units] / MM_PER_UNIT;
+const gridFor = (grid: GridPrefs, units: Units) => grid.spacingMm[units] / MM_PER_UNIT;
 
 export function createPlannerStore(initial: PlanDoc, initialWarning?: string, prefs: Prefs = loadPrefs()) {
   return createStore<PlannerState>()((set, get) => {
@@ -155,7 +160,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills } = get();
-      const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm } = get();
+      const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid } = get();
       savePrefs({
         units,
         showDimensions,
@@ -167,6 +172,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         marlaSqFt,
         paper,
         wallHeightMm,
+        theme,
+        grid,
       });
     };
     const resetHistory = { past: [], future: [], batchBase: null, draft: null, selectedId: null, warnings: [] };
@@ -186,7 +193,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       selectedMat: initial.materials[0]?.id ?? '',
       selectedId: null,
       brushSize: 24,
-      gridPx: gridFor(prefs.units),
+      gridPx: gridFor(prefs.grid, prefs.units),
       scaleMMperPx: MM_PER_UNIT,
       warnings: initialWarning ? [initialWarning] : [],
       draft: null,
@@ -203,6 +210,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       paper: prefs.paper,
       wallHeightMm: prefs.wallHeightMm,
       view3d: false,
+      theme: prefs.theme,
+      grid: prefs.grid,
       view: { x: 0, y: 0, zoom: 1 },
       viewport: { width: 0, height: 0 },
 
@@ -395,7 +404,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
 
       setUnits: (units) => {
-        set({ units, gridPx: gridFor(units) });
+        set({ units, gridPx: gridFor(get().grid, units) });
         persistPrefs();
       },
       setShowDimensions: (showDimensions) => {
@@ -433,6 +442,18 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
       setWallHeightMm: (wallHeightMm) => {
         set({ wallHeightMm: Math.min(6000, Math.max(2000, wallHeightMm)) });
+        persistPrefs();
+      },
+      setTheme: (theme) => {
+        set({ theme });
+        persistPrefs();
+      },
+      setGrid: ({ spacingMm, ...patch }) => {
+        const { grid, units } = get();
+        const next = { ...grid, ...patch };
+        if (spacingMm !== undefined && Number.isFinite(spacingMm))
+          next.spacingMm = { ...grid.spacingMm, [units]: Math.min(GRID_MAX_MM, Math.max(GRID_MIN_MM, spacingMm)) };
+        set({ grid: next, gridPx: gridFor(next, units) });
         persistPrefs();
       },
       setView3d: (view3d) => {
@@ -535,7 +556,10 @@ export const plannerStore = createPlannerStore(loaded.doc, loaded.warning);
 
 plannerStore.subscribe((state, prev) => {
   if (state.doc !== prev.doc) savePlan(state.doc);
+  if (state.theme !== prev.theme) applyTheme(state.theme);
 });
+// Before the first paint, so the app never flashes in the wrong colours.
+applyTheme(plannerStore.getState().theme);
 
 export function usePlanner<T>(selector: (state: PlannerState) => T): T {
   return useStore(plannerStore, selector);

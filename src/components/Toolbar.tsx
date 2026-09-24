@@ -1,45 +1,36 @@
-import brushIcon from '../../branding/ui/toolbar-icons/brush.svg';
-import doorIcon from '../../branding/ui/toolbar-icons/door.svg';
-import eraseIcon from '../../branding/ui/toolbar-icons/erase.svg';
-import furnitureIcon from '../../branding/ui/toolbar-icons/furniture.svg';
-import maskIcon from '../../branding/ui/toolbar-icons/mask.svg';
-import paintIcon from '../../branding/ui/toolbar-icons/paint.svg';
-import panIcon from '../../branding/ui/toolbar-icons/pan.svg';
-import roomIcon from '../../branding/ui/toolbar-icons/room.svg';
-import selectIcon from '../../branding/ui/toolbar-icons/select.svg';
-import wallIcon from '../../branding/ui/toolbar-icons/wall.svg';
-import windowIcon from '../../branding/ui/toolbar-icons/window.svg';
 import { usePlanner } from '../store/plannerStore';
 import { SIMPLE_TOOLS, TOOLS, type Mode, type Tool } from '../types';
+import type { IconName } from '../theme/icons';
 import { FurnitureLibrary } from './FurnitureLibrary';
+import { Icon } from './Icon';
 import { WallThicknessPicker } from './WallThicknessPicker';
 
-const TOOL_INFO: Record<Tool, { label: string; icon: string; hint?: string }> = {
+const TOOL_INFO: Record<Tool, { label: string; icon: IconName; hint?: string }> = {
   select: {
     label: 'Select',
-    icon: selectIcon,
+    icon: 'select',
     hint: 'Click to select, drag to move. Arrow keys nudge, R rotates, Delete removes.',
   },
-  pan: { label: 'Pan', icon: panIcon, hint: 'Drag to move around. You can also hold Space and drag.' },
-  wall: { label: 'Wall', icon: wallIcon, hint: 'Drag to draw a wall. Ends snap to the grid and to other walls.' },
-  room: { label: 'Room', icon: roomIcon, hint: 'Click inside walls to make a room and see its area.' },
-  door: { label: 'Door', icon: doorIcon, hint: 'Click on a wall to place a door.' },
-  window: { label: 'Window', icon: windowIcon, hint: 'Click on a wall to place a window.' },
+  pan: { label: 'Pan', icon: 'pan', hint: 'Drag to move around. You can also hold Space and drag.' },
+  wall: { label: 'Wall', icon: 'wall', hint: 'Drag to draw a wall. Ends snap to the grid and to other walls.' },
+  room: { label: 'Room', icon: 'room', hint: 'Click inside walls to make a room and see its area.' },
+  door: { label: 'Door', icon: 'door', hint: 'Click on a wall to place a door.' },
+  window: { label: 'Window', icon: 'window', hint: 'Click on a wall to place a window.' },
   furniture: {
     label: 'Furniture',
-    icon: furnitureIcon,
+    icon: 'furniture',
     hint: 'Choose an item below, then click on the plan to place it at its real size.',
   },
-  paint: { label: 'Paint', icon: paintIcon, hint: 'Click a wall, room or item to give it the selected material.' },
-  brush: { label: 'Brush', icon: brushIcon, hint: 'Drag over items to paint them with the selected material.' },
+  paint: { label: 'Paint', icon: 'paint', hint: 'Click a wall, room or item to give it the selected material.' },
+  brush: { label: 'Brush', icon: 'brush', hint: 'Drag over items to paint them with the selected material.' },
   mask: {
     label: 'Mask',
-    icon: maskIcon,
+    icon: 'mask',
     hint: 'Click to add points. Double-click or press Enter to finish, Esc to cancel.',
   },
   erase: {
     label: 'Erase',
-    icon: eraseIcon,
+    icon: 'erase',
     hint: 'Click an item to remove it. Click inside a room to remove the room.',
   },
 };
@@ -63,7 +54,7 @@ export function Toolbar() {
 
   return (
     <div className="flex flex-col gap-2">
-      <div role="radiogroup" aria-label="Mode" className="grid grid-cols-2 rounded-md border p-0.5 text-xs">
+      <div role="radiogroup" aria-label="Mode" className="m-seg text-xs">
         {MODES.map((m) => (
           <button
             key={m.mode}
@@ -71,31 +62,20 @@ export function Toolbar() {
             aria-checked={mode === m.mode}
             title={m.title}
             onClick={() => setMode(m.mode)}
-            className={`rounded px-2 py-1 ${mode === m.mode ? 'bg-gray-900 font-medium text-white' : 'text-gray-600'}`}
           >
             {m.label}
           </button>
         ))}
       </div>
       <div className="flex gap-2">
-        <button
-          onClick={undo}
-          disabled={!canUndo}
-          title="Undo (Ctrl+Z)"
-          className="flex-1 rounded-md border px-3 py-1 disabled:opacity-40"
-        >
-          ↶ Undo
+        <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="m-btn flex-1">
+          <Icon name="undo" size={16} /> Undo
         </button>
-        <button
-          onClick={redo}
-          disabled={!canRedo}
-          title="Redo (Ctrl+Y)"
-          className="flex-1 rounded-md border px-3 py-1 disabled:opacity-40"
-        >
-          ↷ Redo
+        <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)" className="m-btn flex-1">
+          <Icon name="redo" size={16} /> Redo
         </button>
       </div>
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-4 gap-1">
         {tools.map((t) => (
           <button
             key={t}
@@ -103,20 +83,20 @@ export function Toolbar() {
             aria-pressed={tool === t}
             aria-label={t}
             title={TOOL_INFO[t].label}
-            className={`flex flex-col items-center gap-0.5 rounded-md border p-1 text-[11px] ${
-              tool === t ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-600' : 'bg-white hover:bg-gray-50'
+            className={`flex flex-col items-center gap-1 rounded-md px-1 pt-2 pb-1.5 text-[11px] ${
+              tool === t ? 'bg-accent font-semibold text-on-accent' : 'text-ink hover:bg-sunken'
             }`}
           >
-            <img src={TOOL_INFO[t].icon} alt="" className="h-8 w-8" draggable={false} />
+            <Icon name={TOOL_INFO[t].icon} size={22} />
             {TOOL_INFO[t].label}
           </button>
         ))}
       </div>
-      {TOOL_INFO[tool].hint && <div className="text-xs text-gray-600">{TOOL_INFO[tool].hint}</div>}
+      {TOOL_INFO[tool].hint && <div className="text-xs text-muted">{TOOL_INFO[tool].hint}</div>}
       {tool === 'wall' && <WallThicknessPicker />}
       {tool === 'furniture' && <FurnitureLibrary />}
       {warnings.map((w) => (
-        <div key={w} role="alert" className="rounded border border-amber-200 bg-amber-50 p-1 text-xs text-amber-700">
+        <div key={w} role="alert" className="rounded-md border border-accent bg-accent-soft p-2 text-xs text-ink">
           {w}
         </div>
       ))}

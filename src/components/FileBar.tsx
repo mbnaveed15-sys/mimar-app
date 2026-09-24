@@ -3,6 +3,7 @@ import { baseName } from '../lib/files';
 import { usePlanner } from '../store/plannerStore';
 import { isDirty, useFileActions } from './useFileActions';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
+import { Icon } from './Icon';
 
 type Pending = 'new' | 'open' | null;
 
@@ -26,35 +27,39 @@ export function FileBar() {
     setPending(null);
   };
 
-  const btn = 'rounded border px-2 py-1 text-xs hover:bg-gray-50';
+  const btn = 'm-btn flex-1 px-1.5 text-xs';
   return (
     <div className="flex flex-col gap-2">
-      <div className="truncate text-xs text-gray-600" title={fileName} data-testid="file-name">
+      <div className="truncate text-xs text-muted" title={fileName} data-testid="file-name">
         {baseName(fileName)}
-        {dirty && <span className="text-amber-700"> • unsaved changes</span>}
+        {dirty && <span className="font-medium text-accent-ink"> • unsaved changes</span>}
       </div>
-      <div className="flex flex-wrap gap-1">
+      <div className="grid grid-cols-2 gap-1">
         <button onClick={requestNew} className={btn} title="New plan (Ctrl+N)">
+          <Icon name="new" size={16} />
           New
         </button>
         <button onClick={requestOpen} className={btn} title="Open plan (Ctrl+O)">
+          <Icon name="open" size={16} />
           Open…
         </button>
         <button onClick={() => void save()} className={btn} title="Save (Ctrl+S)">
+          <Icon name="save" size={16} />
           Save
         </button>
         <button onClick={() => void save(true)} className={btn} title="Save as (Ctrl+Shift+S)">
+          <Icon name="save" size={16} />
           Save as…
         </button>
       </div>
       {pending && (
-        <div role="alertdialog" className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+        <div role="alertdialog" className="rounded-md border border-accent bg-accent-soft p-2 text-xs text-ink">
           <p>This plan has unsaved changes that will be lost.</p>
           <div className="mt-2 flex gap-2">
-            <button onClick={confirm} className="rounded border border-amber-300 bg-white px-2 py-1">
+            <button onClick={confirm} className="m-btn m-btn-danger">
               {pending === 'new' ? 'Discard and start new' : 'Discard and open'}
             </button>
-            <button onClick={() => setPending(null)} className="rounded border bg-white px-2 py-1">
+            <button onClick={() => setPending(null)} className="m-btn">
               Cancel
             </button>
           </div>

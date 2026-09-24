@@ -1,4 +1,5 @@
 import type { Mask } from '../../types';
+import { PLAN } from '../../theme/plan';
 
 interface Props {
   mask: Mask;
@@ -11,8 +12,7 @@ export function MaskShape({ mask, color }: Props) {
       data-type="mask"
       data-id={mask.id}
       points={mask.points.map((p) => `${p.x},${p.y}`).join(' ')}
-      fill={color ?? 'rgba(255,255,255,0.2)'}
-      stroke="#666"
+      style={{ fill: color ?? 'transparent', stroke: PLAN.inkMuted }}
       strokeDasharray="4 4"
     />
   );

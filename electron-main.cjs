@@ -58,7 +58,7 @@ function createSplash() {
     frame: false,
     alwaysOnTop: true,
     transparent: false,
-    backgroundColor: '#0b0b0b',
+    backgroundColor: '#FBF8F3',
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
   });
   splash.loadFile(path.join(__dirname, 'branding', 'ui', 'splash.svg'));

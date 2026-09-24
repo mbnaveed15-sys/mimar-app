@@ -1,19 +1,164 @@
 @import 'tailwindcss';
+@import './theme/themes.css';
 
-/* Keep Tailwind v3 defaults the UI was designed with. */
+/* Theme colours as Tailwind utilities: bg-surface, text-ink, border-line, bg-accent and so on. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--surface-raised);
+  --color-sunken: var(--surface-sunken);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--ink-muted);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-selection: var(--selection);
+  --color-danger: var(--danger);
+  --color-focus: var(--focus);
+  --shadow-popover: var(--shadow-popover);
+}
+
+@theme {
+  --font-sans: 'Instrument Sans Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Mono', Consolas, monospace;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+}
+
 @layer base {
   *,
   ::after,
   ::before,
   ::backdrop,
   ::file-selector-button {
-    border-color: var(--color-gray-200, currentColor);
+    border-color: var(--line);
   }
   button:not(:disabled),
   [role='button']:not(:disabled) {
     cursor: pointer;
   }
+  html {
+    accent-color: var(--accent);
+  }
   body {
-    @apply bg-gray-50;
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 18px;
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+  }
+  input:not([type='checkbox'], [type='radio'], [type='range']),
+  select {
+    background: var(--surface-sunken);
+    border-color: var(--line-strong);
+    color: var(--ink);
+  }
+  input::placeholder {
+    color: var(--ink-muted);
+  }
+}
+
+@layer components {
+  /* A bordered button on any panel. */
+  .m-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    color: var(--ink);
+    padding: 4px 8px;
+    font-weight: 500;
+  }
+  .m-btn:hover:not(:disabled) {
+    background: var(--surface-sunken);
+  }
+  .m-btn:disabled {
+    opacity: 0.4;
+  }
+  .m-btn[aria-pressed='true'] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  /* The one main action in view. */
+  .m-btn-primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .m-btn-primary:hover:not(:disabled) {
+    background: var(--accent);
+    filter: brightness(1.06);
+  }
+  .m-btn-danger {
+    color: var(--danger);
+  }
+  /* A titled group of controls in a side panel. */
+  .m-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+  .m-heading {
+    color: var(--ink-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  /* Segmented control: a row of options where exactly one is chosen. */
+  .m-seg {
+    display: flex;
+    overflow: hidden;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+  }
+  .m-seg > button {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 4px 8px;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .m-seg > button + button {
+    border-left: 1px solid var(--line);
+  }
+  .m-seg > button:hover {
+    background: var(--surface-sunken);
+  }
+  .m-seg > button[aria-checked='true'],
+  .m-seg > button[aria-pressed='true'] {
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 600;
+  }
+  .m-kbd {
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-raised);
+    color: var(--ink-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 14px;
+    padding: 0 4px;
   }
 }

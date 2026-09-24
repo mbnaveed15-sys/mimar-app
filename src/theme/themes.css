@@ -1,0 +1,179 @@
+/* Mimar themes. Generated from the Mimar Design System tokens; every colour in the UI comes from here. */
+
+:root,
+[data-theme='brick'] {
+  color-scheme: light;
+  --canvas: #fbf8f3;
+  --surface: #f3ece1;
+  --surface-raised: #ffffff;
+  --surface-sunken: #e8dfd1;
+  --line: #d6c8b4;
+  --line-strong: #8e7e68;
+  --ink: #1f2a33;
+  --ink-muted: #5a5347;
+  --accent: #a63d26;
+  --on-accent: #ffffff;
+  --accent-ink: #a63d26;
+  --accent-soft: #f2ddd4;
+  --focus: #a63d26;
+  --mark-tile: #a63d26;
+  --mark-ink: #fbf8f3;
+  --plan-grid: #ebe3d6;
+  --plan-grid-major: #d9ccb8;
+  --plan-wall: #cdbba3;
+  --plan-wall-edge: #2e2720;
+  --plan-room: #f6f0e6;
+  --plan-dim: #5a5347;
+  --selection: #1d6fb8;
+  --snap-end: #1e7b34;
+  --snap-mid: #0b7a8f;
+  --snap-edge: #b3261e;
+  --axis-x: #b3261e;
+  --axis-y: #1e7b34;
+  --danger: #b3261e;
+  --shadow-popover: 0 8px 24px rgba(46, 39, 32, 0.16);
+}
+
+[data-theme='blueprint'] {
+  color-scheme: light;
+  --canvas: #f7f9fc;
+  --surface: #edf1f7;
+  --surface-raised: #ffffff;
+  --surface-sunken: #e1e8f1;
+  --line: #c9d3e0;
+  --line-strong: #76869d;
+  --ink: #14213d;
+  --ink-muted: #48566f;
+  --accent: #c9974f;
+  --on-accent: #14213d;
+  --accent-ink: #7f5617;
+  --accent-soft: #f4e6d1;
+  --focus: #14213d;
+  --mark-tile: #14213d;
+  --mark-ink: #c9974f;
+  --plan-grid: #e3e9f2;
+  --plan-grid-major: #cbd6e4;
+  --plan-wall: #b9c6d8;
+  --plan-wall-edge: #14213d;
+  --plan-room: #f0f4fa;
+  --plan-dim: #48566f;
+  --selection: #1d6fb8;
+  --snap-end: #1e7b34;
+  --snap-mid: #0b7a8f;
+  --snap-edge: #b3261e;
+  --axis-x: #b3261e;
+  --axis-y: #1e7b34;
+  --danger: #b3261e;
+  --shadow-popover: 0 8px 24px rgba(20, 33, 61, 0.16);
+}
+
+[data-theme='gold'] {
+  color-scheme: dark;
+  --canvas: #121210;
+  --surface: #1a1917;
+  --surface-raised: #24231f;
+  --surface-sunken: #0e0e0c;
+  --line: #36352f;
+  --line-strong: #7a776a;
+  --ink: #f2efe6;
+  --ink-muted: #aba696;
+  --accent: #d4af37;
+  --on-accent: #0b0b0b;
+  --accent-ink: #d4af37;
+  --accent-soft: #3a3217;
+  --focus: #d4af37;
+  --mark-tile: #0b0b0b;
+  --mark-ink: #d4af37;
+  --plan-grid: #232320;
+  --plan-grid-major: #34332d;
+  --plan-wall: #4a483f;
+  --plan-wall-edge: #e8e3d4;
+  --plan-room: #1b1a18;
+  --plan-dim: #aba696;
+  --selection: #5aa9f0;
+  --snap-end: #4ade80;
+  --snap-mid: #22d3ee;
+  --snap-edge: #f87171;
+  --axis-x: #f87171;
+  --axis-y: #4ade80;
+  --danger: #f87171;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --canvas: #ffffff;
+  --surface: #f5f6f7;
+  --surface-raised: #ffffff;
+  --surface-sunken: #ebedef;
+  --line: #d9dce0;
+  --line-strong: #80868f;
+  --ink: #17191c;
+  --ink-muted: #585e66;
+  --accent: #2f58cd;
+  --on-accent: #ffffff;
+  --accent-ink: #2f58cd;
+  --accent-soft: #e4ebfb;
+  --focus: #2f58cd;
+  --mark-tile: #17191c;
+  --mark-ink: #ffffff;
+  --plan-grid: #edeff1;
+  --plan-grid-major: #d7dade;
+  --plan-wall: #c9cdd2;
+  --plan-wall-edge: #17191c;
+  --plan-room: #f7f8f9;
+  --plan-dim: #585e66;
+  --selection: #c8541a;
+  --snap-end: #1e7b34;
+  --snap-mid: #0b7a8f;
+  --snap-edge: #b3261e;
+  --axis-x: #b3261e;
+  --axis-y: #1e7b34;
+  --danger: #b3261e;
+  --shadow-popover: 0 8px 24px rgba(23, 25, 28, 0.14);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: #141618;
+  --surface: #1c1f22;
+  --surface-raised: #262a2e;
+  --surface-sunken: #121416;
+  --line: #353a40;
+  --line-strong: #6c747d;
+  --ink: #eceef0;
+  --ink-muted: #a3aab2;
+  --accent: #7aa2ff;
+  --on-accent: #0e1220;
+  --accent-ink: #9db9ff;
+  --accent-soft: #24314f;
+  --focus: #9db9ff;
+  --mark-tile: #eceef0;
+  --mark-ink: #141618;
+  --plan-grid: #22262a;
+  --plan-grid-major: #343a40;
+  --plan-wall: #4a5159;
+  --plan-wall-edge: #dce0e4;
+  --plan-room: #1a1d20;
+  --plan-dim: #a3aab2;
+  --selection: #ffb36b;
+  --snap-end: #4ade80;
+  --snap-mid: #22d3ee;
+  --snap-edge: #f87171;
+  --axis-x: #f87171;
+  --axis-y: #4ade80;
+  --danger: #f87171;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+/* Plan colours built from the theme. Exports replace these with PRINT_PALETTE (src/theme/plan.ts). */
+:root {
+  --plan-paper: var(--canvas);
+  --plan-ink: var(--ink);
+  --plan-ink-muted: var(--ink-muted);
+  --plan-furniture: var(--surface-raised);
+  --plan-furniture-edge: var(--plan-wall-edge);
+  --plan-glass: #9fd3f0;
+  --plan-selection: var(--selection);
+  --plan-selected-wall: color-mix(in srgb, var(--selection) 35%, var(--plan-wall));
+  --plan-draft: var(--accent-ink);
+}

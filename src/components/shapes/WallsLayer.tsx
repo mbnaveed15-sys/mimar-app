@@ -1,5 +1,6 @@
 import type { Wall } from '../../types';
 import { wallPolygon } from '../../walls';
+import { PLAN } from '../../theme/plan';
 
 interface Props {
   walls: Wall[];
@@ -24,8 +25,7 @@ export function WallsLayer({ walls, colorOf, selectedId, k }: Props) {
           <polygon
             key={wall.id}
             points={pts}
-            fill="#1f2937"
-            stroke={wall.id === selectedId ? '#2563eb' : '#1f2937'}
+            style={{ fill: PLAN.wallEdge, stroke: wall.id === selectedId ? PLAN.selection : PLAN.wallEdge }}
             strokeWidth={(wall.id === selectedId ? 4 : 2) * k}
             strokeLinejoin="miter"
           />
@@ -38,7 +38,7 @@ export function WallsLayer({ walls, colorOf, selectedId, k }: Props) {
             data-type="wall"
             data-id={wall.id}
             points={pts}
-            fill={wall.id === selectedId ? '#bfdbfe' : (colorOf(wall.material) ?? '#d1d5db')}
+            style={{ fill: wall.id === selectedId ? PLAN.selectedWall : (colorOf(wall.material) ?? PLAN.wall) }}
           />
         ))}
       </g>

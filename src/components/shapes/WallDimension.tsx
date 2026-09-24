@@ -3,6 +3,7 @@ import { formatLength } from '../../lib/units';
 import { MM_PER_UNIT } from '../../store/plannerStore';
 import type { Units, Wall } from '../../types';
 import { thicknessOf } from '../../walls';
+import { PLAN } from '../../theme/plan';
 
 interface Props {
   wall: Wall;
@@ -12,8 +13,6 @@ interface Props {
   /** Which side of the wall the dimension goes on: 1 = left of the drawing direction, -1 = right. */
   side: 1 | -1;
 }
-
-const COLOR = '#475569';
 
 /** Architectural dimension line drawn beside a wall, with its real length. */
 export function WallDimension({ wall, units, k, side }: Props) {
@@ -33,7 +32,7 @@ export function WallDimension({ wall, units, k, side }: Props) {
   const mid = { x: (a.x + b.x) / 2 + nx * 6 * k, y: (a.y + b.y) / 2 + ny * 6 * k };
 
   return (
-    <g data-type="dimension" stroke={COLOR} strokeWidth={k}>
+    <g data-type="dimension" style={{ stroke: PLAN.dim }} strokeWidth={k}>
       <line
         x1={wall.x1 + nx * (face + 4 * k)}
         y1={wall.y1 + ny * (face + 4 * k)}
@@ -64,8 +63,7 @@ export function WallDimension({ wall, units, k, side }: Props) {
         fontSize={11 * k}
         textAnchor="middle"
         dominantBaseline="middle"
-        fill={COLOR}
-        stroke="#fff"
+        style={{ fill: PLAN.dim, stroke: PLAN.paper }}
         strokeWidth={3 * k}
         paintOrder="stroke"
       >
