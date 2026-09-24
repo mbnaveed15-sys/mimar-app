@@ -14,7 +14,7 @@ export function OpeningShape({ opening, color, selected }: Props) {
     <g
       data-type={opening.type}
       data-id={opening.id}
-      transform={`translate(${opening.x},${opening.y}) rotate(${opening.angle})`}
+      transform={`translate(${opening.x},${opening.y}) rotate(${opening.angle}) scale(${opening.flipHinge ? -1 : 1},${opening.flipSide ? -1 : 1})`}
     >
       <rect x={-w / 2} y={-5} width={w} height={10} fill="#fff" />
       <line x1={-w / 2} y1={-6} x2={-w / 2} y2={6} stroke={stroke} strokeWidth={2} />

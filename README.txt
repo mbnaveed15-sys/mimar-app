@@ -23,15 +23,29 @@ BUILD THE WINDOWS INSTALLER
   it from the Actions tab with "Run workflow" on any branch.
 - Locally on Windows: double-click make_installer.bat (output in the 'release' folder).
 
+USING THE PLANNER
+  Zoom                 Mouse wheel, the + / - buttons, or + and - keys. "Fit" or 0 shows the whole plan.
+  Move around          Pan tool, or hold Space (or the middle mouse button) and drag.
+  Select and edit      Select tool: click an item, drag to move it. Walls have end handles,
+                       furniture has resize (corner) and rotate (top) handles. Doors and windows
+                       slide along their wall. Exact sizes can be typed in the Inspector.
+  Keyboard             Arrow keys nudge (Shift = finer), R rotates furniture 90 degrees,
+                       Delete removes, Ctrl+Z / Ctrl+Y undo and redo.
+  Units                Feet & inches (default) or metric, in the Units setting. Lengths can be
+                       typed as 12' 6", 12ft 6in, 12.5, 3.5 m or 3500 mm.
+  Files                New / Open / Save / Save as, or Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S.
+                       Plans are saved as .mimar files you can back up, email or move between PCs.
+
 PROJECT LAYOUT
   src/types.ts             Data types for plans, elements and materials
   src/geometry.ts          Hit-testing, snapping and wall maths
   src/store/               App state, actions and undo/redo (Zustand)
-  src/lib/                 Saving/loading (with migration from older versions), PNG export
+  src/lib/                 Storage (with migration), .mimar files, units, zoom maths, PNG export
   src/components/          UI: Toolbar, Materials panel, Canvas, Inspector, shapes/
   e2e/                     Playwright browser tests
   electron-main.cjs        Desktop window (Electron main process)
   branding/                Logo, icons, splash screen, watermark
 
-Plans are saved automatically in the app's local storage. Plans made with
-Mimar 1.1-1.3 are converted automatically on first launch.
+The current plan is also kept automatically in the app's local storage, so work
+is not lost if the app closes. Plans made with Mimar 1.1-1.3 are converted
+automatically on first launch.

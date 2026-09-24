@@ -8,7 +8,11 @@ interface Props {
 
 export function FurnitureShape({ item, color, selected }: Props) {
   return (
-    <g data-type="furniture" data-id={item.id} transform={`translate(${item.x},${item.y})`}>
+    <g
+      data-type="furniture"
+      data-id={item.id}
+      transform={`translate(${item.x},${item.y}) rotate(${item.rotation ?? 0})`}
+    >
       <rect
         x={-item.w / 2}
         y={-item.h / 2}

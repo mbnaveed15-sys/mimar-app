@@ -2,7 +2,9 @@ import { usePlanner } from '../store/plannerStore';
 import { TOOLS, type Tool } from '../types';
 
 const TOOL_HINTS: Partial<Record<Tool, string>> = {
-  select: 'Click an element to select it. Delete key removes it.',
+  select: 'Click to select, drag to move. Arrow keys nudge, R rotates, Delete removes.',
+  pan: 'Drag to move around the plan. You can also hold Space or the middle mouse button.',
+  wall: 'Drag to draw a wall. Ends snap to the grid and to other walls.',
   door: 'Click on a wall to place a door.',
   window: 'Click on a wall to place a window.',
   mask: 'Click to add points. Double-click or press Enter to finish, Esc to cancel.',
@@ -18,7 +20,7 @@ export function Toolbar() {
   const redo = usePlanner((s) => s.redo);
 
   return (
-    <>
+    <div className="flex flex-col gap-2">
       <div className="flex gap-2">
         <button
           onClick={undo}
@@ -55,6 +57,6 @@ export function Toolbar() {
           {w}
         </div>
       ))}
-    </>
+    </div>
   );
 }

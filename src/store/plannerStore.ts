@@ -1,14 +1,30 @@
 import { createStore, useStore } from 'zustand';
-import { elementCenter, findElementNear, isNear, nearestWall, placeOnWall, pointInPolygon } from '../geometry';
+import {
+  elementCenter,
+  findElementNear,
+  isNear,
+  nearestWall,
+  placeOnWall,
+  planBounds,
+  pointInPolygon,
+  reattachOpening,
+  translateElement,
+} from '../geometry';
+import { DEFAULT_FILE_NAME } from '../lib/files';
 import { newId } from '../lib/ids';
-import { loadPlan, savePlan } from '../lib/storage';
-import type { Draft, Id, PlanDoc, PlanElement, Point, Tool } from '../types';
+import { loadPrefs, savePrefs, type Prefs } from '../lib/prefs';
+import { emptyDoc, loadPlan, savePlan } from '../lib/storage';
+import { GRID_MM } from '../lib/units';
+import { DEFAULT_AREA, fitView, zoomAt, type Size } from '../lib/view';
+import type { Draft, Id, PlanDoc, PlanElement, Point, Tool, Units, View } from '../types';
 
 export const HISTORY_LIMIT = 100;
 
 const OPENING_WIDTH_MM = { door: 900, window: 1200 } as const;
 const FURNITURE_SIZE_MM = { w: 1200, h: 800 } as const;
 const MIN_WALL_PX = 6;
+/** Plan units per millimetre are fixed: 1 plan unit = 10 mm. */
+export const MM_PER_UNIT = 10;
 
 export interface PlannerState {
   doc: PlanDoc;
@@ -25,6 +41,17 @@ export interface PlannerState {
   scaleMMperPx: number;
   warnings: string[];
   draft: Draft;
+
+  units: Units;
+  showDimensions: boolean;
+  view: View;
+  viewport: Size;
+
+  /** Name of the open plan file, and its path in the desktop app. */
+  fileName: string;
+  filePath?: string;
+  /** Document as last saved or opened; the plan has unsaved changes when doc differs. */
+  savedDoc: PlanDoc;
 
   /** Apply a change to the document, recording it for undo. */
   commit: (recipe: (doc: PlanDoc) => PlanDoc) => void;
@@ -52,9 +79,30 @@ export interface PlannerState {
   addMaskPoint: (p: Point) => void;
   finishMask: () => void;
   addMaterial: () => void;
+
+  setUnits: (units: Units) => void;
+  setShowDimensions: (show: boolean) => void;
+  setViewport: (size: Size) => void;
+  setView: (view: View) => void;
+  zoomBy: (factor: number, screen?: Point) => void;
+  fitToPlan: () => void;
+  /** Screen-independent distance for clicking on things (12 screen pixels). */
+  hitTolerance: () => number;
+
+  /** Replace an element; doors and windows follow their wall if it changed. */
+  updateElement: (next: PlanElement) => void;
+  flipOpening: (id: Id, which: 'side' | 'hinge') => void;
+  nudgeSelected: (dx: number, dy: number) => void;
+  rotateSelected: (degrees: number) => void;
+
+  newPlan: () => void;
+  loadDocument: (doc: PlanDoc, file: { name: string; path?: string }) => void;
+  markSaved: (file: { name: string; path?: string }) => void;
 }
 
-export function createPlannerStore(initial: PlanDoc, initialWarning?: string) {
+const gridFor = (units: Units) => GRID_MM[units] / MM_PER_UNIT;
+
+export function createPlannerStore(initial: PlanDoc, initialWarning?: string, prefs: Prefs = loadPrefs()) {
   return createStore<PlannerState>()((set, get) => {
     /** Id of the active material, falling back to the first one if it was removed. */
     const activeMat = () => {
@@ -62,6 +110,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string) {
       return (doc.materials.find((m) => m.id === selectedMat) ?? doc.materials[0])?.id;
     };
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
+    const persistPrefs = () => savePrefs({ units: get().units, showDimensions: get().showDimensions });
+    const resetHistory = { past: [], future: [], batchBase: null, draft: null, selectedId: null, warnings: [] };
     const updateElements = (fn: (els: PlanElement[]) => PlanElement[]) =>
       get().commit((doc) => {
         const elements = fn(doc.elements);
@@ -78,10 +128,19 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string) {
       selectedMat: initial.materials[0]?.id ?? '',
       selectedId: null,
       brushSize: 24,
-      gridPx: 25,
-      scaleMMperPx: 10,
+      gridPx: gridFor(prefs.units),
+      scaleMMperPx: MM_PER_UNIT,
       warnings: initialWarning ? [initialWarning] : [],
       draft: null,
+
+      units: prefs.units,
+      showDimensions: prefs.showDimensions,
+      view: { x: 0, y: 0, zoom: 1 },
+      viewport: { width: 0, height: 0 },
+
+      fileName: DEFAULT_FILE_NAME,
+      filePath: undefined,
+      savedDoc: initial,
 
       commit: (recipe) => {
         const { doc, past, batchBase } = get();
@@ -139,7 +198,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string) {
         updateElements((els) => [...els, wall]);
       },
       placeOpening: (type, p) => {
-        const wall = nearestWall(get().doc.elements, p, 20);
+        const wall = nearestWall(get().doc.elements, p, get().hitTolerance() * 1.5);
         if (!wall) {
           get().setWarning(`Click on a wall to place a ${type}.`);
           return;
@@ -169,7 +228,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string) {
         );
       },
       paintAt: (p) => {
-        const hit = findElementNear(get().doc.elements, p, 16);
+        const hit = findElementNear(get().doc.elements, p, get().hitTolerance());
         if (hit) get().applyMaterial(hit.id);
       },
       brushAt: (p) => {
@@ -188,7 +247,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string) {
       },
       eraseAt: (p) => {
         get().commit((doc) => {
-          const gone = new Set(doc.elements.filter((el) => isNear(el, p, 12)).map((el) => el.id));
+          const tol = get().hitTolerance();
+          const gone = new Set(doc.elements.filter((el) => isNear(el, p, tol)).map((el) => el.id));
           const elements = gone.size
             ? doc.elements.filter((el) => !gone.has(el.id) && !('wallId' in el && gone.has(el.wallId)))
             : doc.elements;
@@ -236,6 +296,73 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string) {
           materials: [...doc.materials, { id: `mat_custom_${newId()}`, name: 'Custom', color: '#ffffff', texture: '' }],
         }));
       },
+
+      setUnits: (units) => {
+        set({ units, gridPx: gridFor(units) });
+        persistPrefs();
+      },
+      setShowDimensions: (showDimensions) => {
+        set({ showDimensions });
+        persistPrefs();
+      },
+      setViewport: (viewport) => {
+        const first = get().viewport.width === 0 || get().viewport.height === 0;
+        set({ viewport });
+        if (first && viewport.width > 0 && viewport.height > 0) get().fitToPlan();
+      },
+      setView: (view) => set({ view }),
+      zoomBy: (factor, screen) => {
+        const { view, viewport } = get();
+        set({ view: zoomAt(view, screen ?? { x: viewport.width / 2, y: viewport.height / 2 }, factor) });
+      },
+      fitToPlan: () => {
+        const { doc, viewport } = get();
+        if (!viewport.width || !viewport.height) return;
+        set({ view: fitView(planBounds(doc.elements, doc.masks) ?? DEFAULT_AREA, viewport) });
+      },
+      hitTolerance: () => Math.max(2, 12 / get().view.zoom),
+
+      updateElement: (next) => {
+        get().commit((doc) => {
+          const prev = doc.elements.find((el) => el.id === next.id);
+          if (!prev || prev === next) return doc;
+          const elements = doc.elements.map((el) => {
+            if (el.id === next.id) return next;
+            if (prev.type === 'wall' && next.type === 'wall' && 'wallId' in el && el.wallId === prev.id) {
+              return reattachOpening(el, prev, next);
+            }
+            return el;
+          });
+          return { ...doc, elements };
+        });
+      },
+      flipOpening: (id, which) => {
+        const el = get().doc.elements.find((e) => e.id === id);
+        if (!el || (el.type !== 'door' && el.type !== 'window')) return;
+        get().updateElement(which === 'side' ? { ...el, flipSide: !el.flipSide } : { ...el, flipHinge: !el.flipHinge });
+      },
+      nudgeSelected: (dx, dy) => {
+        const el = get().doc.elements.find((e) => e.id === get().selectedId);
+        if (!el || el.type === 'door' || el.type === 'window') return;
+        get().updateElement(translateElement(el, dx, dy));
+      },
+      rotateSelected: (degrees) => {
+        const el = get().doc.elements.find((e) => e.id === get().selectedId);
+        if (el?.type !== 'furniture') return;
+        get().updateElement({ ...el, rotation: ((((el.rotation ?? 0) + degrees) % 360) + 360) % 360 });
+      },
+
+      newPlan: () => {
+        const doc = emptyDoc();
+        set({ doc, savedDoc: doc, fileName: DEFAULT_FILE_NAME, filePath: undefined, ...resetHistory });
+        get().fitToPlan();
+      },
+      loadDocument: (doc, file) => {
+        set({ doc, savedDoc: doc, fileName: file.name, filePath: file.path, ...resetHistory });
+        if (!doc.materials.some((m) => m.id === get().selectedMat)) set({ selectedMat: doc.materials[0]?.id ?? '' });
+        get().fitToPlan();
+      },
+      markSaved: (file) => set({ savedDoc: get().doc, fileName: file.name, filePath: file.path }),
     };
   });
 }

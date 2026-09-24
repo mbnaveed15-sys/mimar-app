@@ -1,4 +1,3 @@
-import { wallLength } from '../../geometry';
 import type { Wall } from '../../types';
 
 interface Props {
@@ -25,9 +24,6 @@ export function WallShape({ wall, color, selected }: Props) {
       )}
       <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#333" strokeWidth={6} strokeLinecap="round" />
       {color && <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={3} strokeLinecap="round" />}
-      <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 8} fontSize={12} textAnchor="middle">
-        {Math.round(wallLength(wall))} px
-      </text>
     </g>
   );
 }

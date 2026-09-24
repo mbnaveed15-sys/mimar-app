@@ -55,6 +55,8 @@ function normaliseElement(raw: unknown): PlanElement | null {
         y: num('y'),
         angle: num('angle'),
         width: num('width'),
+        flipSide: raw.flipSide === true || undefined,
+        flipHinge: raw.flipHinge === true || undefined,
       };
       return el.wallId && [el.x, el.y, el.angle, el.width].every(Number.isFinite) ? el : null;
     }
@@ -66,6 +68,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
         y: num('y'),
         w: num('w'),
         h: num('h'),
+        rotation: typeof raw.rotation === 'number' && Number.isFinite(raw.rotation) ? raw.rotation : undefined,
         label: typeof raw.label === 'string' ? raw.label : undefined,
       };
       return [el.x, el.y, el.w, el.h].every(Number.isFinite) ? el : null;
