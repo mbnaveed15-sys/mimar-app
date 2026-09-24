@@ -7,7 +7,7 @@ import type { Bounds } from '../types';
 /** Font for all plan text, on screen and in exports (SVG images don't inherit the page font). */
 export const PLAN_FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
 
-export type PlanImageContent = Omit<PlanDrawingProps, 'k' | 'selectedId'>;
+export type PlanImageContent = Omit<PlanDrawingProps, 'k' | 'selectedIds'>;
 
 export interface PlanImageOptions {
   /** Grid spacing in plan units and how it looks, or null for no grid. */
@@ -40,7 +40,7 @@ export async function planSvgMarkup(
     >
       <rect x={area.minX} y={area.minY} width={w} height={h} fill="#fff" />
       {grid && <PlanGrid id="export" area={area} step={grid.step} look={grid.look} k={k} />}
-      <PlanDrawing {...content} selectedId={null} k={k} />
+      <PlanDrawing {...content} selectedIds={[]} k={k} />
     </svg>,
   );
 }

@@ -115,6 +115,10 @@ const DRAWING_KEYS: [string, string][] = [
   ['Ctrl while moving', 'Copy instead of move; then type 3x or /3 for more copies'],
   ['Esc', 'Cancel the current step; press again to drop the selection'],
   ['Enter', 'Finish (stop a chain of walls, close a mask)'],
+  ['Drag left → right', 'Select what is fully inside the box'],
+  ['Drag right → left', 'Select anything the box touches'],
+  ['Shift+click', 'Add to or take out of the selection'],
+  ['Double-click a group', 'Edit inside it; Esc closes it (component copies then update)'],
   ['Arrow keys with a selection', 'Nudge by one grid step; Shift for a fifth of a step'],
   ['Middle-drag / scroll', 'Pan / zoom with any tool'],
 ];
@@ -225,20 +229,34 @@ export function ContextMenu({
   }, [onClose]);
 
   const items: { label: string; run: () => void; danger?: boolean }[] = [];
-  if (el?.type === 'door') {
+  const many = s.selectedIds.length > 1;
+  const group = s.selectedGroup();
+  if (el?.type === 'door' && !many) {
     items.push({ label: 'Flip swing', run: () => s.flipOpening(el.id, 'side') });
     items.push({ label: 'Flip hinge', run: () => s.flipOpening(el.id, 'hinge') });
   }
-  if (el?.type === 'wall' || el?.type === 'furniture') {
+  if (group) {
+    items.push({ label: group.componentId ? 'Edit component' : 'Edit group', run: () => s.openGroup(group.id) });
+    items.push({ label: group.componentId ? 'Explode' : 'Ungroup', run: () => s.ungroupSelected() });
+  } else if (many) {
+    items.push({ label: 'Make group', run: () => s.groupSelected() });
+    items.push({ label: 'Make component', run: () => s.makeComponentFromSelection() });
+  }
+  if (many || group || el?.type === 'wall' || el?.type === 'furniture') {
     items.push({ label: 'Rotate 90°', run: () => s.rotateSelected(90) });
     items.push({ label: 'Duplicate', run: () => s.duplicateSelected() });
     items.push({ label: 'Move', run: () => s.setTool('move') });
   }
   if (el || room) {
-    items.push({ label: room ? 'Rename…' : 'Properties', run: onProperties });
-    items.push({ label: room ? 'Delete room' : 'Delete', run: () => s.deleteElement((el ?? room)!.id), danger: true });
+    if (!many && !group) items.push({ label: room ? 'Rename…' : 'Properties', run: onProperties });
+    items.push({
+      label: many || group ? 'Delete selection' : room ? 'Delete room' : 'Delete',
+      run: () => s.deleteSelected(),
+      danger: true,
+    });
   } else {
     items.push({ label: 'Paste', run: () => s.paste() });
+    items.push({ label: 'Select all', run: () => s.selectAll() });
     items.push({ label: 'Zoom extents', run: () => s.fitToPlan() });
   }
 

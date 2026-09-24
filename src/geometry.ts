@@ -164,7 +164,7 @@ export function rotatePoint(p: Point, c: Point, degrees: number): Point {
   return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
 }
 
-/** Turn a wall or furniture item about centre c. Doors and windows follow their wall instead. */
+/** Turn any plan item about centre c. */
 export function rotateElement<T extends PlanElement>(el: T, c: Point, degrees: number): T {
   if (el.type === 'wall') {
     const a = rotatePoint({ x: el.x1, y: el.y1 }, c, degrees);
@@ -175,7 +175,13 @@ export function rotateElement<T extends PlanElement>(el: T, c: Point, degrees: n
     const p = rotatePoint({ x: el.x, y: el.y }, c, degrees);
     return { ...el, x: p.x, y: p.y, rotation: ((((el.rotation ?? 0) + degrees) % 360) + 360) % 360 };
   }
-  return el;
+  const p = rotatePoint({ x: el.x, y: el.y }, c, degrees);
+  return { ...el, x: p.x, y: p.y, angle: el.angle + degrees };
+}
+
+/** Corner points of an item, for its extent on the plan. */
+export function elementOutline(el: PlanElement): Point[] {
+  return elementPoints(el);
 }
 
 function elementPoints(el: PlanElement): Point[] {

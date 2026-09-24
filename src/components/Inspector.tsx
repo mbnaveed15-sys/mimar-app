@@ -6,6 +6,7 @@ import { MM_PER_UNIT, usePlanner } from '../store/plannerStore';
 import type { Wall } from '../types';
 import { thicknessOf } from '../walls';
 import { LengthField } from './LengthField';
+import { SelectionPanel } from './SelectionPanel';
 
 /** Common room names in Pakistani homes, offered as suggestions. */
 const ROOM_NAMES = [
@@ -38,6 +39,7 @@ export function Inspector() {
   const mode = usePlanner((s) => s.mode);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
 
+  const multi = usePlanner((s) => s.selectedIds.length > 1 || s.selectedGroup() !== null);
   const el = doc.elements.find((e) => e.id === selectedId);
   const room = doc.rooms.find((r) => r.id === selectedId);
   const coveredArea = doc.rooms.reduce((sum, r) => sum + roomAreaSqMm(r), 0);
@@ -48,7 +50,11 @@ export function Inspector() {
   return (
     <div className="flex flex-col">
       <div>
-        {el ? (
+        {multi ? (
+          <div className="mb-3">
+            <SelectionPanel />
+          </div>
+        ) : el ? (
           <div className="mb-3 flex flex-col gap-2 rounded-md border border-line bg-raised p-2 text-xs">
             <div className="font-medium">
               Selected: {el.type === 'furniture' && el.kind ? FURNITURE_CATALOG[el.kind].name : el.type}

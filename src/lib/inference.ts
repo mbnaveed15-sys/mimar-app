@@ -30,8 +30,8 @@ export interface InferOptions {
   grid: number | null;
   /** Keep the point on this direction from `from` (arrow-key axis lock or Shift lock). */
   lock?: Point | null;
-  /** Leave this wall out (the one being dragged). */
-  ignoreId?: string;
+  /** Leave these walls out (the ones being moved). */
+  ignoreIds?: Set<string>;
 }
 
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -53,8 +53,8 @@ const roundTo = (v: number, step: number | null) => (step ? Math.round(v / step)
  * across or up from the last point (red and green axes), points on walls, then the grid.
  */
 export function infer(raw: Point, opts: InferOptions): Inference {
-  const { walls, tolerance, from, grid, lock, ignoreId } = opts;
-  const others = walls.filter((w) => w.id !== ignoreId);
+  const { walls, tolerance, from, grid, lock, ignoreIds } = opts;
+  const others = ignoreIds ? walls.filter((w) => !ignoreIds.has(w.id)) : walls;
 
   if (from && lock) {
     // Stay on the locked line; lengths along it snap to the grid.

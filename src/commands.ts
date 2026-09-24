@@ -46,8 +46,12 @@ export interface CommandContext {
 }
 
 const st = () => plannerStore.getState();
-const hasSelection = (s: PlannerState) => s.selectedId !== null;
-const selectedElement = (s: PlannerState) => s.doc.elements.find((el) => el.id === s.selectedId);
+const hasSelection = (s: PlannerState) => s.selectedIds.length > 0;
+const selectedElement = (s: PlannerState) =>
+  s.selectedIds.length === 1 ? s.doc.elements.find((el) => el.id === s.selectedId) : undefined;
+/** Something that can be copied or turned: anything but a lone door or window. */
+const canTransform = (s: PlannerState) =>
+  s.selectedIds.length > 1 || ['wall', 'furniture'].includes(selectedElement(s)?.type ?? '') || !!s.selectedGroup();
 
 function toolCommand(tool: Tool, menu: MenuId, group: number): Command {
   const info = TOOL_INFO[tool];
@@ -115,7 +119,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       group: 1,
       keys: ['Ctrl+C'],
       run: () => st().copySelected(),
-      enabled: (s) => ['wall', 'furniture'].includes(selectedElement(s)?.type ?? ''),
+      enabled: canTransform,
     },
     {
       id: 'edit.paste',
@@ -133,7 +137,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       group: 1,
       keys: ['Ctrl+D'],
       run: () => st().duplicateSelected(),
-      enabled: (s) => ['wall', 'furniture'].includes(selectedElement(s)?.type ?? ''),
+      enabled: canTransform,
     },
     {
       id: 'edit.delete',
@@ -141,10 +145,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       menu: 'edit',
       group: 1,
       keys: ['Delete', 'Backspace'],
-      run: () => {
-        const id = st().selectedId;
-        if (id) st().deleteElement(id);
-      },
+      run: () => st().deleteSelected(),
       enabled: hasSelection,
     },
     {
@@ -153,7 +154,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       menu: 'edit',
       group: 2,
       run: () => st().rotateSelected(90),
-      enabled: (s) => ['wall', 'furniture'].includes(selectedElement(s)?.type ?? ''),
+      enabled: canTransform,
     },
     {
       id: 'edit.flipSwing',
@@ -178,6 +179,14 @@ export function buildCommands(ctx: CommandContext): Command[] {
       enabled: (s) => selectedElement(s)?.type === 'door',
     },
     {
+      id: 'edit.selectAll',
+      label: 'Select all',
+      menu: 'edit',
+      group: 3,
+      keys: ['Ctrl+A'],
+      run: () => st().selectAll(),
+    },
+    {
       id: 'edit.deselect',
       label: 'Select none',
       menu: 'edit',
@@ -185,6 +194,61 @@ export function buildCommands(ctx: CommandContext): Command[] {
       keys: ['Esc'],
       run: () => st().select(null),
       enabled: hasSelection,
+    },
+
+    {
+      id: 'edit.group',
+      label: 'Make group',
+      menu: 'edit',
+      group: 4,
+      keys: ['Ctrl+G'],
+      run: () => st().groupSelected(),
+      enabled: (s) => s.selectedIds.length > 1 && !s.selectedGroup(),
+    },
+    {
+      id: 'edit.component',
+      label: 'Make component',
+      menu: 'edit',
+      group: 4,
+      keys: ['G'],
+      run: () => st().makeComponentFromSelection(),
+      enabled: (s) => s.selectedIds.length > 0 && !s.selectedGroup()?.componentId,
+    },
+    {
+      id: 'edit.ungroup',
+      label: 'Ungroup / explode',
+      menu: 'edit',
+      group: 4,
+      keys: ['Ctrl+Shift+G'],
+      run: () => st().ungroupSelected(),
+      enabled: (s) => !!s.selectedGroup(),
+    },
+    {
+      id: 'edit.openGroup',
+      label: 'Edit group or component',
+      menu: 'edit',
+      group: 4,
+      run: () => {
+        const g = st().selectedGroup();
+        if (g) st().openGroup(g.id);
+      },
+      enabled: (s) => !!s.selectedGroup(),
+    },
+    {
+      id: 'edit.closeGroup',
+      label: 'Close group',
+      menu: 'edit',
+      group: 4,
+      run: () => st().closeGroup(),
+      enabled: (s) => s.openGroupId !== null,
+    },
+    {
+      id: 'edit.unique',
+      label: 'Make unique',
+      menu: 'edit',
+      group: 4,
+      run: () => st().makeSelectedUnique(),
+      enabled: (s) => !!s.selectedGroup()?.componentId,
     },
 
     // View

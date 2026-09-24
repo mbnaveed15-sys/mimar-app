@@ -11,7 +11,8 @@ import { WallsLayer } from './shapes/WallsLayer';
 
 export interface PlanDrawingProps {
   doc: PlanDoc;
-  selectedId: string | null;
+  /** Highlighted items. */
+  selectedIds: readonly string[];
   units: Units;
   marlaSqFt: MarlaSqFt;
   showDimensions: boolean;
@@ -24,8 +25,9 @@ export interface PlanDrawingProps {
 
 /** The plan itself: rooms, walls, doors, windows, furniture and dimensions. Used on screen and for exports. */
 export function PlanDrawing(props: PlanDrawingProps) {
-  const { doc, selectedId, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, k } = props;
+  const { doc, selectedIds, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, k } = props;
   const walls = wallsOf(doc.elements);
+  const selected = new Set(selectedIds);
   const colorOf = (id?: string) => doc.materials.find((m) => m.id === id)?.color;
   const faces = showDimensions ? wallFaces(walls) : [];
   const bounds = planBounds(walls, []);
@@ -38,7 +40,7 @@ export function PlanDrawing(props: PlanDrawingProps) {
           key={r.id}
           room={r}
           color={colorOf(r.material)}
-          selected={r.id === selectedId}
+          selected={selected.has(r.id)}
           units={units}
           marlaSqFt={marlaSqFt}
           showLabel={showRoomLabels}
@@ -51,10 +53,10 @@ export function PlanDrawing(props: PlanDrawingProps) {
         <MaskShape key={m.id} mask={m} color={colorOf(m.material)} />
       ))}
 
-      <WallsLayer walls={walls} colorOf={colorOf} selectedId={selectedId} k={k} />
+      <WallsLayer walls={walls} colorOf={colorOf} selected={selected} k={k} />
 
       {doc.elements.map((el) => {
-        const isSelected = el.id === selectedId;
+        const isSelected = selected.has(el.id);
         const color = colorOf(el.material);
         switch (el.type) {
           case 'wall':
@@ -82,7 +84,7 @@ export function PlanDrawing(props: PlanDrawingProps) {
         walls.map((w) => {
           const { side, exterior } = placeWallDimension(w, faces, centre);
           // Interior walls are measured by the rooms around them; show theirs only when selected.
-          if (!exterior && w.id !== selectedId) return null;
+          if (!exterior && !selected.has(w.id)) return null;
           return <WallDimension key={`dim-${w.id}`} wall={w} units={units} k={k} side={side} />;
         })}
     </>

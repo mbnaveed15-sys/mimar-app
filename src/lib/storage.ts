@@ -1,9 +1,10 @@
-import type { Mask, Material, PlanDoc, PlanElement, Room } from '../types';
+import type { ComponentDef, Group, Mask, Material, PlanDoc, PlanElement, Room } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
 import { defaultMaterials } from './materials';
 
 export const STORAGE_KEY = 'mimar.plan';
-export const CURRENT_VERSION = 3;
+/** 4 added groups and components. */
+export const CURRENT_VERSION = 4;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -21,7 +22,7 @@ export interface LoadResult {
 }
 
 export function emptyDoc(): PlanDoc {
-  return { elements: [], rooms: [], masks: [], materials: defaultMaterials() };
+  return { elements: [], rooms: [], masks: [], materials: defaultMaterials(), groups: [], components: [] };
 }
 
 /** localStorage when it is usable, otherwise null (private mode, tests, blocked storage). */
@@ -38,7 +39,12 @@ const idOf = (v: unknown): string | undefined => (v === undefined || v === null 
 
 function normaliseElement(raw: unknown): PlanElement | null {
   if (!isObject(raw)) return null;
-  const base = { id: idOf(raw.id) ?? '', material: idOf(raw.material) };
+  const base = {
+    id: idOf(raw.id) ?? '',
+    material: idOf(raw.material),
+    groupId: idOf(raw.groupId),
+    defKey: idOf(raw.defKey),
+  };
   if (!base.id) return null;
   const num = (k: string) => (typeof raw[k] === 'number' ? (raw[k] as number) : NaN);
   switch (raw.type) {
@@ -112,6 +118,36 @@ function normaliseRoom(raw: unknown, index: number): Room | null {
     name: typeof obj.name === 'string' ? obj.name : `Room ${index + 1}`,
     points: mask.points,
     material: mask.material,
+    groupId: idOf(obj.groupId),
+    defKey: idOf(obj.defKey),
+  };
+}
+
+function normaliseGroup(raw: unknown): Group | null {
+  if (!isObject(raw) || raw.id === undefined) return null;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  return {
+    id: String(raw.id),
+    name: typeof raw.name === 'string' ? raw.name : 'Group',
+    componentId: idOf(raw.componentId),
+    x: num(raw.x),
+    y: num(raw.y),
+    rotation: num(raw.rotation),
+  };
+}
+
+function normaliseComponent(raw: unknown): ComponentDef | null {
+  if (!isObject(raw) || raw.id === undefined) return null;
+  const list = (v: unknown) => (Array.isArray(v) ? v : []);
+  return {
+    id: String(raw.id),
+    name: typeof raw.name === 'string' ? raw.name : 'Component',
+    elements: list(raw.elements)
+      .map(normaliseElement)
+      .filter((e): e is PlanElement => e !== null),
+    rooms: list(raw.rooms)
+      .map(normaliseRoom)
+      .filter((r): r is Room => r !== null),
   };
 }
 
@@ -144,6 +180,12 @@ export function normaliseDoc(raw: unknown): PlanDoc {
       .map(normaliseMask)
       .filter((m): m is Mask => m !== null),
     materials: materials.length ? materials : defaultMaterials(),
+    groups: list(obj.groups)
+      .map(normaliseGroup)
+      .filter((g): g is Group => g !== null),
+    components: list(obj.components)
+      .map(normaliseComponent)
+      .filter((c): c is ComponentDef => c !== null),
   };
 }
 
