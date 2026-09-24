@@ -72,6 +72,21 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k }: Prop
         </>
       )}
 
+      {d?.type === 'marquee' && (
+        <rect
+          data-testid="selection-box"
+          x={Math.min(d.x1, d.x2)}
+          y={Math.min(d.y1, d.y2)}
+          width={Math.abs(d.x2 - d.x1)}
+          height={Math.abs(d.y2 - d.y1)}
+          // Left to right (window): solid; right to left (crossing): dashed, like SketchUp.
+          style={{ fill: PLAN.selection, stroke: PLAN.selection }}
+          fillOpacity={0.08}
+          strokeWidth={1.25 * k}
+          strokeDasharray={d.x2 < d.x1 ? `${5 * k} ${4 * k}` : undefined}
+        />
+      )}
+
       {d?.type === 'rectangle' && (
         <>
           <rect

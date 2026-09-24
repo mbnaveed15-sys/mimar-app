@@ -8,8 +8,6 @@ import {
   planBounds,
   pointInPolygon,
   reattachOpening,
-  rotateElement,
-  translateElement,
 } from '../geometry';
 import { DEFAULT_FILE_NAME } from '../lib/files';
 import { newId } from '../lib/ids';
@@ -20,6 +18,23 @@ import { DEFAULT_AREA, fitView, zoomAt, type Size } from '../lib/view';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { detectRoom } from '../rooms';
 import type { Inference } from '../lib/inference';
+import {
+  boundsCentre,
+  copyItems,
+  deleteItems,
+  expandToGroups,
+  groupItems,
+  groupMembers,
+  itemById,
+  makeComponent,
+  makeUnique,
+  moveItems,
+  placeComponent,
+  rotateItems,
+  selectionBounds,
+  syncComponent,
+  ungroup,
+} from '../lib/selection';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { SIMPLE_TOOLS } from '../types';
 import type {
@@ -52,7 +67,12 @@ export interface PlannerState {
 
   tool: Tool;
   selectedMat: Id;
+  /** The item last clicked; its properties are shown when it is the only one selected. */
   selectedId: Id | null;
+  /** Everything selected (includes selectedId). A group is selected as all of its items. */
+  selectedIds: Id[];
+  /** The group or component copy open for editing (its items can be picked one by one). */
+  openGroupId: Id | null;
   brushSize: number;
   gridPx: number;
   scaleMMperPx: number;
@@ -80,9 +100,9 @@ export interface PlannerState {
   /** Direction held by Shift while drawing (inference lock). */
   shiftLock: Point | null;
   /** The last Move-copy, so `3x` or `/3` typed next can turn it into an array. */
-  lastCopy: { orig: PlanElement; dx: number; dy: number; ids: Id[] } | null;
-  /** Element copied with Ctrl+C. */
-  clipboard: PlanElement | null;
+  lastCopy: { ids: Id[]; dx: number; dy: number; copyIds: Id[] } | null;
+  /** Items copied with Ctrl+C, and the plan they came from. */
+  clipboard: { doc: PlanDoc; ids: Id[] } | null;
   theme: ThemeId;
   grid: GridPrefs;
   view: View;
@@ -106,7 +126,27 @@ export interface PlannerState {
 
   setTool: (tool: Tool) => void;
   selectMaterial: (id: Id) => void;
+  /** Select one item (with the rest of its group), or nothing. */
   select: (id: Id | null) => void;
+  /** Shift+click: add an item (and its group) to the selection, or take it out. */
+  toggleSelect: (id: Id) => void;
+  /** Select these items (and their groups), adding to the selection when additive. */
+  setSelection: (ids: Id[], additive?: boolean) => void;
+  selectAll: () => void;
+  deleteSelected: () => void;
+  /** Change the plan based on the plan at the start of the current batch (live Move and Rotate). */
+  commitFromBase: (recipe: (base: PlanDoc) => PlanDoc) => void;
+  groupSelected: () => void;
+  ungroupSelected: () => void;
+  makeComponentFromSelection: () => void;
+  /** Open a group or component copy to edit its items; closing a component copy updates the others. */
+  openGroup: (groupId: Id) => void;
+  closeGroup: () => void;
+  placeComponentCopy: (componentId: Id, at?: Point) => void;
+  makeSelectedUnique: () => void;
+  renameGroup: (groupId: Id, name: string) => void;
+  /** The group whose items are exactly the selection, if any. */
+  selectedGroup: () => import('../types').Group | null;
   setBrushSize: (px: number) => void;
   setDraft: (draft: Draft) => void;
   setWarning: (message: string | null) => void;
@@ -204,7 +244,32 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         grid,
       });
     };
-    const resetHistory = { past: [], future: [], batchBase: null, draft: null, selectedId: null, warnings: [] };
+    const resetHistory = {
+      past: [],
+      future: [],
+      batchBase: null,
+      draft: null,
+      selectedId: null,
+      selectedIds: [],
+      openGroupId: null,
+      warnings: [],
+      lastCopy: null,
+    };
+    /** Keep only selected items that still exist (after undo, erase, hiding furniture). */
+    const refreshSelection = () => {
+      const { doc, selectedIds, selectedId, showFurniture } = get();
+      const visible = (id: Id) => {
+        const it = itemById(doc, id);
+        return !!it && !('type' in it && it.type === 'furniture' && !showFurniture);
+      };
+      const ids = selectedIds.filter(visible);
+      const open = get().openGroupId;
+      set({
+        selectedIds: ids,
+        selectedId: selectedId && ids.includes(selectedId) ? selectedId : (ids[0] ?? null),
+        openGroupId: open && doc.groups.some((g) => g.id === open) ? open : null,
+      });
+    };
     const updateElements = (fn: (els: PlanElement[]) => PlanElement[]) =>
       get().commit((doc) => {
         const elements = fn(doc.elements);
@@ -220,6 +285,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       tool: 'select',
       selectedMat: initial.materials[0]?.id ?? '',
       selectedId: null,
+      selectedIds: [],
+      openGroupId: null,
       brushSize: 24,
       gridPx: gridFor(prefs.grid, prefs.units),
       scaleMMperPx: MM_PER_UNIT,
@@ -279,14 +346,14 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         if (!past.length) return;
         const prev = past[past.length - 1];
         set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], draft: null });
-        get().select(get().selectedId);
+        refreshSelection();
       },
       redo: () => {
         get().endBatch();
         const { past, doc, future } = get();
         if (!future.length) return;
         set({ doc: future[0], past: [...past, doc], future: future.slice(1), draft: null });
-        get().select(get().selectedId);
+        refreshSelection();
       },
 
       setTool: (tool) => {
@@ -298,6 +365,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           draft: null,
           warnings: [],
           selectedId: keep ? s.selectedId : null,
+          selectedIds: keep ? s.selectedIds : [],
           measureText: '',
           inference: null,
           axisLock: null,
@@ -306,11 +374,138 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         }));
       },
       selectMaterial: (id) => set({ selectedMat: id }),
-      select: (id) =>
-        set((s) => ({
-          selectedId:
-            id && (s.doc.elements.some((el) => el.id === id) || s.doc.rooms.some((r) => r.id === id)) ? id : null,
-        })),
+      select: (id) => {
+        const { doc, openGroupId } = get();
+        const item = id ? itemById(doc, id) : undefined;
+        // Picking something outside the open group closes it.
+        if (openGroupId && (!item || item.groupId !== openGroupId)) get().closeGroup();
+        if (!item) {
+          set({ selectedId: null, selectedIds: [] });
+          return;
+        }
+        set({ selectedId: item.id, selectedIds: expandToGroups(get().doc, [item.id], get().openGroupId) });
+      },
+      toggleSelect: (id) => {
+        const { doc, selectedIds, openGroupId } = get();
+        if (!itemById(doc, id)) return;
+        const ids = expandToGroups(doc, [id], openGroupId);
+        const has = selectedIds.includes(id);
+        const next = has ? selectedIds.filter((x) => !ids.includes(x)) : [...new Set([...selectedIds, ...ids])];
+        set({ selectedIds: next, selectedId: has ? (next[0] ?? null) : id });
+      },
+      setSelection: (ids, additive = false) => {
+        const { doc, openGroupId, selectedIds } = get();
+        const picked = expandToGroups(doc, ids, openGroupId);
+        const next = additive ? [...new Set([...selectedIds, ...picked])] : picked;
+        set({ selectedIds: next, selectedId: next[next.length - 1] ?? null });
+      },
+      selectAll: () => {
+        const { doc, openGroupId } = get();
+        const pool = openGroupId
+          ? [...doc.elements, ...doc.rooms].filter((it) => it.groupId === openGroupId)
+          : [...get().visibleElements(), ...doc.rooms];
+        get().setSelection(pool.map((it) => it.id));
+      },
+      deleteSelected: () => {
+        const ids = get().selectedIds;
+        if (!ids.length) return;
+        get().commit((doc) => deleteItems(doc, ids));
+        set({ selectedId: null, selectedIds: [] });
+      },
+      commitFromBase: (recipe) => {
+        const base = get().batchBase;
+        if (base) set({ doc: recipe(base) });
+        else get().commit(recipe);
+      },
+      selectedGroup: () => {
+        const { doc, selectedIds } = get();
+        const first = selectedIds.length ? itemById(doc, selectedIds[0]) : undefined;
+        if (!first?.groupId || first.groupId === get().openGroupId) return null;
+        const members = new Set(
+          [...doc.elements, ...doc.rooms].filter((it) => it.groupId === first.groupId).map((it) => it.id),
+        );
+        const exact = members.size === selectedIds.length && selectedIds.every((id) => members.has(id));
+        return exact ? (doc.groups.find((g) => g.id === first.groupId) ?? null) : null;
+      },
+      groupSelected: () => {
+        const ids = get().selectedIds;
+        if (ids.length < 2 && !get().selectedGroup()) return;
+        const n = get().doc.groups.filter((g) => !g.componentId).length + 1;
+        let groupId = '';
+        get().commit((doc) => {
+          const out = groupItems(doc, ids, `Group ${n}`);
+          groupId = out.groupId;
+          return out.doc;
+        });
+        get().setSelection(ids);
+        get().setWarning(null);
+        void groupId;
+      },
+      ungroupSelected: () => {
+        const g = get().selectedGroup();
+        if (!g) return;
+        const ids = get().selectedIds;
+        get().commit((doc) => ungroup(doc, g.id));
+        get().setSelection(ids);
+      },
+      makeComponentFromSelection: () => {
+        const ids = get().selectedIds;
+        if (!ids.length) return;
+        const n = get().doc.components.length + 1;
+        get().commit((doc) => makeComponent(doc, ids, `Component ${n}`).doc);
+        get().setSelection(ids);
+      },
+      openGroup: (groupId) => {
+        if (!get().doc.groups.some((g) => g.id === groupId)) return;
+        if (get().openGroupId && get().openGroupId !== groupId) get().closeGroup();
+        set({ openGroupId: groupId, selectedIds: [], selectedId: null });
+      },
+      closeGroup: () => {
+        const id = get().openGroupId;
+        if (!id) return;
+        set({ openGroupId: null });
+        const g = get().doc.groups.find((x) => x.id === id);
+        // Other copies of a component are rebuilt as part of the last edit, so one undo takes back both.
+        if (g?.componentId) set({ doc: syncComponent(get().doc, id) });
+        get().setSelection(groupMembers(get().doc, id));
+      },
+      placeComponentCopy: (componentId, at) => {
+        const { view, viewport } = get();
+        const centre = at ?? {
+          x: view.x + viewport.width / view.zoom / 2,
+          y: view.y + viewport.height / view.zoom / 2,
+        };
+        let groupId: Id | null = null;
+        get().commit((doc) => {
+          const out = placeComponent(doc, componentId, centre);
+          groupId = out?.groupId ?? null;
+          return out?.doc ?? doc;
+        });
+        if (groupId) {
+          const gid: Id = groupId;
+          get().setSelection(
+            get()
+              .doc.elements.filter((el) => el.groupId === gid)
+              .map((el) => el.id),
+          );
+        }
+      },
+      makeSelectedUnique: () => {
+        const g = get().selectedGroup();
+        if (g?.componentId) get().commit((doc) => makeUnique(doc, g.id));
+      },
+      renameGroup: (groupId, name) =>
+        get().commit((doc) => {
+          const g = doc.groups.find((x) => x.id === groupId);
+          if (!g || !name.trim() || g.name === name) return doc;
+          return {
+            ...doc,
+            groups: doc.groups.map((x) => (x.id === groupId ? { ...x, name } : x)),
+            components: g.componentId
+              ? doc.components.map((c) => (c.id === g.componentId ? { ...c, name } : c))
+              : doc.components,
+          };
+        }),
       setBrushSize: (px) => set({ brushSize: px }),
       setDraft: (draft) => set({ draft }),
       setWarning: (message) => set({ warnings: message ? [message] : [] }),
@@ -332,21 +527,45 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         get().setWarning(null);
       },
       copySelected: () => {
-        const el = get().doc.elements.find((e) => e.id === get().selectedId);
-        if (el && el.type !== 'door' && el.type !== 'window') set({ clipboard: el });
+        const { doc, selectedIds } = get();
+        if (selectedIds.length) set({ clipboard: { doc, ids: selectedIds } });
       },
       paste: () => {
-        const el = get().clipboard;
-        if (!el) return;
+        const clip = get().clipboard;
+        if (!clip) return;
         // Each paste lands one grid step down and to the right of the last.
         const step = get().gridPx;
-        const copy = translateElement({ ...el, id: newId() }, step, step);
-        get().addElements([copy]);
-        set({ clipboard: copy, selectedId: copy.id });
+        const { doc: source, ids } = copyItems(clip.doc, clip.ids, step, step);
+        const fresh = new Set(ids);
+        const known = new Set(clip.doc.groups.map((g) => g.id));
+        const newGroups = source.groups.filter((g) => !known.has(g.id));
+        get().commit((doc) => ({
+          ...doc,
+          elements: [...doc.elements, ...source.elements.filter((el) => fresh.has(el.id))],
+          rooms: [...doc.rooms, ...source.rooms.filter((r) => fresh.has(r.id))],
+          groups: [...doc.groups, ...newGroups],
+          // A pasted component copy brings its component along if this plan doesn't have it.
+          components: [
+            ...doc.components,
+            ...source.components.filter(
+              (c) => newGroups.some((g) => g.componentId === c.id) && !doc.components.some((x) => x.id === c.id),
+            ),
+          ],
+        }));
+        set({ clipboard: { doc: source, ids } });
+        get().setSelection(ids);
       },
       duplicateSelected: () => {
-        get().copySelected();
-        get().paste();
+        const ids = get().selectedIds;
+        if (!ids.length) return;
+        const step = get().gridPx;
+        let copies: Id[] = [];
+        get().commit((doc) => {
+          const out = copyItems(doc, ids, step, step);
+          copies = out.ids;
+          return out.doc;
+        });
+        get().setSelection(copies);
       },
 
       addWall: (a, b) => {
@@ -497,10 +716,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
       setLayer: (layer, show) => {
         set({ [layer]: show });
-        if (layer === 'showFurniture' && !show) {
-          const sel = get().doc.elements.find((el) => el.id === get().selectedId);
-          if (sel?.type === 'furniture') set({ selectedId: null });
-        }
+        if (layer === 'showFurniture' && !show) refreshSelection();
         persistPrefs();
       },
       setFurnitureKind: (furnitureKind) => set({ furnitureKind }),
@@ -549,7 +765,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         const { doc } = get();
         const existing = get().roomAt(p);
         if (existing) {
-          set({ selectedId: existing.id, warnings: [] });
+          get().select(existing.id);
+          set({ warnings: [] });
           return;
         }
         const points = detectRoom(doc.elements, p);
@@ -559,7 +776,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         }
         const room: Room = { id: newId(), name: `Room ${doc.rooms.length + 1}`, points };
         get().commit((d) => ({ ...d, rooms: [...d.rooms, room] }));
-        set({ selectedId: room.id, warnings: [] });
+        get().select(room.id);
+        set({ warnings: [] });
       },
       updateRoom: (room) =>
         get().commit((doc) =>
@@ -610,14 +828,19 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         get().updateElement(which === 'side' ? { ...el, flipSide: !el.flipSide } : { ...el, flipHinge: !el.flipHinge });
       },
       nudgeSelected: (dx, dy) => {
-        const el = get().doc.elements.find((e) => e.id === get().selectedId);
-        if (!el || el.type === 'door' || el.type === 'window') return;
-        get().updateElement(translateElement(el, dx, dy));
+        const { doc, selectedIds } = get();
+        // A door or window on its own stays in its wall.
+        const movable = selectedIds.filter((id) => {
+          const it = itemById(doc, id);
+          return it && !('type' in it && (it.type === 'door' || it.type === 'window'));
+        });
+        if (movable.length) get().commit((d) => moveItems(d, movable, dx, dy));
       },
       rotateSelected: (degrees) => {
-        const el = get().doc.elements.find((e) => e.id === get().selectedId);
-        if (el?.type !== 'furniture' && el?.type !== 'wall') return;
-        get().updateElement(rotateElement(el, elementCenter(el), degrees));
+        const { doc, selectedIds } = get();
+        const box = selectionBounds(doc, selectedIds);
+        if (!box) return;
+        get().commit((d) => rotateItems(d, selectedIds, boundsCentre(box), degrees));
       },
 
       newPlan: () => {

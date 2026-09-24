@@ -1,10 +1,10 @@
-import { elementCenter, findElementNear, placeOnWall, rotateElement, translateElement } from '../geometry';
+import { findElementNear, placeOnWall } from '../geometry';
 import { axisDirection, infer, type Inference } from '../lib/inference';
-import { newId } from '../lib/ids';
 import { parseMeasure, type MeasureKind } from '../lib/measure';
+import { boundsCentre, copyItems, deleteItems, moveItems, rotateItems, selectionBounds } from '../lib/selection';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
-import type { PlanElement, Point, Tool, Wall } from '../types';
+import type { Id, Point, Tool, Wall } from '../types';
 import { wallsOf } from '../walls';
 
 /** The bits of a zustand store the controller needs. */
@@ -31,7 +31,7 @@ const same = (a: Point, b: Point, tol: number) => Math.hypot(a.x - b.x, a.y - b.
 const degrees = (v: Point) => (Math.atan2(v.y, v.x) * 180) / Math.PI;
 
 /** Snap a point for the active tool, drawing from `from` when there is one. */
-export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreId?: string): Inference {
+export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreIds?: Set<Id>): Inference {
   const lock = from ? (s.axisLock ? axisDirection(s.axisLock) : s.shiftLock) : null;
   return infer(raw, {
     walls: wallsOf(s.doc.elements),
@@ -39,7 +39,7 @@ export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreI
     from,
     grid: s.grid.snap ? s.gridPx : null,
     lock,
-    ignoreId,
+    ignoreIds,
   });
 }
 
@@ -72,14 +72,33 @@ export function currentDirection(s: PlannerState): Point | null {
   return null;
 }
 
-/** The thing Move or Rotate works on: the selection, or whatever is under the click. */
-function targetFor(s: PlannerState, raw: Point, allowOpenings: boolean): PlanElement | null {
-  const selected = s.doc.elements.find((el) => el.id === s.selectedId);
+/**
+ * What Move or Rotate works on: the selection if the click is on it (or on nothing), otherwise
+ * whatever is under the click, which becomes the selection.
+ */
+function targetFor(store: Store, raw: Point, allowOpenings: boolean): Id[] | null {
+  const s = store.getState();
   const hit = findElementNear(s.visibleElements(), raw, s.hitTolerance());
-  const el = hit ?? selected ?? null;
-  if (!el) return null;
-  if (!allowOpenings && (el.type === 'door' || el.type === 'window')) return null;
-  return el;
+  if (hit && !s.selectedIds.includes(hit.id)) s.select(hit.id);
+  const { selectedIds: ids } = store.getState();
+  if (!ids.length) return null;
+  if (!allowOpenings && ids.every((id) => isOpening(s, id))) return null;
+  return ids;
+}
+
+function isWallOnly(s: PlannerState, ids: Id[]) {
+  return ids.every((id) => s.doc.elements.find((e) => e.id === id)?.type === 'wall');
+}
+
+function isOpening(s: PlannerState, id: Id) {
+  const el = s.doc.elements.find((e) => e.id === id);
+  return el?.type === 'door' || el?.type === 'window';
+}
+
+/** Ids of walls being moved, left out of snapping so they don't snap to themselves. */
+function movingIds(s: PlannerState): Set<Id> | undefined {
+  const d = s.draft;
+  return d?.type === 'move' ? new Set(d.ids) : undefined;
 }
 
 /** Pointer moved over the plan: update the snap marker and the rubber band. */
@@ -88,8 +107,7 @@ export function hover(store: Store, raw: Point, shift = false) {
   const d = s.draft;
   if (!(s.tool in MEASURE_TOOLS)) return;
   const from = anchorOf(s);
-  const ignoreId = d?.type === 'move' ? d.orig.id : undefined;
-  const inf = inferAt(s, raw, from, ignoreId);
+  const inf = inferAt(s, raw, from, movingIds(s));
   s.setInference(inf);
   const p = inf.point;
   if (!d) return;
@@ -110,77 +128,72 @@ export function hover(store: Store, raw: Point, shift = false) {
       let angle = degrees(sub(raw, d.center)) - degrees(sub(d.start, d.center));
       angle = ((angle + 540) % 360) - 180;
       if (!shift) angle = Math.round(angle / ANGLE_STEP) * ANGLE_STEP;
-      s.updateElement(rotateElement(d.orig, d.center, angle));
+      const { ids, center } = d;
+      s.commitFromBase((base) => rotateItems(base, ids, center, angle));
       s.setDraft({ ...d, angle });
       break;
     }
   }
 }
 
-/** Show the element being moved (or its copy) at `to`. */
+/** Show the items being moved (or their copies) at `to`, starting again from the plan before the move. */
 function moveTo(store: Store, to: Point, raw: Point) {
   const s = store.getState();
   const d = s.draft;
   if (d?.type !== 'move') return;
-  const { orig } = d;
-  if (orig.type === 'door' || orig.type === 'window') {
-    // Doors and windows slide along their wall.
-    const wall = s.doc.elements.find((el): el is Wall => el.type === 'wall' && el.id === orig.wallId);
-    if (wall) s.updateElement({ ...orig, ...placeOnWall(wall, raw, orig.width) });
+  const only = d.ids.length === 1 ? s.batchBase?.elements.find((el) => el.id === d.ids[0]) : undefined;
+  if (only && (only.type === 'door' || only.type === 'window')) {
+    // A door or window on its own slides along its wall.
+    const wall = s.doc.elements.find((el): el is Wall => el.type === 'wall' && el.id === only.wallId);
+    if (wall) s.updateElement({ ...only, ...placeOnWall(wall, raw, only.width) });
     s.setDraft({ ...d, to: raw });
     return;
   }
-  const moved = translateElement(orig, to.x - d.base.x, to.y - d.base.y);
-  const copyId = d.copy ? copyIdOf(s, orig) : null;
-  if (copyId) s.updateElement({ ...moved, id: copyId });
-  else s.updateElement(moved);
+  const dx = to.x - d.base.x;
+  const dy = to.y - d.base.y;
+  const { ids, copy } = d;
+  s.commitFromBase((base) => (copy ? copyItems(base, ids, dx, dy).doc : moveItems(base, ids, dx, dy)));
   s.setDraft({ ...d, to });
-}
-
-/** Id of the live copy made while Ctrl-moving, stored on the draft's orig as a suffix. */
-const COPY_SUFFIX = '~copy';
-function copyIdOf(s: PlannerState, orig: PlanElement): string | null {
-  const id = orig.id + COPY_SUFFIX;
-  return s.doc.elements.some((el) => el.id === id) ? id : null;
 }
 
 /** Switch copy mode on or off while moving (Ctrl), like SketchUp. */
 export function toggleCopy(store: Store) {
   const s = store.getState();
   const d = s.draft;
-  if (d?.type !== 'move' || d.orig.type === 'door' || d.orig.type === 'window') return;
-  const dx = d.to.x - d.base.x;
-  const dy = d.to.y - d.base.y;
-  const copyId = d.orig.id + COPY_SUFFIX;
-  if (!d.copy) {
-    s.updateElement(d.orig);
-    s.addElements([translateElement({ ...d.orig, id: copyId }, dx, dy)]);
-  } else {
-    s.commit((doc) => ({ ...doc, elements: doc.elements.filter((el) => el.id !== copyId) }));
-    s.updateElement(translateElement(d.orig, dx, dy));
-  }
+  if (d?.type !== 'move') return;
+  if (
+    d.ids.every((id) =>
+      s.batchBase?.elements.find((el) => el.id === id && (el.type === 'door' || el.type === 'window')),
+    )
+  )
+    return;
   s.setDraft({ ...d, copy: !d.copy });
+  moveTo(store, d.to, d.to);
 }
 
-/** Finish a move: keep the moved item, or give the copy a real id. */
+/** Finish a move: keep the moved items, or make the copies for real and select them. */
 function finishMove(store: Store) {
   const s = store.getState();
   const d = s.draft;
   if (d?.type !== 'move') return;
   const dx = d.to.x - d.base.x;
   const dy = d.to.y - d.base.y;
-  let selected = d.orig.id;
   let lastCopy: PlannerState['lastCopy'] = null;
-  if (d.copy) {
-    const tempId = d.orig.id + COPY_SUFFIX;
-    const id = newId();
-    s.commit((doc) => ({ ...doc, elements: doc.elements.map((el) => (el.id === tempId ? { ...el, id } : el)) }));
-    selected = id;
-    lastCopy = { orig: d.orig, dx, dy, ids: [id] };
+  let selection = d.ids;
+  if (d.copy && (dx || dy)) {
+    const { ids } = d;
+    let copyIds: Id[] = [];
+    s.commitFromBase((base) => {
+      const out = copyItems(base, ids, dx, dy);
+      copyIds = out.ids;
+      return out.doc;
+    });
+    lastCopy = { ids, dx, dy, copyIds };
+    selection = copyIds;
   }
   s.endBatch();
   s.setDraft(null);
-  s.select(selected);
+  s.setSelection(selection);
   s.setLastCopy(lastCopy);
 }
 
@@ -189,7 +202,7 @@ export function press(store: Store, raw: Point, opts: { ctrl?: boolean } = {}): 
   const s = store.getState();
   const d = s.draft;
   const from = anchorOf(s);
-  const inf = inferAt(s, raw, from, d?.type === 'move' ? d.orig.id : undefined);
+  const inf = inferAt(s, raw, from, movingIds(s));
   const p = inf.point;
   const tol = 10 / s.view.zoom;
 
@@ -220,16 +233,15 @@ export function press(store: Store, raw: Point, opts: { ctrl?: boolean } = {}): 
         finishMove(store);
         return true;
       }
-      const el = targetFor(s, raw, true);
-      if (!el) {
-        s.setWarning('Select a wall or item first, or click on one, then click where to move it.');
+      const ids = targetFor(store, raw, true);
+      if (!ids) {
+        s.setWarning('Select what to move (or click on it), then click where to move it.');
         return true;
       }
       s.setWarning(null);
-      s.select(el.id);
       s.setLastCopy(null);
       s.beginBatch();
-      s.setDraft({ type: 'move', orig: el, base: p, to: p, copy: false });
+      s.setDraft({ type: 'move', ids: store.getState().selectedIds, base: p, to: p, copy: false });
       if (opts.ctrl) toggleCopy(store);
       return true;
     }
@@ -244,18 +256,19 @@ export function press(store: Store, raw: Point, opts: { ctrl?: boolean } = {}): 
         }
         return true;
       }
-      const el = targetFor(s, raw, false);
-      if (!el) {
-        s.setWarning('Select a wall or item first, or click on one, to rotate it.');
+      const ids = targetFor(store, raw, false);
+      if (!ids) {
+        s.setWarning('Select what to rotate (or click on it), then click the centre to turn it about.');
         return true;
       }
       s.setWarning(null);
-      s.select(el.id);
       s.beginBatch();
-      // Furniture turns about its own centre unless the click snapped to a wall point.
+      // A single item turns about its own centre unless the click snapped to a wall point.
+      const selected = store.getState().selectedIds;
       const onWall = inf.kind === 'endpoint' || inf.kind === 'midpoint' || inf.kind === 'on-wall';
-      const center = el.type === 'furniture' && !onWall ? elementCenter(el) : p;
-      s.setDraft({ type: 'rotate', orig: el, center, angle: 0 });
+      const box = selectionBounds(s.doc, selected);
+      const center = !onWall && box && selected.length === 1 && !isWallOnly(s, selected) ? boundsCentre(box) : p;
+      s.setDraft({ type: 'rotate', ids: selected, center, angle: 0 });
       return true;
     }
     default:
@@ -348,17 +361,21 @@ export function applyMeasure(store: Store, text: string): boolean {
     case 'move': {
       if (m.kind === 'copies') {
         if (!s.lastCopy) return fail('Move with Ctrl to make a copy first, then type 3x or /3.');
-        const { orig, dx, dy, ids } = s.lastCopy;
+        const { ids, dx, dy, copyIds } = s.lastCopy;
         const step = m.spread ? { x: dx / m.n, y: dy / m.n } : { x: dx, y: dy };
-        const copies = Array.from({ length: m.n }, (_, i) =>
-          translateElement({ ...orig, id: newId() }, step.x * (i + 1), step.y * (i + 1)),
-        );
-        s.beginBatch();
-        s.commit((doc) => ({ ...doc, elements: doc.elements.filter((el) => !ids.includes(el.id)) }));
-        s.addElements(copies);
-        s.endBatch();
-        s.setLastCopy({ orig, dx, dy, ids: copies.map((c) => c.id) });
-        s.select(copies[copies.length - 1].id);
+        let made: Id[] = [];
+        s.commit((doc) => {
+          let next = deleteItems(doc, copyIds);
+          made = [];
+          for (let i = 1; i <= m.n; i++) {
+            const out = copyItems(next, ids, step.x * i, step.y * i);
+            next = out.doc;
+            made.push(...out.ids);
+          }
+          return next;
+        });
+        s.setLastCopy({ ids, dx, dy, copyIds: made });
+        s.setSelection(made);
         return true;
       }
       if (d?.type !== 'move' || m.kind !== 'length') return fail('Click the point to move from, then type a distance.');
@@ -370,7 +387,8 @@ export function applyMeasure(store: Store, text: string): boolean {
     case 'rotate': {
       if (d?.type !== 'rotate' || m.kind !== 'angle')
         return fail('Click the centre to rotate about, then type an angle.');
-      s.updateElement(rotateElement(d.orig, d.center, m.deg));
+      const { ids, center } = d;
+      s.commitFromBase((base) => rotateItems(base, ids, center, m.deg));
       s.endBatch();
       s.setDraft(null);
       return true;

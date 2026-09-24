@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { usePlanner } from '../store/plannerStore';
 import { TOOL_INFO } from '../tools/toolInfo';
+import { ComponentsPanel } from './ComponentsPanel';
 import { FurnitureLibrary } from './FurnitureLibrary';
 import { GridSettings } from './GridSettings';
 import { Inspector } from './Inspector';
@@ -76,7 +77,7 @@ function ToolOptions() {
 /** Right-hand panel: the selection's properties (or the tool's options), then settings sections. */
 export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSections> }) {
   const tool = usePlanner((s) => s.tool);
-  const hasSelection = usePlanner((s) => s.selectedId !== null);
+  const hasSelection = usePlanner((s) => s.selectedIds.length > 0);
   const { open, set } = sections;
   const section = (id: SectionId, title: string, children: ReactNode) => (
     <Section id={id} title={title} open={open.includes(id)} onToggle={(on) => set(id, on)}>
@@ -95,6 +96,7 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
         <Inspector />
       </div>
       {section('materials', 'Materials', <MaterialsPanel />)}
+      {section('components', 'Components', <ComponentsPanel />)}
       {section('layers', 'Layers', <LayersPanel />)}
       {section('grid', 'Grid', <GridSettings />)}
       {section('theme', 'Theme', <ThemePicker />)}

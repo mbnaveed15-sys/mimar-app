@@ -58,7 +58,10 @@ export function useKeyboardShortcuts(commands: Command[]) {
       }
 
       if (e.key === 'Escape') {
-        if (!cancel(plannerStore)) s.select(null);
+        // Cancel the current step, then close an open group, then drop the selection.
+        if (cancel(plannerStore)) return;
+        if (s.selectedIds.length) s.select(null);
+        else if (s.openGroupId) s.closeGroup();
         return;
       }
       if (e.key === 'Enter') {

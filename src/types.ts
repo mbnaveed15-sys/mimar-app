@@ -15,7 +15,15 @@ export interface Material {
   type?: string;
 }
 
-export interface Wall {
+/** Membership of a group or component copy. */
+export interface Grouped {
+  /** The group this item belongs to. */
+  groupId?: Id;
+  /** For a component copy: which item of the component definition this is. */
+  defKey?: string;
+}
+
+export interface Wall extends Grouped {
   id: Id;
   type: 'wall';
   x1: number;
@@ -27,7 +35,7 @@ export interface Wall {
   material?: Id;
 }
 
-export interface Opening {
+export interface Opening extends Grouped {
   id: Id;
   type: 'door' | 'window';
   wallId: Id;
@@ -43,7 +51,7 @@ export interface Opening {
   material?: Id;
 }
 
-export interface Furniture {
+export interface Furniture extends Grouped {
   id: Id;
   type: 'furniture';
   x: number;
@@ -68,11 +76,32 @@ export interface Mask {
 }
 
 /** A named floor area, outlined by walls. */
-export interface Room {
+export interface Room extends Grouped {
   id: Id;
   name: string;
   points: Point[];
   material?: Id;
+}
+
+/**
+ * Items that move and select together. A component copy also has a component and a placement
+ * (x, y, rotation), so it can be rebuilt when the component changes.
+ */
+export interface Group {
+  id: Id;
+  name: string;
+  componentId?: Id;
+  x: number;
+  y: number;
+  rotation: number;
+}
+
+/** A reusable part: its items drawn around 0,0. Every copy (a group with this componentId) matches it. */
+export interface ComponentDef {
+  id: Id;
+  name: string;
+  elements: PlanElement[];
+  rooms: Room[];
 }
 
 /** Everything that is saved and covered by undo/redo. */
@@ -81,6 +110,8 @@ export interface PlanDoc {
   rooms: Room[];
   masks: Mask[];
   materials: Material[];
+  groups: Group[];
+  components: ComponentDef[];
 }
 
 export type Tool =
@@ -136,8 +167,10 @@ export type Draft =
     }
   | { type: 'rectangle'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'tape'; a: Point; b: Point; done?: boolean }
-  | { type: 'move'; orig: PlanElement; base: Point; to: Point; copy: boolean }
-  | { type: 'rotate'; orig: PlanElement; center: Point; start?: Point; angle: number }
+  | { type: 'move'; ids: Id[]; base: Point; to: Point; copy: boolean }
+  | { type: 'rotate'; ids: Id[]; center: Point; start?: Point; angle: number }
+  /** Box selection: dragging right selects what is inside, dragging left what it touches. */
+  | { type: 'marquee'; x1: number; y1: number; x2: number; y2: number; additive: boolean }
   | { type: 'mask'; points: Point[]; cursor?: Point }
   | { type: 'brush' }
   | null;

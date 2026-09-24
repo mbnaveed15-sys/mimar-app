@@ -12,6 +12,7 @@ import { PLAN_FONT } from '../lib/planImage';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
 import { PLAN } from '../theme/plan';
+import { itemsInBox, moveItems, selectionBounds } from '../lib/selection';
 import { DRAG_PX, hover, MEASURE_TOOLS, press, release } from '../tools/controller';
 import type { Furniture, PlanElement, Point, Wall } from '../types';
 import { DrawingOverlay } from './DrawingOverlay';
@@ -22,6 +23,10 @@ type Drag =
   | { kind: 'pan'; lastX: number; lastY: number }
   | { kind: 'zoom'; lastY: number; at: Point }
   | { kind: 'move'; start: Point; orig: PlanElement }
+  /** Dragging several selected items (or a group) together. */
+  | { kind: 'moveMany'; start: Point; ids: string[] }
+  /** Pressed on empty space: becomes a selection box once the pointer moves. */
+  | { kind: 'box'; start: Point; additive: boolean }
   | { kind: 'wall-start' | 'wall-end'; orig: Wall }
   | { kind: 'resize' | 'rotate'; orig: Furniture };
 
@@ -65,7 +70,8 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const draft = usePlanner((s) => s.draft);
   const inference = usePlanner((s) => s.inference);
   const axisLock = usePlanner((s) => s.axisLock);
-  const selectedId = usePlanner((s) => s.selectedId);
+  const selectedIds = usePlanner((s) => s.selectedIds);
+  const openGroupId = usePlanner((s) => s.openGroupId);
   const gridPx = usePlanner((s) => s.gridPx);
   const grid = usePlanner((s) => s.grid);
   const view = usePlanner((s) => s.view);
@@ -107,7 +113,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
 
   function startDrag(e: PointerEvent<SVGSVGElement>, drag: Drag) {
     e.currentTarget.setPointerCapture(e.pointerId);
-    if (drag.kind !== 'pan' && drag.kind !== 'zoom') plannerStore.getState().beginBatch();
+    if (drag.kind !== 'pan' && drag.kind !== 'zoom' && drag.kind !== 'box') plannerStore.getState().beginBatch();
     dragRef.current = drag;
   }
 
@@ -129,7 +135,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     }
 
     const handle = (e.target as Element).closest('[data-handle]')?.getAttribute('data-handle');
-    const selected = s.doc.elements.find((el) => el.id === s.selectedId);
+    const selected = s.selectedIds.length === 1 ? s.doc.elements.find((el) => el.id === s.selectedId) : undefined;
     if (handle && selected && s.tool === 'select') {
       if (selected.type === 'wall' && (handle === 'wall-start' || handle === 'wall-end')) {
         startDrag(e, { kind: handle, orig: selected });
@@ -149,8 +155,19 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     switch (s.tool) {
       case 'select': {
         const hit = findElementNear(s.visibleElements(), raw, s.hitTolerance());
-        s.select(hit?.id ?? s.roomAt(raw)?.id ?? null);
-        if (hit) startDrag(e, { kind: 'move', start: raw, orig: hit });
+        if (!hit) {
+          // Empty space (or inside a room): a click picks the room, a drag draws a selection box.
+          startDrag(e, { kind: 'box', start: raw, additive: e.shiftKey });
+          return;
+        }
+        if (e.shiftKey) {
+          s.toggleSelect(hit.id);
+          return;
+        }
+        if (!s.selectedIds.includes(hit.id)) s.select(hit.id);
+        const ids = plannerStore.getState().selectedIds;
+        if (ids.length > 1) startDrag(e, { kind: 'moveMany', start: raw, ids });
+        else startDrag(e, { kind: 'move', start: raw, orig: hit });
         break;
       }
       case 'room':
@@ -197,6 +214,24 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
           s.zoomBy(Math.exp((drag.lastY - e.clientY) * 0.01), drag.at);
           drag.lastY = e.clientY;
           break;
+        case 'box': {
+          const start = pressRef.current;
+          if (!s.draft && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) <= DRAG_PX) break;
+          const { x, y } = drag.start;
+          s.setDraft({ type: 'marquee', x1: x, y1: y, x2: raw.x, y2: raw.y, additive: drag.additive });
+          break;
+        }
+        case 'moveMany': {
+          let dx = raw.x - drag.start.x;
+          let dy = raw.y - drag.start.y;
+          if (s.grid.snap) {
+            dx = Math.round(dx / s.gridPx) * s.gridPx;
+            dy = Math.round(dy / s.gridPx) * s.gridPx;
+          }
+          const { ids } = drag;
+          s.commitFromBase((base) => moveItems(base, ids, dx, dy));
+          break;
+        }
         case 'move': {
           const { orig } = drag;
           if (orig.type === 'door' || orig.type === 'window') {
@@ -249,9 +284,13 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     const start = pressRef.current;
     pressRef.current = null;
     if (dragRef.current) {
-      const kind = dragRef.current.kind;
-      if (kind !== 'pan' && kind !== 'zoom') s.endBatch();
+      const drag = dragRef.current;
       dragRef.current = null;
+      if (drag.kind === 'box') {
+        finishBox(drag, toPlanPoint(e.currentTarget, e));
+        return;
+      }
+      if (drag.kind !== 'pan' && drag.kind !== 'zoom') s.endBatch();
       return;
     }
     const dragged = !!start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > DRAG_PX;
@@ -265,6 +304,31 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     }
   }
 
+  /** A click on empty space picks the room there; a box picks what it covers or crosses. */
+  function finishBox(drag: Extract<Drag, { kind: 'box' }>, end: Point) {
+    const s = plannerStore.getState();
+    const d = s.draft;
+    if (d?.type !== 'marquee') {
+      const room = s.roomAt(drag.start);
+      if (drag.additive && room) s.toggleSelect(room.id);
+      else s.select(room?.id ?? null);
+      return;
+    }
+    s.setDraft(null);
+    const box = {
+      minX: Math.min(d.x1, end.x),
+      minY: Math.min(d.y1, end.y),
+      maxX: Math.max(d.x1, end.x),
+      maxY: Math.max(d.y1, end.y),
+    };
+    // Right to left is a crossing selection, like SketchUp and AutoCAD.
+    const crossing = end.x < d.x1;
+    const pool = [...s.visibleElements(), ...s.doc.rooms].filter(
+      (it) => !s.openGroupId || it.groupId === s.openGroupId,
+    );
+    s.setSelection(itemsInBox(pool, box, crossing), d.additive);
+  }
+
   function onDoubleClick(e: MouseEvent<SVGSVGElement>) {
     const s = plannerStore.getState();
     if (s.tool === 'mask') {
@@ -272,9 +336,17 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
       return;
     }
     if (s.tool !== 'select') return;
-    // Double-click a room to rename it.
     const raw = toPlanPoint(e.currentTarget, e);
-    if (findElementNear(s.visibleElements(), raw, s.hitTolerance())) return;
+    const hit = findElementNear(s.visibleElements(), raw, s.hitTolerance());
+    // Double-click a group (or component copy) to edit inside it.
+    const groupId = (hit ?? s.roomAt(raw))?.groupId;
+    if (groupId && groupId !== s.openGroupId) {
+      s.openGroup(groupId);
+      if (hit) s.select(hit.id);
+      return;
+    }
+    // Double-click a room to rename it.
+    if (hit) return;
     const room = s.roomAt(raw);
     if (!room) return;
     s.select(room.id);
@@ -294,11 +366,21 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     const raw = toPlanPoint(e.currentTarget, e);
     const hit = findElementNear(s.visibleElements(), raw, s.hitTolerance());
     const id = hit?.id ?? s.roomAt(raw)?.id ?? null;
-    s.select(id);
+    if (!id || !s.selectedIds.includes(id)) s.select(id);
     onContextMenu?.({ x: e.clientX, y: e.clientY, id });
   }
 
-  const selected = doc.elements.find((el) => el.id === selectedId);
+  const selected = selectedIds.length === 1 ? doc.elements.find((el) => el.id === selectedIds[0]) : undefined;
+  // Dashed boxes around selected groups and the group open for editing.
+  const groupBoxes = doc.groups
+    .map((g) => {
+      const members = [...doc.elements, ...doc.rooms].filter((it) => it.groupId === g.id).map((it) => it.id);
+      const open = g.id === openGroupId;
+      if (!open && !members.some((m) => selectedIds.includes(m))) return null;
+      const box = selectionBounds(doc, members);
+      return box ? { g, box, open } : null;
+    })
+    .filter((x) => x !== null);
   const cursor =
     tool === 'pan'
       ? 'cursor-grab'
@@ -335,7 +417,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
 
       <PlanDrawing
         doc={doc}
-        selectedId={selectedId}
+        selectedIds={selectedIds}
         units={units}
         marlaSqFt={marlaSqFt}
         showDimensions={showDimensions}
@@ -344,6 +426,34 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         showRoomFills={showRoomFills}
         k={k}
       />
+
+      <g pointerEvents="none">
+        {groupBoxes.map(({ g, box, open }) => (
+          <g key={g.id} data-testid={open ? 'open-group' : 'group-box'}>
+            <rect
+              x={box.minX - 6 * k}
+              y={box.minY - 6 * k}
+              width={box.maxX - box.minX + 12 * k}
+              height={box.maxY - box.minY + 12 * k}
+              fill="none"
+              style={{ stroke: open ? PLAN.inkMuted : PLAN.selection }}
+              strokeWidth={(open ? 1 : 1.5) * k}
+              strokeDasharray={`${6 * k} ${4 * k}`}
+            />
+            <text
+              x={box.minX - 6 * k}
+              y={box.minY - 10 * k}
+              fontSize={11 * k}
+              fontWeight={600}
+              style={{ fill: open ? PLAN.inkMuted : PLAN.selection, stroke: PLAN.paper }}
+              strokeWidth={3 * k}
+              paintOrder="stroke"
+            >
+              {open ? `Editing ${g.name}` : g.name}
+            </text>
+          </g>
+        ))}
+      </g>
 
       <g>
         {tool === 'select' && selected?.type === 'wall' && (
