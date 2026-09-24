@@ -1,6 +1,7 @@
 import { planBounds } from '../geometry';
 import type { MarlaSqFt, PlanDoc, Units } from '../types';
-import { DEFAULT_WALL_THICKNESS, thicknessOf, wallsOf } from '../walls';
+import { wallFaces } from '../rooms';
+import { DEFAULT_WALL_THICKNESS, placeWallDimension, thicknessOf, wallsOf } from '../walls';
 import { FurnitureShape } from './shapes/FurnitureShape';
 import { MaskShape } from './shapes/MaskShape';
 import { OpeningShape } from './shapes/OpeningShape';
@@ -14,14 +15,19 @@ export interface PlanDrawingProps {
   units: Units;
   marlaSqFt: MarlaSqFt;
   showDimensions: boolean;
+  showFurniture: boolean;
+  showRoomLabels: boolean;
+  showRoomFills: boolean;
   /** Plan units per screen (or output) pixel, for line widths and text that keep a fixed size. */
   k: number;
 }
 
 /** The plan itself: rooms, walls, doors, windows, furniture and dimensions. Used on screen and for exports. */
-export function PlanDrawing({ doc, selectedId, units, marlaSqFt, showDimensions, k }: PlanDrawingProps) {
+export function PlanDrawing(props: PlanDrawingProps) {
+  const { doc, selectedId, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, k } = props;
   const walls = wallsOf(doc.elements);
   const colorOf = (id?: string) => doc.materials.find((m) => m.id === id)?.color;
+  const faces = showDimensions ? wallFaces(walls) : [];
   const bounds = planBounds(walls, []);
   const centre = bounds ? { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 } : { x: 0, y: 0 };
 
@@ -35,6 +41,8 @@ export function PlanDrawing({ doc, selectedId, units, marlaSqFt, showDimensions,
           selected={r.id === selectedId}
           units={units}
           marlaSqFt={marlaSqFt}
+          showLabel={showRoomLabels}
+          showFill={showRoomFills}
           k={k}
         />
       ))}
@@ -65,12 +73,18 @@ export function PlanDrawing({ doc, selectedId, units, marlaSqFt, showDimensions,
             );
           }
           case 'furniture':
-            return <FurnitureShape key={el.id} item={el} color={color} selected={isSelected} />;
+            if (!showFurniture) return null;
+            return <FurnitureShape key={el.id} item={el} color={color} selected={isSelected} k={k} />;
         }
       })}
 
       {showDimensions &&
-        walls.map((w) => <WallDimension key={`dim-${w.id}`} wall={w} units={units} k={k} centre={centre} />)}
+        walls.map((w) => {
+          const { side, exterior } = placeWallDimension(w, faces, centre);
+          // Interior walls are measured by the rooms around them; show theirs only when selected.
+          if (!exterior && w.id !== selectedId) return null;
+          return <WallDimension key={`dim-${w.id}`} wall={w} units={units} k={k} side={side} />;
+        })}
     </>
   );
 }

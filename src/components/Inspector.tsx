@@ -1,4 +1,5 @@
 import { placeOnWall, wallLength, withWallLength } from '../geometry';
+import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { formatArea, formatLength, formatMarla } from '../lib/units';
 import { roomAreaSqMm } from '../rooms';
 import { MM_PER_UNIT, usePlanner } from '../store/plannerStore';
@@ -50,7 +51,9 @@ export function Inspector() {
       <div className="flex-1 overflow-auto">
         {el ? (
           <div className="mb-3 flex flex-col gap-2 rounded border p-2 text-xs">
-            <div className="font-medium capitalize">Selected: {el.type}</div>
+            <div className="font-medium">
+              Selected: {el.type === 'furniture' && el.kind ? FURNITURE_CATALOG[el.kind].name : el.type}
+            </div>
 
             {el.type === 'wall' && (
               <LengthField
@@ -108,7 +111,7 @@ export function Inspector() {
                     key={el.label ?? ''}
                     id="furniture-label"
                     defaultValue={el.label ?? ''}
-                    placeholder="Furn"
+                    placeholder={el.kind ? FURNITURE_CATALOG[el.kind].name : 'Furn'}
                     onBlur={(e) => {
                       const label = e.currentTarget.value.trim() || undefined;
                       if (label !== el.label) updateElement({ ...el, label });

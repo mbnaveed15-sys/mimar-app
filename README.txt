@@ -39,6 +39,12 @@ USING THE PLANNER
                        sq ft (or m²) and marla; the Inspector totals the covered area.
                        Marla size (225 or 272.25 sq ft) is in the settings.
                        Areas are measured to the centre of the walls.
+  Furniture            Furniture tool: pick an item from the library (beds, sofas, dining tables,
+                       kitchen, bath, stairs, car) and click to place it at its real size.
+                       Move, rotate, resize and rename it like any other item.
+  Layers               Show or hide dimensions, furniture, room names & areas and room colours.
+                       Exports show the same layers. Walls between rooms show their dimension
+                       when selected.
   Export               PDF: print-ready at a true scale (1:50, 1:100 ...) on A4 or A3 with a
                        title block. PNG: an image of the plan with the Mimar watermark.
   Units                Feet & inches (default) or metric, in the Units setting. Lengths can be
@@ -52,6 +58,7 @@ PROJECT LAYOUT
   src/store/               App state, actions and undo/redo (Zustand)
   src/lib/                 Storage (with migration), .mimar files, units, zoom maths, PNG export
   src/components/          UI: Toolbar, Materials panel, Canvas, Inspector, shapes/
+  src/furniture/           Furniture library: sizes and plan symbols
   e2e/                     Playwright browser tests
   electron-main.cjs        Desktop window (Electron main process)
   branding/                Logo, icons, splash screen, watermark

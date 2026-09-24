@@ -1,7 +1,7 @@
 import { wallLength } from '../../geometry';
 import { formatLength } from '../../lib/units';
 import { MM_PER_UNIT } from '../../store/plannerStore';
-import type { Point, Units, Wall } from '../../types';
+import type { Units, Wall } from '../../types';
 import { thicknessOf } from '../../walls';
 
 interface Props {
@@ -9,20 +9,18 @@ interface Props {
   units: Units;
   /** Plan units per screen pixel, so the line keeps the same on-screen size at any zoom. */
   k: number;
-  /** Middle of the plan; the dimension goes on the wall's side facing away from it. */
-  centre: Point;
+  /** Which side of the wall the dimension goes on: 1 = left of the drawing direction, -1 = right. */
+  side: 1 | -1;
 }
 
 const COLOR = '#475569';
 
 /** Architectural dimension line drawn beside a wall, with its real length. */
-export function WallDimension({ wall, units, k, centre }: Props) {
+export function WallDimension({ wall, units, k, side }: Props) {
   const len = wallLength(wall);
   if (len * (1 / k) < 24) return null; // too short on screen to label
   const ux = (wall.x2 - wall.x1) / len;
   const uy = (wall.y2 - wall.y1) / len;
-  const mid0 = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
-  const side = (mid0.x - centre.x) * uy + (mid0.y - centre.y) * -ux >= 0 ? 1 : -1;
   const nx = uy * side;
   const ny = -ux * side;
   const face = thicknessOf(wall) / 2;

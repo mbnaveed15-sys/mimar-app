@@ -55,6 +55,9 @@ export function Canvas({ svgRef }: Props) {
   const viewport = usePlanner((s) => s.viewport);
   const units = usePlanner((s) => s.units);
   const showDimensions = usePlanner((s) => s.showDimensions);
+  const showFurniture = usePlanner((s) => s.showFurniture);
+  const showRoomLabels = usePlanner((s) => s.showRoomLabels);
+  const showRoomFills = usePlanner((s) => s.showRoomFills);
   const tool = usePlanner((s) => s.tool);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
   const dragRef = useRef<Drag | null>(null);
@@ -135,7 +138,7 @@ export function Canvas({ svgRef }: Props) {
 
     switch (s.tool) {
       case 'select': {
-        const hit = findElementNear(s.doc.elements, raw, s.hitTolerance());
+        const hit = findElementNear(s.visibleElements(), raw, s.hitTolerance());
         s.select(hit?.id ?? s.roomAt(raw)?.id ?? null);
         if (hit) startDrag(e, { kind: 'move', start: raw, orig: hit });
         break;
@@ -285,6 +288,9 @@ export function Canvas({ svgRef }: Props) {
         units={units}
         marlaSqFt={marlaSqFt}
         showDimensions={showDimensions}
+        showFurniture={showFurniture}
+        showRoomLabels={showRoomLabels}
+        showRoomFills={showRoomFills}
         k={k}
       />
 
@@ -295,7 +301,7 @@ export function Canvas({ svgRef }: Props) {
             <Handle name="wall-end" p={{ x: selected.x2, y: selected.y2 }} k={k} />
           </>
         )}
-        {selected?.type === 'furniture' && <FurnitureHandles item={selected} k={k} />}
+        {selected?.type === 'furniture' && showFurniture && <FurnitureHandles item={selected} k={k} />}
 
         {draft?.type === 'wall' && (
           <>

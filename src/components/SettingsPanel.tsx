@@ -5,8 +5,6 @@ import type { MarlaSqFt, PaperSize, Units } from '../types';
 export function SettingsPanel() {
   const units = usePlanner((s) => s.units);
   const setUnits = usePlanner((s) => s.setUnits);
-  const showDimensions = usePlanner((s) => s.showDimensions);
-  const setShowDimensions = usePlanner((s) => s.setShowDimensions);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
   const setMarlaSqFt = usePlanner((s) => s.setMarlaSqFt);
   const paper = usePlanner((s) => s.paper);
@@ -29,15 +27,7 @@ export function SettingsPanel() {
           </option>
         ))}
       </select>
-      <label className="flex items-center gap-2">
-        <input
-          id="show-dimensions"
-          type="checkbox"
-          checked={showDimensions}
-          onChange={(e) => setShowDimensions(e.target.checked)}
-        />
-        Show wall dimensions
-      </label>
+
       <label htmlFor="marla-size" className="font-medium">
         Marla size
       </label>

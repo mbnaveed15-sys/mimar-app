@@ -17,6 +17,7 @@ import { emptyDoc, loadPlan, savePlan } from '../lib/storage';
 import { MM_PER_UNIT } from '../lib/scale';
 import { GRID_MM } from '../lib/units';
 import { DEFAULT_AREA, fitView, zoomAt, type Size } from '../lib/view';
+import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { detectRoom } from '../rooms';
 import { SIMPLE_TOOLS } from '../types';
 import type {
@@ -38,7 +39,6 @@ export const HISTORY_LIMIT = 100;
 export { MM_PER_UNIT };
 
 const OPENING_WIDTH_MM = { door: 900, window: 1200 } as const;
-const FURNITURE_SIZE_MM = { w: 1200, h: 800 } as const;
 const MIN_WALL_PX = 6;
 
 export interface PlannerState {
@@ -59,6 +59,9 @@ export interface PlannerState {
 
   units: Units;
   showDimensions: boolean;
+  showFurniture: boolean;
+  showRoomLabels: boolean;
+  showRoomFills: boolean;
   mode: Mode;
   wallThicknessMm: number;
   marlaSqFt: MarlaSqFt;
@@ -101,6 +104,12 @@ export interface PlannerState {
 
   setUnits: (units: Units) => void;
   setShowDimensions: (show: boolean) => void;
+  setLayer: (layer: 'showFurniture' | 'showRoomLabels' | 'showRoomFills', show: boolean) => void;
+  /** Library item placed by the Furniture tool. */
+  furnitureKind: FurnitureKind;
+  setFurnitureKind: (kind: FurnitureKind) => void;
+  /** Elements that can be clicked: hidden furniture is left out. */
+  visibleElements: () => PlanElement[];
   setMode: (mode: Mode) => void;
   setWallThicknessMm: (mm: number) => void;
   setMarlaSqFt: (sqft: MarlaSqFt) => void;
@@ -140,8 +149,19 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
     };
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
-      const { units, showDimensions, mode, wallThicknessMm, marlaSqFt, paper } = get();
-      savePrefs({ units, showDimensions, mode, wallThicknessMm, marlaSqFt, paper });
+      const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills } = get();
+      const { mode, wallThicknessMm, marlaSqFt, paper } = get();
+      savePrefs({
+        units,
+        showDimensions,
+        showFurniture,
+        showRoomLabels,
+        showRoomFills,
+        mode,
+        wallThicknessMm,
+        marlaSqFt,
+        paper,
+      });
     };
     const resetHistory = { past: [], future: [], batchBase: null, draft: null, selectedId: null, warnings: [] };
     const updateElements = (fn: (els: PlanElement[]) => PlanElement[]) =>
@@ -167,6 +187,10 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
 
       units: prefs.units,
       showDimensions: prefs.showDimensions,
+      showFurniture: prefs.showFurniture,
+      showRoomLabels: prefs.showRoomLabels,
+      showRoomFills: prefs.showRoomFills,
+      furnitureKind: DEFAULT_FURNITURE_KIND,
       mode: prefs.mode,
       wallThicknessMm: prefs.wallThicknessMm,
       marlaSqFt: prefs.marlaSqFt,
@@ -249,16 +273,20 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         get().setWarning(null);
       },
       addFurniture: (p) => {
+        const kind = get().furnitureKind;
+        const size = FURNITURE_CATALOG[kind];
         const el: PlanElement = {
           id: newId(),
           type: 'furniture',
+          kind,
           x: p.x,
           y: p.y,
-          w: mmToPx(FURNITURE_SIZE_MM.w),
-          h: mmToPx(FURNITURE_SIZE_MM.h),
-          material: activeMat(),
+          w: mmToPx(size.w),
+          h: mmToPx(size.d),
         };
         updateElements((els) => [...els, el]);
+        // Show the new item so it is visible even if the furniture layer was hidden.
+        if (!get().showFurniture) get().setLayer('showFurniture', true);
       },
       applyMaterial: (id) => {
         const mat = activeMat();
@@ -274,7 +302,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         );
       },
       paintAt: (p) => {
-        const hit = findElementNear(get().doc.elements, p, get().hitTolerance()) ?? get().roomAt(p);
+        const hit = findElementNear(get().visibleElements(), p, get().hitTolerance()) ?? get().roomAt(p);
         if (hit) get().applyMaterial(hit.id);
       },
       brushAt: (p) => {
@@ -285,6 +313,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           const next = els.map((el) => {
             const c = elementCenter(el);
             if (el.material === mat || Math.hypot(c.x - p.x, c.y - p.y) > r) return el;
+            if (el.type === 'furniture' && !get().showFurniture) return el;
             changed = true;
             return { ...el, material: mat };
           });
@@ -294,7 +323,12 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       eraseAt: (p) => {
         get().commit((doc) => {
           const tol = get().hitTolerance();
-          const gone = new Set(doc.elements.filter((el) => isNear(el, p, tol)).map((el) => el.id));
+          const gone = new Set(
+            get()
+              .visibleElements()
+              .filter((el) => isNear(el, p, tol))
+              .map((el) => el.id),
+          );
           const elements = gone.size
             ? doc.elements.filter((el) => !gone.has(el.id) && !('wallId' in el && gone.has(el.wallId)))
             : doc.elements;
@@ -359,6 +393,19 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       setShowDimensions: (showDimensions) => {
         set({ showDimensions });
         persistPrefs();
+      },
+      setLayer: (layer, show) => {
+        set({ [layer]: show });
+        if (layer === 'showFurniture' && !show) {
+          const sel = get().doc.elements.find((el) => el.id === get().selectedId);
+          if (sel?.type === 'furniture') set({ selectedId: null });
+        }
+        persistPrefs();
+      },
+      setFurnitureKind: (furnitureKind) => set({ furnitureKind }),
+      visibleElements: () => {
+        const { doc, showFurniture } = get();
+        return showFurniture ? doc.elements : doc.elements.filter((el) => el.type !== 'furniture');
       },
       setMode: (mode) => {
         set((s) => ({ mode, tool: mode === 'simple' && !SIMPLE_TOOLS.includes(s.tool) ? 'select' : s.tool }));

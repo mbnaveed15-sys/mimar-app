@@ -1,3 +1,5 @@
+import type { FurnitureKind } from './furniture/catalog';
+
 export type Id = string;
 
 export interface Point {
@@ -50,6 +52,8 @@ export interface Furniture {
   h: number;
   /** Rotation in degrees about the centre. */
   rotation?: number;
+  /** Library item this is (bed, sofa, ...); plain boxes from older plans have none. */
+  kind?: FurnitureKind;
   label?: string;
   material?: Id;
 }
