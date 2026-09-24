@@ -4,6 +4,9 @@ import { browserStorage } from './storage';
 export interface Prefs {
   units: Units;
   showDimensions: boolean;
+  showFurniture: boolean;
+  showRoomLabels: boolean;
+  showRoomFills: boolean;
   mode: Mode;
   /** Thickness for new walls, in millimetres. */
   wallThicknessMm: number;
@@ -15,6 +18,9 @@ const PREFS_KEY = 'mimar.prefs';
 export const DEFAULT_PREFS: Prefs = {
   units: 'imperial',
   showDimensions: true,
+  showFurniture: true,
+  showRoomLabels: true,
+  showRoomFills: true,
   mode: 'simple',
   wallThicknessMm: 228.6,
   marlaSqFt: 225,
@@ -28,6 +34,9 @@ export function loadPrefs(storage = browserStorage()): Prefs {
     return {
       units: raw?.units === 'metric' ? 'metric' : 'imperial',
       showDimensions: raw?.showDimensions !== false,
+      showFurniture: raw?.showFurniture !== false,
+      showRoomLabels: raw?.showRoomLabels !== false,
+      showRoomFills: raw?.showRoomFills !== false,
       mode: raw?.mode === 'pro' ? 'pro' : 'simple',
       wallThicknessMm: thickness >= 25 && thickness <= 1000 ? thickness : DEFAULT_PREFS.wallThicknessMm,
       marlaSqFt: raw?.marlaSqFt === 272.25 ? 272.25 : 225,

@@ -10,6 +10,7 @@ import { plannerStore, usePlanner } from '../store/plannerStore';
 import { Canvas } from './Canvas';
 import { FileBar } from './FileBar';
 import { Inspector } from './Inspector';
+import { LayersPanel } from './LayersPanel';
 import { MaterialsPanel } from './MaterialsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { Toolbar } from './Toolbar';
@@ -27,8 +28,9 @@ export default function PlannerApp() {
   }
 
   function exportContent() {
-    const { doc, units, marlaSqFt, showDimensions } = plannerStore.getState();
-    return { doc, units, marlaSqFt, showDimensions };
+    const { doc, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills } =
+      plannerStore.getState();
+    return { doc, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills };
   }
 
   function onExportPng() {
@@ -75,6 +77,7 @@ export default function PlannerApp() {
           <div className="text-xs text-gray-600">Brush: {brushSize}px</div>
         </div>
         <MaterialsPanel />
+        <LayersPanel />
         <SettingsPanel />
         <div className="mt-2 flex flex-col gap-2 border-t pt-2">
           <div className="grid grid-cols-2 gap-2">

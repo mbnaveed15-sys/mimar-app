@@ -11,6 +11,7 @@ import wallIcon from '../../branding/ui/toolbar-icons/wall.svg';
 import windowIcon from '../../branding/ui/toolbar-icons/window.svg';
 import { usePlanner } from '../store/plannerStore';
 import { SIMPLE_TOOLS, TOOLS, type Mode, type Tool } from '../types';
+import { FurnitureLibrary } from './FurnitureLibrary';
 import { WallThicknessPicker } from './WallThicknessPicker';
 
 const TOOL_INFO: Record<Tool, { label: string; icon: string; hint?: string }> = {
@@ -24,7 +25,11 @@ const TOOL_INFO: Record<Tool, { label: string; icon: string; hint?: string }> = 
   room: { label: 'Room', icon: roomIcon, hint: 'Click inside walls to make a room and see its area.' },
   door: { label: 'Door', icon: doorIcon, hint: 'Click on a wall to place a door.' },
   window: { label: 'Window', icon: windowIcon, hint: 'Click on a wall to place a window.' },
-  furniture: { label: 'Furniture', icon: furnitureIcon, hint: 'Click to place furniture.' },
+  furniture: {
+    label: 'Furniture',
+    icon: furnitureIcon,
+    hint: 'Choose an item below, then click on the plan to place it at its real size.',
+  },
   paint: { label: 'Paint', icon: paintIcon, hint: 'Click a wall, room or item to give it the selected material.' },
   brush: { label: 'Brush', icon: brushIcon, hint: 'Drag over items to paint them with the selected material.' },
   mask: {
@@ -109,6 +114,7 @@ export function Toolbar() {
       </div>
       {TOOL_INFO[tool].hint && <div className="text-xs text-gray-600">{TOOL_INFO[tool].hint}</div>}
       {tool === 'wall' && <WallThicknessPicker />}
+      {tool === 'furniture' && <FurnitureLibrary />}
       {warnings.map((w) => (
         <div key={w} role="alert" className="rounded border border-amber-200 bg-amber-50 p-1 text-xs text-amber-700">
           {w}

@@ -1,4 +1,4 @@
-import { pointToSegmentDistance } from './geometry';
+import { pointInPolygon, pointToSegmentDistance } from './geometry';
 import { MM_PER_UNIT } from './lib/scale';
 import type { PlanElement, Point, Units, Wall } from './types';
 
@@ -57,3 +57,31 @@ export function wallPolygon(wall: Wall, walls: Wall[]): Point[] {
 }
 
 export const wallsOf = (elements: PlanElement[]) => elements.filter((el): el is Wall => el.type === 'wall');
+
+export interface WallDimensionPlacement {
+  /** Side for the dimension line: 1 = left of the drawing direction, -1 = right. */
+  side: 1 | -1;
+  /** Outside walls (or walls not yet enclosing anything) always show a dimension. */
+  exterior: boolean;
+}
+
+/**
+ * Decide where each wall's dimension goes, using the enclosed areas (faces) of the plan:
+ * an outside wall has open space on one side, and the dimension goes there.
+ */
+export function placeWallDimension(wall: Wall, faces: Point[][], centre: Point): WallDimensionPlacement {
+  const dx = wall.x2 - wall.x1;
+  const dy = wall.y2 - wall.y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = dy / len;
+  const ny = -dx / len;
+  const off = thicknessOf(wall) / 2 + 2;
+  const mid = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
+  const inside = (p: Point) => faces.some((f) => pointInPolygon(p, f));
+  const left = inside({ x: mid.x + nx * off, y: mid.y + ny * off });
+  const right = inside({ x: mid.x - nx * off, y: mid.y - ny * off });
+  if (left !== right) return { side: left ? -1 : 1, exterior: true };
+  // Free-standing or interior wall: face away from the middle of the plan.
+  const side = (mid.x - centre.x) * nx + (mid.y - centre.y) * ny >= 0 ? 1 : -1;
+  return { side, exterior: !left };
+}

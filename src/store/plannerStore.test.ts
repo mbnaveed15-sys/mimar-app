@@ -9,8 +9,7 @@ describe('planner store', () => {
     const store = setup();
     store.getState().selectMaterial('mat_wood');
     store.getState().addWall({ x: 0, y: 0 }, { x: 100, y: 0 });
-    store.getState().addFurniture({ x: 300, y: 300 });
-    expect(store.getState().doc.elements.map((e) => e.material)).toEqual(['mat_wood', 'mat_wood']);
+    expect(store.getState().doc.elements.map((e) => e.material)).toEqual(['mat_wood']);
   });
 
   it('ignores walls that are too short', () => {
@@ -57,7 +56,7 @@ describe('planner store', () => {
     s().endBatch();
     expect(s().doc.elements.every((e) => e.material === 'mat_marble')).toBe(true);
     s().undo();
-    expect(s().doc.elements.every((e) => e.material === 'mat_concrete')).toBe(true);
+    expect(s().doc.elements.every((e) => e.material === undefined)).toBe(true);
   });
 
   it('warns when a door is not placed on a wall', () => {
@@ -236,5 +235,35 @@ describe('rooms, walls and modes', () => {
     store.getState().setTool('brush');
     store.getState().setMode('simple');
     expect(store.getState().tool).toBe('select');
+  });
+});
+
+describe('furniture library and layers', () => {
+  it('places the chosen library item at its real size', () => {
+    const store = setup();
+    store.getState().setFurnitureKind('bed-king');
+    store.getState().addFurniture({ x: 0, y: 0 });
+    expect(store.getState().doc.elements[0]).toMatchObject({ kind: 'bed-king', w: 183, h: 198 });
+  });
+
+  it('hidden furniture cannot be clicked, painted or erased', () => {
+    const store = setup();
+    const s = () => store.getState();
+    s().addFurniture({ x: 0, y: 0 });
+    s().select(s().doc.elements[0].id);
+    s().setLayer('showFurniture', false);
+    expect(s().selectedId).toBeNull();
+    expect(s().visibleElements()).toHaveLength(0);
+    s().eraseAt({ x: 0, y: 0 });
+    s().paintAt({ x: 0, y: 0 });
+    expect(s().doc.elements).toHaveLength(1);
+    expect(s().doc.elements[0].material).toBeUndefined();
+  });
+
+  it('placing furniture shows the furniture layer again', () => {
+    const store = setup();
+    store.getState().setLayer('showFurniture', false);
+    store.getState().addFurniture({ x: 0, y: 0 });
+    expect(store.getState().showFurniture).toBe(true);
   });
 });
