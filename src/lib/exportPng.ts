@@ -74,7 +74,12 @@ export async function renderPlan(
 }
 
 /** Render the whole plan to a PNG with grid and watermark, and download it. */
-export async function exportPng(content: PlanImageContent, area: Bounds, grid: number, filename: string) {
+export async function exportPng(
+  content: PlanImageContent,
+  area: Bounds,
+  grid: PlanImageOptions['grid'],
+  filename: string,
+) {
   const padded = padBounds(area, EXPORT_PADDING_MM / MM_PER_UNIT);
   const w = padded.maxX - padded.minX;
   const h = padded.maxY - padded.minY;

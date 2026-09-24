@@ -43,14 +43,14 @@ export function Inspector() {
   const coveredArea = doc.rooms.reduce((sum, r) => sum + roomAreaSqMm(r), 0);
   const toUnits = (mm: number) => mm / MM_PER_UNIT;
   const materialName = (id?: string) => doc.materials.find((m) => m.id === id)?.name;
-  const btn = 'rounded border px-2 py-1';
+  const btn = 'm-btn';
 
   return (
-    <aside className="flex w-80 flex-col gap-3 border-l bg-white p-3">
-      <h3 className="font-semibold">Inspector</h3>
+    <aside className="flex w-80 flex-col gap-3 border-l border-line bg-surface p-3">
+      <h3 className="m-heading">Inspector</h3>
       <div className="flex-1 overflow-auto">
         {el ? (
-          <div className="mb-3 flex flex-col gap-2 rounded border p-2 text-xs">
+          <div className="mb-3 flex flex-col gap-2 rounded-md border border-line bg-raised p-2 text-xs">
             <div className="font-medium">
               Selected: {el.type === 'furniture' && el.kind ? FURNITURE_CATALOG[el.kind].name : el.type}
             </div>
@@ -97,14 +97,14 @@ export function Inspector() {
                     </button>
                   </div>
                 )}
-                <div className="text-gray-500">Drag it to slide along the wall.</div>
+                <div className="text-muted">Drag it to slide along the wall.</div>
               </>
             )}
 
             {el.type === 'furniture' && (
               <>
                 <div className="flex flex-col gap-0.5">
-                  <label htmlFor="furniture-label" className="text-gray-600">
+                  <label htmlFor="furniture-label" className="text-muted">
                     Name
                   </label>
                   <input
@@ -117,7 +117,7 @@ export function Inspector() {
                       if (label !== el.label) updateElement({ ...el, label });
                     }}
                     onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                    className="rounded border p-1"
+                    className="rounded-sm border p-1"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -137,7 +137,7 @@ export function Inspector() {
                   />
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <label htmlFor="furniture-rotation" className="text-gray-600">
+                  <label htmlFor="furniture-rotation" className="text-muted">
                     Rotation (°)
                   </label>
                   <input
@@ -151,10 +151,10 @@ export function Inspector() {
                       if (Number.isFinite(deg)) updateElement({ ...el, rotation: ((deg % 360) + 360) % 360 });
                     }}
                     onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                    className="rounded border p-1 tabular-nums"
+                    className="rounded-sm border p-1 tabular-nums"
                   />
                 </div>
-                <div className="text-gray-500">Drag the corner handle to resize, the top handle to rotate.</div>
+                <div className="text-muted">Drag the corner handle to resize, the top handle to rotate.</div>
               </>
             )}
 
@@ -163,16 +163,16 @@ export function Inspector() {
               <button onClick={() => applyMaterial(el.id)} className={btn}>
                 Apply selected material
               </button>
-              <button onClick={() => deleteElement(el.id)} className={`${btn} text-red-700`}>
+              <button onClick={() => deleteElement(el.id)} className={`${btn} m-btn-danger`}>
                 Delete
               </button>
             </div>
           </div>
         ) : room ? (
-          <div className="mb-3 flex flex-col gap-2 rounded border p-2 text-xs">
+          <div className="mb-3 flex flex-col gap-2 rounded-md border border-line bg-raised p-2 text-xs">
             <div className="font-medium">Selected: room</div>
             <div className="flex flex-col gap-0.5">
-              <label htmlFor="room-name" className="text-gray-600">
+              <label htmlFor="room-name" className="text-muted">
                 Name
               </label>
               <input
@@ -185,7 +185,7 @@ export function Inspector() {
                   if (name && name !== room.name) updateRoom({ ...room, name });
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                className="rounded border p-1"
+                className="rounded-sm border p-1"
               />
               <datalist id="room-names">
                 {ROOM_NAMES.map((n) => (
@@ -201,17 +201,17 @@ export function Inspector() {
               <button onClick={() => applyMaterial(room.id)} className={btn}>
                 Apply selected material
               </button>
-              <button onClick={() => deleteElement(room.id)} className={`${btn} text-red-700`}>
+              <button onClick={() => deleteElement(room.id)} className={`${btn} m-btn-danger`}>
                 Delete room
               </button>
             </div>
           </div>
         ) : (
           tool === 'select' && (
-            <div className="mb-3 text-xs text-gray-500">Click an element to select it. Drag to move it.</div>
+            <div className="mb-3 text-xs text-muted">Click an element to select it. Drag to move it.</div>
           )
         )}
-        <div className="text-xs text-gray-600">
+        <div className="text-xs text-muted">
           Walls: {doc.elements.filter((e) => e.type === 'wall').length} · total length{' '}
           {formatLength(
             doc.elements.reduce((sum, e) => sum + (e.type === 'wall' ? wallLength(e) : 0), 0) * MM_PER_UNIT,
@@ -219,7 +219,10 @@ export function Inspector() {
           )}
         </div>
         {doc.rooms.length > 0 && (
-          <div className="mt-2 flex flex-col gap-1 rounded border p-2 text-xs" data-testid="area-summary">
+          <div
+            className="mt-2 flex flex-col gap-1 rounded-md border border-line bg-raised p-2 text-xs"
+            data-testid="area-summary"
+          >
             <div className="font-medium">Rooms</div>
             <ul className="flex flex-col gap-0.5">
               {doc.rooms.map((r) => (
@@ -229,7 +232,7 @@ export function Inspector() {
                 </li>
               ))}
             </ul>
-            <div className="flex justify-between gap-2 border-t pt-1 font-medium tabular-nums">
+            <div className="flex justify-between gap-2 border-t border-line pt-1 font-medium tabular-nums">
               <span>Covered area</span>
               <span>
                 {formatArea(coveredArea, units)} · {formatMarla(coveredArea, marlaSqFt)}
@@ -237,12 +240,12 @@ export function Inspector() {
             </div>
           </div>
         )}
-        {mode === 'pro' && <div className="mt-2 text-xs text-gray-600">Materials count: {doc.materials.length}</div>}
+        {mode === 'pro' && <div className="mt-2 text-xs text-muted">Materials count: {doc.materials.length}</div>}
         <div className={mode === 'pro' ? 'pt-2' : 'hidden'}>
-          <div className="text-xs font-medium">Masks</div>
+          <div className="m-heading">Masks</div>
           <ul className="mt-2 text-xs">
             {doc.masks.map((m) => (
-              <li key={m.id} className="rounded border p-1">
+              <li key={m.id} className="rounded-sm border p-1">
                 {m.name} — material: {materialName(m.material) ?? m.material}
               </li>
             ))}

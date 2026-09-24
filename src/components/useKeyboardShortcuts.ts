@@ -38,6 +38,9 @@ export function useKeyboardShortcuts(onNewRequested: () => void, onOpenRequested
       } else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) {
         e.preventDefault();
         s.redo();
+      } else if (mod && e.code === 'Quote') {
+        e.preventDefault();
+        s.setGrid({ show: !s.grid.show });
       } else if (mod) {
         return;
       } else if (e.key === 'Enter' && s.draft?.type === 'mask') {

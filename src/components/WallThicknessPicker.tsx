@@ -10,7 +10,7 @@ export function WallThicknessPicker() {
   const setThickness = usePlanner((s) => s.setWallThicknessMm);
 
   return (
-    <div className="flex flex-col gap-1 rounded border p-2 text-xs">
+    <div className="flex flex-col gap-1.5 rounded-md border border-line bg-raised p-2 text-xs">
       <div className="font-medium">New wall thickness</div>
       <div className="flex flex-wrap gap-1">
         {WALL_PRESETS_MM[units].map((p) => (
@@ -18,7 +18,7 @@ export function WallThicknessPicker() {
             key={p.mm}
             onClick={() => setThickness(p.mm)}
             aria-pressed={Math.abs(thickness - p.mm) < 1}
-            className={`rounded border px-2 py-0.5 ${Math.abs(thickness - p.mm) < 1 ? 'border-blue-600 bg-blue-50' : ''}`}
+            className="m-btn px-2 py-0.5"
           >
             {p.label}
           </button>

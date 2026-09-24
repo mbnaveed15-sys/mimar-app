@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { describeUpdate, type UpdateStatus } from '../lib/updates';
+import { Mark } from './Mark';
 
 /** App version and update status. Updates are only available in the Windows desktop app. */
 export function UpdatePanel() {
@@ -18,13 +19,16 @@ export function UpdatePanel() {
   }, [bridge]);
 
   const busy = status.state === 'checking' || status.state === 'downloading';
-  const btn = 'rounded border px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40';
+  const btn = 'm-btn text-xs';
   const message = describeUpdate(status);
 
   return (
-    <div className="mt-2 flex flex-col gap-1 border-t pt-2 text-xs text-gray-600" data-testid="update-panel">
+    <div className="m-section text-xs text-muted" data-testid="update-panel">
       <div className="flex items-center justify-between gap-2">
-        <span>Mimar {status.version ?? __APP_VERSION__}</span>
+        <span className="flex items-center gap-1.5">
+          <Mark size={16} />
+          Mimar {status.version ?? __APP_VERSION__}
+        </span>
         {bridge && status.state !== 'unsupported' && (
           <button
             onClick={() => bridge.check().then(setStatus)}
@@ -38,24 +42,20 @@ export function UpdatePanel() {
       {message && (
         <p
           role="status"
-          className={status.state === 'ready' || status.state === 'available-portable' ? 'text-blue-800' : ''}
+          className={
+            status.state === 'ready' || status.state === 'available-portable' ? 'font-medium text-accent-ink' : ''
+          }
         >
           {message}
         </p>
       )}
       {status.state === 'ready' && bridge && (
-        <button
-          onClick={() => bridge.install()}
-          className="rounded bg-blue-600 px-2 py-1.5 text-xs font-medium text-white"
-        >
+        <button onClick={() => bridge.install()} className="m-btn m-btn-primary text-xs">
           Restart to update
         </button>
       )}
       {status.state === 'available-portable' && bridge && (
-        <button
-          onClick={() => bridge.openDownload()}
-          className="rounded bg-blue-600 px-2 py-1.5 text-xs font-medium text-white"
-        >
+        <button onClick={() => bridge.openDownload()} className="m-btn m-btn-primary text-xs">
           Download Mimar {status.latest}
         </button>
       )}

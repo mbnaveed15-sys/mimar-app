@@ -9,24 +9,27 @@ export function MaterialsPanel() {
   const activeId = (materials.find((m) => m.id === selectedMat) ?? materials[0])?.id;
 
   return (
-    <div className="mt-2 border-t pt-2">
-      <div className="text-xs font-medium">Materials</div>
-      <div className="mt-2 flex flex-wrap gap-2">
+    <div className="m-section">
+      <div className="m-heading">Materials</div>
+      <div className="flex flex-wrap gap-1.5">
         {materials.map((mat) => (
           <button
             key={mat.id}
             onClick={() => selectMaterial(mat.id)}
             aria-pressed={mat.id === activeId}
-            className={`rounded border p-1 text-xs ${mat.id === activeId ? 'border-blue-600 ring-2 ring-blue-600' : ''}`}
+            className="m-btn px-1.5 py-1 text-xs"
             title={mat.name}
           >
-            <span className="inline-block h-4 w-6 rounded-sm align-middle" style={{ background: mat.color }} />{' '}
+            <span
+              className="inline-block h-4 w-6 rounded-sm border border-line align-middle"
+              style={{ background: mat.color }}
+            />
             {mat.name}
           </button>
         ))}
       </div>
       {mode === 'pro' && (
-        <button onClick={addMaterial} className="mt-2 rounded border p-1 text-xs">
+        <button onClick={addMaterial} className="m-btn self-start text-xs">
           Add material
         </button>
       )}
