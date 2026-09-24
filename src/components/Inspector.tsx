@@ -1,8 +1,28 @@
 import { placeOnWall, wallLength, withWallLength } from '../geometry';
-import { formatLength } from '../lib/units';
+import { formatArea, formatLength, formatMarla } from '../lib/units';
+import { roomAreaSqMm } from '../rooms';
 import { MM_PER_UNIT, usePlanner } from '../store/plannerStore';
 import type { Wall } from '../types';
+import { thicknessOf } from '../walls';
 import { LengthField } from './LengthField';
+
+/** Common room names in Pakistani homes, offered as suggestions. */
+const ROOM_NAMES = [
+  'Bedroom',
+  'Master bedroom',
+  'Drawing room',
+  'Lounge',
+  'TV lounge',
+  'Dining',
+  'Kitchen',
+  'Bath',
+  'Store',
+  'Car porch',
+  'Lawn',
+  'Stairs',
+  'Servant quarter',
+  'Laundry',
+];
 
 export function Inspector() {
   const doc = usePlanner((s) => s.doc);
@@ -13,8 +33,13 @@ export function Inspector() {
   const deleteElement = usePlanner((s) => s.deleteElement);
   const updateElement = usePlanner((s) => s.updateElement);
   const flipOpening = usePlanner((s) => s.flipOpening);
+  const updateRoom = usePlanner((s) => s.updateRoom);
+  const mode = usePlanner((s) => s.mode);
+  const marlaSqFt = usePlanner((s) => s.marlaSqFt);
 
   const el = doc.elements.find((e) => e.id === selectedId);
+  const room = doc.rooms.find((r) => r.id === selectedId);
+  const coveredArea = doc.rooms.reduce((sum, r) => sum + roomAreaSqMm(r), 0);
   const toUnits = (mm: number) => mm / MM_PER_UNIT;
   const materialName = (id?: string) => doc.materials.find((m) => m.id === id)?.name;
   const btn = 'rounded border px-2 py-1';
@@ -34,6 +59,16 @@ export function Inspector() {
                 mm={wallLength(el) * MM_PER_UNIT}
                 units={units}
                 onCommit={(mm) => updateElement(withWallLength(el, toUnits(mm)))}
+              />
+            )}
+            {el.type === 'wall' && (
+              <LengthField
+                id="wall-thickness"
+                label="Thickness"
+                mm={thicknessOf(el) * MM_PER_UNIT}
+                units={units}
+                min={25}
+                onCommit={(mm) => updateElement({ ...el, thickness: toUnits(Math.min(mm, 1000)) })}
               />
             )}
 
@@ -130,6 +165,44 @@ export function Inspector() {
               </button>
             </div>
           </div>
+        ) : room ? (
+          <div className="mb-3 flex flex-col gap-2 rounded border p-2 text-xs">
+            <div className="font-medium">Selected: room</div>
+            <div className="flex flex-col gap-0.5">
+              <label htmlFor="room-name" className="text-gray-600">
+                Name
+              </label>
+              <input
+                key={room.name}
+                id="room-name"
+                list="room-names"
+                defaultValue={room.name}
+                onBlur={(e) => {
+                  const name = e.currentTarget.value.trim();
+                  if (name && name !== room.name) updateRoom({ ...room, name });
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                className="rounded border p-1"
+              />
+              <datalist id="room-names">
+                {ROOM_NAMES.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
+            </div>
+            <div data-testid="selected-room-area">
+              Area: {formatArea(roomAreaSqMm(room), units)} · {formatMarla(roomAreaSqMm(room), marlaSqFt)}
+            </div>
+            <div>Floor: {materialName(room.material) ?? '—'}</div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => applyMaterial(room.id)} className={btn}>
+                Apply selected material
+              </button>
+              <button onClick={() => deleteElement(room.id)} className={`${btn} text-red-700`}>
+                Delete room
+              </button>
+            </div>
+          </div>
         ) : (
           tool === 'select' && (
             <div className="mb-3 text-xs text-gray-500">Click an element to select it. Drag to move it.</div>
@@ -142,8 +215,27 @@ export function Inspector() {
             units,
           )}
         </div>
-        <div className="text-xs text-gray-600">Materials count: {doc.materials.length}</div>
-        <div className="pt-2">
+        {doc.rooms.length > 0 && (
+          <div className="mt-2 flex flex-col gap-1 rounded border p-2 text-xs" data-testid="area-summary">
+            <div className="font-medium">Rooms</div>
+            <ul className="flex flex-col gap-0.5">
+              {doc.rooms.map((r) => (
+                <li key={r.id} className="flex justify-between gap-2 tabular-nums">
+                  <span className="truncate">{r.name}</span>
+                  <span>{formatArea(roomAreaSqMm(r), units)}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-between gap-2 border-t pt-1 font-medium tabular-nums">
+              <span>Covered area</span>
+              <span>
+                {formatArea(coveredArea, units)} · {formatMarla(coveredArea, marlaSqFt)}
+              </span>
+            </div>
+          </div>
+        )}
+        {mode === 'pro' && <div className="mt-2 text-xs text-gray-600">Materials count: {doc.materials.length}</div>}
+        <div className={mode === 'pro' ? 'pt-2' : 'hidden'}>
           <div className="text-xs font-medium">Masks</div>
           <ul className="mt-2 text-xs">
             {doc.masks.map((m) => (

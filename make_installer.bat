@@ -1,8 +1,8 @@
 @echo off
-REM Mimar 1.3 installer builder - one click build (Windows)
+REM Mimar installer builder - one click build (Windows)
 SETLOCAL
 echo.
-echo === Mimar 1.3 Installer Builder ===
+echo === Mimar Installer Builder ===
 echo This script will install dependencies and build the Mimar installer (Windows .exe).
 echo.
 pause
@@ -28,6 +28,6 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 echo.
-echo Installer build complete. Look in the 'release' folder for Mimar-Setup-1.3.0.exe (installer) and Mimar-Portable-1.3.0.exe (no install needed).
+echo Installer build complete. Look in the 'release' folder for Mimar-Setup-<version>.exe (installer) and Mimar-Portable-<version>.exe (no install needed).
 pause
 ENDLOCAL

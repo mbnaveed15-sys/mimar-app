@@ -20,6 +20,8 @@ export interface Wall {
   y1: number;
   x2: number;
   y2: number;
+  /** Wall thickness in plan units; the default (9") is used when missing. */
+  thickness?: number;
   material?: Id;
 }
 
@@ -61,19 +63,30 @@ export interface Mask {
   material?: Id;
 }
 
+/** A named floor area, outlined by walls. */
+export interface Room {
+  id: Id;
+  name: string;
+  points: Point[];
+  material?: Id;
+}
+
 /** Everything that is saved and covered by undo/redo. */
 export interface PlanDoc {
   elements: PlanElement[];
+  rooms: Room[];
   masks: Mask[];
   materials: Material[];
 }
 
-export type Tool = 'select' | 'pan' | 'wall' | 'door' | 'window' | 'furniture' | 'paint' | 'brush' | 'mask' | 'erase';
+export type Tool =
+  'select' | 'pan' | 'wall' | 'room' | 'door' | 'window' | 'furniture' | 'paint' | 'brush' | 'mask' | 'erase';
 
 export const TOOLS: Tool[] = [
   'select',
   'pan',
   'wall',
+  'room',
   'door',
   'window',
   'furniture',
@@ -105,3 +118,13 @@ export interface Bounds {
   maxX: number;
   maxY: number;
 }
+
+/** Simple mode shows the tools homeowners need; Pro mode shows everything. */
+export type Mode = 'simple' | 'pro';
+
+export const SIMPLE_TOOLS: Tool[] = ['select', 'pan', 'wall', 'room', 'door', 'window', 'furniture', 'erase'];
+
+export type PaperSize = 'A4' | 'A3';
+
+/** Size of one marla in square feet: 225 (LDA and most societies) or 272.25 (traditional). */
+export type MarlaSqFt = 225 | 272.25;

@@ -5,6 +5,7 @@ export function MaterialsPanel() {
   const selectedMat = usePlanner((s) => s.selectedMat);
   const selectMaterial = usePlanner((s) => s.selectMaterial);
   const addMaterial = usePlanner((s) => s.addMaterial);
+  const mode = usePlanner((s) => s.mode);
   const activeId = (materials.find((m) => m.id === selectedMat) ?? materials[0])?.id;
 
   return (
@@ -24,9 +25,11 @@ export function MaterialsPanel() {
           </button>
         ))}
       </div>
-      <button onClick={addMaterial} className="mt-2 rounded border p-1 text-xs">
-        Add material
-      </button>
+      {mode === 'pro' && (
+        <button onClick={addMaterial} className="mt-2 rounded border p-1 text-xs">
+          Add material
+        </button>
+      )}
     </div>
   );
 }

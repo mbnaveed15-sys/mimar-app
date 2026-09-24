@@ -174,3 +174,67 @@ describe('editing and files', () => {
     expect(store.getState().gridPx).toBeCloseTo(30.48);
   });
 });
+
+describe('rooms, walls and modes', () => {
+  const square = (store: ReturnType<typeof setup>) => {
+    const s = store.getState();
+    s.addWall({ x: 0, y: 0 }, { x: 300, y: 0 });
+    s.addWall({ x: 300, y: 0 }, { x: 300, y: 200 });
+    s.addWall({ x: 300, y: 200 }, { x: 0, y: 200 });
+    s.addWall({ x: 0, y: 200 }, { x: 0, y: 0 });
+  };
+
+  it('gives new walls the chosen thickness', () => {
+    const store = setup();
+    store.getState().setWallThicknessMm(114.3);
+    store.getState().addWall({ x: 0, y: 0 }, { x: 100, y: 0 });
+    expect(store.getState().doc.elements[0]).toMatchObject({ thickness: 11.43 });
+  });
+
+  it('creates a room by clicking inside walls, and selects an existing room instead of duplicating it', () => {
+    const store = setup();
+    square(store);
+    const s = () => store.getState();
+    s().addRoomAt({ x: 100, y: 100 });
+    expect(s().doc.rooms).toHaveLength(1);
+    expect(s().selectedId).toBe(s().doc.rooms[0].id);
+    s().addRoomAt({ x: 150, y: 150 });
+    expect(s().doc.rooms).toHaveLength(1);
+    s().addRoomAt({ x: 900, y: 900 });
+    expect(s().warnings[0]).toMatch(/closed on all sides/);
+  });
+
+  it('renames, paints, erases and undoes rooms', () => {
+    const store = setup();
+    square(store);
+    const s = () => store.getState();
+    s().addRoomAt({ x: 100, y: 100 });
+    const room = s().doc.rooms[0];
+    s().updateRoom({ ...room, name: 'Kitchen' });
+    s().selectMaterial('mat_marble');
+    s().paintAt({ x: 100, y: 100 });
+    expect(s().doc.rooms[0]).toMatchObject({ name: 'Kitchen', material: 'mat_marble' });
+    s().eraseAt({ x: 150, y: 100 });
+    expect(s().doc.rooms).toHaveLength(0);
+    s().undo();
+    expect(s().doc.rooms).toHaveLength(1);
+  });
+
+  it('erasing a wall inside a room keeps the room', () => {
+    const store = setup();
+    square(store);
+    const s = () => store.getState();
+    s().addRoomAt({ x: 100, y: 100 });
+    s().eraseAt({ x: 150, y: 0 });
+    expect(s().doc.rooms).toHaveLength(1);
+    expect(s().doc.elements).toHaveLength(3);
+  });
+
+  it('switching to Simple mode leaves Pro-only tools', () => {
+    const store = setup();
+    store.getState().setMode('pro');
+    store.getState().setTool('brush');
+    store.getState().setMode('simple');
+    expect(store.getState().tool).toBe('select');
+  });
+});

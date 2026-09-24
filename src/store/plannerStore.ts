@@ -14,17 +14,32 @@ import { DEFAULT_FILE_NAME } from '../lib/files';
 import { newId } from '../lib/ids';
 import { loadPrefs, savePrefs, type Prefs } from '../lib/prefs';
 import { emptyDoc, loadPlan, savePlan } from '../lib/storage';
+import { MM_PER_UNIT } from '../lib/scale';
 import { GRID_MM } from '../lib/units';
 import { DEFAULT_AREA, fitView, zoomAt, type Size } from '../lib/view';
-import type { Draft, Id, PlanDoc, PlanElement, Point, Tool, Units, View } from '../types';
+import { detectRoom } from '../rooms';
+import { SIMPLE_TOOLS } from '../types';
+import type {
+  Draft,
+  Id,
+  MarlaSqFt,
+  Mode,
+  PaperSize,
+  PlanDoc,
+  PlanElement,
+  Point,
+  Room,
+  Tool,
+  Units,
+  View,
+} from '../types';
 
 export const HISTORY_LIMIT = 100;
+export { MM_PER_UNIT };
 
 const OPENING_WIDTH_MM = { door: 900, window: 1200 } as const;
 const FURNITURE_SIZE_MM = { w: 1200, h: 800 } as const;
 const MIN_WALL_PX = 6;
-/** Plan units per millimetre are fixed: 1 plan unit = 10 mm. */
-export const MM_PER_UNIT = 10;
 
 export interface PlannerState {
   doc: PlanDoc;
@@ -44,6 +59,10 @@ export interface PlannerState {
 
   units: Units;
   showDimensions: boolean;
+  mode: Mode;
+  wallThicknessMm: number;
+  marlaSqFt: MarlaSqFt;
+  paper: PaperSize;
   view: View;
   viewport: Size;
 
@@ -82,6 +101,16 @@ export interface PlannerState {
 
   setUnits: (units: Units) => void;
   setShowDimensions: (show: boolean) => void;
+  setMode: (mode: Mode) => void;
+  setWallThicknessMm: (mm: number) => void;
+  setMarlaSqFt: (sqft: MarlaSqFt) => void;
+  setPaper: (paper: PaperSize) => void;
+
+  /** Make a room from the area enclosed by walls around p. */
+  addRoomAt: (p: Point) => void;
+  updateRoom: (room: Room) => void;
+  /** Room whose area contains p, or null. */
+  roomAt: (p: Point) => Room | null;
   setViewport: (size: Size) => void;
   setView: (view: View) => void;
   zoomBy: (factor: number, screen?: Point) => void;
@@ -110,7 +139,10 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       return (doc.materials.find((m) => m.id === selectedMat) ?? doc.materials[0])?.id;
     };
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
-    const persistPrefs = () => savePrefs({ units: get().units, showDimensions: get().showDimensions });
+    const persistPrefs = () => {
+      const { units, showDimensions, mode, wallThicknessMm, marlaSqFt, paper } = get();
+      savePrefs({ units, showDimensions, mode, wallThicknessMm, marlaSqFt, paper });
+    };
     const resetHistory = { past: [], future: [], batchBase: null, draft: null, selectedId: null, warnings: [] };
     const updateElements = (fn: (els: PlanElement[]) => PlanElement[]) =>
       get().commit((doc) => {
@@ -135,6 +167,10 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
 
       units: prefs.units,
       showDimensions: prefs.showDimensions,
+      mode: prefs.mode,
+      wallThicknessMm: prefs.wallThicknessMm,
+      marlaSqFt: prefs.marlaSqFt,
+      paper: prefs.paper,
       view: { x: 0, y: 0, zoom: 1 },
       viewport: { width: 0, height: 0 },
 
@@ -179,7 +215,11 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         set((s) => ({ tool, draft: null, warnings: [], selectedId: tool === 'select' ? s.selectedId : null }));
       },
       selectMaterial: (id) => set({ selectedMat: id }),
-      select: (id) => set((s) => ({ selectedId: id && s.doc.elements.some((el) => el.id === id) ? id : null })),
+      select: (id) =>
+        set((s) => ({
+          selectedId:
+            id && (s.doc.elements.some((el) => el.id === id) || s.doc.rooms.some((r) => r.id === id)) ? id : null,
+        })),
       setBrushSize: (px) => set({ brushSize: px }),
       setDraft: (draft) => set({ draft }),
       setWarning: (message) => set({ warnings: message ? [message] : [] }),
@@ -193,6 +233,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           y1: a.y,
           x2: b.x,
           y2: b.y,
+          thickness: get().wallThicknessMm / MM_PER_UNIT,
           material: activeMat(),
         };
         updateElements((els) => [...els, wall]);
@@ -221,6 +262,11 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
       applyMaterial: (id) => {
         const mat = activeMat();
+        const room = get().doc.rooms.find((r) => r.id === id);
+        if (room) {
+          if (room.material !== mat) get().updateRoom({ ...room, material: mat });
+          return;
+        }
         updateElements((els) =>
           els.some((el) => el.id === id && el.material !== mat)
             ? els.map((el) => (el.id === id ? { ...el, material: mat } : el))
@@ -228,7 +274,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         );
       },
       paintAt: (p) => {
-        const hit = findElementNear(get().doc.elements, p, get().hitTolerance());
+        const hit = findElementNear(get().doc.elements, p, get().hitTolerance()) ?? get().roomAt(p);
         if (hit) get().applyMaterial(hit.id);
       },
       brushAt: (p) => {
@@ -253,12 +299,21 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
             ? doc.elements.filter((el) => !gone.has(el.id) && !('wallId' in el && gone.has(el.wallId)))
             : doc.elements;
           const masks = doc.masks.filter((m) => !pointInPolygon(p, m.points));
-          if (elements === doc.elements && masks.length === doc.masks.length) return doc;
-          return { ...doc, elements, masks };
+          // Rooms are only erased by clicking inside them away from walls and furniture.
+          const rooms = gone.size ? doc.rooms : doc.rooms.filter((r) => !pointInPolygon(p, r.points));
+          if (elements === doc.elements && masks.length === doc.masks.length && rooms.length === doc.rooms.length) {
+            return doc;
+          }
+          return { ...doc, elements, masks, rooms };
         });
         get().select(get().selectedId);
       },
       deleteElement: (id) => {
+        if (get().doc.rooms.some((r) => r.id === id)) {
+          get().commit((doc) => ({ ...doc, rooms: doc.rooms.filter((r) => r.id !== id) }));
+          set({ selectedId: null });
+          return;
+        }
         updateElements((els) =>
           els.some((el) => el.id === id)
             ? els.filter((el) => el.id !== id && !('wallId' in el && el.wallId === id))
@@ -304,6 +359,51 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       setShowDimensions: (showDimensions) => {
         set({ showDimensions });
         persistPrefs();
+      },
+      setMode: (mode) => {
+        set((s) => ({ mode, tool: mode === 'simple' && !SIMPLE_TOOLS.includes(s.tool) ? 'select' : s.tool }));
+        persistPrefs();
+      },
+      setWallThicknessMm: (wallThicknessMm) => {
+        set({ wallThicknessMm });
+        persistPrefs();
+      },
+      setMarlaSqFt: (marlaSqFt) => {
+        set({ marlaSqFt });
+        persistPrefs();
+      },
+      setPaper: (paper) => {
+        set({ paper });
+        persistPrefs();
+      },
+
+      addRoomAt: (p) => {
+        const { doc } = get();
+        const existing = get().roomAt(p);
+        if (existing) {
+          set({ selectedId: existing.id, warnings: [] });
+          return;
+        }
+        const points = detectRoom(doc.elements, p);
+        if (!points) {
+          get().setWarning('Click inside an area that is closed on all sides by walls.');
+          return;
+        }
+        const room: Room = { id: newId(), name: `Room ${doc.rooms.length + 1}`, points };
+        get().commit((d) => ({ ...d, rooms: [...d.rooms, room] }));
+        set({ selectedId: room.id, warnings: [] });
+      },
+      updateRoom: (room) =>
+        get().commit((doc) =>
+          doc.rooms.some((r) => r.id === room.id)
+            ? { ...doc, rooms: doc.rooms.map((r) => (r.id === room.id ? room : r)) }
+            : doc,
+        ),
+      roomAt: (p) => {
+        const rooms = get().doc.rooms;
+        // Topmost (last added) room wins where rooms overlap.
+        for (let i = rooms.length - 1; i >= 0; i--) if (pointInPolygon(p, rooms[i].points)) return rooms[i];
+        return null;
       },
       setViewport: (viewport) => {
         const first = get().viewport.width === 0 || get().viewport.height === 0;
