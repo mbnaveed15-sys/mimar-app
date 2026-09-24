@@ -1,6 +1,6 @@
 {
   "name": "mimar",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -81,7 +81,7 @@
         "provider": "github",
         "owner": "mbnaveed15-sys",
         "repo": "mimar-app",
-        "releaseType": "release"
+        "releaseType": "draft"
       }
     ]
   },
