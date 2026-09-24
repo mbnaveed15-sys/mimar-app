@@ -9,6 +9,9 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
   wall: { label: 'Wall', icon: 'wall', key: 'L' },
   rectangle: { label: 'Rectangle', icon: 'rectangle', key: 'R' },
   room: { label: 'Room', icon: 'room', key: 'A' },
+  column: { label: 'Column', icon: 'column', key: 'C' },
+  beam: { label: 'Beam', icon: 'beam', key: 'N' },
+  slab: { label: 'Slab', icon: 'slab', key: 'Shift+A' },
   door: { label: 'Door', icon: 'door', key: 'D' },
   window: { label: 'Window', icon: 'window', key: 'W' },
   furniture: { label: 'Furniture', icon: 'furniture', key: 'K' },
@@ -32,4 +35,15 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
 };
 
 /** Which menu each tool is listed in: drawing tools under Draw, the rest under Tools. */
-export const DRAW_TOOLS: Tool[] = ['wall', 'rectangle', 'room', 'door', 'window', 'furniture', 'mask'];
+export const DRAW_TOOLS: Tool[] = [
+  'wall',
+  'rectangle',
+  'room',
+  'column',
+  'beam',
+  'slab',
+  'door',
+  'window',
+  'furniture',
+  'mask',
+];

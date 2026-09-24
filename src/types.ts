@@ -15,8 +15,10 @@ export interface Material {
   type?: string;
 }
 
-/** Membership of a group or component copy. */
+/** Membership of a group or component copy, and the floor (level) an item is on. */
 export interface Grouped {
+  /** The level this item is on; missing means the ground floor. */
+  levelId?: Id;
   /** The group this item belongs to. */
   groupId?: Id;
   /** For a component copy: which item of the component definition this is. */
@@ -66,7 +68,57 @@ export interface Furniture extends Grouped {
   material?: Id;
 }
 
-export type PlanElement = Wall | Opening | Furniture;
+/** A structural column, drawn solid in plan and running floor to ceiling in 3D. */
+export interface Column extends Grouped {
+  id: Id;
+  type: 'column';
+  x: number;
+  y: number;
+  /** Size in plan units (w along x before rotation, h along y); a round column uses w as its diameter. */
+  w: number;
+  h: number;
+  rotation?: number;
+  shape: 'rect' | 'round';
+  material?: Id;
+}
+
+/** A beam under the ceiling, drawn dashed in plan (it is above the cut line). */
+export interface Beam extends Grouped {
+  id: Id;
+  type: 'beam';
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  /** Width in plan and depth below the ceiling, in plan units. */
+  width: number;
+  depth: number;
+  material?: Id;
+}
+
+/** A floor or roof slab: an outline with a thickness, at the top of its level. */
+export interface Slab extends Grouped {
+  id: Id;
+  type: 'slab';
+  points: Point[];
+  /** Thickness in plan units. */
+  thickness: number;
+  material?: Id;
+}
+
+export type PlanElement = Wall | Opening | Furniture | Column | Beam | Slab;
+
+/** A floor of the building. Levels stack in list order, starting with the ground floor. */
+export interface Level {
+  id: Id;
+  name: string;
+}
+
+/** The ground floor's id; items without a levelId are on it. */
+export const GROUND_LEVEL = 'ground';
+
+/** The level an item is on. */
+export const levelOf = (item: { levelId?: Id }): Id => item.levelId ?? GROUND_LEVEL;
 
 export interface Mask {
   id: Id;
@@ -112,6 +164,9 @@ export interface PlanDoc {
   materials: Material[];
   groups: Group[];
   components: ComponentDef[];
+  levels: Level[];
+  /** Height of the plinth (floor above natural ground), in millimetres. */
+  plinthMm: number;
 }
 
 export type Tool =
@@ -140,7 +195,10 @@ export type Tool =
   | 'fillet'
   | 'chamfer'
   | 'stretch'
-  | 'scale';
+  | 'scale'
+  | 'column'
+  | 'beam'
+  | 'slab';
 
 /** Every tool, in tool-rail order. */
 export const TOOLS: Tool[] = [
@@ -150,6 +208,9 @@ export const TOOLS: Tool[] = [
   'wall',
   'rectangle',
   'room',
+  'column',
+  'beam',
+  'slab',
   'door',
   'window',
   'furniture',
@@ -186,6 +247,8 @@ export type Draft =
       chainStart?: Point;
     }
   | { type: 'rectangle'; x1: number; y1: number; x2: number; y2: number }
+  | { type: 'beam'; x1: number; y1: number; x2: number; y2: number }
+  | { type: 'slab'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'tape'; a: Point; b: Point; done?: boolean }
   | { type: 'move'; ids: Id[]; base: Point; to: Point; copy: boolean }
   | { type: 'rotate'; ids: Id[]; center: Point; start?: Point; angle: number }

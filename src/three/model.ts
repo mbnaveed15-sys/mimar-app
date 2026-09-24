@@ -1,6 +1,15 @@
 import { wallLength, wallParam } from '../geometry';
 import { MM_PER_UNIT } from '../lib/scale';
-import type { Furniture, Opening, PlanDoc, Point, Wall } from '../types';
+import {
+  levelOf,
+  type Beam,
+  type Column,
+  type Furniture,
+  type Opening,
+  type PlanDoc,
+  type Point,
+  type Wall,
+} from '../types';
 import { thicknessOf, wallExtensions, wallsOf } from '../walls';
 
 /** Scene units are metres; plan units are 10 mm. */
@@ -10,6 +19,8 @@ export const DOOR_HEAD_MM = 2134; // 7 ft
 export const WINDOW_SILL_MM = 914; // 3 ft
 export const WINDOW_HEAD_MM = 2134; // 7 ft
 export const DEFAULT_WALL_HEIGHT_MM = 3048; // 10 ft
+/** Floor slab between storeys: 6". */
+export const SLAB_MM = 152.4;
 
 /**
  * A box in the scene. x/z are the centre on the ground (metres, z = plan y), y0 is the height of
@@ -26,18 +37,28 @@ export interface Solid {
   color: string;
   opacity?: number;
   /** What it is, for tests and for picking materials. */
-  role: 'wall' | 'glass' | 'door' | 'furniture';
+  role: 'wall' | 'glass' | 'door' | 'furniture' | 'column' | 'beam';
 }
 
-/** A flat floor area at ground level, as [x, z] points in metres. */
+/** A flat floor area at height y, as [x, z] points in metres. */
 export interface Floor {
   points: [number, number][];
+  y: number;
+  color: string;
+}
+
+/** A slab: an outline extruded upward from y0 by h, in metres. */
+export interface Slab3D {
+  points: [number, number][];
+  y0: number;
+  h: number;
   color: string;
 }
 
 export interface Model3D {
   solids: Solid[];
   floors: Floor[];
+  slabs: Slab3D[];
   /** Centre and size of the building, for positioning the camera. */
   centre: { x: number; z: number };
   size: number;
@@ -52,6 +73,7 @@ const WALL_COLOR = '#eceae4';
 const GLASS_COLOR = '#9fd3f0';
 const DOOR_COLOR = '#8b5e3c';
 const DEFAULT_FLOOR = '#f1f5f9';
+const CONCRETE = '#c9c6bf';
 
 const m = (units: number) => units * M_PER_UNIT;
 const mmToM = (mm: number) => mm / 1000;
@@ -245,42 +267,100 @@ function furnitureSolids(f: Furniture, color?: string): Solid[] {
   return parts;
 }
 
-/** Everything needed to draw the plan in 3D, in metres. */
+function columnSolid(c: Column, top: number, color?: string): Solid {
+  return {
+    ...toScene(c, 0, { x: 0, y: 0 }),
+    y0: 0,
+    h: top,
+    w: m(c.w),
+    d: m(c.h),
+    rotY: (-(c.rotation ?? 0) * Math.PI) / 180,
+    color: color ?? CONCRETE,
+    role: 'column',
+  };
+}
+
+function beamSolid(b: Beam, top: number, color?: string): Solid | null {
+  const len = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
+  if (!len) return null;
+  const angle = (Math.atan2(b.y2 - b.y1, b.x2 - b.x1) * 180) / Math.PI;
+  const depth = Math.min(m(b.depth), top);
+  return {
+    ...toScene({ x: b.x1, y: b.y1 }, angle, { x: len / 2, y: 0 }),
+    y0: top - depth,
+    h: depth,
+    w: m(len),
+    d: m(b.width),
+    rotY: (-angle * Math.PI) / 180,
+    color: color ?? CONCRETE,
+    role: 'beam',
+  };
+}
+
+/**
+ * Everything needed to draw the plan in 3D, in metres. Floors stack upward from the plinth: each
+ * storey is the wall height plus a slab. Ground-floor walls also run down through the plinth.
+ */
 export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const colorOf = (id?: string) => doc.materials.find((mat) => mat.id === id)?.color;
-  const walls = wallsOf(doc.elements);
-  const openings = doc.elements.filter((el): el is Opening => el.type === 'door' || el.type === 'window');
   const solids: Solid[] = [];
+  const floors: Floor[] = [];
+  const slabs: Slab3D[] = [];
+  const plinth = mmToM(doc.plinthMm);
+  const wallTop = mmToM(options.wallHeightMm);
+  const storey = mmToM(options.wallHeightMm + SLAB_MM);
+  const levels = doc.levels.length ? doc.levels : [{ id: 'ground', name: 'Ground floor' }];
 
-  for (const wall of walls) {
-    const own = openings.filter((o) => o.wallId === wall.id);
-    const color = colorOf(wall.material);
-    solids.push(
-      ...wallSolids(wall, walls, own, options.wallHeightMm).map((s) =>
-        color && s.role === 'wall' ? { ...s, color } : s,
-      ),
-    );
-  }
-  for (const door of openings) {
-    if (door.type === 'door' && walls.some((w) => w.id === door.wallId))
-      solids.push(doorLeaf(door, options.wallHeightMm));
-  }
-  if (options.showFurniture) {
-    for (const el of doc.elements) {
-      if (el.type === 'furniture') solids.push(...furnitureSolids(el, colorOf(el.material)));
+  levels.forEach((level, i) => {
+    const base = plinth + i * storey;
+    const lift = (s: Solid): Solid => ({ ...s, y0: s.y0 + base });
+    const els = doc.elements.filter((el) => levelOf(el) === level.id);
+    const walls = wallsOf(els);
+    const openings = els.filter((el): el is Opening => el.type === 'door' || el.type === 'window');
+
+    for (const wall of walls) {
+      const own = openings.filter((o) => o.wallId === wall.id);
+      const color = colorOf(wall.material);
+      const paint = (s: Solid) => (color && s.role === 'wall' ? { ...s, color } : s);
+      solids.push(...wallSolids(wall, walls, own, options.wallHeightMm).map(paint).map(lift));
+      // The plinth: ground-floor walls carry on down to the ground.
+      if (i === 0 && plinth > 0) solids.push(...wallSolids(wall, walls, [], doc.plinthMm).map(paint));
     }
-  }
+    for (const door of openings) {
+      if (door.type === 'door' && walls.some((w) => w.id === door.wallId))
+        solids.push(lift(doorLeaf(door, options.wallHeightMm)));
+    }
+    for (const el of els) {
+      if (el.type === 'furniture' && options.showFurniture)
+        solids.push(...furnitureSolids(el, colorOf(el.material)).map(lift));
+      if (el.type === 'column') solids.push(lift(columnSolid(el, wallTop, colorOf(el.material))));
+      if (el.type === 'beam') {
+        const b = beamSolid(el, wallTop, colorOf(el.material));
+        if (b) solids.push(lift(b));
+      }
+      if (el.type === 'slab')
+        slabs.push({
+          points: el.points.map((p) => [m(p.x), m(p.y)] as [number, number]),
+          y0: base + wallTop,
+          h: m(el.thickness),
+          color: colorOf(el.material) ?? CONCRETE,
+        });
+    }
+    for (const r of doc.rooms.filter((room) => levelOf(room) === level.id)) {
+      floors.push({
+        points: r.points.map((p) => [m(p.x), m(p.y)] as [number, number]),
+        y: base,
+        color: colorOf(r.material) ?? DEFAULT_FLOOR,
+      });
+    }
+  });
 
-  const floors: Floor[] = doc.rooms.map((r) => ({
-    points: r.points.map((p) => [m(p.x), m(p.y)] as [number, number]),
-    color: colorOf(r.material) ?? DEFAULT_FLOOR,
-  }));
-
-  const xs = [...solids.map((s) => s.x), ...floors.flatMap((f) => f.points.map((p) => p[0]))];
-  const zs = [...solids.map((s) => s.z), ...floors.flatMap((f) => f.points.map((p) => p[1]))];
+  const flat = [...floors, ...slabs].flatMap((f) => f.points);
+  const xs = [...solids.map((s) => s.x), ...flat.map((p) => p[0])];
+  const zs = [...solids.map((s) => s.z), ...flat.map((p) => p[1])];
   const centre = xs.length
     ? { x: (Math.min(...xs) + Math.max(...xs)) / 2, z: (Math.min(...zs) + Math.max(...zs)) / 2 }
     : { x: 8, z: 5 };
   const size = xs.length ? Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs), 4) : 16;
-  return { solids, floors, centre, size };
+  return { solids, floors, slabs, centre, size };
 }

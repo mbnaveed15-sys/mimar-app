@@ -1,10 +1,21 @@
-import type { ComponentDef, Group, Mask, Material, PlanDoc, PlanElement, Room } from '../types';
+import {
+  GROUND_LEVEL,
+  type ComponentDef,
+  type Group,
+  type Level,
+  type Mask,
+  type Material,
+  type PlanDoc,
+  type PlanElement,
+  type Point,
+  type Room,
+} from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
 import { defaultMaterials } from './materials';
 
 export const STORAGE_KEY = 'mimar.plan';
-/** 4 added groups and components. */
-export const CURRENT_VERSION = 4;
+/** 4 added groups and components; 5 added levels, columns, beams and slabs. */
+export const CURRENT_VERSION = 5;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -22,7 +33,23 @@ export interface LoadResult {
 }
 
 export function emptyDoc(): PlanDoc {
-  return { elements: [], rooms: [], masks: [], materials: defaultMaterials(), groups: [], components: [] };
+  return {
+    elements: [],
+    rooms: [],
+    masks: [],
+    materials: defaultMaterials(),
+    groups: [],
+    components: [],
+    levels: defaultLevels(),
+    plinthMm: DEFAULT_PLINTH_MM,
+  };
+}
+
+/** 1' 6" above natural ground, common for Pakistani houses. */
+export const DEFAULT_PLINTH_MM = 457.2;
+
+export function defaultLevels(): Level[] {
+  return [{ id: GROUND_LEVEL, name: 'Ground floor' }];
 }
 
 /** localStorage when it is usable, otherwise null (private mode, tests, blocked storage). */
@@ -44,6 +71,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
     material: idOf(raw.material),
     groupId: idOf(raw.groupId),
     defKey: idOf(raw.defKey),
+    levelId: idOf(raw.levelId),
   };
   if (!base.id) return null;
   const num = (k: string) => (typeof raw[k] === 'number' ? (raw[k] as number) : NaN);
@@ -90,9 +118,55 @@ function normaliseElement(raw: unknown): PlanElement | null {
       };
       return [el.x, el.y, el.w, el.h].every(Number.isFinite) ? el : null;
     }
+    case 'column': {
+      const el = {
+        ...base,
+        type: 'column' as const,
+        x: num('x'),
+        y: num('y'),
+        w: num('w'),
+        h: num('h'),
+        rotation: typeof raw.rotation === 'number' && Number.isFinite(raw.rotation) ? raw.rotation : undefined,
+        shape: raw.shape === 'round' ? ('round' as const) : ('rect' as const),
+      };
+      return [el.x, el.y, el.w, el.h].every(Number.isFinite) && el.w > 0 && el.h > 0 ? el : null;
+    }
+    case 'beam': {
+      const el = {
+        ...base,
+        type: 'beam' as const,
+        x1: num('x1'),
+        y1: num('y1'),
+        x2: num('x2'),
+        y2: num('y2'),
+        width: num('width'),
+        depth: num('depth'),
+      };
+      return [el.x1, el.y1, el.x2, el.y2, el.width, el.depth].every(Number.isFinite) ? el : null;
+    }
+    case 'slab': {
+      const points = readPoints(raw.points);
+      const thickness = num('thickness');
+      return points.length >= 3 && thickness > 0 ? { ...base, type: 'slab' as const, points, thickness } : null;
+    }
     default:
       return null;
   }
+}
+
+function readPoints(raw: unknown): Point[] {
+  return (Array.isArray(raw) ? raw : [])
+    .filter((p): p is Point => isObject(p) && typeof p.x === 'number' && typeof p.y === 'number')
+    .map(({ x, y }) => ({ x, y }));
+}
+
+function normaliseLevels(raw: unknown): Level[] {
+  const levels = (Array.isArray(raw) ? raw : [])
+    .filter((l): l is Record<string, unknown> => isObject(l) && l.id !== undefined)
+    .map((l) => ({ id: String(l.id), name: typeof l.name === 'string' ? l.name : 'Floor' }));
+  // The ground floor always exists and comes first.
+  const ground = levels.find((l) => l.id === GROUND_LEVEL) ?? defaultLevels()[0];
+  return [ground, ...levels.filter((l) => l.id !== GROUND_LEVEL)];
 }
 
 function normaliseMask(raw: unknown, index: number): Mask | null {
@@ -120,6 +194,7 @@ function normaliseRoom(raw: unknown, index: number): Room | null {
     material: mask.material,
     groupId: idOf(obj.groupId),
     defKey: idOf(obj.defKey),
+    levelId: idOf(obj.levelId),
   };
 }
 
@@ -186,6 +261,9 @@ export function normaliseDoc(raw: unknown): PlanDoc {
     components: list(obj.components)
       .map(normaliseComponent)
       .filter((c): c is ComponentDef => c !== null),
+    levels: normaliseLevels(obj.levels),
+    plinthMm:
+      typeof obj.plinthMm === 'number' && obj.plinthMm >= 0 && obj.plinthMm <= 3000 ? obj.plinthMm : DEFAULT_PLINTH_MM,
   };
 }
 

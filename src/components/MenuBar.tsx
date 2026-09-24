@@ -3,6 +3,7 @@ import { MENUS, showKeys, type Command, type MenuId } from '../commands';
 import { baseName } from '../lib/files';
 import { usePlanner } from '../store/plannerStore';
 import { Icon } from './Icon';
+import { LevelSwitcher } from './LevelSwitcher';
 import { Mark } from './Mark';
 
 /** The items of one menu, with lines between groups. */
@@ -145,6 +146,7 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
         Search
         <kbd className="m-kbd">{showKeys('Ctrl+K')}</kbd>
       </button>
+      <LevelSwitcher />
       <div role="radiogroup" aria-label="Mode" className="m-seg text-xs">
         {(['simple', 'pro'] as const).map((m) => (
           <button key={m} role="radio" aria-checked={mode === m} onClick={() => setMode(m)}>

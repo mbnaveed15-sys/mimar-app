@@ -55,6 +55,11 @@ export const ICONS = {
   chamfer: "<path d='M4 20v-9l7-7h9'/>",
   stretch: "<path d='M12 6H4v12h8'/><path d='M12 6v12' stroke-dasharray='2 2'/><path d='M14 12h7M18 9l3 3-3 3'/>",
   scale: "<rect x='3.5' y='10.5' width='10' height='10' rx='0.5'/><path d='M13.5 10.5l6.5-6.5M15 4h5v5'/>",
+  column:
+    "<rect x='8' y='8' width='8' height='8' fill='currentColor' stroke='none'/><path d='M4 4h16v16H4z' stroke-dasharray='2 2'/>",
+  beam: "<path d='M3 9h18M3 15h18' stroke-dasharray='3 2'/><rect x='2.5' y='7' width='3' height='10' fill='currentColor' stroke='none'/><rect x='18.5' y='7' width='3' height='10' fill='currentColor' stroke='none'/>",
+  slab: "<path d='M3 9 12 4l9 5-9 5z'/><path d='M3 9v3l9 5 9-5V9'/>",
+  levels: "<path d='M4 20h16M4 14h16M4 8h16'/><path d='M8 20v-6M16 14V8'/>",
 } as const;
 
 export type IconName = keyof typeof ICONS;

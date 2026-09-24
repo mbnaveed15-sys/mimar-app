@@ -6,6 +6,7 @@ import { FurnitureShape } from './shapes/FurnitureShape';
 import { MaskShape } from './shapes/MaskShape';
 import { OpeningShape } from './shapes/OpeningShape';
 import { RoomShape } from './shapes/RoomShape';
+import { BeamShape, ColumnShape, SlabShape } from './shapes/StructureShapes';
 import { WallDimension } from './shapes/WallDimension';
 import { WallsLayer } from './shapes/WallsLayer';
 
@@ -77,8 +78,18 @@ export function PlanDrawing(props: PlanDrawingProps) {
           case 'furniture':
             if (!showFurniture) return null;
             return <FurnitureShape key={el.id} item={el} color={color} selected={isSelected} k={k} />;
+          case 'column':
+            return <ColumnShape key={el.id} col={el} selected={isSelected} color={color} k={k} />;
+          case 'beam':
+            return <BeamShape key={el.id} beam={el} selected={isSelected} k={k} />;
+          default:
+            return null;
         }
       })}
+
+      {doc.elements.map((el) =>
+        el.type === 'slab' ? <SlabShape key={el.id} slab={el} selected={selected.has(el.id)} k={k} /> : null,
+      )}
 
       {showDimensions &&
         walls.map((w) => {

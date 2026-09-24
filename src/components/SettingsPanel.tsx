@@ -1,6 +1,7 @@
 import { MARLA_OPTIONS, UNIT_LABELS } from '../lib/units';
 import { usePlanner } from '../store/plannerStore';
 import type { MarlaSqFt, PaperSize, Units } from '../types';
+import { LengthField } from './LengthField';
 
 export function SettingsPanel() {
   const units = usePlanner((s) => s.units);
@@ -9,6 +10,8 @@ export function SettingsPanel() {
   const setMarlaSqFt = usePlanner((s) => s.setMarlaSqFt);
   const paper = usePlanner((s) => s.paper);
   const setPaper = usePlanner((s) => s.setPaper);
+  const plinthMm = usePlanner((s) => s.doc.plinthMm);
+  const setPlinthMm = usePlanner((s) => s.setPlinthMm);
 
   return (
     <div className="flex flex-col gap-2 text-xs">
@@ -43,6 +46,14 @@ export function SettingsPanel() {
           </option>
         ))}
       </select>
+      <LengthField
+        id="plinth-height"
+        label="Plinth height (floor above ground)"
+        mm={plinthMm}
+        units={units}
+        min={0}
+        onCommit={(mm) => setPlinthMm(mm)}
+      />
       <label htmlFor="paper-size" className="font-medium">
         PDF paper size
       </label>

@@ -42,14 +42,15 @@ test('shows the plan in 3D, follows edits, and switches back to 2D', async ({ pa
   await page.getByRole('radio', { name: '3D view' }).click();
   const view = page.getByTestId('plan-3d');
   await expect(page.getByTestId('plan-3d-canvas')).toBeVisible();
-  // 3 plain walls + 3 pieces around the door + the door leaf.
-  await expect(view).toHaveAttribute('data-solids', '7');
+  // 3 plain walls + 3 pieces around the door + the door leaf, and each of the 4 walls runs down
+  // through the plinth.
+  await expect(view).toHaveAttribute('data-solids', '11');
   await expect(view).toHaveAttribute('data-floors', '1');
 
   // The wall height slider goes from 8 ft to 15 ft and is remembered.
   await page.getByLabel('Wall height').fill('2438.4');
   await expect(page.getByText(`8' 0"`)).toBeVisible();
-  await expect(view).toHaveAttribute('data-solids', '7');
+  await expect(view).toHaveAttribute('data-solids', '11');
 
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Save image' }).click();

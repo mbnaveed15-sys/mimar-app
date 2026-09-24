@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { emptyDoc } from '../lib/storage';
 import type { PlanDoc, PlanElement } from '../types';
-import { buildModel, DEFAULT_WALL_HEIGHT_MM } from './model';
+import { buildModel, DEFAULT_WALL_HEIGHT_MM, SLAB_MM } from './model';
 
 const opts = { wallHeightMm: DEFAULT_WALL_HEIGHT_MM, showFurniture: true };
-const docWith = (...elements: PlanElement[]): PlanDoc => ({ ...emptyDoc(), elements });
+// Without a plinth, so heights are measured from the floor.
+const docWith = (...elements: PlanElement[]): PlanDoc => ({ ...emptyDoc(), plinthMm: 0, elements });
 // A 10 m wall along x (plan units are 10 mm), 230 mm thick.
 const wall: PlanElement = { id: 'w', type: 'wall', x1: 0, y1: 0, x2: 1000, y2: 0, thickness: 23 };
 
@@ -85,6 +86,7 @@ describe('3D model', () => {
     const model = buildModel(doc, opts);
     expect(model.solids[0].color).toBe('#B7410E');
     expect(model.floors[0]).toEqual({
+      y: 0,
       points: [
         [0, 0],
         [1, 0],
@@ -92,5 +94,45 @@ describe('3D model', () => {
       ],
       color: '#C29B6C',
     });
+  });
+
+  it('raises the ground floor on the plinth, with the walls running down into it', () => {
+    const { solids } = buildModel({ ...docWith(wall), plinthMm: 450 }, opts);
+    expect(solids).toHaveLength(2);
+    expect(solids.find((s) => s.y0 > 0)!.y0).toBeCloseTo(0.45);
+    expect(solids.find((s) => s.y0 === 0)!.h).toBeCloseTo(0.45);
+  });
+
+  it('stacks floors, with columns, beams and slabs on each', () => {
+    const doc: PlanDoc = {
+      ...docWith(
+        wall,
+        { ...wall, id: 'w2', levelId: 'first' },
+        { id: 'c', type: 'column', x: 0, y: 0, w: 23, h: 30, shape: 'rect', levelId: 'first' },
+        { id: 'b', type: 'beam', x1: 0, y1: 0, x2: 500, y2: 0, width: 23, depth: 46 },
+        {
+          id: 's',
+          type: 'slab',
+          thickness: 15,
+          points: [
+            { x: 0, y: 0 },
+            { x: 500, y: 0 },
+            { x: 500, y: 500 },
+          ],
+        },
+      ),
+      levels: [
+        { id: 'ground', name: 'Ground floor' },
+        { id: 'first', name: 'First floor' },
+      ],
+    };
+    const { solids, slabs } = buildModel(doc, opts);
+    const storey = (DEFAULT_WALL_HEIGHT_MM + SLAB_MM) / 1000;
+    expect(solids.find((s) => s.role === 'wall' && s.y0 > 1)!.y0).toBeCloseTo(storey);
+    expect(solids.find((s) => s.role === 'column')).toMatchObject({ y0: storey });
+    const beam = solids.find((s) => s.role === 'beam')!;
+    expect(beam.y0 + beam.h).toBeCloseTo(3.048);
+    expect(slabs[0].y0).toBeCloseTo(3.048);
+    expect(slabs[0].h).toBeCloseTo(0.15);
   });
 });
