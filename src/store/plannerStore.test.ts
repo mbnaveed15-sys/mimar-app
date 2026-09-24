@@ -108,3 +108,69 @@ describe('planner store', () => {
     expect(store.getState().past).toHaveLength(HISTORY_LIMIT);
   });
 });
+
+describe('editing and files', () => {
+  it('keeps doors in place on a wall when the wall moves or changes length', () => {
+    const store = setup();
+    const s = () => store.getState();
+    s().addWall({ x: 0, y: 0 }, { x: 200, y: 0 });
+    s().placeOpening('door', { x: 50, y: 0 });
+    const wall = s().doc.elements[0];
+    if (wall.type !== 'wall') throw new Error('expected wall');
+    s().updateElement({ ...wall, y1: 100, y2: 100, x2: 400 });
+    const door = s().doc.elements[1];
+    expect(door).toMatchObject({ x: 100, y: 100, angle: 0 });
+  });
+
+  it('nudges and rotates the selection, one undo step each', () => {
+    const store = setup();
+    const s = () => store.getState();
+    s().addFurniture({ x: 0, y: 0 });
+    s().select(s().doc.elements[0].id);
+    s().nudgeSelected(10, 0);
+    s().rotateSelected(90);
+    s().rotateSelected(-180);
+    expect(s().doc.elements[0]).toMatchObject({ x: 10, rotation: 270 });
+    s().undo();
+    s().undo();
+    const el = s().doc.elements[0];
+    expect(el).toMatchObject({ x: 10 });
+    expect(el.type === 'furniture' && (el.rotation ?? 0)).toBe(0);
+  });
+
+  it('flips doors', () => {
+    const store = setup();
+    const s = () => store.getState();
+    s().addWall({ x: 0, y: 0 }, { x: 200, y: 0 });
+    s().placeOpening('door', { x: 100, y: 0 });
+    const id = s().doc.elements[1].id;
+    s().flipOpening(id, 'side');
+    s().flipOpening(id, 'hinge');
+    expect(s().doc.elements[1]).toMatchObject({ flipSide: true, flipHinge: true });
+  });
+
+  it('tracks unsaved changes, and resets history when a file is opened', () => {
+    const store = setup();
+    const s = () => store.getState();
+    expect(s().doc).toBe(s().savedDoc);
+    s().addFurniture({ x: 0, y: 0 });
+    expect(s().doc).not.toBe(s().savedDoc);
+    s().markSaved({ name: 'House.mimar', path: 'C:/House.mimar' });
+    expect(s().doc).toBe(s().savedDoc);
+    expect(s().fileName).toBe('House.mimar');
+
+    s().loadDocument(emptyDoc(), { name: 'Other.mimar' });
+    expect(s().past).toHaveLength(0);
+    expect(s().filePath).toBeUndefined();
+    s().newPlan();
+    expect(s().fileName).toBe('Untitled.mimar');
+  });
+
+  it('switches the snapping grid with the units', () => {
+    const store = setup();
+    store.getState().setUnits('metric');
+    expect(store.getState().gridPx).toBe(25);
+    store.getState().setUnits('imperial');
+    expect(store.getState().gridPx).toBeCloseTo(30.48);
+  });
+});

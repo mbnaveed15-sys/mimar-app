@@ -1,3 +1,4 @@
+import type { Bounds } from '../types';
 import watermarkSvg from '../../branding/ui/watermark.svg?raw';
 
 function loadImage(url: string): Promise<HTMLImageElement> {
@@ -33,9 +34,31 @@ async function drawWatermark(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasEl
   }
 }
 
-/** Render the plan SVG to a PNG (white background, watermark) and download it. */
-export async function exportPng(svg: SVGSVGElement, width: number, height: number, filename = 'mimar-plan.png') {
+/** Longest side of the exported image, in pixels. */
+const EXPORT_SIZE = 2000;
+
+/**
+ * Render the given area of the plan to a PNG (white background, watermark) and download it.
+ * Selection handles and in-progress drawing are left out.
+ */
+export async function exportPng(svg: SVGSVGElement, area: Bounds, filename = 'mimar-plan.png') {
+  const pad = 40;
+  const x = area.minX - pad;
+  const y = area.minY - pad;
+  const w = area.maxX - area.minX + 2 * pad;
+  const h = area.maxY - area.minY + 2 * pad;
+  const scale = Math.min(4, Math.max(0.5, EXPORT_SIZE / Math.max(w, h)));
+  const width = Math.round(w * scale);
+  const height = Math.round(h * scale);
+
   const clone = svg.cloneNode(true) as SVGSVGElement;
+  clone.querySelectorAll('[data-export="skip"]').forEach((n) => n.remove());
+  const grid = clone.querySelector('[data-grid]');
+  grid?.setAttribute('x', String(x));
+  grid?.setAttribute('y', String(y));
+  grid?.setAttribute('width', String(w));
+  grid?.setAttribute('height', String(h));
+  clone.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
   clone.setAttribute('width', String(width));
   clone.setAttribute('height', String(height));
   const img = await svgToImage(new XMLSerializer().serializeToString(clone));

@@ -1,4 +1,4 @@
-import type { Opening, PlanElement, Point, Wall } from './types';
+import type { Bounds, Furniture, Mask, Opening, PlanElement, Point, Wall } from './types';
 
 export function snap(p: Point, grid: number): Point {
   return { x: Math.round(p.x / grid) * grid, y: Math.round(p.y / grid) * grid };
@@ -49,8 +49,10 @@ export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
   switch (el.type) {
     case 'wall':
       return pointToSegmentDistance(p, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 }) < threshold;
-    case 'furniture':
-      return Math.abs(p.x - el.x) <= el.w / 2 && Math.abs(p.y - el.y) <= el.h / 2;
+    case 'furniture': {
+      const local = toFurnitureLocal(el, p);
+      return Math.abs(local.x) <= el.w / 2 && Math.abs(local.y) <= el.h / 2;
+    }
     case 'door':
     case 'window': {
       const [a, b] = openingEndpoints(el);
@@ -97,4 +99,112 @@ export function placeOnWall(
   const half = w / 2 / len;
   const t = Math.max(half, Math.min(1 - half, ((p.x - wall.x1) * C + (p.y - wall.y1) * D) / (len * len)));
   return { x: wall.x1 + t * C, y: wall.y1 + t * D, angle: (Math.atan2(D, C) * 180) / Math.PI, width: w };
+}
+
+const rad = (deg: number) => (deg * Math.PI) / 180;
+
+/** Point p in the furniture's own frame (origin at its centre, unrotated). */
+export function toFurnitureLocal(f: Furniture, p: Point): Point {
+  const a = -rad(f.rotation ?? 0);
+  const dx = p.x - f.x;
+  const dy = p.y - f.y;
+  return { x: dx * Math.cos(a) - dy * Math.sin(a), y: dx * Math.sin(a) + dy * Math.cos(a) };
+}
+
+/** A point given in the furniture's own frame, in plan coordinates. */
+export function fromFurnitureLocal(f: Furniture, local: Point): Point {
+  const a = rad(f.rotation ?? 0);
+  return {
+    x: f.x + local.x * Math.cos(a) - local.y * Math.sin(a),
+    y: f.y + local.x * Math.sin(a) + local.y * Math.cos(a),
+  };
+}
+
+/** Position of p along the wall: 0 at the start, 1 at the end. */
+export function wallParam(wall: Wall, p: Point): number {
+  const C = wall.x2 - wall.x1;
+  const D = wall.y2 - wall.y1;
+  const lenSq = C * C + D * D;
+  return lenSq === 0 ? 0 : ((p.x - wall.x1) * C + (p.y - wall.y1) * D) / lenSq;
+}
+
+/** Keep an opening at the same relative position after its wall moved or changed length. */
+export function reattachOpening(opening: Opening, oldWall: Wall, newWall: Wall): Opening {
+  const t = wallParam(oldWall, opening);
+  const p = { x: newWall.x1 + t * (newWall.x2 - newWall.x1), y: newWall.y1 + t * (newWall.y2 - newWall.y1) };
+  return { ...opening, ...placeOnWall(newWall, p, opening.width) };
+}
+
+/** Wall with the same start point and direction but a new length. */
+export function withWallLength(wall: Wall, length: number): Wall {
+  const len = wallLength(wall);
+  const ux = len ? (wall.x2 - wall.x1) / len : 1;
+  const uy = len ? (wall.y2 - wall.y1) / len : 0;
+  return { ...wall, x2: wall.x1 + ux * length, y2: wall.y1 + uy * length };
+}
+
+export function translateElement<T extends PlanElement>(el: T, dx: number, dy: number): T {
+  if (el.type === 'wall') return { ...el, x1: el.x1 + dx, y1: el.y1 + dy, x2: el.x2 + dx, y2: el.y2 + dy };
+  return { ...el, x: el.x + dx, y: el.y + dy };
+}
+
+function elementPoints(el: PlanElement): Point[] {
+  switch (el.type) {
+    case 'wall':
+      return [
+        { x: el.x1, y: el.y1 },
+        { x: el.x2, y: el.y2 },
+      ];
+    case 'furniture':
+      return [
+        { x: -el.w / 2, y: -el.h / 2 },
+        { x: el.w / 2, y: -el.h / 2 },
+        { x: el.w / 2, y: el.h / 2 },
+        { x: -el.w / 2, y: el.h / 2 },
+      ].map((c) => fromFurnitureLocal(el, c));
+    case 'door':
+    case 'window':
+      // A door's swing reaches one width away from the wall.
+      return [
+        { x: el.x - el.width, y: el.y - el.width },
+        { x: el.x + el.width, y: el.y + el.width },
+      ];
+  }
+}
+
+/** Smallest box around everything in the plan, or null if it is empty. */
+export function planBounds(elements: PlanElement[], masks: Mask[]): Bounds | null {
+  const pts = [...elements.flatMap(elementPoints), ...masks.flatMap((m) => m.points)];
+  if (!pts.length) return null;
+  return {
+    minX: Math.min(...pts.map((p) => p.x)),
+    minY: Math.min(...pts.map((p) => p.y)),
+    maxX: Math.max(...pts.map((p) => p.x)),
+    maxY: Math.max(...pts.map((p) => p.y)),
+  };
+}
+
+/** Nearest wall end point within maxDistance of p, for snapping walls together. */
+export function nearestWallEnd(
+  elements: PlanElement[],
+  p: Point,
+  maxDistance: number,
+  ignoreId?: string,
+): Point | null {
+  let best: Point | null = null;
+  let bestD = maxDistance;
+  for (const el of elements) {
+    if (el.type !== 'wall' || el.id === ignoreId) continue;
+    for (const q of [
+      { x: el.x1, y: el.y1 },
+      { x: el.x2, y: el.y2 },
+    ]) {
+      const d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (d < bestD) {
+        best = q;
+        bestD = d;
+      }
+    }
+  }
+  return best;
 }

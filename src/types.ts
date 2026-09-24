@@ -32,6 +32,10 @@ export interface Opening {
   /** Rotation in degrees, matching the host wall. */
   angle: number;
   width: number;
+  /** Door swings to the other side of the wall. */
+  flipSide?: boolean;
+  /** Door hinge is at the other end. */
+  flipHinge?: boolean;
   material?: Id;
 }
 
@@ -42,6 +46,8 @@ export interface Furniture {
   y: number;
   w: number;
   h: number;
+  /** Rotation in degrees about the centre. */
+  rotation?: number;
   label?: string;
   material?: Id;
 }
@@ -62,9 +68,20 @@ export interface PlanDoc {
   materials: Material[];
 }
 
-export type Tool = 'select' | 'wall' | 'door' | 'window' | 'furniture' | 'paint' | 'brush' | 'mask' | 'erase';
+export type Tool = 'select' | 'pan' | 'wall' | 'door' | 'window' | 'furniture' | 'paint' | 'brush' | 'mask' | 'erase';
 
-export const TOOLS: Tool[] = ['select', 'wall', 'door', 'window', 'furniture', 'paint', 'brush', 'mask', 'erase'];
+export const TOOLS: Tool[] = [
+  'select',
+  'pan',
+  'wall',
+  'door',
+  'window',
+  'furniture',
+  'paint',
+  'brush',
+  'mask',
+  'erase',
+];
 
 /** In-progress drawing that is not yet part of the document. */
 export type Draft =
@@ -72,3 +89,19 @@ export type Draft =
   | { type: 'mask'; points: Point[]; cursor?: Point }
   | { type: 'brush' }
   | null;
+
+export type Units = 'imperial' | 'metric';
+
+/** Visible area of the plan: top-left corner in plan units and screen pixels per plan unit. */
+export interface View {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface Bounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}

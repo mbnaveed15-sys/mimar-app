@@ -66,5 +66,5 @@ test('exports a PNG', async ({ page }) => {
   await page.goto('/');
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export PNG' }).click();
-  expect((await download).suggestedFilename()).toBe('mimar-plan.png');
+  expect((await download).suggestedFilename()).toBe('Untitled.png');
 });
