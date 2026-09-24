@@ -8,7 +8,7 @@
     "preview": "vite preview",
     "app": "vite build && electron .",
     "start": "electron .",
-    "dist": "vite build && electron-builder --win nsis --x64",
+    "dist": "vite build && electron-builder --win nsis portable --x64",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -53,7 +53,8 @@
     },
     "win": {
       "target": [
-        "nsis"
+        "nsis",
+        "portable"
       ],
       "icon": "build/icon.png"
     },
@@ -66,7 +67,10 @@
       "preload.cjs",
       "branding/**/*",
       "package.json"
-    ]
+    ],
+    "portable": {
+      "artifactName": "Mimar-Portable-${version}.${ext}"
+    }
   },
   "description": "Mimar 2D floor planner",
   "main": "electron-main.cjs",

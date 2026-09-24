@@ -21,13 +21,13 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 echo Creating Windows installer (NSIS)... This may take several minutes.
-npx electron-builder --win nsis --x64
+npx electron-builder --win nsis portable --x64
 if %errorlevel% neq 0 (
   echo electron-builder failed.
   pause
   exit /b 1
 )
 echo.
-echo Installer build complete. Look for Mimar-Setup-1.3.0.exe in the 'release' folder.
+echo Installer build complete. Look in the 'release' folder for Mimar-Setup-1.3.0.exe (installer) and Mimar-Portable-1.3.0.exe (no install needed).
 pause
 ENDLOCAL

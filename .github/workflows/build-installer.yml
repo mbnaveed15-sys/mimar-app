@@ -27,10 +27,10 @@ jobs:
       - name: Build client (Vite)
         run: npm run build
 
-      - name: Build Windows installer (NSIS)
+      - name: Build Windows installer and portable app
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --win nsis --x64 --publish never
+        run: npx electron-builder --win nsis portable --x64 --publish never
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4

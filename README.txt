@@ -18,7 +18,8 @@ CHECKS (the same ones GitHub runs on every pull request)
 
 BUILD THE WINDOWS INSTALLER
 - On GitHub: pushing to 'main' runs "Build Mimar Windows Installer". Download
-  Mimar-Setup-<version>.exe from the run's Artifacts section. You can also start
+  Mimar-Setup-<version>.exe (installer) or Mimar-Portable-<version>.exe (runs
+  without installing) from the run's Artifacts section. You can also start
   it from the Actions tab with "Run workflow" on any branch.
 - Locally on Windows: double-click make_installer.bat (output in the 'release' folder).
 
