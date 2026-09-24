@@ -5,6 +5,7 @@ import { roomAreaSqMm } from '../rooms';
 import { MM_PER_UNIT, usePlanner } from '../store/plannerStore';
 import type { Wall } from '../types';
 import { thicknessOf } from '../walls';
+import { useLevelDoc } from '../store/useLevelDoc';
 import { LengthField } from './LengthField';
 import { SelectionPanel } from './SelectionPanel';
 
@@ -28,7 +29,7 @@ const ROOM_NAMES = [
 
 /** Properties of the selected wall, opening, item or room, and a summary of the plan. */
 export function Inspector() {
-  const doc = usePlanner((s) => s.doc);
+  const doc = useLevelDoc()!;
   const selectedId = usePlanner((s) => s.selectedId);
   const units = usePlanner((s) => s.units);
   const applyMaterial = usePlanner((s) => s.applyMaterial);
@@ -104,6 +105,61 @@ export function Inspector() {
                 )}
                 <div className="text-muted">Drag it to slide along the wall.</div>
               </>
+            )}
+
+            {el.type === 'column' && (
+              <div className="grid grid-cols-2 gap-2">
+                <LengthField
+                  id="column-width"
+                  label={el.shape === 'round' ? 'Diameter' : 'Width'}
+                  mm={el.w * MM_PER_UNIT}
+                  units={units}
+                  min={50}
+                  onCommit={(mm) =>
+                    updateElement({ ...el, w: toUnits(mm), h: el.shape === 'round' ? toUnits(mm) : el.h })
+                  }
+                />
+                {el.shape === 'rect' && (
+                  <LengthField
+                    id="column-depth"
+                    label="Depth"
+                    mm={el.h * MM_PER_UNIT}
+                    units={units}
+                    min={50}
+                    onCommit={(mm) => updateElement({ ...el, h: toUnits(mm) })}
+                  />
+                )}
+              </div>
+            )}
+            {el.type === 'beam' && (
+              <div className="grid grid-cols-2 gap-2">
+                <LengthField
+                  id="beam-width-edit"
+                  label="Width"
+                  mm={el.width * MM_PER_UNIT}
+                  units={units}
+                  min={50}
+                  onCommit={(mm) => updateElement({ ...el, width: toUnits(mm) })}
+                />
+                <LengthField
+                  id="beam-depth-edit"
+                  label="Depth"
+                  mm={el.depth * MM_PER_UNIT}
+                  units={units}
+                  min={50}
+                  onCommit={(mm) => updateElement({ ...el, depth: toUnits(mm) })}
+                />
+              </div>
+            )}
+            {el.type === 'slab' && (
+              <LengthField
+                id="slab-thickness-edit"
+                label="Thickness"
+                mm={el.thickness * MM_PER_UNIT}
+                units={units}
+                min={50}
+                onCommit={(mm) => updateElement({ ...el, thickness: toUnits(mm) })}
+              />
             )}
 
             {el.type === 'furniture' && (

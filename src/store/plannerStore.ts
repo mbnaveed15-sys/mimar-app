@@ -36,7 +36,7 @@ import {
   ungroup,
 } from '../lib/selection';
 import { applyTheme, type ThemeId } from '../theme/themes';
-import { SIMPLE_TOOLS } from '../types';
+import { GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
 import type {
   Draft,
   Id,
@@ -53,6 +53,26 @@ import type {
 } from '../types';
 
 export const HISTORY_LIMIT = 100;
+
+export interface StructureSpec {
+  columnShape: 'rect' | 'round';
+  columnW: number;
+  columnH: number;
+  beamWidth: number;
+  beamDepth: number;
+  slabThickness: number;
+}
+
+const inch = (n: number) => (n * 25.4) / MM_PER_UNIT;
+/** 9" × 12" columns, 9" × 18" beams and a 6" slab: common RCC sizes for Pakistani houses. */
+export const DEFAULT_STRUCTURE: StructureSpec = {
+  columnShape: 'rect',
+  columnW: inch(9),
+  columnH: inch(12),
+  beamWidth: inch(9),
+  beamDepth: inch(18),
+  slabThickness: inch(6),
+};
 export { MM_PER_UNIT };
 
 const OPENING_WIDTH_MM = { door: 900, window: 1200 } as const;
@@ -73,6 +93,24 @@ export interface PlannerState {
   selectedIds: Id[];
   /** The group or component copy open for editing (its items can be picked one by one). */
   openGroupId: Id | null;
+  /** The floor being drawn on; only its items are shown and editable in 2D. */
+  activeLevel: Id;
+  setActiveLevel: (id: Id) => void;
+  /** Add a floor above the top one and switch to it. */
+  addLevel: () => void;
+  renameLevel: (id: Id, name: string) => void;
+  /** Remove a floor (not the ground floor) and everything on it. */
+  deleteLevel: (id: Id) => void;
+  /** Elements and rooms on the active floor. */
+  levelElements: () => PlanElement[];
+  levelRooms: () => Room[];
+  setPlinthMm: (mm: number) => void;
+  /** Sizes for new columns, beams and slabs, in plan units. */
+  structure: StructureSpec;
+  setStructure: (patch: Partial<StructureSpec>) => void;
+  addColumn: (p: Point) => void;
+  addBeam: (a: Point, b: Point) => void;
+  addSlab: (points: Point[]) => void;
   brushSize: number;
   gridPx: number;
   scaleMMperPx: number;
@@ -259,6 +297,12 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       openGroupId: null,
       warnings: [],
       lastCopy: null,
+      activeLevel: GROUND_LEVEL,
+    };
+    /** Put a new item on the active floor. */
+    const onActive = <T extends { levelId?: Id }>(item: T): T => {
+      const level = get().activeLevel;
+      return level === GROUND_LEVEL ? item : { ...item, levelId: level };
     };
     /** Keep only selected items that still exist (after undo, erase, hiding furniture). */
     const refreshSelection = () => {
@@ -292,6 +336,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       selectedId: null,
       selectedIds: [],
       openGroupId: null,
+      activeLevel: GROUND_LEVEL,
       brushSize: 24,
       gridPx: gridFor(prefs.grid, prefs.units),
       scaleMMperPx: MM_PER_UNIT,
@@ -412,7 +457,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         const { doc, openGroupId } = get();
         const pool = openGroupId
           ? [...doc.elements, ...doc.rooms].filter((it) => it.groupId === openGroupId)
-          : [...get().visibleElements(), ...doc.rooms];
+          : [...get().visibleElements(), ...get().levelRooms()];
         get().setSelection(pool.map((it) => it.id));
       },
       deleteSelected: () => {
@@ -548,10 +593,12 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         const fresh = new Set(ids);
         const known = new Set(clip.doc.groups.map((g) => g.id));
         const newGroups = source.groups.filter((g) => !known.has(g.id));
+        // Pasted items land on the floor being viewed.
+        const here = <T extends { levelId?: Id }>(it: T): T => ({ ...onActive({ ...it, levelId: undefined }) });
         get().commit((doc) => ({
           ...doc,
-          elements: [...doc.elements, ...source.elements.filter((el) => fresh.has(el.id))],
-          rooms: [...doc.rooms, ...source.rooms.filter((r) => fresh.has(r.id))],
+          elements: [...doc.elements, ...source.elements.filter((el) => fresh.has(el.id)).map(here)],
+          rooms: [...doc.rooms, ...source.rooms.filter((r) => fresh.has(r.id)).map(here)],
           groups: [...doc.groups, ...newGroups],
           // A pasted component copy brings its component along if this plan doesn't have it.
           components: [
@@ -579,7 +626,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
 
       addWall: (a, b) => {
         if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
-        const wall: PlanElement = {
+        const wall: PlanElement = onActive({
           id: newId(),
           type: 'wall',
           x1: a.x,
@@ -588,17 +635,20 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           y2: b.y,
           thickness: get().wallThicknessMm / MM_PER_UNIT,
           material: activeMat(),
-        };
+        } as PlanElement);
         updateElements((els) => [...els, wall]);
       },
       placeOpening: (type, p) => {
-        const wall = nearestWall(get().doc.elements, p, get().hitTolerance() * 1.5);
+        const wall = nearestWall(get().levelElements(), p, get().hitTolerance() * 1.5);
         if (!wall) {
           get().setWarning(`Click on a wall to place a ${type}.`);
           return;
         }
         const pos = placeOnWall(wall, p, mmToPx(OPENING_WIDTH_MM[type]));
-        updateElements((els) => [...els, { id: newId(), type, wallId: wall.id, ...pos, material: activeMat() }]);
+        updateElements((els) => [
+          ...els,
+          onActive<PlanElement>({ id: newId(), type, wallId: wall.id, ...pos, material: activeMat() }),
+        ]);
         get().setWarning(null);
       },
       addFurniture: (p) => {
@@ -613,7 +663,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           w: mmToPx(size.w),
           h: mmToPx(size.d),
         };
-        updateElements((els) => [...els, el]);
+        updateElements((els) => [...els, onActive(el)]);
         // Show the new item so it is visible even if the furniture layer was hidden.
         if (!get().showFurniture) get().setLayer('showFurniture', true);
       },
@@ -730,9 +780,86 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
       setFurnitureKind: (furnitureKind) => set({ furnitureKind }),
       visibleElements: () => {
-        const { doc, showFurniture } = get();
-        return showFurniture ? doc.elements : doc.elements.filter((el) => el.type !== 'furniture');
+        const { showFurniture } = get();
+        const els = get().levelElements();
+        return showFurniture ? els : els.filter((el) => el.type !== 'furniture');
       },
+      levelElements: () => {
+        const { doc, activeLevel } = get();
+        return doc.elements.filter((el) => levelOf(el) === activeLevel);
+      },
+      levelRooms: () => {
+        const { doc, activeLevel } = get();
+        return doc.rooms.filter((r) => levelOf(r) === activeLevel);
+      },
+      setActiveLevel: (id) => {
+        if (!get().doc.levels.some((l) => l.id === id) || id === get().activeLevel) return;
+        get().cancelBatch();
+        if (get().openGroupId) get().closeGroup();
+        set({ activeLevel: id, selectedId: null, selectedIds: [], draft: null, inference: null, lastCopy: null });
+      },
+      addLevel: () => {
+        const names = ['Ground floor', 'First floor', 'Second floor', 'Third floor', 'Fourth floor'];
+        const id = newId();
+        get().commit((doc) => ({
+          ...doc,
+          levels: [...doc.levels, { id, name: names[doc.levels.length] ?? `Floor ${doc.levels.length}` }],
+        }));
+        get().setActiveLevel(id);
+      },
+      renameLevel: (id, name) =>
+        get().commit((doc) =>
+          name.trim() && doc.levels.some((l) => l.id === id && l.name !== name)
+            ? { ...doc, levels: doc.levels.map((l) => (l.id === id ? { ...l, name: name.trim() } : l)) }
+            : doc,
+        ),
+      deleteLevel: (id) => {
+        if (id === GROUND_LEVEL) return;
+        if (get().activeLevel === id) get().setActiveLevel(GROUND_LEVEL);
+        get().commit((doc) => ({
+          ...doc,
+          levels: doc.levels.filter((l) => l.id !== id),
+          elements: doc.elements.filter((el) => levelOf(el) !== id),
+          rooms: doc.rooms.filter((r) => levelOf(r) !== id),
+        }));
+      },
+      structure: DEFAULT_STRUCTURE,
+      setStructure: (patch) => set((st) => ({ structure: { ...st.structure, ...patch } })),
+      addColumn: (p) => {
+        const { structure: c } = get();
+        const col: PlanElement = {
+          id: newId(),
+          type: 'column',
+          x: p.x,
+          y: p.y,
+          w: c.columnW,
+          h: c.columnShape === 'round' ? c.columnW : c.columnH,
+          shape: c.columnShape,
+        };
+        updateElements((els) => [...els, onActive(col)]);
+      },
+      addBeam: (a, b) => {
+        if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
+        const { structure: c } = get();
+        const beam: PlanElement = {
+          id: newId(),
+          type: 'beam',
+          x1: a.x,
+          y1: a.y,
+          x2: b.x,
+          y2: b.y,
+          width: c.beamWidth,
+          depth: c.beamDepth,
+        };
+        updateElements((els) => [...els, onActive(beam)]);
+      },
+      addSlab: (points) => {
+        if (points.length < 3) return;
+        const slab: PlanElement = { id: newId(), type: 'slab', points, thickness: get().structure.slabThickness };
+        updateElements((els) => [...els, onActive(slab)]);
+      },
+      setPlinthMm: (mm) =>
+        get().commit((doc) => (doc.plinthMm === mm ? doc : { ...doc, plinthMm: Math.max(0, Math.min(3000, mm)) })),
       setMode: (mode) => {
         set((s) => ({ mode, tool: mode === 'simple' && !SIMPLE_TOOLS.includes(s.tool) ? 'select' : s.tool }));
         persistPrefs();
@@ -771,19 +898,18 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
 
       addRoomAt: (p) => {
-        const { doc } = get();
         const existing = get().roomAt(p);
         if (existing) {
           get().select(existing.id);
           set({ warnings: [] });
           return;
         }
-        const points = detectRoom(doc.elements, p);
+        const points = detectRoom(get().levelElements(), p);
         if (!points) {
           get().setWarning('Click inside an area that is closed on all sides by walls.');
           return;
         }
-        const room: Room = { id: newId(), name: `Room ${doc.rooms.length + 1}`, points };
+        const room = onActive<Room>({ id: newId(), name: `Room ${get().levelRooms().length + 1}`, points });
         get().commit((d) => ({ ...d, rooms: [...d.rooms, room] }));
         get().select(room.id);
         set({ warnings: [] });
@@ -795,7 +921,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
             : doc,
         ),
       roomAt: (p) => {
-        const rooms = get().doc.rooms;
+        const rooms = get().levelRooms();
         // Topmost (last added) room wins where rooms overlap.
         for (let i = rooms.length - 1; i >= 0; i--) if (pointInPolygon(p, rooms[i].points)) return rooms[i];
         return null;

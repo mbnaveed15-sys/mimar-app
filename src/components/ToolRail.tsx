@@ -7,6 +7,7 @@ import { Icon } from './Icon';
 const GROUPS: Tool[][] = [
   ['select', 'pan', 'zoom'],
   ['wall', 'rectangle', 'room', 'door', 'window', 'furniture'],
+  ['column', 'beam', 'slab'],
   ['move', 'rotate', 'tape'],
   ['paint', 'erase'],
   ['brush', 'mask'],

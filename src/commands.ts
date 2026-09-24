@@ -54,6 +54,14 @@ const selectedElement = (s: PlannerState) =>
 const canTransform = (s: PlannerState) =>
   s.selectedIds.length > 1 || ['wall', 'furniture'].includes(selectedElement(s)?.type ?? '') || !!s.selectedGroup();
 
+/** Switch to the floor above (1) or below (-1). */
+function stepLevel(step: number) {
+  const s = st();
+  const i = s.doc.levels.findIndex((l) => l.id === s.activeLevel);
+  const next = s.doc.levels[i + step];
+  if (next) s.setActiveLevel(next.id);
+}
+
 function toolCommand(tool: Tool, menu: MenuId, group: number): Command {
   const info = TOOL_INFO[tool];
   return {
@@ -274,6 +282,25 @@ export function buildCommands(ctx: CommandContext): Command[] {
       kind: 'radio',
       checked: (s) => s.view3d,
     },
+    {
+      id: 'view.levelUp',
+      label: 'Floor above',
+      menu: 'view',
+      group: 0,
+      keys: ['PageUp'],
+      run: () => stepLevel(1),
+      enabled: (s) => s.doc.levels.findIndex((l) => l.id === s.activeLevel) < s.doc.levels.length - 1,
+    },
+    {
+      id: 'view.levelDown',
+      label: 'Floor below',
+      menu: 'view',
+      group: 0,
+      keys: ['PageDown'],
+      run: () => stepLevel(-1),
+      enabled: (s) => s.doc.levels.findIndex((l) => l.id === s.activeLevel) > 0,
+    },
+    { id: 'view.addLevel', label: 'Add floor above', menu: 'view', group: 0, run: () => st().addLevel() },
     { id: 'view.zoomIn', label: 'Zoom in', menu: 'view', group: 1, keys: ['+', '='], run: () => st().zoomBy(1.25) },
     { id: 'view.zoomOut', label: 'Zoom out', menu: 'view', group: 1, keys: ['-'], run: () => st().zoomBy(1 / 1.25) },
     {

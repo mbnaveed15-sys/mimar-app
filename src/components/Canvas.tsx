@@ -12,6 +12,7 @@ import {
 import { PLAN_FONT } from '../lib/planImage';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
+import { useLevelDoc } from '../store/useLevelDoc';
 import { PLAN } from '../theme/plan';
 import { trimAt } from '../lib/modify';
 import { itemsInBox, moveItems, selectionBounds } from '../lib/selection';
@@ -68,7 +69,9 @@ interface Props {
 }
 
 export function Canvas({ svgRef, onContextMenu }: Props) {
-  const doc = usePlanner((s) => s.doc);
+  const doc = useLevelDoc()!;
+  // The floor below, drawn faintly so the walls above can be traced over it.
+  const below = useLevelDoc(-1);
   const draft = usePlanner((s) => s.draft);
   const inference = usePlanner((s) => s.inference);
   const axisLock = usePlanner((s) => s.axisLock);
@@ -245,7 +248,12 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
             const wall = s.doc.elements.find((el): el is Wall => el.type === 'wall' && el.id === orig.wallId);
             if (wall) s.updateElement({ ...orig, ...placeOnWall(wall, raw, orig.width) });
           } else {
-            const anchor = orig.type === 'wall' ? { x: orig.x1, y: orig.y1 } : { x: orig.x, y: orig.y };
+            const anchor =
+              orig.type === 'wall' || orig.type === 'beam'
+                ? { x: orig.x1, y: orig.y1 }
+                : orig.type === 'slab'
+                  ? orig.points[0]
+                  : { x: orig.x, y: orig.y };
             const moved = { x: anchor.x + raw.x - drag.start.x, y: anchor.y + raw.y - drag.start.y };
             const target = orig.type === 'wall' ? snapPoint(moved, orig.id) : gridSnap(moved);
             s.updateElement(translateElement(orig, target.x - anchor.x, target.y - anchor.y));
@@ -329,7 +337,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     };
     // Right to left is a crossing selection, like SketchUp and AutoCAD.
     const crossing = end.x < d.x1;
-    const pool = [...s.visibleElements(), ...s.doc.rooms].filter(
+    const pool = [...s.visibleElements(), ...s.levelRooms()].filter(
       (it) => !s.openGroupId || it.groupId === s.openGroupId,
     );
     s.setSelection(itemsInBox(pool, box, crossing), d.additive);
@@ -419,6 +427,22 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
           look={grid}
           k={k}
         />
+      )}
+
+      {below && (
+        <g opacity={0.22} pointerEvents="none" data-testid="level-below">
+          <PlanDrawing
+            doc={{ ...below, rooms: [], elements: below.elements.filter((el) => el.type !== 'furniture') }}
+            selectedIds={[]}
+            units={units}
+            marlaSqFt={marlaSqFt}
+            showDimensions={false}
+            showFurniture={false}
+            showRoomLabels={false}
+            showRoomFills={false}
+            k={k}
+          />
+        </g>
       )}
 
       <PlanDrawing

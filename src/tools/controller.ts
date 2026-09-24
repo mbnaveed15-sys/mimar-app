@@ -16,6 +16,15 @@ import {
   modifyReadout,
   modifyRelease,
 } from './modifyTools';
+import {
+  STRUCTURE_TOOLS,
+  structureHint,
+  structureHover,
+  structureMeasure,
+  structurePress,
+  structureReadout,
+  structureRelease,
+} from './structureTools';
 
 /** The bits of a zustand store the controller needs. */
 export interface Store {
@@ -39,6 +48,9 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   chamfer: 'pair',
   stretch: 'length',
   scale: 'scale',
+  column: 'none',
+  beam: 'length',
+  slab: 'pair',
 };
 
 /** Rotation snaps to this many degrees unless Shift is held. */
@@ -54,7 +66,7 @@ const degrees = (v: Point) => (Math.atan2(v.y, v.x) * 180) / Math.PI;
 export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreIds?: Set<Id>): Inference {
   const lock = from ? (s.axisLock ? axisDirection(s.axisLock) : s.shiftLock) : null;
   return infer(raw, {
-    walls: wallsOf(s.doc.elements),
+    walls: wallsOf(s.levelElements()),
     tolerance: 10 / s.view.zoom,
     from,
     grid: s.grid.snap ? s.gridPx : null,
@@ -68,6 +80,7 @@ export function anchorOf(s: PlannerState): Point | null {
   const d = s.draft;
   if (!d) return null;
   if (MODIFY_TOOLS.includes(s.tool)) return modifyAnchor(s);
+  if (d.type === 'beam' || d.type === 'slab') return { x: d.x1, y: d.y1 };
   switch (d.type) {
     case 'wall':
     case 'rectangle':
@@ -131,6 +144,7 @@ export function hover(store: Store, raw: Point, shift = false) {
   const inf = inferAt(s, raw, from, movingIds(s));
   s.setInference(inf);
   if (MODIFY_TOOLS.includes(s.tool)) return modifyHover(store, raw, inf, shift);
+  if (STRUCTURE_TOOLS.includes(s.tool)) return structureHover(store, inf);
   const p = inf.point;
   if (!d) return;
 
@@ -231,6 +245,10 @@ export function press(store: Store, raw: Point, opts: { ctrl?: boolean } = {}): 
     modifyPress(store, raw, inf, opts);
     return true;
   }
+  if (STRUCTURE_TOOLS.includes(s.tool)) {
+    structurePress(store, inf);
+    return true;
+  }
 
   switch (s.tool) {
     case 'wall': {
@@ -325,6 +343,7 @@ export function release(store: Store, dragged: boolean) {
   const s = store.getState();
   const d = s.draft;
   if (MODIFY_TOOLS.includes(s.tool)) return modifyRelease(store, dragged);
+  if (STRUCTURE_TOOLS.includes(s.tool)) return structureRelease(store, dragged);
   if (s.tool !== 'wall' || d?.type !== 'wall' || d.chain) return;
   if (dragged) {
     s.addWall({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 });
@@ -355,8 +374,8 @@ export function applyMeasure(store: Store, text: string): boolean {
     };
     return fail(hints[kind]);
   }
-  if (MODIFY_TOOLS.includes(s.tool)) {
-    const error = modifyMeasure(store, m);
+  if (MODIFY_TOOLS.includes(s.tool) || STRUCTURE_TOOLS.includes(s.tool)) {
+    const error = MODIFY_TOOLS.includes(s.tool) ? modifyMeasure(store, m) : structureMeasure(store, m);
     if (error) return fail(error);
     s.setWarning(null);
     return true;
@@ -481,7 +500,7 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
     case 'rotate':
       return { label: 'Angle', value: d?.type === 'rotate' ? `${Math.round(d.angle)}°` : '' };
     default:
-      return modifyReadout(s);
+      return STRUCTURE_TOOLS.includes(s.tool) ? structureReadout(s) : modifyReadout(s);
   }
 }
 
@@ -538,6 +557,6 @@ export function toolHint(s: PlannerState): string {
     case 'erase':
       return 'Click an item to remove it; Shift+click a wall to erase just the piece between crossing walls.';
     default:
-      return modifyHint(s);
+      return STRUCTURE_TOOLS.includes(s.tool) ? structureHint(s) : modifyHint(s);
   }
 }

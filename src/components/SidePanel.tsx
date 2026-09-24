@@ -8,6 +8,7 @@ import { Inspector } from './Inspector';
 import { LayersPanel } from './LayersPanel';
 import { MaterialsPanel } from './MaterialsPanel';
 import { SettingsPanel } from './SettingsPanel';
+import { StructureOptions } from './StructureOptions';
 import { ThemePicker } from './ThemePicker';
 import { UpdatePanel } from './UpdatePanel';
 import type { SectionId, useOpenSections } from './useOpenSections';
@@ -56,6 +57,7 @@ function ToolOptions() {
   if (view3d) return null;
   if (tool === 'wall' || tool === 'rectangle') return <WallThicknessPicker />;
   if (tool === 'furniture') return <FurnitureLibrary />;
+  if (tool === 'column' || tool === 'beam' || tool === 'slab') return <StructureOptions />;
   if (tool === 'brush')
     return (
       <div className="flex flex-col gap-1 text-xs">

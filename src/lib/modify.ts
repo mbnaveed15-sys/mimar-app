@@ -3,7 +3,17 @@
  * mirror, scale and stretch for any selection. Everything here is pure: plan in, plan out.
  */
 import { placeOnWall, wallParam } from '../geometry';
-import type { Bounds, Id, Opening, PlanDoc, PlanElement, Point, Room, Wall } from '../types';
+import {
+  levelOf,
+  type Bounds,
+  type Id,
+  type Opening,
+  type PlanDoc,
+  type PlanElement,
+  type Point,
+  type Room,
+  type Wall,
+} from '../types';
 import { newId } from './ids';
 
 const EPS = 1e-6;
@@ -49,7 +59,7 @@ export function lineCross(a: Wall, b: Wall): Point | null {
 export function wallCuts(doc: PlanDoc, wall: Wall, tol: number): number[] {
   const ts: number[] = [];
   for (const other of wallsOf(doc)) {
-    if (other.id === wall.id) continue;
+    if (other.id === wall.id || levelOf(other) !== levelOf(wall)) continue;
     const hit = segmentHit(start(wall), end(wall), start(other), end(other), tol);
     if (hit && hit.t > EPS && hit.t < 1 - EPS) ts.push(hit.t);
   }
@@ -127,7 +137,7 @@ export function extendWall(doc: PlanDoc, wallId: Id, p: Point): PlanDoc | null {
   let best: Point | null = null;
   let bestD = Infinity;
   for (const other of wallsOf(doc)) {
-    if (other.id === wall.id) continue;
+    if (other.id === wall.id || levelOf(other) !== levelOf(wall)) continue;
     const hit = segmentHit(tip, ray, start(other), end(other));
     if (!hit || hit.t * 1e4 < 1e-3) continue;
     const d = hit.t * 1e4;
@@ -304,6 +314,12 @@ export function mirrorItems(doc: PlanDoc, ids: Id[], a: Point, b: Point, flip: b
     if (el.type === 'wall') {
       // Swap the ends so the wall still runs the same way round a room.
       mirrored.set(el.id, withEnds({ ...el, ...fresh, id }, reflect(end(el), a, b), reflect(start(el), a, b)));
+    } else if (el.type === 'beam') {
+      const p1 = reflect({ x: el.x1, y: el.y1 }, a, b);
+      const p2 = reflect({ x: el.x2, y: el.y2 }, a, b);
+      mirrored.set(el.id, { ...el, ...fresh, id, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
+    } else if (el.type === 'slab') {
+      mirrored.set(el.id, { ...el, ...fresh, id, points: el.points.map((p) => reflect(p, a, b)).reverse() });
     } else {
       const p = reflect(el, a, b);
       mirrored.set(el.id, {
@@ -363,8 +379,17 @@ export function scaleItems(doc: PlanDoc, ids: Id[], base: Point, factor: number)
       walls.set(w.id, w);
       return w;
     }
+    if (el.type === 'beam') {
+      const p1 = sc({ x: el.x1, y: el.y1 });
+      const p2 = sc({ x: el.x2, y: el.y2 });
+      return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+    }
+    if (el.type === 'slab') return { ...el, points: el.points.map(sc) };
     const p = sc(el);
-    return { ...el, x: p.x, y: p.y, w: el.w * factor, h: el.h * factor };
+    // Columns keep their size (a structural size), furniture scales.
+    return el.type === 'column'
+      ? { ...el, x: p.x, y: p.y }
+      : { ...el, x: p.x, y: p.y, w: el.w * factor, h: el.h * factor };
   });
   return {
     ...doc,
@@ -394,7 +419,14 @@ export function stretchItems(doc: PlanDoc, box: Bounds, dx: number, dy: number):
       walls.set(w.id, w);
       return w;
     }
-    if (el.type === 'furniture') return inBox(el, box) ? { ...el, x: el.x + dx, y: el.y + dy } : el;
+    if (el.type === 'furniture' || el.type === 'column')
+      return inBox(el, box) ? { ...el, x: el.x + dx, y: el.y + dy } : el;
+    if (el.type === 'beam') {
+      const p1 = move({ x: el.x1, y: el.y1 });
+      const p2 = move({ x: el.x2, y: el.y2 });
+      return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+    }
+    if (el.type === 'slab') return { ...el, points: el.points.map(move) };
     return el;
   });
   return {

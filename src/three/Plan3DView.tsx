@@ -104,9 +104,24 @@ function buildMeshes(model: Model3D): THREE.Group {
     const geometry = new THREE.ShapeGeometry(shape);
     geometry.rotateX(-Math.PI / 2);
     const mesh = new THREE.Mesh(geometry, material(floor.color));
-    mesh.position.y = 0.005;
+    mesh.position.y = floor.y + 0.005;
     mesh.receiveShadow = true;
     group.add(mesh);
+  }
+
+  for (const slab of model.slabs) {
+    if (slab.points.length < 3) continue;
+    const shape = new THREE.Shape(slab.points.map(([x, z]) => new THREE.Vector2(x, -z)));
+    const geometry = new THREE.ExtrudeGeometry(shape, { depth: slab.h, bevelEnabled: false });
+    geometry.rotateX(-Math.PI / 2);
+    const mesh = new THREE.Mesh(geometry, material(slab.color));
+    mesh.position.y = slab.y0;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMaterial);
+    edges.position.copy(mesh.position);
+    group.add(edges);
   }
   return group;
 }
@@ -232,6 +247,7 @@ export default function Plan3DView() {
     }
     host.dataset.solids = String(model.solids.length);
     host.dataset.floors = String(model.floors.length);
+    host.dataset.slabs = String(model.slabs.length);
     stage.render();
   }, [doc, wallHeightMm, showFurniture]);
 

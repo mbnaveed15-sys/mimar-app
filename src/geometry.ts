@@ -1,4 +1,7 @@
-import type { Bounds, Furniture, Mask, Opening, PlanElement, Point, Wall } from './types';
+import type { Bounds, Mask, Opening, PlanElement, Point, Wall } from './types';
+
+/** Anything placed by its centre, with a size and an optional rotation (furniture, columns). */
+type Placed = { x: number; y: number; rotation?: number };
 
 /** 9" in plan units; duplicated from walls.ts to avoid a circular import. */
 const DEFAULT_THICKNESS = 22.86;
@@ -43,8 +46,15 @@ export function openingEndpoints(o: Opening): [Point, Point] {
   ];
 }
 
+/** Average of a polygon's corners. */
+export function centroid(points: Point[]): Point {
+  const n = points.length || 1;
+  return { x: points.reduce((s, p) => s + p.x, 0) / n, y: points.reduce((s, p) => s + p.y, 0) / n };
+}
+
 export function elementCenter(el: PlanElement): Point {
-  if (el.type === 'wall') return { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 };
+  if (el.type === 'wall' || el.type === 'beam') return { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 };
+  if (el.type === 'slab') return centroid(el.points);
   return { x: el.x, y: el.y };
 }
 
@@ -55,9 +65,19 @@ export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
       const reach = Math.max(threshold, (el.thickness ?? DEFAULT_THICKNESS) / 2);
       return pointToSegmentDistance(p, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 }) < reach;
     }
-    case 'furniture': {
+    case 'furniture':
+    case 'column': {
       const local = toFurnitureLocal(el, p);
+      if (el.type === 'column' && el.shape === 'round') return Math.hypot(local.x, local.y) <= el.w / 2 + threshold / 2;
       return Math.abs(local.x) <= el.w / 2 && Math.abs(local.y) <= el.h / 2;
+    }
+    case 'beam':
+      return (
+        pointToSegmentDistance(p, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 }) < Math.max(threshold, el.width / 2)
+      );
+    case 'slab': {
+      // A slab is picked by its edge, so rooms and furniture on it stay clickable.
+      return el.points.some((a, i) => pointToSegmentDistance(p, a, el.points[(i + 1) % el.points.length]) < threshold);
     }
     case 'door':
     case 'window': {
@@ -110,7 +130,7 @@ export function placeOnWall(
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
 /** Point p in the furniture's own frame (origin at its centre, unrotated). */
-export function toFurnitureLocal(f: Furniture, p: Point): Point {
+export function toFurnitureLocal(f: Placed, p: Point): Point {
   const a = -rad(f.rotation ?? 0);
   const dx = p.x - f.x;
   const dy = p.y - f.y;
@@ -118,7 +138,7 @@ export function toFurnitureLocal(f: Furniture, p: Point): Point {
 }
 
 /** A point given in the furniture's own frame, in plan coordinates. */
-export function fromFurnitureLocal(f: Furniture, local: Point): Point {
+export function fromFurnitureLocal(f: Placed, local: Point): Point {
   const a = rad(f.rotation ?? 0);
   return {
     x: f.x + local.x * Math.cos(a) - local.y * Math.sin(a),
@@ -150,7 +170,9 @@ export function withWallLength(wall: Wall, length: number): Wall {
 }
 
 export function translateElement<T extends PlanElement>(el: T, dx: number, dy: number): T {
-  if (el.type === 'wall') return { ...el, x1: el.x1 + dx, y1: el.y1 + dy, x2: el.x2 + dx, y2: el.y2 + dy };
+  if (el.type === 'wall' || el.type === 'beam')
+    return { ...el, x1: el.x1 + dx, y1: el.y1 + dy, x2: el.x2 + dx, y2: el.y2 + dy };
+  if (el.type === 'slab') return { ...el, points: el.points.map((p) => ({ x: p.x + dx, y: p.y + dy })) };
   return { ...el, x: el.x + dx, y: el.y + dy };
 }
 
@@ -166,12 +188,13 @@ export function rotatePoint(p: Point, c: Point, degrees: number): Point {
 
 /** Turn any plan item about centre c. */
 export function rotateElement<T extends PlanElement>(el: T, c: Point, degrees: number): T {
-  if (el.type === 'wall') {
+  if (el.type === 'wall' || el.type === 'beam') {
     const a = rotatePoint({ x: el.x1, y: el.y1 }, c, degrees);
     const b = rotatePoint({ x: el.x2, y: el.y2 }, c, degrees);
     return { ...el, x1: a.x, y1: a.y, x2: b.x, y2: b.y };
   }
-  if (el.type === 'furniture') {
+  if (el.type === 'slab') return { ...el, points: el.points.map((p) => rotatePoint(p, c, degrees)) };
+  if (el.type === 'furniture' || el.type === 'column') {
     const p = rotatePoint({ x: el.x, y: el.y }, c, degrees);
     return { ...el, x: p.x, y: p.y, rotation: ((((el.rotation ?? 0) + degrees) % 360) + 360) % 360 };
   }
@@ -187,11 +210,15 @@ export function elementOutline(el: PlanElement): Point[] {
 function elementPoints(el: PlanElement): Point[] {
   switch (el.type) {
     case 'wall':
+    case 'beam':
       return [
         { x: el.x1, y: el.y1 },
         { x: el.x2, y: el.y2 },
       ];
+    case 'slab':
+      return el.points;
     case 'furniture':
+    case 'column':
       return [
         { x: -el.w / 2, y: -el.h / 2 },
         { x: el.w / 2, y: -el.h / 2 },
