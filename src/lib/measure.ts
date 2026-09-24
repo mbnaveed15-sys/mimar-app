@@ -6,10 +6,11 @@ export type Measure =
   | { kind: 'length'; mm: number }
   | { kind: 'pair'; a: number; b: number }
   | { kind: 'angle'; deg: number }
-  | { kind: 'copies'; n: number; spread: boolean };
+  | { kind: 'copies'; n: number; spread: boolean }
+  | { kind: 'factor'; factor: number };
 
 /** What the active tool expects to be typed. */
-export type MeasureKind = 'length' | 'pair' | 'angle' | 'move';
+export type MeasureKind = 'length' | 'pair' | 'angle' | 'move' | 'scale' | 'none';
 
 const COPIES_RE = /^(?:(\d+)\s*[x*]|[x*]\s*(\d+))$/i;
 const SPREAD_RE = /^\/\s*(\d+)$/;
@@ -31,6 +32,12 @@ export function parseMeasure(text: string, units: Units, expect: MeasureKind): M
   const t = text.trim();
   if (!t) return null;
 
+  if (expect === 'none') return null;
+  if (expect === 'scale') {
+    // A bare number (optionally with x) is a factor; a length with units sets the reference length.
+    const f = /^(\d+(?:\.\d+)?|\.\d+)\s*x?$/i.exec(t);
+    if (f) return Number(f[1]) > 0 ? { kind: 'factor', factor: Number(f[1]) } : null;
+  }
   if (expect === 'angle') {
     const m = ANGLE_RE.exec(t);
     return m ? { kind: 'angle', deg: Number(m[1]) } : null;

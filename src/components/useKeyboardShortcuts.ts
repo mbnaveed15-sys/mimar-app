@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { matchesKeys, type Command } from '../commands';
 import { isMeasureKey } from '../lib/measure';
+import { mirrorItems } from '../lib/modify';
 import { plannerStore } from '../store/plannerStore';
 import {
   anchorOf,
@@ -11,6 +12,7 @@ import {
   toggleAxisLock,
   toggleCopy,
 } from '../tools/controller';
+import { modifyEnter } from '../tools/modifyTools';
 
 /** Keys typed into a field, or used to move around a menu or dialog, are not shortcuts. */
 const isTyping = (target: EventTarget | null) =>
@@ -37,7 +39,8 @@ export function useKeyboardShortcuts(commands: Command[]) {
       if (isTyping(e.target)) return;
       const s = plannerStore.getState();
       const mod = e.ctrlKey || e.metaKey || e.altKey;
-      const measuring = !s.view3d && s.tool in MEASURE_TOOLS;
+      const kind = MEASURE_TOOLS[s.tool];
+      const measuring = !s.view3d && !!kind && kind !== 'none';
 
       if (measuring && !mod) {
         if (isMeasureKey(e.key, s.measureText)) {
@@ -65,6 +68,7 @@ export function useKeyboardShortcuts(commands: Command[]) {
         return;
       }
       if (e.key === 'Enter') {
+        if (modifyEnter(plannerStore)) return;
         const d = s.draft;
         if (d?.type === 'mask') s.finishMask();
         else if (d?.type === 'wall' || d?.type === 'tape') s.setDraft(null);
@@ -92,6 +96,13 @@ export function useKeyboardShortcuts(commands: Command[]) {
       }
       if (e.key === 'Control' && !e.repeat && s.draft?.type === 'move') {
         toggleCopy(plannerStore);
+        return;
+      }
+      if (e.key === 'Control' && !e.repeat && s.draft?.type === 'mirror') {
+        // Ctrl switches Mirror between making a copy and flipping the originals.
+        const d = { ...s.draft, flip: !s.draft.flip };
+        s.setDraft(d);
+        s.commitFromBase((base) => mirrorItems(base, d.ids, d.a, d.b, d.flip).doc);
         return;
       }
 

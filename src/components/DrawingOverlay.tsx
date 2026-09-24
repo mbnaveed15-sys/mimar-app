@@ -72,6 +72,83 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k }: Prop
         </>
       )}
 
+      {d?.type === 'offset' && (
+        <line
+          data-testid="offset-preview"
+          x1={d.x1}
+          y1={d.y1}
+          x2={d.x2}
+          y2={d.y2}
+          style={{ stroke: PLAN.draft }}
+          strokeWidth={3 * k}
+          strokeDasharray={dash}
+        />
+      )}
+
+      {d?.type === 'mirror' && (
+        <g style={{ stroke: PLAN.selection }} strokeWidth={1.5 * k}>
+          <line
+            x1={d.a.x - (d.b.x - d.a.x) * 20}
+            y1={d.a.y - (d.b.y - d.a.y) * 20}
+            x2={d.a.x + (d.b.x - d.a.x) * 20}
+            y2={d.a.y + (d.b.y - d.a.y) * 20}
+            strokeDasharray={`${8 * k} ${3 * k} ${2 * k} ${3 * k}`}
+          />
+          <circle cx={d.a.x} cy={d.a.y} r={3 * k} style={{ fill: PLAN.selection }} />
+        </g>
+      )}
+
+      {d?.type === 'pick' && (
+        <circle
+          data-testid="picked-wall"
+          cx={d.point.x}
+          cy={d.point.y}
+          r={6 * k}
+          fill="none"
+          style={{ stroke: PLAN.selection }}
+          strokeWidth={2 * k}
+        />
+      )}
+
+      {d?.type === 'stretch' && (
+        <>
+          <rect
+            data-testid="stretch-box"
+            x={Math.min(d.x1, d.x2)}
+            y={Math.min(d.y1, d.y2)}
+            width={Math.abs(d.x2 - d.x1)}
+            height={Math.abs(d.y2 - d.y1)}
+            style={{ fill: PLAN.selection, stroke: PLAN.selection }}
+            fillOpacity={0.06}
+            strokeWidth={1.25 * k}
+            strokeDasharray={`${5 * k} ${4 * k}`}
+          />
+          {d.base && d.to && (
+            <line
+              x1={d.base.x}
+              y1={d.base.y}
+              x2={d.to.x}
+              y2={d.to.y}
+              style={{ stroke: band }}
+              strokeWidth={1.5 * k}
+              strokeDasharray={dash}
+            />
+          )}
+        </>
+      )}
+
+      {d?.type === 'scale' && (
+        <g style={{ stroke: PLAN.selection }} fill="none" strokeWidth={1.5 * k}>
+          <circle cx={d.base.x} cy={d.base.y} r={4 * k} style={{ fill: PLAN.selection }} />
+          {d.ref && <line x1={d.base.x} y1={d.base.y} x2={d.ref.x} y2={d.ref.y} strokeDasharray={dash} />}
+          {d.ref && (
+            <Label p={{ x: d.base.x + 10 * k, y: d.base.y - 10 * k }} k={k} color={PLAN.selection}>
+              {`${d.factor.toFixed(2)}×`}
+            </Label>
+          )}
+        </g>
+      )}
+
       {d?.type === 'marquee' && (
         <rect
           data-testid="selection-box"

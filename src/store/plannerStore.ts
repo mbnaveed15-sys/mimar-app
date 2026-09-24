@@ -101,6 +101,11 @@ export interface PlannerState {
   shiftLock: Point | null;
   /** The last Move-copy, so `3x` or `/3` typed next can turn it into an array. */
   lastCopy: { ids: Id[]; dx: number; dy: number; copyIds: Id[] } | null;
+  /** Fillet radius and chamfer distances, in plan units, set by typing while those tools are active. */
+  filletRadius: number;
+  chamferDist: [number, number];
+  setFilletRadius: (r: number) => void;
+  setChamferDist: (d: [number, number]) => void;
   /** Items copied with Ctrl+C, and the plan they came from. */
   clipboard: { doc: PlanDoc; ids: Id[] } | null;
   theme: ThemeId;
@@ -311,6 +316,10 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       shiftLock: null,
       lastCopy: null,
       clipboard: null,
+      filletRadius: 0,
+      chamferDist: [600 / MM_PER_UNIT, 600 / MM_PER_UNIT],
+      setFilletRadius: (filletRadius) => set({ filletRadius: Math.max(0, filletRadius) }),
+      setChamferDist: (chamferDist) => set({ chamferDist }),
       theme: prefs.theme,
       grid: prefs.grid,
       view: { x: 0, y: 0, zoom: 1 },
@@ -358,8 +367,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
 
       setTool: (tool) => {
         get().cancelBatch();
-        // Move and Rotate work on the selection, so it stays when switching to them.
-        const keep = tool === 'select' || tool === 'move' || tool === 'rotate';
+        // Tools that work on the selection keep it.
+        const keep = ['select', 'move', 'rotate', 'mirror', 'scale'].includes(tool);
         set((s) => ({
           tool,
           draft: null,

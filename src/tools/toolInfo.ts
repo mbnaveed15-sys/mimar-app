@@ -19,6 +19,16 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
   erase: { label: 'Eraser', icon: 'erase', key: 'E' },
   brush: { label: 'Brush', icon: 'brush', key: 'Shift+B' },
   mask: { label: 'Mask', icon: 'mask', key: 'Shift+M' },
+  offset: { label: 'Offset', icon: 'offset', key: 'F' },
+  mirror: { label: 'Mirror', icon: 'mirror', key: 'I' },
+  trim: { label: 'Trim', icon: 'trim', key: 'X' },
+  extend: { label: 'Extend', icon: 'extend', key: 'Shift+X' },
+  breakWall: { label: 'Break', icon: 'break', key: 'Shift+J' },
+  join: { label: 'Join', icon: 'join', key: 'J' },
+  fillet: { label: 'Fillet', icon: 'fillet', key: 'Shift+F' },
+  chamfer: { label: 'Chamfer', icon: 'chamfer', key: 'Shift+C' },
+  stretch: { label: 'Stretch', icon: 'stretch', key: 'Shift+S' },
+  scale: { label: 'Scale', icon: 'scale', key: 'S' },
 };
 
 /** Which menu each tool is listed in: drawing tools under Draw, the rest under Tools. */

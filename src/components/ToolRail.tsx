@@ -3,13 +3,14 @@ import { TOOL_INFO } from '../tools/toolInfo';
 import { SIMPLE_TOOLS, type Tool } from '../types';
 import { Icon } from './Icon';
 
-/** Tool rail groups, top to bottom: view, draw, change, finish, then the Pro tools. */
+/** Tool rail groups, top to bottom: view, draw, change, finish, then the Pro tools and Modify tools. */
 const GROUPS: Tool[][] = [
   ['select', 'pan', 'zoom'],
   ['wall', 'rectangle', 'room', 'door', 'window', 'furniture'],
   ['move', 'rotate', 'tape'],
   ['paint', 'erase'],
   ['brush', 'mask'],
+  ['offset', 'mirror', 'trim', 'extend', 'breakWall', 'join', 'fillet', 'chamfer', 'stretch', 'scale'],
 ];
 
 /** Vertical tool bar on the left, like SketchUp's. Hover a tool to see its key. */

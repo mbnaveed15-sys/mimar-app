@@ -5,7 +5,17 @@ import { boundsCentre, copyItems, deleteItems, moveItems, rotateItems, selection
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
 import type { Id, Point, Tool, Wall } from '../types';
+import { MODIFY_TOOLS } from '../types';
 import { wallsOf } from '../walls';
+import {
+  modifyAnchor,
+  modifyHint,
+  modifyHover,
+  modifyMeasure,
+  modifyPress,
+  modifyReadout,
+  modifyRelease,
+} from './modifyTools';
 
 /** The bits of a zustand store the controller needs. */
 export interface Store {
@@ -19,6 +29,16 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   tape: 'length',
   move: 'move',
   rotate: 'angle',
+  offset: 'length',
+  mirror: 'none',
+  trim: 'none',
+  extend: 'none',
+  breakWall: 'length',
+  join: 'none',
+  fillet: 'length',
+  chamfer: 'pair',
+  stretch: 'length',
+  scale: 'scale',
 };
 
 /** Rotation snaps to this many degrees unless Shift is held. */
@@ -47,6 +67,7 @@ export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreI
 export function anchorOf(s: PlannerState): Point | null {
   const d = s.draft;
   if (!d) return null;
+  if (MODIFY_TOOLS.includes(s.tool)) return modifyAnchor(s);
   switch (d.type) {
     case 'wall':
     case 'rectangle':
@@ -109,6 +130,7 @@ export function hover(store: Store, raw: Point, shift = false) {
   const from = anchorOf(s);
   const inf = inferAt(s, raw, from, movingIds(s));
   s.setInference(inf);
+  if (MODIFY_TOOLS.includes(s.tool)) return modifyHover(store, raw, inf, shift);
   const p = inf.point;
   if (!d) return;
 
@@ -205,6 +227,10 @@ export function press(store: Store, raw: Point, opts: { ctrl?: boolean } = {}): 
   const inf = inferAt(s, raw, from, movingIds(s));
   const p = inf.point;
   const tol = 10 / s.view.zoom;
+  if (MODIFY_TOOLS.includes(s.tool)) {
+    modifyPress(store, raw, inf, opts);
+    return true;
+  }
 
   switch (s.tool) {
     case 'wall': {
@@ -298,6 +324,7 @@ function finishWallAt(store: Store, p: Point, tol: number) {
 export function release(store: Store, dragged: boolean) {
   const s = store.getState();
   const d = s.draft;
+  if (MODIFY_TOOLS.includes(s.tool)) return modifyRelease(store, dragged);
   if (s.tool !== 'wall' || d?.type !== 'wall' || d.chain) return;
   if (dragged) {
     s.addWall({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 });
@@ -323,8 +350,16 @@ export function applyMeasure(store: Store, text: string): boolean {
       pair: `Type width and depth, e.g. 12',10'.`,
       angle: 'Type an angle in degrees, e.g. 90 or -45.',
       move: `Type a distance, or 3x / /3 for copies after a copy.`,
+      scale: 'Type a factor such as 2 or 0.5, or a length.',
+      none: 'This tool does not take typed values.',
     };
     return fail(hints[kind]);
+  }
+  if (MODIFY_TOOLS.includes(s.tool)) {
+    const error = modifyMeasure(store, m);
+    if (error) return fail(error);
+    s.setWarning(null);
+    return true;
   }
   const d = s.draft;
   const units = (mm: number) => mm / MM_PER_UNIT;
@@ -410,7 +445,7 @@ export function cancel(store: Store): boolean {
   }
   const d = s.draft;
   if (!d) return false;
-  if (d.type === 'move' || d.type === 'rotate') s.cancelBatch();
+  if (['move', 'rotate', 'mirror', 'stretch', 'scale'].includes(d.type)) s.cancelBatch();
   if (d.type === 'brush') s.endBatch();
   s.setDraft(null);
   return true;
@@ -446,7 +481,7 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
     case 'rotate':
       return { label: 'Angle', value: d?.type === 'rotate' ? `${Math.round(d.angle)}°` : '' };
     default:
-      return { label: '', value: '' };
+      return modifyReadout(s);
   }
 }
 
@@ -501,6 +536,8 @@ export function toolHint(s: PlannerState): string {
     case 'mask':
       return 'Click to add points. Double-click or press Enter to finish, Esc to cancel.';
     case 'erase':
-      return 'Click an item to remove it. Click inside a room to remove the room.';
+      return 'Click an item to remove it; Shift+click a wall to erase just the piece between crossing walls.';
+    default:
+      return modifyHint(s);
   }
 }

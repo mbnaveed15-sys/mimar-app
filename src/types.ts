@@ -130,7 +130,17 @@ export type Tool =
   | 'paint'
   | 'erase'
   | 'brush'
-  | 'mask';
+  | 'mask'
+  | 'offset'
+  | 'mirror'
+  | 'trim'
+  | 'extend'
+  | 'breakWall'
+  | 'join'
+  | 'fillet'
+  | 'chamfer'
+  | 'stretch'
+  | 'scale';
 
 /** Every tool, in tool-rail order. */
 export const TOOLS: Tool[] = [
@@ -150,6 +160,16 @@ export const TOOLS: Tool[] = [
   'erase',
   'brush',
   'mask',
+  'offset',
+  'mirror',
+  'trim',
+  'extend',
+  'breakWall',
+  'join',
+  'fillet',
+  'chamfer',
+  'stretch',
+  'scale',
 ];
 
 /** In-progress drawing that is not yet part of the document. */
@@ -169,6 +189,16 @@ export type Draft =
   | { type: 'tape'; a: Point; b: Point; done?: boolean }
   | { type: 'move'; ids: Id[]; base: Point; to: Point; copy: boolean }
   | { type: 'rotate'; ids: Id[]; center: Point; start?: Point; angle: number }
+  /** Offset: a parallel copy of a wall follows the pointer. */
+  | { type: 'offset'; wallId: Id; side: Point; dist: number; x1: number; y1: number; x2: number; y2: number }
+  /** Mirror line from a to b; flip turns the originals over instead of copying them. */
+  | { type: 'mirror'; ids: Id[]; a: Point; b: Point; flip: boolean }
+  /** The first wall picked by Join, Fillet, Chamfer or Break, and where it was clicked. */
+  | { type: 'pick'; wallId: Id; point: Point }
+  /** Stretch: the box, then a move from base to `to`. */
+  | { type: 'stretch'; x1: number; y1: number; x2: number; y2: number; boxDone: boolean; base?: Point; to?: Point }
+  /** Scale about base; the reference point sets the size being changed. */
+  | { type: 'scale'; ids: Id[]; base: Point; ref?: Point; factor: number }
   /** Box selection: dragging right selects what is inside, dragging left what it touches. */
   | { type: 'marquee'; x1: number; y1: number; x2: number; y2: number; additive: boolean }
   | { type: 'mask'; points: Point[]; cursor?: Point }
@@ -194,7 +224,21 @@ export interface Bounds {
 /** Simple mode shows the tools homeowners need; Pro mode shows everything. */
 export type Mode = 'simple' | 'pro';
 
-export const SIMPLE_TOOLS: Tool[] = TOOLS.filter((t) => t !== 'brush' && t !== 'mask');
+/** The AutoCAD-style editing tools, shown in Pro mode. */
+export const MODIFY_TOOLS: Tool[] = [
+  'offset',
+  'mirror',
+  'trim',
+  'extend',
+  'breakWall',
+  'join',
+  'fillet',
+  'chamfer',
+  'stretch',
+  'scale',
+];
+
+export const SIMPLE_TOOLS: Tool[] = TOOLS.filter((t) => t !== 'brush' && t !== 'mask' && !MODIFY_TOOLS.includes(t));
 
 export type PaperSize = 'A4' | 'A3';
 
