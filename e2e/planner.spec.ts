@@ -1,24 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
+import { at, drag, tool, menu } from './helpers';
 
-/** Screen position of a point in plan (SVG viewBox) coordinates. */
-async function at(page: Page, x: number, y: number): Promise<[number, number]> {
-  return page.getByTestId('plan-canvas').evaluate(
-    (svg, [px, py]) => {
-      const pt = new DOMPoint(px, py).matrixTransform((svg as SVGSVGElement).getScreenCTM()!);
-      return [pt.x, pt.y] as [number, number];
-    },
-    [x, y],
-  );
-}
-
-async function drag(page: Page, from: [number, number], to: [number, number]) {
-  await page.mouse.move(...(await at(page, ...from)));
-  await page.mouse.down();
-  await page.mouse.move(...(await at(page, ...to)), { steps: 5 });
-  await page.mouse.up();
-}
-
-const tool = (page: Page, name: string) => page.getByRole('button', { name, exact: true }).click();
 const count = (page: Page, type: string) => page.locator(`[data-type="${type}"]`).count();
 
 test('draw a wall, add a door, undo and redo', async ({ page }) => {
@@ -65,6 +47,6 @@ test('opens a plan saved by Mimar 1.x', async ({ page }) => {
 test('exports a PNG', async ({ page }) => {
   await page.goto('/');
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Export PNG' }).click();
+  await menu(page, 'File', 'Export PNG');
   expect((await download).suggestedFilename()).toBe('Untitled.png');
 });

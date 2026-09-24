@@ -25,10 +25,10 @@ const ROOM_NAMES = [
   'Laundry',
 ];
 
+/** Properties of the selected wall, opening, item or room, and a summary of the plan. */
 export function Inspector() {
   const doc = usePlanner((s) => s.doc);
   const selectedId = usePlanner((s) => s.selectedId);
-  const tool = usePlanner((s) => s.tool);
   const units = usePlanner((s) => s.units);
   const applyMaterial = usePlanner((s) => s.applyMaterial);
   const deleteElement = usePlanner((s) => s.deleteElement);
@@ -46,9 +46,8 @@ export function Inspector() {
   const btn = 'm-btn';
 
   return (
-    <aside className="flex w-80 flex-col gap-3 border-l border-line bg-surface p-3">
-      <h3 className="m-heading">Inspector</h3>
-      <div className="flex-1 overflow-auto">
+    <div className="flex flex-col">
+      <div>
         {el ? (
           <div className="mb-3 flex flex-col gap-2 rounded-md border border-line bg-raised p-2 text-xs">
             <div className="font-medium">
@@ -206,11 +205,7 @@ export function Inspector() {
               </button>
             </div>
           </div>
-        ) : (
-          tool === 'select' && (
-            <div className="mb-3 text-xs text-muted">Click an element to select it. Drag to move it.</div>
-          )
-        )}
+        ) : null}
         <div className="text-xs text-muted">
           Walls: {doc.elements.filter((e) => e.type === 'wall').length} · total length{' '}
           {formatLength(
@@ -240,8 +235,7 @@ export function Inspector() {
             </div>
           </div>
         )}
-        {mode === 'pro' && <div className="mt-2 text-xs text-muted">Materials count: {doc.materials.length}</div>}
-        <div className={mode === 'pro' ? 'pt-2' : 'hidden'}>
+        <div className={mode === 'pro' && doc.masks.length ? 'pt-2' : 'hidden'}>
           <div className="m-heading">Masks</div>
           <ul className="mt-2 text-xs">
             {doc.masks.map((m) => (
@@ -252,6 +246,6 @@ export function Inspector() {
           </ul>
         </div>
       </div>
-    </aside>
+    </div>
   );
 }

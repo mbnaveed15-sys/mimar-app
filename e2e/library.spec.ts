@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
+import { tool, menu } from './helpers';
 
 const FT = 30.48;
 
@@ -19,8 +20,6 @@ async function wall(page: Page, from: [number, number], to: [number, number]) {
   await page.mouse.move(...(await at(page, ...to)), { steps: 4 });
   await page.mouse.up();
 }
-
-const tool = (page: Page, name: string) => page.getByRole('button', { name, exact: true }).click();
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -67,7 +66,7 @@ test('layers hide furniture and dimensions on screen and in the PDF', async ({ p
   await tool(page, 'furniture');
   await page.mouse.click(...(await at(page, 10, 7)));
 
-  await page.getByLabel('Furniture', { exact: true }).uncheck();
+  await page.getByRole('checkbox', { name: 'Furniture' }).uncheck();
   await page.getByLabel('Dimensions').uncheck();
   await page.getByLabel('Room names & areas').uncheck();
   await expect(page.locator('[data-type="furniture"]')).toHaveCount(0);
@@ -75,12 +74,12 @@ test('layers hide furniture and dimensions on screen and in the PDF', async ({ p
   await expect(page.getByTestId('room-area')).toHaveCount(0);
 
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Export PDF' }).click();
+  await menu(page, 'File', 'Export PDF');
   const pdf = (await readFile(await (await download).path())).toString('latin1');
   expect(pdf).toContain('%PDF-');
 
   await page.reload();
-  await expect(page.getByLabel('Furniture', { exact: true })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Furniture' })).not.toBeChecked();
 });
 
 test('walls between rooms show their dimension only when selected', async ({ page }) => {

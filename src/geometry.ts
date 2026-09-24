@@ -154,6 +154,30 @@ export function translateElement<T extends PlanElement>(el: T, dx: number, dy: n
   return { ...el, x: el.x + dx, y: el.y + dy };
 }
 
+/** Turn p about centre c by the given degrees (clockwise on screen, as y points down). */
+export function rotatePoint(p: Point, c: Point, degrees: number): Point {
+  const r = (degrees * Math.PI) / 180;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  const dx = p.x - c.x;
+  const dy = p.y - c.y;
+  return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos };
+}
+
+/** Turn a wall or furniture item about centre c. Doors and windows follow their wall instead. */
+export function rotateElement<T extends PlanElement>(el: T, c: Point, degrees: number): T {
+  if (el.type === 'wall') {
+    const a = rotatePoint({ x: el.x1, y: el.y1 }, c, degrees);
+    const b = rotatePoint({ x: el.x2, y: el.y2 }, c, degrees);
+    return { ...el, x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+  }
+  if (el.type === 'furniture') {
+    const p = rotatePoint({ x: el.x, y: el.y }, c, degrees);
+    return { ...el, x: p.x, y: p.y, rotation: ((((el.rotation ?? 0) + degrees) % 360) + 360) % 360 };
+  }
+  return el;
+}
+
 function elementPoints(el: PlanElement): Point[] {
   switch (el.type) {
     case 'wall':

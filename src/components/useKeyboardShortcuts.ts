@@ -1,10 +1,23 @@
 import { useEffect } from 'react';
+import { matchesKeys, type Command } from '../commands';
+import { isMeasureKey } from '../lib/measure';
 import { plannerStore } from '../store/plannerStore';
-import { useFileActions } from './useFileActions';
+import {
+  anchorOf,
+  applyMeasure,
+  cancel,
+  currentDirection,
+  MEASURE_TOOLS,
+  toggleAxisLock,
+  toggleCopy,
+} from '../tools/controller';
 
+/** Keys typed into a field, or used to move around a menu or dialog, are not shortcuts. */
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
-  (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable);
+  (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
+    target.isContentEditable ||
+    !!target.closest('[role="menu"], [role="menubar"], [role="dialog"], [role="alertdialog"]'));
 
 const ARROWS: Record<string, [number, number]> = {
   ArrowLeft: [-1, 0],
@@ -13,60 +26,87 @@ const ARROWS: Record<string, [number, number]> = {
   ArrowDown: [0, 1],
 };
 
-export function useKeyboardShortcuts(onNewRequested: () => void, onOpenRequested: () => void) {
-  const { save } = useFileActions();
-
+/**
+ * SketchUp-style keyboard: single keys pick tools, typing goes to the Measurements box, arrows lock
+ * an axis while drawing (or nudge the selection), Shift holds the current direction and Ctrl
+ * switches Move to copying. Everything else comes from the command list.
+ */
+export function useKeyboardShortcuts(commands: Command[]) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (isTyping(e.target)) return;
       const s = plannerStore.getState();
-      const mod = e.ctrlKey || e.metaKey;
-      const key = e.key.toLowerCase();
+      const mod = e.ctrlKey || e.metaKey || e.altKey;
+      const measuring = !s.view3d && s.tool in MEASURE_TOOLS;
 
-      if (mod && key === 's') {
-        e.preventDefault();
-        void save(e.shiftKey);
-      } else if (mod && key === 'o') {
-        e.preventDefault();
-        onOpenRequested();
-      } else if (mod && key === 'n') {
-        e.preventDefault();
-        onNewRequested();
-      } else if (mod && key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        s.undo();
-      } else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) {
-        e.preventDefault();
-        s.redo();
-      } else if (mod && e.code === 'Quote') {
-        e.preventDefault();
-        s.setGrid({ show: !s.grid.show });
-      } else if (mod) {
+      if (measuring && !mod) {
+        if (isMeasureKey(e.key, s.measureText)) {
+          e.preventDefault();
+          s.setMeasureText(s.measureText + e.key);
+          return;
+        }
+        if (e.key === 'Backspace' && s.measureText) {
+          e.preventDefault();
+          s.setMeasureText(s.measureText.slice(0, -1));
+          return;
+        }
+        if (e.key === 'Enter' && s.measureText) {
+          e.preventDefault();
+          if (applyMeasure(plannerStore, s.measureText)) s.setMeasureText('');
+          return;
+        }
+      }
+
+      if (e.key === 'Escape') {
+        if (!cancel(plannerStore)) s.select(null);
         return;
-      } else if (e.key === 'Enter' && s.draft?.type === 'mask') {
-        s.finishMask();
-      } else if (e.key === 'Escape') {
-        s.setDraft(null);
-        s.select(null);
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && s.selectedId) {
-        s.deleteElement(s.selectedId);
-      } else if (e.key in ARROWS && s.selectedId) {
+      }
+      if (e.key === 'Enter') {
+        const d = s.draft;
+        if (d?.type === 'mask') s.finishMask();
+        else if (d?.type === 'wall' || d?.type === 'tape') s.setDraft(null);
+        return;
+      }
+      if (e.key in ARROWS && !mod) {
+        if (!s.view3d && anchorOf(s)) {
+          e.preventDefault();
+          toggleAxisLock(plannerStore, e.key === 'ArrowRight' ? 'x' : 'y');
+          return;
+        }
+        if (s.selectedId && !s.view3d) {
+          e.preventDefault();
+          // One grid square per press; hold Shift for a finer 1/5 step.
+          const step = e.shiftKey ? s.gridPx / 5 : s.gridPx;
+          const [dx, dy] = ARROWS[e.key];
+          s.nudgeSelected(dx * step, dy * step);
+          return;
+        }
+      }
+      if (e.key === 'Shift' && !e.repeat && anchorOf(s) && !s.axisLock) {
+        const dir = currentDirection(s);
+        if (dir && Math.hypot(dir.x, dir.y) > 0) s.setShiftLock(dir);
+        return;
+      }
+      if (e.key === 'Control' && !e.repeat && s.draft?.type === 'move') {
+        toggleCopy(plannerStore);
+        return;
+      }
+
+      for (const cmd of commands) {
+        if (!cmd.keys?.some((k) => matchesKeys(e, k))) continue;
         e.preventDefault();
-        // One grid square per press; hold Shift for a finer 1/5 step.
-        const step = e.shiftKey ? s.gridPx / 5 : s.gridPx;
-        const [dx, dy] = ARROWS[e.key];
-        s.nudgeSelected(dx * step, dy * step);
-      } else if (key === 'r' && s.selectedId) {
-        s.rotateSelected(e.shiftKey ? -90 : 90);
-      } else if (e.key === '+' || e.key === '=') {
-        s.zoomBy(1.25);
-      } else if (e.key === '-') {
-        s.zoomBy(1 / 1.25);
-      } else if (e.key === '0') {
-        s.fitToPlan();
+        if (!cmd.enabled || cmd.enabled(s)) cmd.run();
+        return;
       }
     }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.key === 'Shift') plannerStore.getState().setShiftLock(null);
+    }
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [save, onNewRequested, onOpenRequested]);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [commands]);
 }

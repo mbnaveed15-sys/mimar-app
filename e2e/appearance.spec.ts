@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openSection } from './helpers';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -9,6 +10,7 @@ test.beforeEach(async ({ page }) => {
 test('switches between the five themes and remembers the choice', async ({ page }) => {
   const html = page.locator('html');
   await expect(html).toHaveAttribute('data-theme', 'brick');
+  await openSection(page, 'Theme');
   const themes = page.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio');
   await expect(themes).toHaveCount(5);
 
@@ -25,6 +27,7 @@ test('switches between the five themes and remembers the choice', async ({ page 
 
 test("the grid can be restyled, hidden with Ctrl+' and its snapping turned off", async ({ page }) => {
   const grid = page.getByTestId('plan-grid');
+  await openSection(page, 'Grid');
   await expect(grid).toBeVisible();
   await expect(grid.locator('pattern')).toHaveCount(2); // minor and major lines
 

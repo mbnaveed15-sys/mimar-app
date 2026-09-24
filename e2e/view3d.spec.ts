@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { tool } from './helpers';
 
 const FT = 30.48;
 
@@ -18,8 +19,6 @@ async function wall(page: Page, from: [number, number], to: [number, number]) {
   await page.mouse.move(...(await at(page, ...to)), { steps: 4 });
   await page.mouse.up();
 }
-
-const tool = (page: Page, name: string) => page.getByRole('button', { name, exact: true }).click();
 
 test('shows the plan in 3D, follows edits, and switches back to 2D', async ({ page }) => {
   const errors: string[] = [];

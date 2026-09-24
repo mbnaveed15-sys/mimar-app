@@ -39,9 +39,8 @@ export function GridSettings() {
   const spacing = grid.spacingMm[units];
 
   return (
-    <fieldset className="m-section text-xs" aria-label="Grid">
+    <fieldset className="flex flex-col gap-2 text-xs" aria-label="Grid">
       <div className="flex items-center justify-between gap-2">
-        <span className="m-heading">Grid</span>
         <label htmlFor="grid-show" className="flex items-center gap-1.5">
           <input
             id="grid-show"

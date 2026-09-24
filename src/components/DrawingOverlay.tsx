@@ -1,0 +1,163 @@
+import { SNAP_LABELS, type Inference } from '../lib/inference';
+import { formatLength } from '../lib/units';
+import { MM_PER_UNIT } from '../store/plannerStore';
+import { PLAN } from '../theme/plan';
+import type { Draft, Point, Units } from '../types';
+
+interface Props {
+  draft: Draft;
+  inference: Inference | null;
+  axisLock: 'x' | 'y' | null;
+  units: Units;
+  /** Plan units per screen pixel. */
+  k: number;
+}
+
+const SNAP_COLORS: Partial<Record<Inference['kind'], string>> = {
+  endpoint: 'var(--snap-end)',
+  midpoint: 'var(--snap-mid)',
+  'on-wall': 'var(--snap-edge)',
+  'axis-x': 'var(--axis-x)',
+  'axis-y': 'var(--axis-y)',
+  locked: 'var(--selection)',
+};
+
+/** Colour of a rubber band: red or green when it runs along an axis, like SketchUp. */
+function bandColor(inference: Inference | null, axisLock: 'x' | 'y' | null) {
+  if (axisLock === 'x' || inference?.kind === 'axis-x') return 'var(--axis-x)';
+  if (axisLock === 'y' || inference?.kind === 'axis-y') return 'var(--axis-y)';
+  return PLAN.draft;
+}
+
+/** Text with a halo, so it reads over anything. */
+function Label({ p, k, children, color = PLAN.ink }: { p: Point; k: number; children: string; color?: string }) {
+  return (
+    <text
+      x={p.x}
+      y={p.y}
+      fontSize={12 * k}
+      fontWeight={600}
+      style={{ fill: color, stroke: PLAN.paper }}
+      strokeWidth={3 * k}
+      paintOrder="stroke"
+    >
+      {children}
+    </text>
+  );
+}
+
+/** Rubber bands, previews and the snap marker for the drawing tools. */
+export function DrawingOverlay({ draft: d, inference, axisLock, units, k }: Props) {
+  const dash = `${6 * k} ${4 * k}`;
+  const len = (a: Point, b: Point) => formatLength(Math.hypot(b.x - a.x, b.y - a.y) * MM_PER_UNIT, units);
+  const band = bandColor(inference, axisLock);
+
+  return (
+    <g pointerEvents="none" data-testid="drawing-overlay">
+      {d?.type === 'wall' && (
+        <>
+          <line
+            data-testid="wall-draft"
+            x1={d.x1}
+            y1={d.y1}
+            x2={d.x2}
+            y2={d.y2}
+            style={{ stroke: band }}
+            strokeWidth={2 * k}
+            strokeDasharray={dash}
+          />
+          <Label p={{ x: d.x2 + 10 * k, y: d.y2 - 10 * k }} k={k} color={PLAN.draft}>
+            {len({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 })}
+          </Label>
+        </>
+      )}
+
+      {d?.type === 'rectangle' && (
+        <>
+          <rect
+            data-testid="rectangle-draft"
+            x={Math.min(d.x1, d.x2)}
+            y={Math.min(d.y1, d.y2)}
+            width={Math.abs(d.x2 - d.x1)}
+            height={Math.abs(d.y2 - d.y1)}
+            fill="none"
+            style={{ stroke: PLAN.draft }}
+            strokeWidth={2 * k}
+            strokeDasharray={dash}
+          />
+          <Label p={{ x: (d.x1 + d.x2) / 2, y: Math.min(d.y1, d.y2) - 8 * k }} k={k} color={PLAN.draft}>
+            {len({ x: d.x1, y: 0 }, { x: d.x2, y: 0 })}
+          </Label>
+          <Label p={{ x: Math.max(d.x1, d.x2) + 8 * k, y: (d.y1 + d.y2) / 2 }} k={k} color={PLAN.draft}>
+            {len({ x: 0, y: d.y1 }, { x: 0, y: d.y2 })}
+          </Label>
+        </>
+      )}
+
+      {d?.type === 'tape' && (
+        <>
+          <line
+            data-testid="tape-line"
+            x1={d.a.x}
+            y1={d.a.y}
+            x2={d.b.x}
+            y2={d.b.y}
+            style={{ stroke: band }}
+            strokeWidth={1.5 * k}
+            strokeDasharray={`${2 * k} ${3 * k}`}
+          />
+          {[d.a, d.b].map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r={3 * k} style={{ fill: PLAN.draft }} />
+          ))}
+          <Label p={{ x: (d.a.x + d.b.x) / 2 + 8 * k, y: (d.a.y + d.b.y) / 2 - 8 * k }} k={k}>
+            {len(d.a, d.b)}
+          </Label>
+        </>
+      )}
+
+      {d?.type === 'move' && (
+        <line
+          x1={d.base.x}
+          y1={d.base.y}
+          x2={d.to.x}
+          y2={d.to.y}
+          style={{ stroke: band }}
+          strokeWidth={1.5 * k}
+          strokeDasharray={dash}
+        />
+      )}
+
+      {d?.type === 'rotate' && (
+        <g style={{ stroke: PLAN.selection }} fill="none" strokeWidth={1.5 * k}>
+          <circle cx={d.center.x} cy={d.center.y} r={30 * k} strokeDasharray={`${3 * k} ${3 * k}`} />
+          <circle cx={d.center.x} cy={d.center.y} r={3 * k} style={{ fill: PLAN.selection }} />
+          {d.start && <line x1={d.center.x} y1={d.center.y} x2={d.start.x} y2={d.start.y} />}
+          {d.start && (
+            <Label p={{ x: d.center.x + 36 * k, y: d.center.y - 36 * k }} k={k} color={PLAN.selection}>
+              {`${Math.round(d.angle)}°`}
+            </Label>
+          )}
+        </g>
+      )}
+
+      {inference && SNAP_COLORS[inference.kind] && (
+        <g data-testid="snap-marker" data-snap={inference.kind}>
+          <circle
+            cx={inference.point.x}
+            cy={inference.point.y}
+            r={5 * k}
+            style={{ fill: SNAP_COLORS[inference.kind], stroke: PLAN.paper }}
+            strokeWidth={1.5 * k}
+          />
+          <Label
+            p={{ x: inference.point.x + 10 * k, y: inference.point.y + 20 * k }}
+            k={k}
+            color={SNAP_COLORS[inference.kind]}
+          >
+            {SNAP_LABELS[inference.kind]}
+          </Label>
+        </g>
+      )}
+    </g>
+  );
+}

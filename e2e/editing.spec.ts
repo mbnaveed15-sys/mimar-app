@@ -1,24 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
+import { at, drag, tool, menu, openSection } from './helpers';
 
-async function at(page: Page, x: number, y: number): Promise<[number, number]> {
-  return page.getByTestId('plan-canvas').evaluate(
-    (svg, [px, py]) => {
-      const pt = new DOMPoint(px, py).matrixTransform((svg as SVGSVGElement).getScreenCTM()!);
-      return [pt.x, pt.y] as [number, number];
-    },
-    [x, y],
-  );
-}
-
-async function drag(page: Page, from: [number, number], to: [number, number]) {
-  await page.mouse.move(...(await at(page, ...from)));
-  await page.mouse.down();
-  await page.mouse.move(...(await at(page, ...to)), { steps: 6 });
-  await page.mouse.up();
-}
-
-const tool = (page: Page, name: string) => page.getByRole('button', { name, exact: true }).click();
 const furnitureTransform = (page: Page) => page.locator('[data-type="furniture"]').getAttribute('transform');
 
 test.beforeEach(async ({ page }) => {
@@ -43,7 +26,7 @@ test('walls show real dimensions in feet and inches or metric', async ({ page })
   // 30.48 plan units = 1 ft; draw 10 ft.
   await drag(page, [304.8, 304.8], [609.6, 304.8]);
   await expect(page.locator('[data-type="dimension"] text')).toHaveText(`10' 0"`);
-  await page.getByLabel('Units').selectOption('metric');
+  await (await openSection(page, 'Settings'), page.getByLabel('Units')).selectOption('metric');
   await expect(page.locator('[data-type="dimension"] text')).toHaveText('3.05 m');
 });
 
@@ -62,7 +45,7 @@ test('select, drag to move, edit in inspector, and undo the move', async ({ page
   await width.press('Enter');
   await expect(page.getByLabel('Width')).toHaveValue(`6' 0"`);
 
-  await page.keyboard.press('r');
+  await menu(page, 'Edit', 'Rotate 90°');
   expect(await furnitureTransform(page)).toContain('rotate(90)');
 
   await page.keyboard.press('Control+z'); // rotation
@@ -95,17 +78,17 @@ test('save a plan to a file, start a new one, and open it again', async ({ page 
   await expect(page.getByTestId('file-name')).toContainText('unsaved');
 
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await menu(page, 'File', 'Save');
   const file = await download;
   expect(file.suggestedFilename()).toBe('Untitled.mimar');
   await expect(page.getByTestId('file-name')).not.toContainText('unsaved');
   const saved = await readFile(await file.path());
 
-  await page.getByRole('button', { name: 'New' }).click();
+  await menu(page, 'File', 'New');
   expect(await page.locator('[data-type="wall"]').count()).toBe(0);
 
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: 'Open…' }).click();
+  await menu(page, 'File', 'Open…');
   await (await chooser).setFiles({ name: 'House.mimar', mimeType: 'application/json', buffer: saved });
   await expect(page.locator('[data-type="wall"]')).toHaveCount(1);
   await expect(page.getByTestId('file-name')).toHaveText('House');
@@ -114,18 +97,18 @@ test('save a plan to a file, start a new one, and open it again', async ({ page 
 test('asks before discarding unsaved changes', async ({ page }) => {
   await tool(page, 'wall');
   await drag(page, [304.8, 304.8], [609.6, 304.8]);
-  await page.getByRole('button', { name: 'New' }).click();
+  await menu(page, 'File', 'New');
   await expect(page.getByRole('alertdialog')).toBeVisible();
   await page.getByRole('button', { name: 'Cancel' }).click();
   expect(await page.locator('[data-type="wall"]').count()).toBe(1);
-  await page.getByRole('button', { name: 'New' }).click();
+  await menu(page, 'File', 'New');
   await page.getByRole('button', { name: 'Discard and start new' }).click();
   expect(await page.locator('[data-type="wall"]').count()).toBe(0);
 });
 
 test('opening a file that is not a plan shows a clear message', async ({ page }) => {
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: 'Open…' }).click();
+  await menu(page, 'File', 'Open…');
   await (await chooser).setFiles({ name: 'notes.mimar', mimeType: 'application/json', buffer: Buffer.from('hello') });
   await expect(page.getByRole('alert')).toContainText('not a Mimar plan');
 });

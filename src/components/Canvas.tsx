@@ -1,4 +1,4 @@
-import { useEffect, useRef, type PointerEvent, type RefObject } from 'react';
+import { useEffect, useRef, type MouseEvent, type PointerEvent, type RefObject } from 'react';
 import {
   findElementNear,
   fromFurnitureLocal,
@@ -8,17 +8,19 @@ import {
   toFurnitureLocal,
   translateElement,
 } from '../geometry';
-import { formatLength } from '../lib/units';
+import { PLAN_FONT } from '../lib/planImage';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
-import type { Furniture, PlanElement, Point, Wall } from '../types';
-import { PLAN_FONT } from '../lib/planImage';
 import { PLAN } from '../theme/plan';
+import { DRAG_PX, hover, MEASURE_TOOLS, press, release } from '../tools/controller';
+import type { Furniture, PlanElement, Point, Wall } from '../types';
+import { DrawingOverlay } from './DrawingOverlay';
 import { PlanDrawing } from './PlanDrawing';
 import { PlanGrid } from './PlanGrid';
 
 type Drag =
   | { kind: 'pan'; lastX: number; lastY: number }
+  | { kind: 'zoom'; lastY: number; at: Point }
   | { kind: 'move'; start: Point; orig: PlanElement }
   | { kind: 'wall-start' | 'wall-end'; orig: Wall }
   | { kind: 'resize' | 'rotate'; orig: Furniture };
@@ -26,10 +28,6 @@ type Drag =
 /** Furniture sizes snap to 50 mm; rotation snaps to 15° unless Shift is held. */
 const SIZE_STEP = 50 / MM_PER_UNIT;
 const ROTATE_STEP = 15;
-
-const isTyping = (target: EventTarget | null) =>
-  target instanceof HTMLElement &&
-  (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable);
 
 function toPlanPoint(svg: SVGSVGElement, e: { clientX: number; clientY: number }): Point {
   const ctm = svg.getScreenCTM();
@@ -50,13 +48,23 @@ function snapPoint(raw: Point, ignoreId?: string): Point {
   return nearestWallEnd(s.doc.elements, raw, 10 / s.view.zoom, ignoreId) ?? gridSnap(raw);
 }
 
-interface Props {
-  svgRef: RefObject<SVGSVGElement | null>;
+/** What was right-clicked: screen position and the item there, if any. */
+export interface ContextTarget {
+  x: number;
+  y: number;
+  id: string | null;
 }
 
-export function Canvas({ svgRef }: Props) {
+interface Props {
+  svgRef: RefObject<SVGSVGElement | null>;
+  onContextMenu?: (target: ContextTarget) => void;
+}
+
+export function Canvas({ svgRef, onContextMenu }: Props) {
   const doc = usePlanner((s) => s.doc);
   const draft = usePlanner((s) => s.draft);
+  const inference = usePlanner((s) => s.inference);
+  const axisLock = usePlanner((s) => s.axisLock);
   const selectedId = usePlanner((s) => s.selectedId);
   const gridPx = usePlanner((s) => s.gridPx);
   const grid = usePlanner((s) => s.grid);
@@ -70,7 +78,8 @@ export function Canvas({ svgRef }: Props) {
   const tool = usePlanner((s) => s.tool);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
   const dragRef = useRef<Drag | null>(null);
-  const spaceRef = useRef(false);
+  /** Where the current press started on screen, to tell a click from a drag. */
+  const pressRef = useRef<{ x: number; y: number } | null>(null);
 
   const k = 1 / view.zoom; // plan units per screen pixel
   const vbW = viewport.width / view.zoom || 1600;
@@ -96,48 +105,44 @@ export function Canvas({ svgRef }: Props) {
     };
   }, [svgRef]);
 
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || isTyping(e.target)) return;
-      spaceRef.current = true;
-      e.preventDefault();
-    };
-    const up = (e: KeyboardEvent) => {
-      if (e.code === 'Space') spaceRef.current = false;
-    };
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
-    return () => {
-      window.removeEventListener('keydown', down);
-      window.removeEventListener('keyup', up);
-    };
-  }, []);
-
   function startDrag(e: PointerEvent<SVGSVGElement>, drag: Drag) {
     e.currentTarget.setPointerCapture(e.pointerId);
-    if (drag.kind !== 'pan') plannerStore.getState().beginBatch();
+    if (drag.kind !== 'pan' && drag.kind !== 'zoom') plannerStore.getState().beginBatch();
     dragRef.current = drag;
   }
 
   function onPointerDown(e: PointerEvent<SVGSVGElement>) {
     const s = plannerStore.getState();
     const raw = toPlanPoint(e.currentTarget, e);
+    pressRef.current = { x: e.clientX, y: e.clientY };
 
-    if (e.button === 1 || spaceRef.current || s.tool === 'pan') {
+    if (e.button === 1 || s.tool === 'pan') {
       e.preventDefault();
       startDrag(e, { kind: 'pan', lastX: e.clientX, lastY: e.clientY });
       return;
     }
     if (e.button !== 0) return;
+    if (s.tool === 'zoom') {
+      const r = e.currentTarget.getBoundingClientRect();
+      startDrag(e, { kind: 'zoom', lastY: e.clientY, at: { x: e.clientX - r.left, y: e.clientY - r.top } });
+      return;
+    }
 
     const handle = (e.target as Element).closest('[data-handle]')?.getAttribute('data-handle');
     const selected = s.doc.elements.find((el) => el.id === s.selectedId);
-    if (handle && selected) {
+    if (handle && selected && s.tool === 'select') {
       if (selected.type === 'wall' && (handle === 'wall-start' || handle === 'wall-end')) {
         startDrag(e, { kind: handle, orig: selected });
       } else if (selected.type === 'furniture' && (handle === 'resize' || handle === 'rotate')) {
         startDrag(e, { kind: handle, orig: selected });
       }
+      return;
+    }
+
+    if (s.tool in MEASURE_TOOLS) {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      s.setMeasureText('');
+      press(plannerStore, raw, { ctrl: e.ctrlKey || e.metaKey });
       return;
     }
 
@@ -151,12 +156,6 @@ export function Canvas({ svgRef }: Props) {
       case 'room':
         s.addRoomAt(raw);
         break;
-      case 'wall': {
-        const p = snapPoint(raw);
-        e.currentTarget.setPointerCapture(e.pointerId);
-        s.setDraft({ type: 'wall', x1: p.x, y1: p.y, x2: p.x, y2: p.y });
-        break;
-      }
       case 'door':
       case 'window':
         s.placeOpening(s.tool, raw);
@@ -192,6 +191,10 @@ export function Canvas({ svgRef }: Props) {
         case 'pan':
           s.setView(panBy(s.view, e.clientX - drag.lastX, e.clientY - drag.lastY));
           drag.lastX = e.clientX;
+          drag.lastY = e.clientY;
+          break;
+        case 'zoom':
+          s.zoomBy(Math.exp((drag.lastY - e.clientY) * 0.01), drag.at);
           drag.lastY = e.clientY;
           break;
         case 'move': {
@@ -232,40 +235,78 @@ export function Canvas({ svgRef }: Props) {
       return;
     }
 
-    const d = s.draft;
-    if (!d) return;
-    if (d.type === 'wall') {
-      const p = snapPoint(raw);
-      s.setDraft({ ...d, x2: p.x, y2: p.y });
-    } else if (d.type === 'brush') s.brushAt(gridSnap(raw));
-    else if (d.type === 'mask') s.setDraft({ ...d, cursor: gridSnap(raw) });
-  }
-
-  function onPointerUp() {
-    const s = plannerStore.getState();
-    if (dragRef.current) {
-      if (dragRef.current.kind !== 'pan') s.endBatch();
-      dragRef.current = null;
+    if (s.tool in MEASURE_TOOLS) {
+      hover(plannerStore, raw, e.shiftKey);
       return;
     }
     const d = s.draft;
-    if (!d) return;
-    if (d.type === 'wall') {
-      s.addWall({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 });
-      s.setDraft(null);
-    } else if (d.type === 'brush') {
+    if (d?.type === 'brush') s.brushAt(gridSnap(raw));
+    else if (d?.type === 'mask') s.setDraft({ ...d, cursor: gridSnap(raw) });
+  }
+
+  function onPointerUp(e: PointerEvent<SVGSVGElement>) {
+    const s = plannerStore.getState();
+    const start = pressRef.current;
+    pressRef.current = null;
+    if (dragRef.current) {
+      const kind = dragRef.current.kind;
+      if (kind !== 'pan' && kind !== 'zoom') s.endBatch();
+      dragRef.current = null;
+      return;
+    }
+    const dragged = !!start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > DRAG_PX;
+    if (s.tool in MEASURE_TOOLS) {
+      release(plannerStore, dragged);
+      return;
+    }
+    if (s.draft?.type === 'brush') {
       s.endBatch();
       s.setDraft(null);
     }
   }
 
-  function onDoubleClick() {
+  function onDoubleClick(e: MouseEvent<SVGSVGElement>) {
     const s = plannerStore.getState();
-    if (s.tool === 'mask') s.finishMask();
+    if (s.tool === 'mask') {
+      s.finishMask();
+      return;
+    }
+    if (s.tool !== 'select') return;
+    // Double-click a room to rename it.
+    const raw = toPlanPoint(e.currentTarget, e);
+    if (findElementNear(s.visibleElements(), raw, s.hitTolerance())) return;
+    const room = s.roomAt(raw);
+    if (!room) return;
+    s.select(room.id);
+    requestAnimationFrame(() => {
+      const field = document.getElementById('room-name');
+      if (field instanceof HTMLInputElement) {
+        field.focus();
+        field.select();
+      }
+    });
+  }
+
+  function onRightClick(e: MouseEvent<SVGSVGElement>) {
+    e.preventDefault();
+    const s = plannerStore.getState();
+    if (s.draft) return;
+    const raw = toPlanPoint(e.currentTarget, e);
+    const hit = findElementNear(s.visibleElements(), raw, s.hitTolerance());
+    const id = hit?.id ?? s.roomAt(raw)?.id ?? null;
+    s.select(id);
+    onContextMenu?.({ x: e.clientX, y: e.clientY, id });
   }
 
   const selected = doc.elements.find((el) => el.id === selectedId);
-  const cursor = tool === 'pan' ? 'cursor-grab' : tool === 'select' ? 'cursor-default' : 'cursor-crosshair';
+  const cursor =
+    tool === 'pan'
+      ? 'cursor-grab'
+      : tool === 'zoom'
+        ? 'cursor-ns-resize'
+        : tool === 'select'
+          ? 'cursor-default'
+          : 'cursor-crosshair';
 
   return (
     <svg
@@ -278,7 +319,9 @@ export function Canvas({ svgRef }: Props) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onPointerLeave={() => plannerStore.getState().setInference(null)}
       onDoubleClick={onDoubleClick}
+      onContextMenu={onRightClick}
     >
       {grid.show && (
         <PlanGrid
@@ -303,36 +346,14 @@ export function Canvas({ svgRef }: Props) {
       />
 
       <g>
-        {selected?.type === 'wall' && (
+        {tool === 'select' && selected?.type === 'wall' && (
           <>
             <Handle name="wall-start" p={{ x: selected.x1, y: selected.y1 }} k={k} />
             <Handle name="wall-end" p={{ x: selected.x2, y: selected.y2 }} k={k} />
           </>
         )}
-        {selected?.type === 'furniture' && showFurniture && <FurnitureHandles item={selected} k={k} />}
-
-        {draft?.type === 'wall' && (
-          <>
-            <line
-              x1={draft.x1}
-              y1={draft.y1}
-              x2={draft.x2}
-              y2={draft.y2}
-              style={{ stroke: PLAN.draft }}
-              strokeWidth={2 * k}
-              strokeDasharray={`${6 * k} ${4 * k}`}
-            />
-            <text
-              x={draft.x2 + 10 * k}
-              y={draft.y2 - 10 * k}
-              fontSize={12 * k}
-              style={{ fill: PLAN.draft, stroke: PLAN.paper }}
-              strokeWidth={3 * k}
-              paintOrder="stroke"
-            >
-              {formatLength(Math.hypot(draft.x2 - draft.x1, draft.y2 - draft.y1) * MM_PER_UNIT, units)}
-            </text>
-          </>
+        {tool === 'select' && selected?.type === 'furniture' && showFurniture && (
+          <FurnitureHandles item={selected} k={k} />
         )}
         {draft?.type === 'mask' && (
           <polyline
@@ -344,6 +365,8 @@ export function Canvas({ svgRef }: Props) {
           />
         )}
       </g>
+
+      <DrawingOverlay draft={draft} inference={inference} axisLock={axisLock} units={units} k={k} />
     </svg>
   );
 }

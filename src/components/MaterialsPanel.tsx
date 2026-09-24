@@ -9,8 +9,7 @@ export function MaterialsPanel() {
   const activeId = (materials.find((m) => m.id === selectedMat) ?? materials[0])?.id;
 
   return (
-    <div className="m-section">
-      <div className="m-heading">Materials</div>
+    <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-1.5">
         {materials.map((mat) => (
           <button

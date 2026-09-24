@@ -9,14 +9,8 @@ export function ThemePicker() {
   const current = THEMES.find((t) => t.id === theme) ?? THEMES[0];
 
   return (
-    <div className="m-section">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="m-heading" id="theme-label">
-          Theme
-        </span>
-        <span className="text-xs text-muted">{current.name}</span>
-      </div>
-      <div role="radiogroup" aria-labelledby="theme-label" className="grid grid-cols-5 gap-1.5">
+    <div className="flex flex-col gap-2">
+      <div role="radiogroup" aria-label="Theme" className="grid grid-cols-5 gap-1.5">
         {THEMES.map((t) => (
           <button
             key={t.id}
@@ -36,6 +30,7 @@ export function ThemePicker() {
           </button>
         ))}
       </div>
+      <span className="text-xs text-muted">{current.name}</span>
     </div>
   );
 }

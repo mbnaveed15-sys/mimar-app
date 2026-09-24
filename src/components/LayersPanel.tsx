@@ -32,9 +32,8 @@ export function LayersPanel() {
   ];
 
   return (
-    <fieldset className="m-section text-xs">
-      <legend className="float-left m-heading">Layers</legend>
-      <div className="clear-both flex flex-col gap-1">
+    <fieldset className="text-xs" aria-label="Layers">
+      <div className="flex flex-col gap-1">
         {layers.map((l) => (
           <label key={l.id} htmlFor={l.id} className="flex items-center gap-2">
             <input id={l.id} type="checkbox" checked={l.checked} onChange={(e) => l.set(e.target.checked)} />
