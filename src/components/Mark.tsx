@@ -1,15 +1,15 @@
-/** The arches of the Mimar mark, in a 96 × 96 box. */
-export const MARK_PATH =
-  'M26 74V46A22 22 0 0 1 37 26.95A22 22 0 0 1 48 46A22 22 0 0 1 59 26.95A22 22 0 0 1 70 46V74M48 46V74';
+/** The Mimar mark, in a 96 × 96 box: one pointed mehrab arch standing on a plinth line. */
+export const MARK_PATH = 'M30 78V48C30 36 38 28 48 17C58 28 66 36 66 48V78';
+export const MARK_GROUND = 'M20 83.5H76';
 
-/** The Mimar mark in the current theme: two arches on a ground line, on a rounded tile. */
+/** The Mimar mark in the current theme, on a rounded tile. */
 export function Mark({ size = 28, bare = false }: { size?: number; bare?: boolean }) {
   return (
     <svg width={size} height={size} viewBox="0 0 96 96" role="img" aria-label="Mimar" className="block flex-none">
       {!bare && <rect width="96" height="96" rx="22" style={{ fill: 'var(--mark-tile)' }} />}
-      <g transform="translate(0 -2)" fill="none" style={{ stroke: bare ? 'var(--ink)' : 'var(--mark-ink)' }}>
+      <g fill="none" style={{ stroke: bare ? 'var(--ink)' : 'var(--mark-ink)' }}>
         <path d={MARK_PATH} strokeWidth={8} strokeMiterlimit={10} />
-        <path d="M20 83.5H76" strokeWidth={3.5} strokeLinecap="round" />
+        <path d={MARK_GROUND} strokeWidth={3.5} strokeLinecap="round" />
       </g>
     </svg>
   );
