@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatLength, parseLength } from './units';
+import { formatArea, formatLength, formatMarla, parseLength } from './units';
 
 describe('formatLength', () => {
   it('formats feet and inches, rounding to the nearest inch', () => {
@@ -48,5 +48,19 @@ describe('parseLength', () => {
 
   it.each(['', 'abc', '12 apples', `'`, '-'])('rejects %j', (text) => {
     expect(parseLength(text, 'imperial')).toBeNull();
+  });
+});
+
+describe('areas', () => {
+  const sqft = (n: number) => n * 92903.04;
+  it('formats square feet and square metres', () => {
+    expect(formatArea(sqft(1250), 'imperial')).toBe('1,250 sq ft');
+    expect(formatArea(12.34e6, 'metric')).toBe('12.3 m²');
+  });
+
+  it('converts to marla and kanal with either marla size', () => {
+    expect(formatMarla(sqft(1125), 225)).toBe('5.00 marla');
+    expect(formatMarla(sqft(1361.25), 272.25)).toBe('5.00 marla');
+    expect(formatMarla(sqft(4500), 225)).toBe('1.00 kanal');
   });
 });

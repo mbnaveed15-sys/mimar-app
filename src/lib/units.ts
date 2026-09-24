@@ -1,4 +1,4 @@
-import type { Units } from '../types';
+import type { MarlaSqFt, Units } from '../types';
 
 export const MM_PER_INCH = 25.4;
 export const MM_PER_FOOT = 304.8;
@@ -65,4 +65,23 @@ export function parseLength(text: string, units: Units): number | null {
     }
   }
   return mm !== null && Number.isFinite(mm) ? mm : null;
+}
+
+export const SQ_MM_PER_SQ_FT = 92903.04;
+export const MARLA_OPTIONS: { sqft: MarlaSqFt; label: string }[] = [
+  { sqft: 225, label: '225 sq ft (LDA / most societies)' },
+  { sqft: 272.25, label: '272.25 sq ft (traditional)' },
+];
+
+/** Area for display, e.g. "185 sq ft" or "17.2 m²". */
+export function formatArea(sqMm: number, units: Units): string {
+  if (units === 'metric') return `${(sqMm / 1e6).toFixed(1)} m²`;
+  return `${Math.round(sqMm / SQ_MM_PER_SQ_FT).toLocaleString('en-US')} sq ft`;
+}
+
+/** Area in marla (or kanal above 20 marla), e.g. "0.82 marla" or "1.25 kanal". */
+export function formatMarla(sqMm: number, marlaSqFt: MarlaSqFt): string {
+  const marla = sqMm / SQ_MM_PER_SQ_FT / marlaSqFt;
+  if (marla >= 20) return `${(marla / 20).toFixed(2)} kanal`;
+  return `${marla.toFixed(2)} marla`;
 }

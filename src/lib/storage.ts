@@ -1,8 +1,8 @@
-import type { Mask, Material, PlanDoc, PlanElement } from '../types';
+import type { Mask, Material, PlanDoc, PlanElement, Room } from '../types';
 import { defaultMaterials } from './materials';
 
 export const STORAGE_KEY = 'mimar.plan';
-export const CURRENT_VERSION = 2;
+export const CURRENT_VERSION = 3;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -20,7 +20,7 @@ export interface LoadResult {
 }
 
 export function emptyDoc(): PlanDoc {
-  return { elements: [], masks: [], materials: defaultMaterials() };
+  return { elements: [], rooms: [], masks: [], materials: defaultMaterials() };
 }
 
 /** localStorage when it is usable, otherwise null (private mode, tests, blocked storage). */
@@ -42,7 +42,16 @@ function normaliseElement(raw: unknown): PlanElement | null {
   const num = (k: string) => (typeof raw[k] === 'number' ? (raw[k] as number) : NaN);
   switch (raw.type) {
     case 'wall': {
-      const el = { ...base, type: 'wall' as const, x1: num('x1'), y1: num('y1'), x2: num('x2'), y2: num('y2') };
+      const thickness = num('thickness');
+      const el = {
+        ...base,
+        type: 'wall' as const,
+        x1: num('x1'),
+        y1: num('y1'),
+        x2: num('x2'),
+        y2: num('y2'),
+        thickness: thickness > 0 ? thickness : undefined,
+      };
       return [el.x1, el.y1, el.x2, el.y2].every(Number.isFinite) ? el : null;
     }
     case 'door':
@@ -92,6 +101,18 @@ function normaliseMask(raw: unknown, index: number): Mask | null {
   };
 }
 
+function normaliseRoom(raw: unknown, index: number): Room | null {
+  const mask = normaliseMask(raw, index);
+  if (!mask) return null;
+  const obj = raw as Record<string, unknown>;
+  return {
+    id: idOf(obj.id) ?? `room-${index}`,
+    name: typeof obj.name === 'string' ? obj.name : `Room ${index + 1}`,
+    points: mask.points,
+    material: mask.material,
+  };
+}
+
 function normaliseMaterial(raw: unknown): Material | null {
   if (!isObject(raw) || raw.id === undefined) return null;
   return {
@@ -114,6 +135,9 @@ export function normaliseDoc(raw: unknown): PlanDoc {
     elements: list(obj.elements)
       .map(normaliseElement)
       .filter((e): e is PlanElement => e !== null),
+    rooms: list(obj.rooms)
+      .map(normaliseRoom)
+      .filter((r): r is Room => r !== null),
     masks: list(obj.masks)
       .map(normaliseMask)
       .filter((m): m is Mask => m !== null),

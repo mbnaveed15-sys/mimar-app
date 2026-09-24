@@ -1,5 +1,8 @@
 import type { Bounds, Furniture, Mask, Opening, PlanElement, Point, Wall } from './types';
 
+/** 9" in plan units; duplicated from walls.ts to avoid a circular import. */
+const DEFAULT_THICKNESS = 22.86;
+
 export function snap(p: Point, grid: number): Point {
   return { x: Math.round(p.x / grid) * grid, y: Math.round(p.y / grid) * grid };
 }
@@ -47,8 +50,11 @@ export function elementCenter(el: PlanElement): Point {
 
 export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
   switch (el.type) {
-    case 'wall':
-      return pointToSegmentDistance(p, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 }) < threshold;
+    case 'wall': {
+      // Anywhere on the wall's thickness counts, as well as near its centre line.
+      const reach = Math.max(threshold, (el.thickness ?? DEFAULT_THICKNESS) / 2);
+      return pointToSegmentDistance(p, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 }) < reach;
+    }
     case 'furniture': {
       const local = toFurnitureLocal(el, p);
       return Math.abs(local.x) <= el.w / 2 && Math.abs(local.y) <= el.h / 2;

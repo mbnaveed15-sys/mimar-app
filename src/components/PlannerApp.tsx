@@ -1,6 +1,9 @@
 import { useRef } from 'react';
 import { planBounds } from '../geometry';
+import { exportPdf } from '../lib/exportPdf';
 import { exportPng } from '../lib/exportPng';
+import { formatArea, formatMarla, UNIT_LABELS } from '../lib/units';
+import { roomAreaSqMm } from '../rooms';
 import { baseName } from '../lib/files';
 import { DEFAULT_AREA } from '../lib/view';
 import { plannerStore, usePlanner } from '../store/plannerStore';
@@ -16,12 +19,37 @@ export default function PlannerApp() {
   const svgRef = useRef<SVGSVGElement>(null);
   const brushSize = usePlanner((s) => s.brushSize);
   const setBrushSize = usePlanner((s) => s.setBrushSize);
+  const mode = usePlanner((s) => s.mode);
 
-  function onExport() {
-    if (!svgRef.current) return;
-    const { doc, fileName } = plannerStore.getState();
-    const area = planBounds(doc.elements, doc.masks) ?? DEFAULT_AREA;
-    exportPng(svgRef.current, area, `${baseName(fileName)}.png`).catch((e) => console.error('export failed', e));
+  function exportArea() {
+    const { doc } = plannerStore.getState();
+    return planBounds(doc.elements, doc.masks) ?? DEFAULT_AREA;
+  }
+
+  function exportContent() {
+    const { doc, units, marlaSqFt, showDimensions } = plannerStore.getState();
+    return { doc, units, marlaSqFt, showDimensions };
+  }
+
+  function onExportPng() {
+    const { fileName, gridPx, setWarning } = plannerStore.getState();
+    exportPng(exportContent(), exportArea(), gridPx, `${baseName(fileName)}.png`).catch((e) =>
+      setWarning(`The image could not be created. ${String(e)}`),
+    );
+  }
+
+  function onExportPdf() {
+    const { doc, fileName, paper, units, marlaSqFt, setWarning } = plannerStore.getState();
+    const name = baseName(fileName);
+    const covered = doc.rooms.reduce((sum, r) => sum + roomAreaSqMm(r), 0);
+    exportPdf(exportContent(), exportArea(), {
+      title: name,
+      paper,
+      unitsNote: `Dimensions in ${UNIT_LABELS[units].toLowerCase()}`,
+      areaNote: covered ? `Covered area: ${formatArea(covered, units)}  ·  ${formatMarla(covered, marlaSqFt)}` : '',
+      version: __APP_VERSION__,
+      filename: `${name}.pdf`,
+    }).catch((e) => setWarning(`The PDF could not be created. ${String(e)}`));
   }
 
   return (
@@ -32,7 +60,7 @@ export default function PlannerApp() {
         <div className="border-t pt-2">
           <Toolbar />
         </div>
-        <div className="mt-2 border-t pt-2">
+        <div className={mode === 'pro' ? 'mt-2 border-t pt-2' : 'hidden'}>
           <label htmlFor="brush-size" className="block">
             Brush size (px)
           </label>
@@ -49,9 +77,14 @@ export default function PlannerApp() {
         <MaterialsPanel />
         <SettingsPanel />
         <div className="mt-2 flex flex-col gap-2 border-t pt-2">
-          <button onClick={onExport} className="rounded border p-2">
-            Export PNG
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={onExportPdf} className="rounded border p-2" title="Print-ready plan at a true scale">
+              Export PDF
+            </button>
+            <button onClick={onExportPng} className="rounded border p-2">
+              Export PNG
+            </button>
+          </div>
         </div>
       </aside>
 

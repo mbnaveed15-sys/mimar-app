@@ -12,11 +12,8 @@ import { formatLength } from '../lib/units';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
 import type { Furniture, PlanElement, Point, Wall } from '../types';
-import { FurnitureShape } from './shapes/FurnitureShape';
-import { MaskShape } from './shapes/MaskShape';
-import { OpeningShape } from './shapes/OpeningShape';
-import { WallDimension } from './shapes/WallDimension';
-import { WallShape } from './shapes/WallShape';
+import { PLAN_FONT } from '../lib/planImage';
+import { PlanDrawing } from './PlanDrawing';
 
 type Drag =
   | { kind: 'pan'; lastX: number; lastY: number }
@@ -59,11 +56,11 @@ export function Canvas({ svgRef }: Props) {
   const units = usePlanner((s) => s.units);
   const showDimensions = usePlanner((s) => s.showDimensions);
   const tool = usePlanner((s) => s.tool);
+  const marlaSqFt = usePlanner((s) => s.marlaSqFt);
   const dragRef = useRef<Drag | null>(null);
   const spaceRef = useRef(false);
 
   const k = 1 / view.zoom; // plan units per screen pixel
-  const colorOf = (id?: string) => doc.materials.find((m) => m.id === id)?.color;
   const vbW = viewport.width / view.zoom || 1600;
   const vbH = viewport.height / view.zoom || 1000;
 
@@ -139,10 +136,13 @@ export function Canvas({ svgRef }: Props) {
     switch (s.tool) {
       case 'select': {
         const hit = findElementNear(s.doc.elements, raw, s.hitTolerance());
-        s.select(hit?.id ?? null);
+        s.select(hit?.id ?? s.roomAt(raw)?.id ?? null);
         if (hit) startDrag(e, { kind: 'move', start: raw, orig: hit });
         break;
       }
+      case 'room':
+        s.addRoomAt(raw);
+        break;
       case 'wall': {
         const p = snapPoint(raw);
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -265,6 +265,7 @@ export function Canvas({ svgRef }: Props) {
       data-testid="plan-canvas"
       viewBox={`${view.x} ${view.y} ${vbW} ${vbH}`}
       className={`h-full w-full touch-none bg-white select-none ${cursor}`}
+      fontFamily={PLAN_FONT}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -276,32 +277,18 @@ export function Canvas({ svgRef }: Props) {
           <path d={`M ${shownGrid} 0 L 0 0 0 ${shownGrid}`} fill="none" stroke="#e5e7eb" strokeWidth={k} />
         </pattern>
       </defs>
-      <rect data-grid x={view.x} y={view.y} width={vbW} height={vbH} fill="url(#grid)" />
+      <rect x={view.x} y={view.y} width={vbW} height={vbH} fill="url(#grid)" />
 
-      {doc.elements.map((el) => {
-        const isSelected = el.id === selectedId;
-        const color = colorOf(el.material);
-        switch (el.type) {
-          case 'wall':
-            return <WallShape key={el.id} wall={el} color={color} selected={isSelected} />;
-          case 'door':
-          case 'window':
-            return <OpeningShape key={el.id} opening={el} color={color} selected={isSelected} />;
-          case 'furniture':
-            return <FurnitureShape key={el.id} item={el} color={color} selected={isSelected} />;
-        }
-      })}
+      <PlanDrawing
+        doc={doc}
+        selectedId={selectedId}
+        units={units}
+        marlaSqFt={marlaSqFt}
+        showDimensions={showDimensions}
+        k={k}
+      />
 
-      {doc.masks.map((m) => (
-        <MaskShape key={m.id} mask={m} color={colorOf(m.material)} />
-      ))}
-
-      {showDimensions &&
-        doc.elements.map(
-          (el) => el.type === 'wall' && <WallDimension key={`dim-${el.id}`} wall={el} units={units} k={k} />,
-        )}
-
-      <g data-export="skip">
+      <g>
         {selected?.type === 'wall' && (
           <>
             <Handle name="wall-start" p={{ x: selected.x1, y: selected.y1 }} k={k} />
