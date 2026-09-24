@@ -28,21 +28,30 @@ jobs:
       - name: Build client (Vite)
         run: npm run build
 
-      # Publish a release only for pushes to main whose version has no release yet,
+      # Publish a release only for pushes to main whose version has no published release yet,
       # so merging without a version bump just builds.
+      # The release is created here as a draft, so electron-builder only uploads files to it
+      # (letting it create a published release races and fails with "must have a valid tag").
       - name: Decide whether to publish a release
         id: release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          IS_DRAFT=$(gh release view "v$VERSION" --repo "$REPO" --json isDraft --jq .isDraft 2>/dev/null || echo missing)
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ] \
-             && ! gh release view "v$VERSION" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+             && [ "$IS_DRAFT" != "false" ]; then
+            if [ "$IS_DRAFT" = "missing" ]; then
+              gh release create "v$VERSION" --repo "$REPO" --draft --target "$GITHUB_SHA" --title "$VERSION" \
+                --notes "Mimar $VERSION"
+            fi
             echo "Publishing release v$VERSION"
             echo "publish=always" >> "$GITHUB_OUTPUT"
           else
-            echo "Not publishing (release v$VERSION exists or this is not a push to main)"
+            echo "Not publishing (release v$VERSION is already out or this is not a push to main)"
             echo "publish=never" >> "$GITHUB_OUTPUT"
           fi
 
@@ -51,6 +60,20 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           GH_TOKEN: ${{ github.token }}
         run: npx electron-builder --win nsis portable --x64 --publish ${{ steps.release.outputs.publish }}
+
+      - name: Publish the release
+        if: steps.release.outputs.publish == 'always'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          for f in "Mimar-Setup-$VERSION.exe" "Mimar-Portable-$VERSION.exe" latest.yml; do
+            gh release view "v$VERSION" --repo "$REPO" --json assets --jq '.assets[].name' | grep -qxF "$f" \
+              || { echo "Missing $f in the draft release"; exit 1; }
+          done
+          gh release edit "v$VERSION" --repo "$REPO" --draft=false --latest
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
