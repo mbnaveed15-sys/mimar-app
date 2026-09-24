@@ -2,6 +2,7 @@ import { useEffect, useRef, type MouseEvent, type PointerEvent, type RefObject }
 import {
   findElementNear,
   fromFurnitureLocal,
+  nearestWall,
   nearestWallEnd,
   placeOnWall,
   snap,
@@ -12,6 +13,7 @@ import { PLAN_FONT } from '../lib/planImage';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
 import { PLAN } from '../theme/plan';
+import { trimAt } from '../lib/modify';
 import { itemsInBox, moveItems, selectionBounds } from '../lib/selection';
 import { DRAG_PX, hover, MEASURE_TOOLS, press, release } from '../tools/controller';
 import type { Furniture, PlanElement, Point, Wall } from '../types';
@@ -192,9 +194,13 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
       case 'mask':
         s.addMaskPoint(gridSnap(raw));
         break;
-      case 'erase':
-        s.eraseAt(raw);
+      case 'erase': {
+        // Shift+click erases just the piece of wall between the walls crossing it (like Trim).
+        const wall = e.shiftKey ? nearestWall(s.visibleElements(), raw, s.hitTolerance() * 1.5) : null;
+        if (wall) s.commit((doc) => trimAt(doc, wall.id, raw, 10 / s.view.zoom));
+        else s.eraseAt(raw);
         break;
+      }
     }
   }
 

@@ -2,9 +2,9 @@ import { exportPlanPdf, exportPlanPng } from './lib/exportActions';
 import { plannerStore, type PlannerState } from './store/plannerStore';
 import { THEMES } from './theme/themes';
 import { DRAW_TOOLS, TOOL_INFO } from './tools/toolInfo';
-import { SIMPLE_TOOLS, TOOLS, type Tool } from './types';
+import { MODIFY_TOOLS, SIMPLE_TOOLS, TOOLS, type Tool } from './types';
 
-export type MenuId = 'file' | 'edit' | 'view' | 'draw' | 'tools' | 'help';
+export type MenuId = 'file' | 'edit' | 'view' | 'draw' | 'tools' | 'modify' | 'help';
 
 export const MENUS: { id: MenuId; label: string }[] = [
   { id: 'file', label: 'File' },
@@ -12,6 +12,7 @@ export const MENUS: { id: MenuId; label: string }[] = [
   { id: 'view', label: 'View' },
   { id: 'draw', label: 'Draw' },
   { id: 'tools', label: 'Tools' },
+  { id: 'modify', label: 'Modify' },
   { id: 'help', label: 'Help' },
 ];
 
@@ -69,7 +70,8 @@ function toolCommand(tool: Tool, menu: MenuId, group: number): Command {
     },
     kind: 'radio',
     checked: (s) => s.tool === tool,
-    hidden: (s) => s.mode === 'simple' && !SIMPLE_TOOLS.includes(tool),
+    // Pro drawing tools are hidden in Simple mode; the Modify menu always lists its tools.
+    hidden: (s) => s.mode === 'simple' && !SIMPLE_TOOLS.includes(tool) && !MODIFY_TOOLS.includes(tool),
   };
 }
 
@@ -344,7 +346,8 @@ export function buildCommands(ctx: CommandContext): Command[] {
 
     // Draw and Tools
     ...TOOLS.filter((t) => DRAW_TOOLS.includes(t)).map((t) => toolCommand(t, 'draw', t === 'mask' ? 1 : 0)),
-    ...TOOLS.filter((t) => !DRAW_TOOLS.includes(t)).map((t) =>
+    ...MODIFY_TOOLS.map((t) => toolCommand(t, 'modify', ['offset', 'mirror', 'scale', 'stretch'].includes(t) ? 0 : 1)),
+    ...TOOLS.filter((t) => !DRAW_TOOLS.includes(t) && !MODIFY_TOOLS.includes(t)).map((t) =>
       toolCommand(
         t,
         'tools',

@@ -45,6 +45,16 @@ export const ICONS = {
   snap: "<path d='M6 3.5v8a6 6 0 0 0 12 0v-8'/><path d='M6 7.5h4M14 7.5h4'/>",
   theme:
     "<circle cx='12' cy='12' r='8.5'/><path d='M12 3.5v17a8.5 8.5 0 0 0 0-17z' fill='currentColor' stroke='none'/>",
+  offset: "<path d='M4 7.5h16M4 16.5h16'/><path d='M12 9.5v5M10 12.5l2 2 2-2'/>",
+  mirror: "<path d='M12 3v18' stroke-dasharray='2 2'/><path d='M9 7 4 17h5zM15 7l5 10h-5z'/>",
+  trim: "<path d='M3 12h7M12 4v16'/><path d='M14 12h7' stroke-dasharray='2 2.2'/>",
+  extend: "<path d='M3 12h9M20 5v14'/><path d='M12 12h5' stroke-dasharray='2 2'/><path d='m15 9 3 3-3 3'/>",
+  break: "<path d='M3 12h6M15 12h6M9 8.5v7M15 8.5v7'/>",
+  join: "<path d='M3 12h7M14 12h7M7 9l3 3-3 3M17 9l-3 3 3 3'/>",
+  fillet: "<path d='M4 20v-8a8 8 0 0 1 8-8h8'/>",
+  chamfer: "<path d='M4 20v-9l7-7h9'/>",
+  stretch: "<path d='M12 6H4v12h8'/><path d='M12 6v12' stroke-dasharray='2 2'/><path d='M14 12h7M18 9l3 3-3 3'/>",
+  scale: "<rect x='3.5' y='10.5' width='10' height='10' rx='0.5'/><path d='M13.5 10.5l6.5-6.5M15 4h5v5'/>",
 } as const;
 
 export type IconName = keyof typeof ICONS;
