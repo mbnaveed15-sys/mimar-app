@@ -24,7 +24,7 @@ function createWindow () {
       nodeIntegration: false,
       contextIsolation: true
     },
-    icon: path.join(__dirname, 'branding', 'logo', 'mimar-emblem.svg')
+    icon: path.join(__dirname, 'branding', 'logo', 'mimar-icon.png')
   });
 
   const indexHtml = path.join(__dirname, 'dist', 'index.html');
