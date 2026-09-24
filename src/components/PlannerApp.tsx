@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { lazy, Suspense, useRef } from 'react';
 import { planBounds } from '../geometry';
 import { exportPdf } from '../lib/exportPdf';
 import { exportPng } from '../lib/exportPng';
@@ -16,11 +16,16 @@ import { SettingsPanel } from './SettingsPanel';
 import { Toolbar } from './Toolbar';
 import { ViewControls } from './ViewControls';
 
+// three.js is large, so the 3D view loads the first time it is opened.
+const Plan3DView = lazy(() => import('../three/Plan3DView'));
+
 export default function PlannerApp() {
   const svgRef = useRef<SVGSVGElement>(null);
   const brushSize = usePlanner((s) => s.brushSize);
   const setBrushSize = usePlanner((s) => s.setBrushSize);
   const mode = usePlanner((s) => s.mode);
+  const view3d = usePlanner((s) => s.view3d);
+  const setView3d = usePlanner((s) => s.setView3d);
 
   function exportArea() {
     const { doc } = plannerStore.getState();
@@ -92,8 +97,38 @@ export default function PlannerApp() {
       </aside>
 
       <main className="relative flex-1 overflow-hidden">
-        <Canvas svgRef={svgRef} />
-        <ViewControls />
+        {view3d ? (
+          <Suspense
+            fallback={<div className="flex h-full items-center justify-center text-sm text-gray-500">Loading 3D…</div>}
+          >
+            <Plan3DView />
+          </Suspense>
+        ) : (
+          <>
+            <Canvas svgRef={svgRef} />
+            <ViewControls />
+          </>
+        )}
+        <div
+          role="radiogroup"
+          aria-label="View"
+          className="absolute top-3 left-3 flex overflow-hidden rounded-md border bg-white text-xs shadow-sm"
+        >
+          {[
+            { on: false, label: '2D plan' },
+            { on: true, label: '3D view' },
+          ].map((v) => (
+            <button
+              key={v.label}
+              role="radio"
+              aria-checked={view3d === v.on}
+              onClick={() => setView3d(v.on)}
+              className={`px-3 py-1.5 ${view3d === v.on ? 'bg-gray-900 font-medium text-white' : 'hover:bg-gray-50'}`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
       </main>
 
       <Inspector />

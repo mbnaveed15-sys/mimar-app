@@ -66,6 +66,9 @@ export interface PlannerState {
   wallThicknessMm: number;
   marlaSqFt: MarlaSqFt;
   paper: PaperSize;
+  wallHeightMm: number;
+  /** True while the 3D view is shown instead of the 2D plan. */
+  view3d: boolean;
   view: View;
   viewport: Size;
 
@@ -114,6 +117,8 @@ export interface PlannerState {
   setWallThicknessMm: (mm: number) => void;
   setMarlaSqFt: (sqft: MarlaSqFt) => void;
   setPaper: (paper: PaperSize) => void;
+  setWallHeightMm: (mm: number) => void;
+  setView3d: (on: boolean) => void;
 
   /** Make a room from the area enclosed by walls around p. */
   addRoomAt: (p: Point) => void;
@@ -150,7 +155,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills } = get();
-      const { mode, wallThicknessMm, marlaSqFt, paper } = get();
+      const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm } = get();
       savePrefs({
         units,
         showDimensions,
@@ -161,6 +166,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         wallThicknessMm,
         marlaSqFt,
         paper,
+        wallHeightMm,
       });
     };
     const resetHistory = { past: [], future: [], batchBase: null, draft: null, selectedId: null, warnings: [] };
@@ -195,6 +201,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       wallThicknessMm: prefs.wallThicknessMm,
       marlaSqFt: prefs.marlaSqFt,
       paper: prefs.paper,
+      wallHeightMm: prefs.wallHeightMm,
+      view3d: false,
       view: { x: 0, y: 0, zoom: 1 },
       viewport: { width: 0, height: 0 },
 
@@ -422,6 +430,14 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       setPaper: (paper) => {
         set({ paper });
         persistPrefs();
+      },
+      setWallHeightMm: (wallHeightMm) => {
+        set({ wallHeightMm: Math.min(6000, Math.max(2000, wallHeightMm)) });
+        persistPrefs();
+      },
+      setView3d: (view3d) => {
+        get().endBatch();
+        set({ view3d, draft: null });
       },
 
       addRoomAt: (p) => {

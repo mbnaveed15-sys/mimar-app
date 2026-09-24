@@ -34,6 +34,8 @@ export default defineConfig({
   root: '.',
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   server: { port: 5173 },
+  // three.js (about 700 kB) is in its own chunk that only loads when the 3D view opens.
+  build: { chunkSizeWarningLimit: 900 },
   test: {
     include: ['src/**/*.test.{ts,tsx}'],
     environment: 'node',
