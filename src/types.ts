@@ -84,25 +84,60 @@ export interface PlanDoc {
 }
 
 export type Tool =
-  'select' | 'pan' | 'wall' | 'room' | 'door' | 'window' | 'furniture' | 'paint' | 'brush' | 'mask' | 'erase';
+  | 'select'
+  | 'pan'
+  | 'zoom'
+  | 'wall'
+  | 'rectangle'
+  | 'room'
+  | 'door'
+  | 'window'
+  | 'furniture'
+  | 'move'
+  | 'rotate'
+  | 'tape'
+  | 'paint'
+  | 'erase'
+  | 'brush'
+  | 'mask';
 
+/** Every tool, in tool-rail order. */
 export const TOOLS: Tool[] = [
   'select',
   'pan',
+  'zoom',
   'wall',
+  'rectangle',
   'room',
   'door',
   'window',
   'furniture',
+  'move',
+  'rotate',
+  'tape',
   'paint',
+  'erase',
   'brush',
   'mask',
-  'erase',
 ];
 
 /** In-progress drawing that is not yet part of the document. */
 export type Draft =
-  | { type: 'wall'; x1: number; y1: number; x2: number; y2: number }
+  | {
+      type: 'wall';
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      /** Click-by-click drawing: each click ends a wall and starts the next, until Esc. */
+      chain?: boolean;
+      /** Where the chain began; clicking it again closes the loop. */
+      chainStart?: Point;
+    }
+  | { type: 'rectangle'; x1: number; y1: number; x2: number; y2: number }
+  | { type: 'tape'; a: Point; b: Point; done?: boolean }
+  | { type: 'move'; orig: PlanElement; base: Point; to: Point; copy: boolean }
+  | { type: 'rotate'; orig: PlanElement; center: Point; start?: Point; angle: number }
   | { type: 'mask'; points: Point[]; cursor?: Point }
   | { type: 'brush' }
   | null;
@@ -126,7 +161,7 @@ export interface Bounds {
 /** Simple mode shows the tools homeowners need; Pro mode shows everything. */
 export type Mode = 'simple' | 'pro';
 
-export const SIMPLE_TOOLS: Tool[] = ['select', 'pan', 'wall', 'room', 'door', 'window', 'furniture', 'erase'];
+export const SIMPLE_TOOLS: Tool[] = TOOLS.filter((t) => t !== 'brush' && t !== 'mask');
 
 export type PaperSize = 'A4' | 'A3';
 

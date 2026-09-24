@@ -11,8 +11,7 @@ export function SettingsPanel() {
   const setPaper = usePlanner((s) => s.setPaper);
 
   return (
-    <div className="m-section text-xs">
-      <span className="m-heading">Settings</span>
+    <div className="flex flex-col gap-2 text-xs">
       <label htmlFor="units" className="font-medium">
         Units
       </label>

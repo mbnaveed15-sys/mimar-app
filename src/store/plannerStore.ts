@@ -8,6 +8,7 @@ import {
   planBounds,
   pointInPolygon,
   reattachOpening,
+  rotateElement,
   translateElement,
 } from '../geometry';
 import { DEFAULT_FILE_NAME } from '../lib/files';
@@ -18,6 +19,7 @@ import { MM_PER_UNIT } from '../lib/scale';
 import { DEFAULT_AREA, fitView, zoomAt, type Size } from '../lib/view';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { detectRoom } from '../rooms';
+import type { Inference } from '../lib/inference';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { SIMPLE_TOOLS } from '../types';
 import type {
@@ -69,6 +71,18 @@ export interface PlannerState {
   wallHeightMm: number;
   /** True while the 3D view is shown instead of the 2D plan. */
   view3d: boolean;
+  /** Text typed into the Measurements box, not yet applied. */
+  measureText: string;
+  /** What the pointer snapped to, shown as a coloured marker. */
+  inference: Inference | null;
+  /** Arrow-key lock to the red (x) or green (y) axis while drawing. */
+  axisLock: 'x' | 'y' | null;
+  /** Direction held by Shift while drawing (inference lock). */
+  shiftLock: Point | null;
+  /** The last Move-copy, so `3x` or `/3` typed next can turn it into an array. */
+  lastCopy: { orig: PlanElement; dx: number; dy: number; ids: Id[] } | null;
+  /** Element copied with Ctrl+C. */
+  clipboard: PlanElement | null;
   theme: ThemeId;
   grid: GridPrefs;
   view: View;
@@ -85,6 +99,8 @@ export interface PlannerState {
   /** Group the following commits into a single undo step until endBatch. */
   beginBatch: () => void;
   endBatch: () => void;
+  /** Throw away everything since beginBatch (Esc during a move or rotate). */
+  cancelBatch: () => void;
   undo: () => void;
   redo: () => void;
 
@@ -94,6 +110,18 @@ export interface PlannerState {
   setBrushSize: (px: number) => void;
   setDraft: (draft: Draft) => void;
   setWarning: (message: string | null) => void;
+  setMeasureText: (text: string) => void;
+  setInference: (inference: Inference | null) => void;
+  setAxisLock: (axis: 'x' | 'y' | null) => void;
+  setShiftLock: (dir: Point | null) => void;
+  setLastCopy: (copy: PlannerState['lastCopy']) => void;
+  /** Add finished elements (copies, pastes) as one undo step. */
+  addElements: (elements: PlanElement[]) => void;
+  /** Four walls around the box from a to b, and the room inside, as one undo step. */
+  addRectangle: (a: Point, b: Point) => void;
+  copySelected: () => void;
+  paste: () => void;
+  duplicateSelected: () => void;
 
   addWall: (a: Point, b: Point) => void;
   placeOpening: (type: 'door' | 'window', p: Point) => void;
@@ -210,6 +238,12 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       paper: prefs.paper,
       wallHeightMm: prefs.wallHeightMm,
       view3d: false,
+      measureText: '',
+      inference: null,
+      axisLock: null,
+      shiftLock: null,
+      lastCopy: null,
+      clipboard: null,
       theme: prefs.theme,
       grid: prefs.grid,
       view: { x: 0, y: 0, zoom: 1 },
@@ -235,6 +269,10 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         if (batchBase === doc) set({ batchBase: null });
         else set({ batchBase: null, past: [...past, batchBase].slice(-HISTORY_LIMIT), future: [] });
       },
+      cancelBatch: () => {
+        const { batchBase } = get();
+        if (batchBase) set({ doc: batchBase, batchBase: null });
+      },
       undo: () => {
         get().endBatch();
         const { past, doc, future } = get();
@@ -252,8 +290,20 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
 
       setTool: (tool) => {
-        get().endBatch();
-        set((s) => ({ tool, draft: null, warnings: [], selectedId: tool === 'select' ? s.selectedId : null }));
+        get().cancelBatch();
+        // Move and Rotate work on the selection, so it stays when switching to them.
+        const keep = tool === 'select' || tool === 'move' || tool === 'rotate';
+        set((s) => ({
+          tool,
+          draft: null,
+          warnings: [],
+          selectedId: keep ? s.selectedId : null,
+          measureText: '',
+          inference: null,
+          axisLock: null,
+          shiftLock: null,
+          lastCopy: null,
+        }));
       },
       selectMaterial: (id) => set({ selectedMat: id }),
       select: (id) =>
@@ -264,6 +314,40 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       setBrushSize: (px) => set({ brushSize: px }),
       setDraft: (draft) => set({ draft }),
       setWarning: (message) => set({ warnings: message ? [message] : [] }),
+      setMeasureText: (measureText) => set({ measureText }),
+      setInference: (inference) => set({ inference }),
+      setAxisLock: (axisLock) => set({ axisLock }),
+      setShiftLock: (shiftLock) => set({ shiftLock }),
+      setLastCopy: (lastCopy) => set({ lastCopy }),
+      addElements: (elements) => {
+        if (elements.length) updateElements((els) => [...els, ...elements]);
+      },
+      addRectangle: (a, b) => {
+        if (Math.abs(b.x - a.x) <= MIN_WALL_PX || Math.abs(b.y - a.y) <= MIN_WALL_PX) return;
+        const corners = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
+        get().beginBatch();
+        corners.forEach((p, i) => get().addWall(p, corners[(i + 1) % 4]));
+        get().addRoomAt({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+        get().endBatch();
+        get().setWarning(null);
+      },
+      copySelected: () => {
+        const el = get().doc.elements.find((e) => e.id === get().selectedId);
+        if (el && el.type !== 'door' && el.type !== 'window') set({ clipboard: el });
+      },
+      paste: () => {
+        const el = get().clipboard;
+        if (!el) return;
+        // Each paste lands one grid step down and to the right of the last.
+        const step = get().gridPx;
+        const copy = translateElement({ ...el, id: newId() }, step, step);
+        get().addElements([copy]);
+        set({ clipboard: copy, selectedId: copy.id });
+      },
+      duplicateSelected: () => {
+        get().copySelected();
+        get().paste();
+      },
 
       addWall: (a, b) => {
         if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
@@ -457,8 +541,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         persistPrefs();
       },
       setView3d: (view3d) => {
-        get().endBatch();
-        set({ view3d, draft: null });
+        get().cancelBatch();
+        set({ view3d, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
       },
 
       addRoomAt: (p) => {
@@ -532,8 +616,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
       rotateSelected: (degrees) => {
         const el = get().doc.elements.find((e) => e.id === get().selectedId);
-        if (el?.type !== 'furniture') return;
-        get().updateElement({ ...el, rotation: ((((el.rotation ?? 0) + degrees) % 360) + 360) % 360 });
+        if (el?.type !== 'furniture' && el?.type !== 'wall') return;
+        get().updateElement(rotateElement(el, elementCenter(el), degrees));
       },
 
       newPlan: () => {
