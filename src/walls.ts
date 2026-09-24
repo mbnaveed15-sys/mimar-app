@@ -31,6 +31,15 @@ function isJoined(p: Point, self: Wall, walls: Wall[]): boolean {
   );
 }
 
+/** How far each end of the wall reaches past its end point (half the thickness where it meets another wall). */
+export function wallExtensions(wall: Wall, walls: Wall[]): { start: number; end: number } {
+  const half = thicknessOf(wall) / 2;
+  return {
+    start: isJoined({ x: wall.x1, y: wall.y1 }, wall, walls) ? half : 0,
+    end: isJoined({ x: wall.x2, y: wall.y2 }, wall, walls) ? half : 0,
+  };
+}
+
 /**
  * Outline of a wall with its thickness. Ends that meet another wall are extended by half the
  * thickness so corners close; the extension is hidden inside the neighbouring wall.
@@ -42,8 +51,7 @@ export function wallPolygon(wall: Wall, walls: Wall[]): Point[] {
   const ux = dx / len;
   const uy = dy / len;
   const half = thicknessOf(wall) / 2;
-  const start = isJoined({ x: wall.x1, y: wall.y1 }, wall, walls) ? half : 0;
-  const end = isJoined({ x: wall.x2, y: wall.y2 }, wall, walls) ? half : 0;
+  const { start, end } = wallExtensions(wall, walls);
   const a = { x: wall.x1 - ux * start, y: wall.y1 - uy * start };
   const b = { x: wall.x2 + ux * end, y: wall.y2 + uy * end };
   const nx = -uy * half;

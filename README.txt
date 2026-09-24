@@ -45,6 +45,10 @@ USING THE PLANNER
   Layers               Show or hide dimensions, furniture, room names & areas and room colours.
                        Exports show the same layers. Walls between rooms show their dimension
                        when selected.
+  3D view              "3D view" above the plan shows it in 3D: walls with door and window
+                       openings, open doors, glass, room floors in their colours and furniture.
+                       Drag to turn, right-drag to move, scroll to zoom. Set the wall height
+                       (8-15 ft), reset the view or save a picture. "2D plan" switches back.
   Export               PDF: print-ready at a true scale (1:50, 1:100 ...) on A4 or A3 with a
                        title block. PNG: an image of the plan with the Mimar watermark.
   Units                Feet & inches (default) or metric, in the Units setting. Lengths can be
@@ -59,6 +63,7 @@ PROJECT LAYOUT
   src/lib/                 Storage (with migration), .mimar files, units, zoom maths, PNG export
   src/components/          UI: Toolbar, Materials panel, Canvas, Inspector, shapes/
   src/furniture/           Furniture library: sizes and plan symbols
+  src/three/               3D view (three.js): model building and the viewer
   e2e/                     Playwright browser tests
   electron-main.cjs        Desktop window (Electron main process)
   branding/                Logo, icons, splash screen, watermark

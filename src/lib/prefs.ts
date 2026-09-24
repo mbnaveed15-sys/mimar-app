@@ -12,6 +12,8 @@ export interface Prefs {
   wallThicknessMm: number;
   marlaSqFt: MarlaSqFt;
   paper: PaperSize;
+  /** Wall height in the 3D view, in millimetres. */
+  wallHeightMm: number;
 }
 
 const PREFS_KEY = 'mimar.prefs';
@@ -25,6 +27,7 @@ export const DEFAULT_PREFS: Prefs = {
   wallThicknessMm: 228.6,
   marlaSqFt: 225,
   paper: 'A4',
+  wallHeightMm: 3048,
 };
 
 export function loadPrefs(storage = browserStorage()): Prefs {
@@ -41,6 +44,10 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       wallThicknessMm: thickness >= 25 && thickness <= 1000 ? thickness : DEFAULT_PREFS.wallThicknessMm,
       marlaSqFt: raw?.marlaSqFt === 272.25 ? 272.25 : 225,
       paper: raw?.paper === 'A3' ? 'A3' : 'A4',
+      wallHeightMm:
+        Number(raw?.wallHeightMm) >= 2000 && Number(raw?.wallHeightMm) <= 6000
+          ? Number(raw?.wallHeightMm)
+          : DEFAULT_PREFS.wallHeightMm,
     };
   } catch {
     return DEFAULT_PREFS;
