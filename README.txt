@@ -16,6 +16,16 @@ CHECKS (the same ones GitHub runs on every pull request)
   npm run test:e2e     Browser tests (Playwright). First time: npx playwright install chromium
   npm run format       Auto-format the code.
 
+UPDATES (free, from GitHub Releases)
+- Merging a pull request that raises "version" in package.json publishes a GitHub Release
+  (v<version>) with the installer and portable app. Merges without a version change only build.
+- The installed app checks for a newer release at start and every 6 hours, downloads it in the
+  background and shows "Restart to update" in the left panel.
+- The portable app shows "Mimar <version> is available" with a Download button, since it
+  cannot replace itself.
+- The app is not code-signed, so Windows may show "Windows protected your PC" for a new
+  version: click "More info", then "Run anyway".
+
 BUILD THE WINDOWS INSTALLER
 - On GitHub: pushing to 'main' runs "Build Mimar Windows Installer". Download
   Mimar-Setup-<version>.exe (installer) or Mimar-Portable-<version>.exe (runs
@@ -66,6 +76,7 @@ PROJECT LAYOUT
   src/three/               3D view (three.js): model building and the viewer
   e2e/                     Playwright browser tests
   electron-main.cjs        Desktop window (Electron main process)
+  updater.cjs              Automatic updates from GitHub Releases
   branding/                Logo, icons, splash screen, watermark
 
 The current plan is also kept automatically in the app's local storage, so work

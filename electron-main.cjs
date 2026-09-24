@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const fs = require('fs/promises');
 const path = require('path');
+const { setupUpdates } = require('./updater.cjs');
 const { pathToFileURL } = require('url');
 let mainWindow;
 let splash;
@@ -100,6 +101,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  setupUpdates(() => mainWindow);
   try {
     createSplash();
   } catch (e) {

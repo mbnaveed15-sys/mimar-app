@@ -6,7 +6,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # Needed to publish GitHub Releases, which the app checks for updates.
+  contents: write
 
 jobs:
   build-windows-installer:
@@ -27,10 +28,29 @@ jobs:
       - name: Build client (Vite)
         run: npm run build
 
+      # Publish a release only for pushes to main whose version has no release yet,
+      # so merging without a version bump just builds.
+      - name: Decide whether to publish a release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ] \
+             && ! gh release view "v$VERSION" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Publishing release v$VERSION"
+            echo "publish=always" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not publishing (release v$VERSION exists or this is not a push to main)"
+            echo "publish=never" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build Windows installer and portable app
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --win nsis portable --x64 --publish never
+          GH_TOKEN: ${{ github.token }}
+        run: npx electron-builder --win nsis portable --x64 --publish ${{ steps.release.outputs.publish }}
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
