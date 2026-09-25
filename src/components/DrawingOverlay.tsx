@@ -24,6 +24,7 @@ const SNAP_COLORS: Partial<Record<Inference['kind'], string>> = {
   midpoint: 'var(--snap-mid)',
   'on-wall': 'var(--snap-edge)',
   'on-line': 'var(--snap-edge)',
+  'building-line': 'var(--snap-edge)',
   intersection: 'var(--snap-end)',
   'axis-x': 'var(--axis-x)',
   'axis-y': 'var(--axis-y)',

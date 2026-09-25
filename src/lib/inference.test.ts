@@ -19,6 +19,16 @@ describe('snapping (inference)', () => {
     expect(infer({ x: 61, y: 1 }, { ...opts, walls: [offGrid] })).toEqual({ point: { x: 60, y: 0 }, kind: 'grid' });
   });
 
+  it('snaps to the building line ahead of a grid point, at the grid step along it', () => {
+    // The building line (set in by half a wall) runs 4 units below the grid line y = 60.
+    const guide = { id: 'g', x1: 0, y1: 56, x2: 100, y2: 56 };
+    const withGuide = { ...opts, walls: [], guides: [guide] };
+    expect(infer({ x: 41, y: 59 }, withGuide)).toEqual({ point: { x: 40, y: 56 }, kind: 'building-line' });
+    expect(infer({ x: 1, y: 57 }, withGuide)).toEqual({ point: { x: 0, y: 56 }, kind: 'building-line' });
+    // Away from it, the grid as before.
+    expect(infer({ x: 41, y: 31 }, withGuide)).toEqual({ point: { x: 40, y: 30 }, kind: 'grid' });
+  });
+
   it('snaps to layout lines and to where lines and walls cross', () => {
     const line = { id: 'l', x1: 25, y1: -40, x2: 25, y2: 60 };
     const withLine = { ...opts, grid: null, lines: [line] };

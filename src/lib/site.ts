@@ -54,6 +54,22 @@ export function buildableArea(plot: Plot): Point[] {
   return inset(plot.points, setbackPerEdge(plot));
 }
 
+/**
+ * The building line moved in, per edge, by how far an item's centre sits from its face: `half`
+ * gets each edge's direction. Items placed on it touch the building line from inside.
+ */
+export function buildingGuide(plot: Plot, half: (dir: Point) => number): Point[] {
+  const line = buildableArea(plot);
+  return inset(
+    line,
+    line.map((p, i) => {
+      const q = line[(i + 1) % line.length];
+      const l = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+      return half({ x: (q.x - p.x) / l, y: (q.y - p.y) / l });
+    }),
+  );
+}
+
 /** Centre lines of boundary walls of the given thickness, just inside the plot line. */
 export function boundaryWallLines(plot: Plot, thickness: number): [Point, Point][] {
   const inner = inset(

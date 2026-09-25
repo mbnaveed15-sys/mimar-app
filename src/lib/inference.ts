@@ -3,7 +3,17 @@ import type { Point, Wall } from '../types';
 
 /** What a drawing point snapped to, like SketchUp's inference. */
 export type SnapKind =
-  'endpoint' | 'midpoint' | 'intersection' | 'on-wall' | 'on-line' | 'axis-x' | 'axis-y' | 'locked' | 'grid' | 'free';
+  | 'endpoint'
+  | 'midpoint'
+  | 'intersection'
+  | 'on-wall'
+  | 'on-line'
+  | 'building-line'
+  | 'axis-x'
+  | 'axis-y'
+  | 'locked'
+  | 'grid'
+  | 'free';
 
 export interface Inference {
   point: Point;
@@ -16,6 +26,7 @@ export const SNAP_LABELS: Record<SnapKind, string> = {
   intersection: 'Intersection',
   'on-wall': 'On wall',
   'on-line': 'On line',
+  'building-line': 'On building line',
   'axis-x': 'On red axis',
   'axis-y': 'On green axis',
   locked: 'Locked',
@@ -36,6 +47,11 @@ export interface InferOptions {
   walls: Wall[];
   /** Layout (drafting) lines. */
   lines?: Segment[];
+  /**
+   * The building line (where the setbacks end), moved in so the item being drawn touches it from
+   * inside. It wins over a grid point, so walls don't end up centred on the line.
+   */
+  guides?: Segment[];
   /** How close counts as "on" something, in plan units (about 10 screen pixels). */
   tolerance: number;
   /** The point being drawn from, for axis inference and locks. */
@@ -86,9 +102,11 @@ export function infer(raw: Point, opts: InferOptions): Inference {
   const keep = <T extends { id: string }>(list: T[]) => (ignoreIds ? list.filter((w) => !ignoreIds.has(w.id)) : list);
   const others = keep(walls);
   const lines = keep(opts.lines ?? []);
-  const all: { seg: Segment; kind: 'on-wall' | 'on-line' }[] = [
+  const guides = opts.guides ?? [];
+  const all: { seg: Segment; kind: 'on-wall' | 'on-line' | 'building-line' }[] = [
     ...others.map((seg) => ({ seg, kind: 'on-wall' as const })),
     ...lines.map((seg) => ({ seg, kind: 'on-line' as const })),
+    ...guides.map((seg) => ({ seg, kind: 'building-line' as const })),
   ];
 
   if (from && lock) {
@@ -112,13 +130,15 @@ export function infer(raw: Point, opts: InferOptions): Inference {
     }
   };
 
-  for (const { seg } of all) {
-    consider({ x: seg.x1, y: seg.y1 }, 'endpoint');
-    consider({ x: seg.x2, y: seg.y2 }, 'endpoint');
+  for (const { seg, kind } of all) {
+    const end = kind === 'building-line' ? kind : 'endpoint';
+    consider({ x: seg.x1, y: seg.y1 }, end);
+    consider({ x: seg.x2, y: seg.y2 }, end);
   }
   if (best) return best;
 
-  for (const { seg } of all) consider({ x: (seg.x1 + seg.x2) / 2, y: (seg.y1 + seg.y2) / 2 }, 'midpoint');
+  for (const { seg, kind } of all)
+    if (kind !== 'building-line') consider({ x: (seg.x1 + seg.x2) / 2, y: (seg.y1 + seg.y2) / 2 }, 'midpoint');
   if (best) return best;
 
   // Crossings, among the pieces close to the pointer only (keeps this quick on big plans).
@@ -130,6 +150,15 @@ export function infer(raw: Point, opts: InferOptions): Inference {
       const x = crossing(near[i].seg, near[j].seg);
       if (x) consider(x, 'intersection');
     }
+  if (best) return best;
+
+  // On the building line, at the grid step nearest the pointer: ahead of a grid point on the line itself.
+  for (const g of guides) {
+    const a = { x: g.x1, y: g.y1 };
+    const b = { x: g.x2, y: g.y2 };
+    if (dist(closestOnSegment(raw, a, b), raw) >= tolerance) continue;
+    consider(closestOnSegment(grid ? snap(raw, grid) : raw, a, b), 'building-line', tolerance * 2);
+  }
   if (best) return best;
 
   // A grid point close by wins even over a wall or item lying on top of it.

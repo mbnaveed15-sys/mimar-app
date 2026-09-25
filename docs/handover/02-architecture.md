@@ -53,6 +53,9 @@ autosaves to local storage on every change.
   `src/components/PlanCheckPanel.tsx` (bylaw rows, then Hints), `CheckMarks.tsx` (red, dashed and dotted marks, on
   items and rooms) and `PlotBylaws.tsx` (authority, presets, the plot's setbacks). Figures and sources:
   `docs/handover/06-bylaws.md`. The plan's `northDeg` (degrees clockwise from up) drives the PDF's north arrow.
+- Snapping (`src/lib/inference.ts`): wall and line ends, midpoints, crossings, then the building-line guides
+  (`buildingGuides` in `src/tools/controller.ts`, from `buildingGuide` in `site.ts`, set in by the tool's half size),
+  then grid points, axes, and points along walls and lines.
 - Tool bars: `src/lib/toolbars.ts` (the bars, the saved layout in prefs, `moveToolbar`, `packColumns` which
   wraps bars into columns) and `src/components/ToolDocks.tsx` (the four docks, grips, drag and drop, grip menu).
 - `src/commands.ts`: every menu item, shortcut and Ctrl+K palette entry in one registry.
