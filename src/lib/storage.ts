@@ -5,13 +5,14 @@ import {
   type Level,
   type Mask,
   type Material,
+  type Pattern,
   type PlanDoc,
   type PlanElement,
   type Point,
   type Room,
 } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
-import { defaultMaterials } from './materials';
+import { defaultMaterials, PATTERNS } from './materials';
 
 export const STORAGE_KEY = 'mimar.plan';
 /** 4 added groups and components; 5 added levels, columns, beams and slabs. */
@@ -274,6 +275,10 @@ function normaliseMaterial(raw: unknown): Material | null {
     color: typeof raw.color === 'string' ? raw.color : '#ffffff',
     texture: typeof raw.texture === 'string' ? raw.texture : '',
     type: typeof raw.type === 'string' ? raw.type : undefined,
+    ...(typeof raw.pattern === 'string' && PATTERNS.includes(raw.pattern as Pattern)
+      ? { pattern: raw.pattern as Pattern }
+      : {}),
+    ...(typeof raw.sizeMm === 'number' && raw.sizeMm > 0 ? { sizeMm: raw.sizeMm } : {}),
   };
 }
 

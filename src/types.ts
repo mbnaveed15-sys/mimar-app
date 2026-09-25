@@ -7,12 +7,34 @@ export interface Point {
   y: number;
 }
 
+/** How a material's surface is drawn in 3D (and in its swatch). */
+export type Pattern =
+  | 'plain'
+  | 'tiles'
+  | 'brick'
+  | 'wood'
+  | 'marble'
+  | 'granite'
+  | 'terrazzo'
+  | 'stone'
+  | 'concrete'
+  | 'grass'
+  | 'pavers'
+  | 'gravel'
+  | 'metal'
+  | 'glass'
+  | 'fabric';
+
 export interface Material {
   id: Id;
   name: string;
   color: string;
   texture: string;
   type?: string;
+  /** Surface pattern; plain when missing. */
+  pattern?: Pattern;
+  /** Size of one repeat (a tile, a brick, a plank's width), in millimetres. */
+  sizeMm?: number;
 }
 
 /** Membership of a group or component copy, and the floor (level) an item is on. */

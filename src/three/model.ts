@@ -1,4 +1,5 @@
 import { wallLength, wallParam } from '../geometry';
+import { patternSpanMm } from '../lib/patterns';
 import { MM_PER_UNIT } from '../lib/scale';
 import { stairLayout } from '../lib/site';
 import {
@@ -7,6 +8,7 @@ import {
   type Column,
   type Furniture,
   type Opening,
+  type Pattern,
   type PlanDoc,
   type Point,
   type Stair,
@@ -28,6 +30,14 @@ export const SLAB_MM = 152.4;
  * A box in the scene. x/z are the centre on the ground (metres, z = plan y), y0 is the height of
  * its base, w runs along its own x axis, d along its own z axis, rotY turns it about the vertical.
  */
+/** A surface pattern and how far (in metres) one drawing of it spans. */
+export interface Finish {
+  pattern: Pattern;
+  spanM: number;
+  /** The material's name, when one was chosen (used to name materials in exports). */
+  name?: string;
+}
+
 export interface Solid {
   x: number;
   z: number;
@@ -38,6 +48,7 @@ export interface Solid {
   rotY: number;
   color: string;
   opacity?: number;
+  finish?: Finish;
   /** What it is, for tests and for picking materials. */
   role: 'wall' | 'glass' | 'door' | 'furniture' | 'column' | 'beam' | 'stair';
 }
@@ -47,6 +58,7 @@ export interface Floor {
   points: [number, number][];
   y: number;
   color: string;
+  finish?: Finish;
 }
 
 /** A slab: an outline extruded upward from y0 by h, in metres. */
@@ -55,6 +67,7 @@ export interface Slab3D {
   y0: number;
   h: number;
   color: string;
+  finish?: Finish;
 }
 
 export interface Model3D {
@@ -355,6 +368,19 @@ function beamSolid(b: Beam, top: number, color?: string): Solid | null {
  */
 export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const colorOf = (id?: string) => doc.materials.find((mat) => mat.id === id)?.color;
+  const finishOf = (id?: string, fallback?: Pattern): Finish | undefined => {
+    const mat = doc.materials.find((x) => x.id === id);
+    const pattern = mat?.pattern ?? (mat ? undefined : fallback);
+    if (!pattern) return undefined;
+    const spanM = mmToM(patternSpanMm({ pattern, sizeMm: mat?.sizeMm }));
+    return mat ? { pattern, spanM, name: mat.name } : { pattern, spanM };
+  };
+  /** Give solids the element's material pattern (only those drawn in its colour). */
+  const withFinish = (id: string | undefined, fallback?: Pattern) => {
+    const finish = finishOf(id, fallback);
+    const color = colorOf(id);
+    return (s: Solid): Solid => (finish && (!color || s.color === color) ? { ...s, finish } : s);
+  };
   const solids: Solid[] = [];
   const floors: Floor[] = [];
   const slabs: Slab3D[] = [];
@@ -373,7 +399,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
     for (const wall of walls) {
       const own = openings.filter((o) => o.wallId === wall.id);
       const color = colorOf(wall.material);
-      const paint = (s: Solid) => (color && s.role === 'wall' ? { ...s, color } : s);
+      const finish = finishOf(wall.material);
+      const paint = (s: Solid) => (color && s.role === 'wall' ? { ...s, color, finish } : s);
       const height = wall.heightMm ?? options.wallHeightMm;
       // A boundary wall stands on the natural ground, not on the plinth.
       if (wall.kind === 'boundary' && i === 0) {
@@ -393,16 +420,17 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
     }
     for (const el of els) {
       if (el.type === 'furniture' && options.showFurniture)
-        solids.push(...furnitureSolids(el, colorOf(el.material)).map(lift));
-      if (el.type === 'column') solids.push(lift(columnSolid(el, wallTop, colorOf(el.material))));
+        solids.push(...furnitureSolids(el, colorOf(el.material)).map(withFinish(el.material)).map(lift));
+      if (el.type === 'column')
+        solids.push(lift(withFinish(el.material, 'concrete')(columnSolid(el, wallTop, colorOf(el.material)))));
       if (el.type === 'beam') {
         const b = beamSolid(el, wallTop, colorOf(el.material));
-        if (b) solids.push(lift(b));
+        if (b) solids.push(lift(withFinish(el.material, 'concrete')(b)));
       }
       if (el.type === 'stair') {
         // Steps up the plinth start from the natural ground; others from the floor they are on.
         const fromGround = i === 0 && Math.abs(el.riseMm - doc.plinthMm) < 1;
-        const parts = stairSolids(el, colorOf(el.material));
+        const parts = stairSolids(el, colorOf(el.material)).map(withFinish(el.material, 'concrete'));
         solids.push(...(fromGround ? parts : parts.map(lift)));
       }
       if (el.type === 'plot' && i === 0)
@@ -410,6 +438,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           points: el.points.map((p) => [m(p.x), m(p.y)] as [number, number]),
           y: 0,
           color: colorOf(el.material) ?? LAWN,
+          finish: finishOf(el.material, 'grass'),
         });
       if (el.type === 'slab')
         slabs.push({
@@ -417,6 +446,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           y0: base + wallTop,
           h: m(el.thickness),
           color: colorOf(el.material) ?? CONCRETE,
+          finish: finishOf(el.material, 'concrete'),
         });
     }
     for (const r of doc.rooms.filter((room) => levelOf(room) === level.id)) {
@@ -424,6 +454,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         points: r.points.map((p) => [m(p.x), m(p.y)] as [number, number]),
         y: base,
         color: colorOf(r.material) ?? DEFAULT_FLOOR,
+        finish: finishOf(r.material),
       });
     }
   });
