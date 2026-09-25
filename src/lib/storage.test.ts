@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CURRENT_VERSION, STORAGE_KEY, loadPlan, savePlan } from './storage';
+import { CURRENT_VERSION, STORAGE_KEY, emptyDoc, loadPlan, normaliseDoc, savePlan } from './storage';
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const data = new Map(Object.entries(initial));
@@ -76,5 +76,20 @@ describe('storage', () => {
     };
     expect(loadPlan(broken).warning).toBeDefined();
     expect(() => savePlan(loadPlan(null).doc, broken)).not.toThrow();
+  });
+
+  it('keeps sensible heights above the floor and window sills, and drops the rest', () => {
+    const doc = normaliseDoc({
+      ...emptyDoc(),
+      elements: [
+        { id: 'a', type: 'column', x: 0, y: 0, w: 23, h: 23, shape: 'rect', elevMm: 600 },
+        { id: 'b', type: 'column', x: 0, y: 0, w: 23, h: 23, shape: 'rect', elevMm: 'high' },
+        { id: 'c', type: 'column', x: 0, y: 0, w: 23, h: 23, shape: 'rect', elevMm: 1e9 },
+        { id: 'w', type: 'wall', x1: 0, y1: 0, x2: 100, y2: 0, thickness: 23 },
+        { id: 'n', type: 'window', wallId: 'w', x: 50, y: 0, angle: 0, width: 60, sillMm: 600 },
+      ],
+    });
+    expect(doc.elements.map((el) => el.elevMm)).toEqual([600, undefined, undefined, undefined, undefined]);
+    expect(doc.elements.find((el) => el.id === 'n')).toMatchObject({ sillMm: 600 });
   });
 });

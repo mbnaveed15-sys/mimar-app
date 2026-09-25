@@ -7,7 +7,7 @@ import type { Draft, Point, Units } from '../types';
 interface Props {
   draft: Draft;
   inference: Inference | null;
-  axisLock: 'x' | 'y' | null;
+  axisLock: 'x' | 'y' | 'z' | null;
   units: Units;
   /** Plan units per screen pixel. */
   k: number;
@@ -25,7 +25,7 @@ const SNAP_COLORS: Partial<Record<Inference['kind'], string>> = {
 };
 
 /** Colour of a rubber band: red or green when it runs along an axis, like SketchUp. */
-function bandColor(inference: Inference | null, axisLock: 'x' | 'y' | null) {
+function bandColor(inference: Inference | null, axisLock: 'x' | 'y' | 'z' | null) {
   if (axisLock === 'x' || inference?.kind === 'axis-x') return 'var(--axis-x)';
   if (axisLock === 'y' || inference?.kind === 'axis-y') return 'var(--axis-y)';
   return PLAN.draft;

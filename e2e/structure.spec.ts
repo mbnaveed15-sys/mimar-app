@@ -84,3 +84,41 @@ test('a plot with setbacks and a boundary wall, a gate, and a stair', async ({ p
   await page.keyboard.press('Control+2');
   await expect(page.getByTestId('plan-3d')).toHaveAttribute('data-floors', '1');
 });
+
+test('raise an item above its floor, by its height or with Alt+arrows, and move it up in 3D', async ({ page }) => {
+  const click = async (x: number, y: number) => page.mouse.click(...(await at(page, ...P(x, y))));
+  await page.keyboard.press('c');
+  await click(4, 4);
+  await page.keyboard.press('Space');
+  await click(4, 4);
+  const height = page.getByLabel('Height above floor');
+  await height.fill(`2'`);
+  await height.press('Enter');
+  await expect(page.getByTestId('elevation-tag')).toHaveText(`+2' 0"`);
+
+  // Alt+up/down: a grid square at a time.
+  await page.getByTestId('plan-canvas').hover();
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(page.getByTestId('elevation-tag')).not.toHaveText(`+2' 0"`);
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(page.getByTestId('elevation-tag')).toHaveText(`+2' 0"`);
+
+  // Sunk below the floor.
+  await height.fill(`-1'`);
+  await height.press('Enter');
+  await expect(page.getByTestId('elevation-tag')).toHaveText(`-1' 0"`);
+
+  // In 3D, Move then arrow up locks to the blue axis and takes a typed height.
+  await page.keyboard.press('Control+2');
+  const view = page.getByTestId('plan-3d');
+  await expect(view).toBeVisible();
+  await page.keyboard.press('m');
+  const box = (await view.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.keyboard.press('ArrowUp');
+  await expect(page.getByText('Blue axis locked (up and down)')).toBeVisible();
+  await page.keyboard.type(`3'`);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Control+1');
+  await expect(page.getByTestId('elevation-tag')).toHaveText(`+2' 0"`);
+});

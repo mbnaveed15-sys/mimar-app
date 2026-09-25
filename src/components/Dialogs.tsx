@@ -111,6 +111,7 @@ const DRAWING_KEYS: [string, string][] = [
   ['Type a value, then Enter', 'Set an exact length, size, angle or distance (Measurements box)'],
   ['Right arrow', 'Lock to the red (horizontal) axis; press again to unlock'],
   ['Left / Up arrow', 'Lock to the green (vertical) axis'],
+  ['Up / Down arrow while moving in 3D', 'Lock to the blue axis: raise or lower, or type a height'],
   ['Hold Shift', 'Keep the current direction while you move the mouse'],
   ['Ctrl while moving', 'Copy instead of move; then type 3x or /3 for more copies'],
   ['Esc', 'Cancel the current step; press again to drop the selection'],
@@ -120,6 +121,7 @@ const DRAWING_KEYS: [string, string][] = [
   ['Shift+click', 'Add to or take out of the selection'],
   ['Double-click a group', 'Edit inside it; Esc closes it (component copies then update)'],
   ['Arrow keys with a selection', 'Nudge by one grid step; Shift for a fifth of a step'],
+  ['Alt+Up / Alt+Down with a selection', 'Raise or lower by one grid step; Shift for a fifth'],
   ['Middle-drag / scroll', 'Pan / zoom with any tool'],
 ];
 

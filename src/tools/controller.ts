@@ -1,10 +1,18 @@
 import { findElementNear, placeOnWall } from '../geometry';
 import { axisDirection, infer, type Inference } from '../lib/inference';
 import { parseMeasure, type MeasureKind } from '../lib/measure';
-import { boundsCentre, copyItems, deleteItems, moveItems, rotateItems, selectionBounds } from '../lib/selection';
+import {
+  boundsCentre,
+  copyItems,
+  deleteItems,
+  moveItems,
+  raiseItems,
+  rotateItems,
+  selectionBounds,
+} from '../lib/selection';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
-import type { Id, Point, SketchLine, Tool, Wall } from '../types';
+import type { Id, PlanDoc, Point, SketchLine, Tool, Wall } from '../types';
 import { MODIFY_TOOLS } from '../types';
 import { wallsOf } from '../walls';
 import {
@@ -67,7 +75,7 @@ const degrees = (v: Point) => (Math.atan2(v.y, v.x) * 180) / Math.PI;
 
 /** Snap a point for the active tool, drawing from `from` when there is one. */
 export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreIds?: Set<Id>): Inference {
-  const lock = from ? (s.axisLock ? axisDirection(s.axisLock) : s.shiftLock) : null;
+  const lock = from ? (s.axisLock === 'x' || s.axisLock === 'y' ? axisDirection(s.axisLock) : s.shiftLock) : null;
   return infer(raw, {
     walls: wallsOf(s.visibleElements()),
     lines: s.visibleElements().filter((el): el is SketchLine => el.type === 'line'),
@@ -142,7 +150,7 @@ function movingIds(s: PlannerState): Set<Id> | undefined {
 }
 
 /** Pointer moved over the plan: update the snap marker and the rubber band. */
-export function hover(store: Store, raw: Point, shift = false) {
+export function hover(store: Store, raw: Point, shift = false, screenY?: number) {
   const s = store.getState();
   const d = s.draft;
   if (!(s.tool in MEASURE_TOOLS)) return;
@@ -164,7 +172,7 @@ export function hover(store: Store, raw: Point, shift = false) {
       if (!d.done) s.setDraft({ ...d, b: p });
       break;
     case 'move':
-      moveTo(store, p, raw);
+      moveTo(store, p, raw, screenY);
       break;
     case 'rotate': {
       if (!d.start) break;
@@ -179,24 +187,91 @@ export function hover(store: Store, raw: Point, shift = false) {
   }
 }
 
-/** Show the items being moved (or their copies) at `to`, starting again from the plan before the move. */
-function moveTo(store: Store, to: Point, raw: Point) {
+/**
+ * Show the items being moved (or their copies) at `to`, starting again from the plan before the
+ * move. Locked to the blue axis, the pointer's height on screen (screenY) raises them instead.
+ */
+function moveTo(store: Store, to: Point, raw: Point, screenY?: number) {
   const s = store.getState();
   const d = s.draft;
   if (d?.type !== 'move') return;
+  const next = { ...d, screenY: screenY ?? d.screenY };
+  if (s.axisLock === 'z') {
+    // Up the screen is up; a pixel is about as tall as it is wide where the items are.
+    if (screenY !== undefined && !d.zFrom) next.zFrom = { y: screenY, dz: d.dz ?? 0 };
+    else if (screenY !== undefined && d.zFrom)
+      next.dz = snapHeight(s, d.zFrom.dz + (d.zFrom.y - screenY) * s.pxUnits() * MM_PER_UNIT);
+  } else {
+    // A door or window on its own follows the pointer along its wall.
+    next.to = loneOpening(s, d) ? raw : to;
+  }
+  s.setDraft(next);
+  showMove(store, next);
+}
+
+type MoveDraft = Extract<PlannerState['draft'], { type: 'move' }>;
+
+/** The door or window being moved on its own, as it was before the move. */
+function loneOpening(s: PlannerState, d: MoveDraft) {
   const only = d.ids.length === 1 ? s.batchBase?.elements.find((el) => el.id === d.ids[0]) : undefined;
-  if (only && (only.type === 'door' || only.type === 'window')) {
-    // A door or window on its own slides along its wall.
-    const wall = s.doc.elements.find((el): el is Wall => el.type === 'wall' && el.id === only.wallId);
-    if (wall) s.updateElement({ ...only, ...placeOnWall(wall, raw, only.width) });
-    s.setDraft({ ...d, to: raw });
+  return only?.type === 'door' || only?.type === 'window' ? only : undefined;
+}
+
+/** Heights step by an inch (or 10 mm) as the pointer moves. */
+function snapHeight(s: PlannerState, mm: number): number {
+  const step = s.units === 'imperial' ? 25.4 : 10;
+  return Math.round(mm / step) * step;
+}
+
+/** The plan with the move so far applied: across by base→to, and up by dz. */
+function movedPlan(d: MoveDraft) {
+  const dx = d.to.x - d.base.x;
+  const dy = d.to.y - d.base.y;
+  const dz = d.dz ?? 0;
+  const { ids, copy } = d;
+  return (base: PlanDoc): { doc: PlanDoc; ids: Id[] } => {
+    if (copy) {
+      const out = copyItems(base, ids, dx, dy);
+      return { doc: raiseItems(out.doc, out.ids, dz), ids: out.ids };
+    }
+    return { doc: raiseItems(moveItems(base, ids, dx, dy), ids, dz), ids };
+  };
+}
+
+function showMove(store: Store, d: MoveDraft) {
+  const s = store.getState();
+  const only = loneOpening(s, d);
+  if (only) {
+    // It slides along its wall (once the pointer has moved), and a window's sill goes up and down.
+    const slid = d.to.x !== d.base.x || d.to.y !== d.base.y;
+    s.commitFromBase((base) => {
+      const wall = base.elements.find((el): el is Wall => el.type === 'wall' && el.id === only.wallId);
+      const at = wall && slid ? placeOnWall(wall, d.to, only.width) : {};
+      const elements = base.elements.map((el) => (el.id === only.id ? { ...el, ...at } : el));
+      return raiseItems({ ...base, elements }, [only.id], d.dz ?? 0);
+    });
     return;
   }
-  const dx = to.x - d.base.x;
-  const dy = to.y - d.base.y;
-  const { ids, copy } = d;
-  s.commitFromBase((base) => (copy ? copyItems(base, ids, dx, dy).doc : moveItems(base, ids, dx, dy)));
-  s.setDraft({ ...d, to });
+  const plan = movedPlan(d);
+  s.commitFromBase((base) => plan(base).doc);
+}
+
+/**
+ * Arrow up or down while moving in 3D: lock to the blue axis, so moving the pointer up and down the
+ * screen raises and lowers the items (or type a height). Pressing again goes back to moving across.
+ */
+export function toggleHeightLock(store: Store): boolean {
+  const s = store.getState();
+  const d = s.draft;
+  if (d?.type !== 'move' || !s.view3d) return false;
+  if (s.axisLock === 'z') {
+    s.setAxisLock(null);
+    return true;
+  }
+  s.setAxisLock('z');
+  // Measured from where the pointer is now (or, if it hasn't moved yet, from where it next is).
+  s.setDraft({ ...d, zFrom: d.screenY === undefined ? undefined : { y: d.screenY, dz: d.dz ?? 0 } });
+  return true;
 }
 
 /** Switch copy mode on or off while moving (Ctrl), like SketchUp. */
@@ -210,8 +285,9 @@ export function toggleCopy(store: Store) {
     )
   )
     return;
-  s.setDraft({ ...d, copy: !d.copy });
-  moveTo(store, d.to, d.to);
+  const next = { ...d, copy: !d.copy };
+  s.setDraft(next);
+  showMove(store, next);
 }
 
 /** Finish a move: keep the moved items, or make the copies for real and select them. */
@@ -223,17 +299,20 @@ function finishMove(store: Store) {
   const dy = d.to.y - d.base.y;
   let lastCopy: PlannerState['lastCopy'] = null;
   let selection = d.ids;
-  if (d.copy && (dx || dy)) {
+  if (d.copy && (dx || dy || d.dz)) {
     const { ids } = d;
+    const plan = movedPlan(d);
     let copyIds: Id[] = [];
     s.commitFromBase((base) => {
-      const out = copyItems(base, ids, dx, dy);
+      const out = plan(base);
       copyIds = out.ids;
       return out.doc;
     });
+    // Rows of copies (3x, /3) repeat the move across the plan.
     lastCopy = { ids, dx, dy, copyIds };
     selection = copyIds;
   }
+  if (s.axisLock === 'z') s.setAxisLock(null);
   s.endBatch();
   s.setDraft(null);
   s.setSelection(selection);
@@ -420,7 +499,7 @@ export function applyMeasure(store: Store, text: string): boolean {
     const u = len > 1e-9 && dir ? { x: dir.x / len, y: dir.y / len } : { x: 1, y: 0 };
     return { x: from.x + u.x * units(mm), y: from.y + u.y * units(mm) };
   };
-  const lockDir = s.axisLock ? axisDirection(s.axisLock) : s.shiftLock;
+  const lockDir = s.axisLock === 'x' || s.axisLock === 'y' ? axisDirection(s.axisLock) : s.shiftLock;
 
   s.setWarning(null);
   switch (s.tool) {
@@ -472,6 +551,14 @@ export function applyMeasure(store: Store, text: string): boolean {
         return true;
       }
       if (d?.type !== 'move' || m.kind !== 'length') return fail('Click the point to move from, then type a distance.');
+      if (s.axisLock === 'z') {
+        // A typed height goes the way the pointer went: up, unless it went down.
+        const next = { ...d, dz: (d.dz ?? 0) < 0 ? -m.mm : m.mm };
+        s.setDraft(next);
+        showMove(store, next);
+        finishMove(store);
+        return true;
+      }
       const to = along(d.base, lockDir ?? currentDirection(s), m.mm);
       moveTo(store, to, to);
       finishMove(store);
@@ -537,6 +624,7 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
     case 'tape':
       return { label: 'Distance', value: d?.type === 'tape' ? len(sub(d.b, d.a)) : '' };
     case 'move':
+      if (d?.type === 'move' && s.axisLock === 'z') return { label: 'Height', value: formatLength(d.dz ?? 0, s.units) };
       return { label: 'Distance', value: d?.type === 'move' ? len(sub(d.to, d.base)) : '' };
     case 'rotate':
       return { label: 'Angle', value: d?.type === 'rotate' ? `${Math.round(d.angle)}°` : '' };
@@ -578,10 +666,14 @@ export function toolHint(s: PlannerState): string {
     case 'furniture':
       return 'Choose an item on the right, then click on the plan to place it at its real size.';
     case 'move':
+      if (d?.type === 'move' && s.axisLock === 'z')
+        return 'Move the pointer up or down to raise or lower, or type a height. Arrow up/down again to move across.';
       if (d?.type === 'move')
         return d.copy
           ? 'Copying: click where the copy goes, or type a distance. Then type 3x or /3 for more copies.'
-          : 'Click where it goes, or type a distance. Press Ctrl to make a copy instead.';
+          : s.view3d
+            ? 'Click where it goes, or type a distance. Arrow up/down moves it up and down; Ctrl copies.'
+            : 'Click where it goes, or type a distance. Press Ctrl to make a copy instead.';
       return s.lastCopy
         ? 'Type 3x for three copies in a row, or /3 to spread them across the distance.'
         : 'Click a point on the item to move from (or select it first). Hold Ctrl to copy.';

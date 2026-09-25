@@ -46,6 +46,8 @@ export interface Grouped {
   hidden?: boolean;
   /** Can't be picked or changed, but still shows and snaps. */
   locked?: boolean;
+  /** Raised above (or, below zero, sunk under) its floor, in millimetres. */
+  elevMm?: number;
   /** The group this item belongs to. */
   groupId?: Id;
   /** For a component copy: which item of the component definition this is. */
@@ -83,6 +85,8 @@ export interface Opening extends Grouped {
   flipHinge?: boolean;
   /** A gate: a wide double-leaf opening in a boundary wall, open to the sky. */
   gate?: boolean;
+  /** Window sill height above the floor, in millimetres (3' when missing). */
+  sillMm?: number;
   material?: Id;
 }
 
@@ -340,7 +344,20 @@ export type Draft =
   | { type: 'slab'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'plot'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'tape'; a: Point; b: Point; done?: boolean }
-  | { type: 'move'; ids: Id[]; base: Point; to: Point; copy: boolean }
+  /**
+   * Move from base to `to`, and up by dz (mm) when locked to the blue axis in 3D. screenY is the
+   * pointer's last height on screen; zFrom is where it was (and dz then) when the lock began.
+   */
+  | {
+      type: 'move';
+      ids: Id[];
+      base: Point;
+      to: Point;
+      copy: boolean;
+      dz?: number;
+      screenY?: number;
+      zFrom?: { y: number; dz: number };
+    }
   | { type: 'rotate'; ids: Id[]; center: Point; start?: Point; angle: number }
   /** Offset: a parallel copy of a wall follows the pointer. */
   | { type: 'offset'; wallId: Id; side: Point; dist: number; x1: number; y1: number; x2: number; y2: number }

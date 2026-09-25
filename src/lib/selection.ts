@@ -1,5 +1,6 @@
 import { elementOutline, rotateElement, rotatePoint, translateElement } from '../geometry';
 import type { Bounds, ComponentDef, Group, Id, PlanDoc, PlanElement, Point, Room, Wall } from '../types';
+import { WINDOW_SILL_MM } from '../three/model';
 import { newId } from './ids';
 
 /** Something that can be selected: a plan element or a room. */
@@ -146,6 +147,28 @@ export function moveItems(doc: PlanDoc, ids: Id[], dx: number, dy: number): Plan
     elements: doc.elements.map((el) => (set.has(el.id) ? translateElement(el, dx, dy) : el)),
     rooms: doc.rooms.map((r) => (set.has(r.id) ? translateRoom(r, dx, dy) : r)),
     groups: doc.groups.map((g) => (groups.has(g.id) ? { ...g, x: g.x + dx, y: g.y + dy } : g)),
+  };
+}
+
+/** Highest and lowest an item may be raised or sunk, in mm. */
+export const ELEV_RANGE_MM = { min: -5000, max: 30000 };
+
+/**
+ * Raise items by dz mm (lower them when negative). A window on its own moves its sill; doors and
+ * plots stay put (a door goes with its wall).
+ */
+export function raiseItems(doc: PlanDoc, ids: Id[], dz: number): PlanDoc {
+  if (!dz) return doc;
+  const set = new Set(ids);
+  const clamp = (v: number, lo: number, hi: number) => Math.round(Math.min(hi, Math.max(lo, v)) * 10) / 10;
+  return {
+    ...doc,
+    elements: doc.elements.map((el) => {
+      if (!set.has(el.id) || el.type === 'door' || el.type === 'plot') return el;
+      if (el.type === 'window') return { ...el, sillMm: clamp((el.sillMm ?? WINDOW_SILL_MM) + dz, 0, 3000) };
+      const elevMm = clamp((el.elevMm ?? 0) + dz, ELEV_RANGE_MM.min, ELEV_RANGE_MM.max) || undefined;
+      return { ...el, elevMm };
+    }),
   };
 }
 

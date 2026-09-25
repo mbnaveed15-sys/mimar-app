@@ -1,7 +1,7 @@
 import { placeOnWall, wallLength, withWallLength } from '../geometry';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { stairLayout } from '../lib/site';
-import { SLAB_MM } from '../three/model';
+import { SLAB_MM, WINDOW_SILL_MM } from '../three/model';
 import { formatArea, formatLength, formatMarla } from '../lib/units';
 import { roomAreaSqMm } from '../rooms';
 import { KIND_HEIGHT_MM, MM_PER_UNIT, usePlanner } from '../store/plannerStore';
@@ -153,6 +153,16 @@ export function Inspector() {
                       Flip hinge
                     </button>
                   </div>
+                )}
+                {el.type === 'window' && (
+                  <LengthField
+                    id="window-sill"
+                    label="Sill height"
+                    mm={el.sillMm ?? WINDOW_SILL_MM}
+                    units={units}
+                    min={0}
+                    onCommit={(mm) => updateElement({ ...el, sillMm: Math.min(mm, 3000) })}
+                  />
                 )}
                 <div className="text-muted">Drag it to slide along the wall.</div>
               </>
@@ -361,6 +371,16 @@ export function Inspector() {
               </>
             )}
 
+            {el.type !== 'door' && el.type !== 'window' && el.type !== 'plot' && (
+              <LengthField
+                id="elevation"
+                label="Height above floor"
+                mm={el.elevMm ?? 0}
+                units={units}
+                min={-5000}
+                onCommit={(mm) => updateElement({ ...el, elevMm: Math.min(mm, 30000) || undefined })}
+              />
+            )}
             <div>Material: {materialName(el.material) ?? '—'}</div>
             <div className="flex flex-wrap gap-2">
               <button onClick={() => applyMaterial(el.id)} className={btn}>

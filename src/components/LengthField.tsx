@@ -18,7 +18,11 @@ export function LengthField({ id, label, mm, units, onCommit, min = 10 }: Props)
   const [error, setError] = useState<string | null>(null);
 
   function commit(input: HTMLInputElement) {
-    const value = parseLength(input.value, units);
+    // A minus sign is read only where the field takes lengths below zero (e.g. a sunken floor).
+    const text = input.value.trim();
+    const negative = min < 0 && text.startsWith('-');
+    const parsed = parseLength(negative ? text.slice(1) : text, units);
+    const value = parsed !== null && negative ? -parsed : parsed;
     if (value === null || value < min) {
       setError(`Enter a length, ${LENGTH_HINT[units]}.`);
       return;
