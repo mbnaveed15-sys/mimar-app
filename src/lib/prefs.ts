@@ -15,6 +15,13 @@ export interface GridPrefs {
   strength: number;
   /** Drawing snaps to grid points when no wall end is nearer. */
   snap: boolean;
+  /** Your own line colours, kept for each theme (the theme's own colours when missing). */
+  colors: Partial<Record<ThemeId, GridColors>>;
+}
+
+export interface GridColors {
+  minor?: string;
+  major?: string;
 }
 
 export const DEFAULT_GRID: GridPrefs = {
@@ -24,6 +31,7 @@ export const DEFAULT_GRID: GridPrefs = {
   style: 'lines',
   strength: 50,
   snap: true,
+  colors: {},
 };
 
 /** Grid spacing limits: 1 cm to 10 m. */
@@ -82,7 +90,22 @@ export function readGrid(raw: unknown): GridPrefs {
     style: g.style === 'dots' ? 'dots' : 'lines',
     strength: Number.isFinite(strength) ? Math.min(100, Math.max(0, strength)) : DEFAULT_GRID.strength,
     snap: g.snap !== false,
+    colors: readColors(g.colors),
   };
+}
+
+const isHex = (c: unknown): c is string => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c);
+
+function readColors(raw: unknown): GridPrefs['colors'] {
+  const out: GridPrefs['colors'] = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [theme, value] of Object.entries(raw)) {
+    if (!isThemeId(theme) || !value || typeof value !== 'object') continue;
+    const { minor, major } = value as Record<string, unknown>;
+    const colors: GridColors = { ...(isHex(minor) ? { minor } : {}), ...(isHex(major) ? { major } : {}) };
+    if (colors.minor || colors.major) out[theme] = colors;
+  }
+  return out;
 }
 
 export function loadPrefs(storage = browserStorage()): Prefs {

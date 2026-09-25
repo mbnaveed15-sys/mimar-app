@@ -21,6 +21,7 @@ import type { Furniture, PlanElement, Point, Wall } from '../types';
 import { DrawingOverlay } from './DrawingOverlay';
 import { PlanDrawing } from './PlanDrawing';
 import { PlanGrid } from './PlanGrid';
+import { useTouch } from './useTouch';
 
 type Drag =
   | { kind: 'pan'; lastX: number; lastY: number }
@@ -36,6 +37,15 @@ type Drag =
 /** Furniture sizes snap to 50 mm; rotation snaps to 15° unless Shift is held. */
 const SIZE_STEP = 50 / MM_PER_UNIT;
 const ROTATE_STEP = 15;
+
+/** Keep getting this pointer's moves even off the canvas (it may already have lifted). */
+function capture(e: PointerEvent<SVGSVGElement>) {
+  try {
+    e.currentTarget.setPointerCapture(e.pointerId);
+  } catch {
+    // Only a convenience.
+  }
+}
 
 function toPlanPoint(svg: SVGSVGElement, e: { clientX: number; clientY: number }): Point {
   const ctm = svg.getScreenCTM();
@@ -79,6 +89,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const openGroupId = usePlanner((s) => s.openGroupId);
   const gridPx = usePlanner((s) => s.gridPx);
   const grid = usePlanner((s) => s.grid);
+  const theme = usePlanner((s) => s.theme);
   const view = usePlanner((s) => s.view);
   const viewport = usePlanner((s) => s.viewport);
   const units = usePlanner((s) => s.units);
@@ -88,6 +99,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const showRoomFills = usePlanner((s) => s.showRoomFills);
   const tool = usePlanner((s) => s.tool);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
+  const touchInput = usePlanner((s) => s.touchInput);
   const dragRef = useRef<Drag | null>(null);
   /** Where the current press started on screen, to tell a click from a drag. */
   const pressRef = useRef<{ x: number; y: number } | null>(null);
@@ -117,7 +129,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   }, [svgRef]);
 
   function startDrag(e: PointerEvent<SVGSVGElement>, drag: Drag) {
-    e.currentTarget.setPointerCapture(e.pointerId);
+    capture(e);
     if (drag.kind !== 'pan' && drag.kind !== 'zoom' && drag.kind !== 'box') plannerStore.getState().beginBatch();
     dragRef.current = drag;
   }
@@ -130,6 +142,11 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     if (e.button === 1 || s.tool === 'pan') {
       e.preventDefault();
       startDrag(e, { kind: 'pan', lastX: e.clientX, lastY: e.clientY });
+      return;
+    }
+    // A pen's eraser end (or eraser button) rubs out, whatever the tool.
+    if (e.pointerType === 'pen' && e.button === 5) {
+      s.eraseAt(raw);
       return;
     }
     if (e.button !== 0) return;
@@ -151,7 +168,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     }
 
     if (s.tool in MEASURE_TOOLS) {
-      e.currentTarget.setPointerCapture(e.pointerId);
+      capture(e);
       s.setMeasureText('');
       press(plannerStore, raw, { ctrl: e.ctrlKey || e.metaKey });
       return;
@@ -189,7 +206,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         s.paintAt(raw);
         break;
       case 'brush':
-        e.currentTarget.setPointerCapture(e.pointerId);
+        capture(e);
         s.beginBatch();
         s.brushAt(gridSnap(raw));
         s.setDraft({ type: 'brush' });
@@ -384,6 +401,31 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     onContextMenu?.({ x: e.clientX, y: e.clientY, id });
   }
 
+  /** A pinch took over from the first finger: drop whatever it had started. */
+  function abortPress() {
+    const s = plannerStore.getState();
+    const drag = dragRef.current;
+    dragRef.current = null;
+    pressRef.current = null;
+    if (drag && drag.kind !== 'pan' && drag.kind !== 'zoom' && drag.kind !== 'box') s.cancelBatch();
+    if (s.draft?.type === 'marquee') s.setDraft(null);
+    if (s.draft?.type === 'brush') {
+      s.endBatch();
+      s.setDraft(null);
+    }
+  }
+
+  const touch = useTouch(svgRef, {
+    down: onPointerDown,
+    move: onPointerMove,
+    up: onPointerUp,
+    doubleClick: onDoubleClick,
+    contextMenu: onRightClick,
+    abort: abortPress,
+  });
+  // Drag handles grow under a finger.
+  const hk = touchInput ? k * 1.8 : k;
+
   const selected = selectedIds.length === 1 ? doc.elements.find((el) => el.id === selectedIds[0]) : undefined;
   // Dashed boxes around selected groups and the group open for editing.
   const groupBoxes = doc.groups
@@ -411,13 +453,13 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
       viewBox={`${view.x} ${view.y} ${vbW} ${vbH}`}
       className={`h-full w-full touch-none bg-canvas select-none ${cursor}`}
       fontFamily={PLAN_FONT}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerDown={touch.onPointerDown}
+      onPointerMove={touch.onPointerMove}
+      onPointerUp={touch.onPointerUp}
+      onPointerCancel={touch.onPointerUp}
       onPointerLeave={() => plannerStore.getState().setInference(null)}
-      onDoubleClick={onDoubleClick}
-      onContextMenu={onRightClick}
+      onDoubleClick={(e) => !touch.fromTouch() && onDoubleClick(e)}
+      onContextMenu={(e) => (touch.fromTouch() ? e.preventDefault() : onRightClick(e))}
     >
       {grid.show && (
         <PlanGrid
@@ -426,6 +468,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
           step={gridPx}
           look={grid}
           k={k}
+          colors={grid.colors[theme]}
         />
       )}
 
@@ -488,12 +531,12 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
       <g>
         {tool === 'select' && selected?.type === 'wall' && (
           <>
-            <Handle name="wall-start" p={{ x: selected.x1, y: selected.y1 }} k={k} />
-            <Handle name="wall-end" p={{ x: selected.x2, y: selected.y2 }} k={k} />
+            <Handle name="wall-start" p={{ x: selected.x1, y: selected.y1 }} k={hk} />
+            <Handle name="wall-end" p={{ x: selected.x2, y: selected.y2 }} k={hk} />
           </>
         )}
         {tool === 'select' && selected?.type === 'furniture' && showFurniture && (
-          <FurnitureHandles item={selected} k={k} />
+          <FurnitureHandles item={selected} k={hk} />
         )}
         {draft?.type === 'mask' && (
           <polyline

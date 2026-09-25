@@ -285,6 +285,8 @@ export interface PlannerState {
   setTheme: (theme: ThemeId) => void;
   /** Change some grid settings; spacing is for the current units. */
   setGrid: (patch: Partial<Omit<GridPrefs, 'spacingMm'>> & { spacingMm?: number }) => void;
+  /** Set (or with null, reset to the theme's own) a grid line colour for the current theme. */
+  setGridColor: (line: 'minor' | 'major', color: string | null) => void;
 
   /** Make a room from the area enclosed by walls around p. */
   addRoomAt: (p: Point) => void;
@@ -297,6 +299,11 @@ export interface PlannerState {
   fitToPlan: () => void;
   /** Screen-independent distance for clicking on things (12 screen pixels). */
   hitTolerance: () => number;
+  /** The last press was a finger: targets and snapping reach further. */
+  touchInput: boolean;
+  setTouchInput: (on: boolean) => void;
+  /** How much further to reach for touch (1 for mouse and pen). */
+  reach: () => number;
 
   /** Replace an element; doors and windows follow their wall if it changed. */
   updateElement: (next: PlanElement) => void;
@@ -1058,6 +1065,16 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         set({ grid: next, gridPx: gridFor(next, units) });
         persistPrefs();
       },
+      setGridColor: (line, color) => {
+        const { grid, theme } = get();
+        const current = { ...grid.colors[theme] };
+        if (color) current[line] = color;
+        else delete current[line];
+        const colors = { ...grid.colors };
+        if (current.minor || current.major) colors[theme] = current;
+        else delete colors[theme];
+        get().setGrid({ colors });
+      },
       setView3d: (view3d) => {
         get().cancelBatch();
         set({ view3d, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
@@ -1107,7 +1124,12 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         if (!viewport.width || !viewport.height) return;
         set({ view: fitView(planBounds(doc.elements, doc.masks) ?? DEFAULT_AREA, viewport) });
       },
-      hitTolerance: () => Math.max(2, 12 / get().view.zoom),
+      hitTolerance: () => Math.max(2, (12 * get().reach()) / get().view.zoom),
+      touchInput: false,
+      setTouchInput: (on) => {
+        if (get().touchInput !== on) set({ touchInput: on });
+      },
+      reach: () => (get().touchInput ? 1.8 : 1),
 
       updateElement: (next) => {
         get().commit((doc) => {

@@ -64,4 +64,22 @@ describe('grid and theme preferences', () => {
     expect(store.getState().gridPx).toBeCloseTo(30.48);
     expect(store.getState().grid.major).toBe(10);
   });
+
+  it('keeps your own grid colours for each theme, and can go back to the theme default', () => {
+    const store = createPlannerStore(emptyDoc(), undefined, DEFAULT_PREFS);
+    const s = () => store.getState();
+    s().setTheme('dark');
+    s().setGridColor('major', '#8899aa');
+    s().setTheme('light');
+    s().setGridColor('minor', '#dddddd');
+    expect(s().grid.colors).toEqual({ dark: { major: '#8899aa' }, light: { minor: '#dddddd' } });
+    s().setGridColor('minor', null);
+    expect(s().grid.colors).toEqual({ dark: { major: '#8899aa' } });
+  });
+
+  it('reads saved grid colours, dropping unknown themes and bad colours', () => {
+    expect(
+      readGrid({ colors: { dark: { minor: '#112233', major: 'red' }, neon: { minor: '#000000' }, gold: {} } }).colors,
+    ).toEqual({ dark: { minor: '#112233' } });
+  });
 });

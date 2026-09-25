@@ -18,8 +18,8 @@
   --focus: #a63d26;
   --mark-tile: #a63d26;
   --mark-ink: #fbf8f3;
-  --plan-grid: #ebe3d6;
-  --plan-grid-major: #d9ccb8;
+  --plan-grid: #dfd3c0;
+  --plan-grid-major: #c4b194;
   --plan-wall: #cdbba3;
   --plan-wall-edge: #2e2720;
   --plan-room: #f6f0e6;
@@ -51,8 +51,8 @@
   --focus: #14213d;
   --mark-tile: #14213d;
   --mark-ink: #c9974f;
-  --plan-grid: #e3e9f2;
-  --plan-grid-major: #cbd6e4;
+  --plan-grid: #d3deec;
+  --plan-grid-major: #a9bdd6;
   --plan-wall: #b9c6d8;
   --plan-wall-edge: #14213d;
   --plan-room: #f0f4fa;
@@ -84,8 +84,8 @@
   --focus: #d4af37;
   --mark-tile: #0b0b0b;
   --mark-ink: #d4af37;
-  --plan-grid: #232320;
-  --plan-grid-major: #34332d;
+  --plan-grid: #2e2d28;
+  --plan-grid-major: #4a4840;
   --plan-wall: #4a483f;
   --plan-wall-edge: #e8e3d4;
   --plan-room: #1b1a18;
@@ -117,8 +117,8 @@
   --focus: #2f58cd;
   --mark-tile: #17191c;
   --mark-ink: #ffffff;
-  --plan-grid: #edeff1;
-  --plan-grid-major: #d7dade;
+  --plan-grid: #e1e4e8;
+  --plan-grid-major: #bcc2c9;
   --plan-wall: #c9cdd2;
   --plan-wall-edge: #17191c;
   --plan-room: #f7f8f9;
@@ -150,8 +150,8 @@
   --focus: #9db9ff;
   --mark-tile: #eceef0;
   --mark-ink: #141618;
-  --plan-grid: #22262a;
-  --plan-grid-major: #343a40;
+  --plan-grid: #2d3237;
+  --plan-grid-major: #4a525a;
   --plan-wall: #4a5159;
   --plan-wall-edge: #dce0e4;
   --plan-room: #1a1d20;
