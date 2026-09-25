@@ -47,6 +47,8 @@ export interface Prefs {
   showRoomFills: boolean;
   /** Put layout (drafting) lines in PDF, PNG and DXF exports. */
   exportLines: boolean;
+  /** Add the plan check page to PDFs (when the plot has bylaws). */
+  pdfCheck: boolean;
   mode: Mode;
   /** Thickness for new walls, in millimetres. */
   wallThicknessMm: number;
@@ -68,6 +70,7 @@ export const DEFAULT_PREFS: Prefs = {
   showRoomLabels: true,
   showRoomFills: true,
   exportLines: false,
+  pdfCheck: true,
   mode: 'simple',
   wallThicknessMm: 228.6,
   marlaSqFt: 225,
@@ -129,6 +132,7 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       showRoomLabels: raw?.showRoomLabels !== false,
       showRoomFills: raw?.showRoomFills !== false,
       exportLines: raw?.exportLines === true,
+      pdfCheck: raw?.pdfCheck !== false,
       mode: raw?.mode === 'pro' ? 'pro' : 'simple',
       wallThicknessMm: thickness >= 25 && thickness <= 1000 ? thickness : DEFAULT_PREFS.wallThicknessMm,
       marlaSqFt: raw?.marlaSqFt === 272.25 ? 272.25 : 225,

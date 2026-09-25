@@ -44,6 +44,7 @@ function setbackPerEdge(plot: Plot): number[] {
   return plot.points.map((_, i) => {
     if (i === plot.front) return u(plot.setbacks.front);
     if (n === 4 && i === (plot.front + 2) % 4) return u(plot.setbacks.rear);
+    if (n === 4 && i === (plot.front + 3) % 4) return u(plot.setbacks.side2 ?? plot.setbacks.sides);
     return u(plot.setbacks.sides);
   });
 }

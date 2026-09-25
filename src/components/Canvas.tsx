@@ -9,6 +9,7 @@ import { selectionBounds } from '../lib/selection';
 import type { Furniture, PlanElement, Point } from '../types';
 import { wallPolygon, wallsOf } from '../walls';
 import { DrawingOverlay } from './DrawingOverlay';
+import { CheckMarks } from './CheckMarks';
 import { faceAt2D } from '../lib/faces2d';
 import { getPicker, setPicker, type Picker3D } from '../three/picker';
 import { M_PER_UNIT } from '../three/model';
@@ -203,6 +204,8 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         showRoomFills={showRoomFills}
         k={k}
       />
+
+      <CheckMarks elements={doc.elements} k={k} />
 
       <g pointerEvents="none">
         {groupBoxes.map(({ g, box, open }) => (

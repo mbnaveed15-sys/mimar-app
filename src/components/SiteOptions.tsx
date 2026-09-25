@@ -1,5 +1,6 @@
 import { usePlanner, type SiteSpec } from '../store/plannerStore';
 import { LengthField } from './LengthField';
+import { AuthoritySelect, PlotPresets } from './PlotBylaws';
 
 const box = 'flex flex-col gap-1.5 rounded-md border border-line bg-raised p-2 text-xs';
 
@@ -49,20 +50,26 @@ export function SiteOptions() {
   if (tool === 'plot')
     return (
       <div className={box}>
-        <div className="font-medium">Setbacks</div>
-        <div className="grid grid-cols-3 gap-2">
-          {(['front', 'rear', 'sides'] as const).map((side) => (
-            <LengthField
-              key={side}
-              id={`setback-${side}`}
-              label={side === 'front' ? 'Front' : side === 'rear' ? 'Rear' : 'Sides'}
-              mm={site.setbacks[side]}
-              units={units}
-              min={0}
-              onCommit={(v) => setSite({ setbacks: { ...site.setbacks, [side]: v } })}
-            />
-          ))}
-        </div>
+        <div className="font-medium">New plot</div>
+        <AuthoritySelect id="site-authority" value={site.authority} onChange={(authority) => setSite({ authority })} />
+        <PlotPresets />
+        {site.authority ? (
+          <div className="text-muted">Setbacks come from the bylaws table for the plot's size.</div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {(['front', 'rear', 'sides'] as const).map((side) => (
+              <LengthField
+                key={side}
+                id={`setback-${side}`}
+                label={side === 'front' ? 'Front' : side === 'rear' ? 'Rear' : 'Sides'}
+                mm={site.setbacks[side]}
+                units={units}
+                min={0}
+                onCommit={(v) => setSite({ setbacks: { ...site.setbacks, [side]: v } })}
+              />
+            ))}
+          </div>
+        )}
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -71,7 +78,9 @@ export function SiteOptions() {
           />
           Boundary wall round the plot
         </label>
-        <div className="text-muted">Check the setbacks against your housing society&apos;s bylaws.</div>
+        <div className="text-muted">
+          The Plan check (in the panel below) tests the plan against the bylaws you pick.
+        </div>
       </div>
     );
   if (tool === 'stairs')

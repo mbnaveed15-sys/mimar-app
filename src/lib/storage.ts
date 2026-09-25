@@ -13,6 +13,7 @@ import {
   type ShapeKind,
 } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
+import { authorityById, type AuthorityId } from './bylaws';
 import { LAYERS, type LayerState } from './layers';
 import { defaultMaterials, PATTERNS } from './materials';
 
@@ -215,7 +216,13 @@ function normaliseElement(raw: unknown): PlanElement | null {
         type: 'plot' as const,
         points,
         front,
-        setbacks: { front: mm(sb.front), rear: mm(sb.rear), sides: mm(sb.sides) },
+        setbacks: {
+          front: mm(sb.front),
+          rear: mm(sb.rear),
+          sides: mm(sb.sides),
+          ...(typeof sb.side2 === 'number' && sb.side2 >= 0 ? { side2: sb.side2 } : {}),
+        },
+        ...(authorityById(raw.authority as string) ? { authority: raw.authority as AuthorityId } : {}),
       };
     }
     case 'stair': {
