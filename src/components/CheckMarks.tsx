@@ -1,8 +1,8 @@
 import { elementOutline } from '../geometry';
 import { PLAN } from '../theme/plan';
-import type { PlanElement, Point } from '../types';
+import type { PlanElement, Point, Room } from '../types';
 import { thicknessOf } from '../walls';
-import { usePlanCheck } from '../store/usePlanCheck';
+import { usePlanCheck, usePlanHints } from '../store/usePlanCheck';
 
 /** A wall's outline with its thickness; any other item's outline. */
 function outline(el: PlanElement): Point[] {
@@ -20,28 +20,44 @@ function outline(el: PlanElement): Point[] {
 
 /**
  * Items the plan check finds against the bylaws, outlined on the plan: red where a rule isn't met,
- * dashed amber where it needs checking (a porch or open stair in a setback may be allowed).
+ * dashed amber where it needs checking (a porch or open stair in a setback may be allowed), and
+ * dotted amber for rooms a plan hint is about.
  */
-export function CheckMarks({ elements, k }: { elements: PlanElement[]; k: number }) {
+export function CheckMarks({ elements, rooms, k }: { elements: PlanElement[]; rooms: Room[]; k: number }) {
   const check = usePlanCheck();
-  if (!check) return null;
-  const marks = check.rows.flatMap((r) => (r.ids ?? []).map((id) => ({ id, fail: r.status === 'fail' })));
+  const hints = usePlanHints();
+  const marks = [
+    ...(check?.rows ?? []).flatMap((r) =>
+      (r.ids ?? []).map((id) => ({ id, look: r.status === 'fail' ? 'fail' : 'check' })),
+    ),
+    ...hints.flatMap((h) => h.ids.map((id) => ({ id, look: 'hint' }))),
+  ];
+  const seen = new Set<string>();
+  const shown = marks.filter((m) => {
+    const key = `${m.id}-${m.look}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (!shown.length) return null;
   return (
     <g pointerEvents="none" data-testid="check-marks">
-      {marks.map(({ id, fail }) => {
+      {shown.map(({ id, look }) => {
         const el = elements.find((e) => e.id === id);
-        if (!el) return null;
-        const pts = outline(el);
+        const room = el ? undefined : rooms.find((r) => r.id === id);
+        const pts = el ? outline(el) : room?.points;
+        if (!pts) return null;
+        const fail = look === 'fail';
         return (
           <polygon
-            key={`${id}-${fail}`}
-            data-check-mark={fail ? 'fail' : 'check'}
+            key={`${id}-${look}`}
+            data-check-mark={look}
             points={pts.map((p) => `${p.x},${p.y}`).join(' ')}
             fill={fail ? 'var(--danger)' : 'none'}
             fillOpacity={0.15}
             style={{ stroke: fail ? 'var(--danger)' : PLAN.draft }}
-            strokeWidth={2 * k}
-            strokeDasharray={fail ? undefined : `${5 * k} ${3 * k}`}
+            strokeWidth={(look === 'hint' ? 1.5 : 2) * k}
+            strokeDasharray={fail ? undefined : look === 'hint' ? `${1.5 * k} ${3 * k}` : `${5 * k} ${3 * k}`}
           />
         );
       })}

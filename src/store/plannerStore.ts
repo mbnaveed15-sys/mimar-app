@@ -163,6 +163,8 @@ export interface PlannerState {
   levelElements: () => PlanElement[];
   levelRooms: () => Room[];
   setPlinthMm: (mm: number) => void;
+  /** Which way north points on the plan, in degrees clockwise from up. */
+  setNorthDeg: (deg: number) => void;
   /** Sizes for new columns, beams and slabs, in plan units. */
   structure: StructureSpec;
   setStructure: (patch: Partial<StructureSpec>) => void;
@@ -318,11 +320,15 @@ export interface PlannerState {
   setUnits: (units: Units) => void;
   setShowDimensions: (show: boolean) => void;
   setLayer: (
-    layer: 'showFurniture' | 'showRoomLabels' | 'showRoomFills' | 'exportLines' | 'pdfCheck',
+    layer: 'showFurniture' | 'showRoomLabels' | 'showRoomFills' | 'exportLines' | 'pdfCheck' | 'showHints' | 'pdfHints',
     show: boolean,
   ) => void;
   /** Add the plan check page to PDFs. */
   pdfCheck: boolean;
+  /** Show plan hints (good-practice advice) in the Plan check section and on the plan. */
+  showHints: boolean;
+  /** Add the plan hints to the PDF's plan check page. */
+  pdfHints: boolean;
   /** Library item placed by the Furniture tool. */
   furnitureKind: FurnitureKind;
   setFurnitureKind: (kind: FurnitureKind) => void;
@@ -401,6 +407,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
+      const { showHints, pdfHints } = get();
       const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars } = get();
       savePrefs({
         units,
@@ -410,6 +417,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         showRoomFills,
         exportLines,
         pdfCheck,
+        showHints,
+        pdfHints,
         mode,
         wallThicknessMm,
         marlaSqFt,
@@ -486,6 +495,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       showRoomFills: prefs.showRoomFills,
       exportLines: prefs.exportLines,
       pdfCheck: prefs.pdfCheck,
+      showHints: prefs.showHints,
+      pdfHints: prefs.pdfHints,
       furnitureKind: DEFAULT_FURNITURE_KIND,
       mode: prefs.mode,
       wallThicknessMm: prefs.wallThicknessMm,
@@ -1320,6 +1331,15 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         updateElements((els) => [...els, ...walls]);
         get().endBatch();
         get().setActiveLevel(roofId);
+      },
+      setNorthDeg: (deg) => {
+        const north = ((deg % 360) + 360) % 360;
+        get().commit((doc) => {
+          if ((doc.northDeg ?? 0) === north) return doc;
+          const next: PlanDoc = { ...doc, northDeg: north };
+          if (!north) delete next.northDeg;
+          return next;
+        });
       },
       setPlinthMm: (mm) =>
         get().commit((doc) => (doc.plinthMm === mm ? doc : { ...doc, plinthMm: Math.max(0, Math.min(3000, mm)) })),

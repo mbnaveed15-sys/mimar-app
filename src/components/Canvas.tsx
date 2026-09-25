@@ -205,7 +205,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         k={k}
       />
 
-      <CheckMarks elements={doc.elements} k={k} />
+      <CheckMarks elements={doc.elements} rooms={doc.rooms} k={k} />
 
       <g pointerEvents="none">
         {groupBoxes.map(({ g, box, open }) => (

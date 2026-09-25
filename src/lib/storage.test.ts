@@ -163,4 +163,11 @@ describe('storage', () => {
     expect(doc.elements[1]).not.toHaveProperty('authority');
     expect(doc.elements[1]).not.toHaveProperty('setbacks.side2');
   });
+
+  it('keeps which way north points, as 0–359°, and leaves it out when it is up', () => {
+    expect(normaliseDoc({ ...emptyDoc(), northDeg: 90 }).northDeg).toBe(90);
+    expect(normaliseDoc({ ...emptyDoc(), northDeg: -45 }).northDeg).toBe(315);
+    expect(normaliseDoc({ ...emptyDoc(), northDeg: 360 })).not.toHaveProperty('northDeg');
+    expect(normaliseDoc({ ...emptyDoc(), northDeg: 'up' })).not.toHaveProperty('northDeg');
+  });
 });

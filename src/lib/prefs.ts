@@ -49,6 +49,10 @@ export interface Prefs {
   exportLines: boolean;
   /** Add the plan check page to PDFs (when the plot has bylaws). */
   pdfCheck: boolean;
+  /** Show plan hints (good-practice advice) in the Plan check section and on the plan. */
+  showHints: boolean;
+  /** Add the plan hints to the PDF's plan check page. */
+  pdfHints: boolean;
   mode: Mode;
   /** Thickness for new walls, in millimetres. */
   wallThicknessMm: number;
@@ -71,6 +75,8 @@ export const DEFAULT_PREFS: Prefs = {
   showRoomFills: true,
   exportLines: false,
   pdfCheck: true,
+  showHints: true,
+  pdfHints: false,
   mode: 'simple',
   wallThicknessMm: 228.6,
   marlaSqFt: 225,
@@ -133,6 +139,8 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       showRoomFills: raw?.showRoomFills !== false,
       exportLines: raw?.exportLines === true,
       pdfCheck: raw?.pdfCheck !== false,
+      showHints: raw?.showHints !== false,
+      pdfHints: raw?.pdfHints === true,
       mode: raw?.mode === 'pro' ? 'pro' : 'simple',
       wallThicknessMm: thickness >= 25 && thickness <= 1000 ? thickness : DEFAULT_PREFS.wallThicknessMm,
       marlaSqFt: raw?.marlaSqFt === 272.25 ? 272.25 : 225,

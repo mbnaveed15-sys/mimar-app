@@ -1,6 +1,6 @@
 import { type CheckStatus } from '../lib/planCheck';
 import { usePlanner } from '../store/plannerStore';
-import { usePlanCheck } from '../store/usePlanCheck';
+import { usePlanCheck, usePlanHints } from '../store/usePlanCheck';
 
 const MARK: Record<CheckStatus, { sign: string; className: string; word: string }> = {
   ok: { sign: '✓', className: 'text-[color:var(--snap-end)]', word: 'OK' },
@@ -8,8 +8,59 @@ const MARK: Record<CheckStatus, { sign: string; className: string; word: string 
   check: { sign: '!', className: 'text-accent', word: 'Check' },
 };
 
-/** The Plan check section: one row per rule, with its clause; click a row to select what breaks it. */
+/** The Plan check section: the bylaw rules, then the plan hints. */
 export function PlanCheckPanel() {
+  return (
+    <div className="flex flex-col gap-3">
+      <BylawRows />
+      <PlanHints />
+    </div>
+  );
+}
+
+/** Good-practice advice on the layout: click a hint to select the rooms it is about. */
+function PlanHints() {
+  const hints = usePlanHints();
+  const show = usePlanner((s) => s.showHints);
+  const setSelection = usePlanner((s) => s.setSelection);
+  const hasRooms = usePlanner((s) => s.doc.rooms.length > 0);
+  if (!show) return null;
+  return (
+    <div className="flex flex-col gap-1.5 border-t pt-2 text-xs" data-testid="plan-hints">
+      <div className="font-medium">
+        Hints <span className="font-normal text-muted">· good practice, not bylaws</span>
+      </div>
+      {!hasRooms ? (
+        <div className="text-muted">Name your rooms (Bedroom, Kitchen, Lounge…) to get hints on the layout.</div>
+      ) : !hints.length ? (
+        <div data-testid="plan-hints-none">No hints: every room is reached, lit and a good size.</div>
+      ) : (
+        <ul className="flex flex-col gap-0.5">
+          {hints.map((h) => (
+            <li key={h.id}>
+              <button
+                className="flex w-full gap-1.5 rounded-sm p-1 text-left hover:bg-sunken disabled:hover:bg-transparent"
+                disabled={!h.ids.length}
+                onClick={() => h.ids.length && setSelection(h.ids)}
+                data-hint={h.id}
+                data-kind={h.kind}
+                title={h.ids.length ? 'Select the rooms concerned' : undefined}
+              >
+                <span aria-hidden className="w-3 flex-none font-bold text-accent">
+                  ›
+                </span>
+                <span className="min-w-0 flex-1">{h.text}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** One row per bylaw rule, with its clause; click a row to select what breaks it. */
+function BylawRows() {
   const check = usePlanCheck();
   const setSelection = usePlanner((s) => s.setSelection);
   if (!check)

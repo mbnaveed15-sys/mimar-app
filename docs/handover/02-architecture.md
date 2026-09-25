@@ -47,8 +47,12 @@ autosaves to local storage on every change.
 - `src/lib/inference.ts`: snapping order: ends → midpoints → intersections → grid points → axes → along
   walls/lines (in grid steps) → grid.
 - Bylaws: `src/lib/bylaws.ts` (the authorities' tables, `ruleFor` by size and frontage, `plotRule`, `plotSetbacks`),
-  `src/lib/planCheck.ts` (pure check rows), `src/components/PlanCheckPanel.tsx`, `CheckMarks.tsx` (red marks) and
-  `PlotBylaws.tsx` (authority, presets, the plot's setbacks). Figures and sources: `docs/handover/06-bylaws.md`.
+  `src/lib/planCheck.ts` (pure check rows, including the mumty and car porch; `mumtyLevelIds` tells mumty floors
+  apart), `src/lib/planHints.ts` (pure good-practice hints: door graph per floor, outside walls and windows, sizes by
+  name, kitchen and prayer room placement), `src/store/usePlanCheck.ts` (`usePlanCheck`, `usePlanHints`),
+  `src/components/PlanCheckPanel.tsx` (bylaw rows, then Hints), `CheckMarks.tsx` (red, dashed and dotted marks, on
+  items and rooms) and `PlotBylaws.tsx` (authority, presets, the plot's setbacks). Figures and sources:
+  `docs/handover/06-bylaws.md`. The plan's `northDeg` (degrees clockwise from up) drives the PDF's north arrow.
 - Tool bars: `src/lib/toolbars.ts` (the bars, the saved layout in prefs, `moveToolbar`, `packColumns` which
   wraps bars into columns) and `src/components/ToolDocks.tsx` (the four docks, grips, drag and drop, grip menu).
 - `src/commands.ts`: every menu item, shortcut and Ctrl+K palette entry in one registry.

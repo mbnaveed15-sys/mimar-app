@@ -40,6 +40,10 @@ export interface PdfDetails {
   filename: string;
   /** e.g. "Bylaws: CDA Islamabad (sectors), Type C, 400–1000 sq yd", or empty. */
   bylawNote?: string;
+  /** Which way north points, in degrees clockwise from up the page (for the north arrow). */
+  northDeg?: number;
+  /** Plan hints (good-practice advice), printed after the plan check. */
+  hints?: string[];
   /** The plan check, printed on a page of its own. */
   check?: {
     heading: string;
@@ -50,15 +54,44 @@ export interface PdfDetails {
 
 type Pdf = InstanceType<typeof import('jspdf').jsPDF>;
 
-/** The plan check on a page of its own: a row per rule, with what's needed, what the plan has, and the clause. */
-function checkPage(pdf: Pdf, check: NonNullable<PdfDetails['check']>, title: string) {
+/**
+ * The plan check on a page of its own: a row per rule, with what's needed, what the plan has, and
+ * the clause; then the plan hints, if any.
+ */
+function checkPage(pdf: Pdf, check: PdfDetails['check'], hints: string[], title: string) {
   pdf.addPage('a4', 'portrait');
   const w = 210;
   let y = 20;
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(14);
-  pdf.text(`Plan check · ${title}`, MARGIN, y);
+  pdf.text(`${check ? 'Plan check' : 'Plan hints'} · ${title}`, MARGIN, y);
   y += 7;
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(9);
+  if (check) y = checkRows(pdf, check, y);
+  if (hints.length) {
+    y += check ? 8 : 3;
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Plan hints (good practice, not bylaws)', MARGIN, y);
+    pdf.setFont('helvetica', 'normal');
+    y += 6;
+    for (const h of hints) {
+      const lines = pdf.splitTextToSize(h, w - 2 * MARGIN - 5);
+      if (y + lines.length * 4 > 280) {
+        pdf.addPage('a4', 'portrait');
+        y = 20;
+      }
+      pdf.text('•', MARGIN, y);
+      pdf.text(lines, MARGIN + 5, y);
+      y += lines.length * 4 + 2;
+    }
+  }
+}
+
+/** The plan check's rows (from y), returning where the next text can go. */
+function checkRows(pdf: Pdf, check: NonNullable<PdfDetails['check']>, top: number): number {
+  const w = 210;
+  let y = top;
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(9);
   pdf.text(pdf.splitTextToSize(check.heading, w - 2 * MARGIN), MARGIN, y);
@@ -90,8 +123,31 @@ function checkPage(pdf: Pdf, check: NonNullable<PdfDetails['check']>, title: str
   }
   y += 4;
   pdf.setTextColor(110);
-  pdf.text(pdf.splitTextToSize(check.footer, w - 2 * MARGIN), MARGIN, y);
+  const footer = pdf.splitTextToSize(check.footer, w - 2 * MARGIN);
+  pdf.text(footer, MARGIN, y);
   pdf.setTextColor(0);
+  return y + footer.length * 4;
+}
+
+/** A north arrow centred at (cx, cy), pointing `deg` clockwise from up the page. */
+function northArrow(pdf: Pdf, cx: number, cy: number, deg: number) {
+  const r = 6;
+  const a = (deg * Math.PI) / 180;
+  const at = (x: number, y: number) => [cx + x * Math.cos(a) - y * Math.sin(a), cy + x * Math.sin(a) + y * Math.cos(a)];
+  pdf.setLineWidth(0.3);
+  pdf.circle(cx, cy, r);
+  const [tx, ty] = at(0, -r);
+  const [lx, ly] = at(-2.2, r * 0.55);
+  const [mx, my] = at(0, r * 0.2);
+  const [rx, ry] = at(2.2, r * 0.55);
+  pdf.setFillColor(30, 30, 30);
+  pdf.triangle(tx, ty, lx, ly, mx, my, 'F');
+  pdf.triangle(tx, ty, mx, my, rx, ry, 'S');
+  const [nx, ny] = at(0, -r - 3);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(9);
+  pdf.text('N', nx, ny + 1.2, { align: 'center' });
+  pdf.setFont('helvetica', 'normal');
 }
 
 /** Export the plan as a print-ready PDF at a true architectural scale, with a title block. */
@@ -148,7 +204,8 @@ export async function exportPdf(content: PlanImageContent, area: Bounds, details
   pdf.setTextColor(120);
   pdf.text(`Drawn with Mimar ${details.version}`, right, tbY + (details.bylawNote ? 14 : 9), { align: 'right' });
   pdf.setTextColor(0);
-  if (details.check) checkPage(pdf, details.check, details.title);
+  northArrow(pdf, pageW - MARGIN - 8, MARGIN + 11, details.northDeg ?? 0);
+  if (details.check || details.hints?.length) checkPage(pdf, details.check, details.hints ?? [], details.title);
 
   const url = URL.createObjectURL(pdf.output('blob'));
   downloadUrl(url, details.filename);

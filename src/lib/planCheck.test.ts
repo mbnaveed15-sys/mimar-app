@@ -122,4 +122,59 @@ describe('plan check', () => {
     expect(check.rows.find((r) => r.id === 'coverage')?.status).toBe('fail');
     expect(check.rows.find((r) => r.id === 'total')?.status).toBe('fail'); // < 2,000 sq ft
   });
+
+  it('checks the mumty (not a storey) for DHA Islamabad: area, height and width', () => {
+    const plot = plotOf(50, 90, 'dha-isb'); // 500 sq yd: mumty up to 9% = 405 sq ft
+    const box = (x: number, y: number, w: number, d: number, levelId: string, tag: string) => [
+      wall(`${tag}1`, x, y, x + w, y, levelId),
+      wall(`${tag}2`, x + w, y, x + w, y + d, levelId),
+      wall(`${tag}3`, x + w, y + d, x, y + d, levelId),
+      wall(`${tag}4`, x, y + d, x, y, levelId),
+    ];
+    const levels = [
+      { id: 'ground', name: 'Ground floor' },
+      { id: 'first', name: 'First floor' },
+      { id: 'roof', name: 'Roof' },
+    ];
+    const house = [...box(10, 20, 30, 50, 'ground', 'g'), ...box(10, 20, 30, 50, 'first', 'f')];
+    const small = planCheck({ ...docOf([plot, ...house, ...box(15, 30, 15, 20, 'roof', 'm')]), levels }, ctx)!;
+    const row = (c: typeof small, id: string) => c.rows.find((r) => r.id === id);
+    expect(row(small, 'storeys')?.actual).toBe('2');
+    expect(row(small, 'mumty-area')?.status).toBe('ok');
+    expect(row(small, 'mumty-area')?.required).toMatch(/^At most 405 sq ft/);
+    expect(row(small, 'mumty-height')?.status).toBe('ok'); // 10' walls + slab, under 11'
+    expect(row(small, 'mumty-width')?.status).toBe('ok');
+    const big = planCheck({ ...docOf([plot, ...house, ...box(10, 30, 30, 20, 'roof', 'm')]), levels }, ctx)!;
+    expect(row(big, 'mumty-area')?.status).toBe('fail');
+    expect(row(big, 'mumty-width')?.status).toBe('fail'); // 30' is more than half of 50'
+    expect(row(big, 'mumty-width')?.ids).toHaveLength(4);
+  });
+
+  it('gives CDA a mumty of a third of the buildable block, left out of the height', () => {
+    const plot = plotOf(30, 60, 'cda'); // 200 sq yd: 6' front and rear, no sides
+    const levels = [
+      { id: 'ground', name: 'Ground floor' },
+      { id: 'mumty', name: 'Mumty' },
+    ];
+    const check = planCheck(
+      { ...docOf([plot, wall('g', 0, 10, 30, 10), wall('m', 0, 20, 10, 20, 'mumty')]), levels },
+      ctx,
+    )!;
+    expect(check.rows.find((r) => r.id === 'mumty-area')?.required).toMatch(/^At most 480 sq ft/);
+    expect(check.rows.find((r) => r.id === 'height')?.actual).toMatch(/without the mumty/);
+    expect(check.rows.find((r) => r.id === 'storeys')?.actual).toBe('1');
+  });
+
+  it('checks the car porch size for DHA Islamabad', () => {
+    const plot = plotOf(50, 90, 'dha-isb'); // 500 sq yd: up to 30' × 35'
+    const ok = planCheck(docOf([plot], [room('cp', 'Car porch', 5, 60, 20, 30)]), ctx)!;
+    expect(ok.rows.find((r) => r.id === 'car-porch')?.status).toBe('ok');
+    const long = planCheck(docOf([plot], [room('cp', 'Car porch', 5, 50, 20, 36)]), ctx)!;
+    expect(long.rows.find((r) => r.id === 'car-porch')?.status).toBe('fail');
+    const two = planCheck(
+      docOf([plot], [room('a', 'Porch', 5, 60, 18, 18), room('b', 'Porch 2', 30, 60, 18, 18)]),
+      ctx,
+    )!;
+    expect(two.rows.find((r) => r.id === 'car-porch')?.status).toBe('check');
+  });
 });

@@ -60,7 +60,13 @@ export interface Authority {
   rules: PlotRule[];
   storeys?: { max: number; clause: string };
   /** Tallest the house may be from the road, and the clause. */
-  height?: { maxMm: number; clause: string; note?: string };
+  height?: {
+    maxMm: number;
+    clause: string;
+    note?: string;
+    /** Whether the mumty counts (it does when missing). */
+    withMumty?: boolean;
+  };
   plinth?: { clause: string };
   boundaryWall?: { minMm?: number; maxMm: number; clause: string };
   rooms?: { rules: RoomRule[]; clause: string };
@@ -68,10 +74,36 @@ export interface Authority {
   minTotalSqFt?: { value: number; clause: string };
   /** How far a chajja or roof projection may reach into a setback. */
   projection?: { maxMm: number; clause: string };
+  /** The mumty (stair tower) on the roof: its largest area, height and width. */
+  mumty?: MumtyRule;
+  /** The largest car porch for a plot size (width × depth, in feet, including the side setback). */
+  carPorch?: { sizes: { sqyd: [number, number?]; w: number; d: number }[]; clause: string; note?: string };
   /** Plot sizes to start from, in feet (width along the road × depth). */
   presets: { label: string; w: number; d: number }[];
   notes: string[];
 }
+
+/** The mumty's limits. Its area is worked out from the plot (sq ft) and the block left by the setbacks (sq ft). */
+export interface MumtyRule {
+  area?: { maxSqFt: (m: { plotSqFt: number; buildableSqFt: number }) => number; rule: string; clause: string };
+  /** Tallest, from the roof it stands on. */
+  height?: { maxMm: number; clause: string };
+  /** Widest, as a share of the plot's average width. */
+  widthShare?: { share: number; clause: string };
+}
+
+/** DHA Islamabad 8.57.5: mumty area as a share of the plot, from the row at or below the plot's size. */
+const DHA_MUMTY: [number, number][] = [
+  [125, 20],
+  [200, 13.5],
+  [250, 11],
+  [300, 11],
+  [400, 11],
+  [500, 9],
+  [600, 9],
+  [800, 9],
+  [1000, 9],
+];
 
 const HABITABLE = /bed|drawing|lounge|living|dining|study|guest|family/i;
 
@@ -190,11 +222,24 @@ export const AUTHORITIES: Authority[] = [
       },
     ],
     storeys: { max: 2, clause: 'Schedule-I' },
-    height: { maxMm: ft(30), clause: 'Schedule-I', note: 'The house must look two-storey from the front.' },
+    height: {
+      maxMm: ft(30),
+      clause: 'Schedule-I',
+      note: 'The house must look two-storey from the front.',
+      withMumty: false,
+    },
     plinth: { clause: 'Schedule-I' },
     boundaryWall: { minMm: ft(3), maxMm: ft(7), clause: '4.1.1' },
     rooms: { rules: CDA_ROOMS, clause: 'Schedule-2' },
     projection: { maxMm: ft(3), clause: 'Schedule-4' },
+    mumty: {
+      area: {
+        maxSqFt: ({ plotSqFt, buildableSqFt }) => buildableSqFt / (plotSqFt / 9 <= 200.5 ? 3 : 4),
+        rule: '⅓ of the block left by the setbacks (up to 200 sq yd), ¼ above',
+        clause: 'Schedule-I',
+      },
+      height: { maxMm: ft(10), clause: '2.14.1' },
+    },
     presets: CDA_PRESETS,
     notes: [
       'The type depends on both the plot size and its frontage.',
@@ -271,11 +316,12 @@ export const AUTHORITIES: Authority[] = [
       },
     ],
     storeys: { max: 2, clause: 'Schedule-5' },
-    height: { maxMm: ft(30), clause: 'Schedule-5' },
+    height: { maxMm: ft(30), clause: 'Schedule-5', withMumty: false },
     plinth: { clause: 'Schedule-5' },
     boundaryWall: { minMm: ft(3), maxMm: ft(7), clause: '4.1.1' },
     rooms: { rules: CDA_ROOMS, clause: 'Schedule-2' },
     projection: { maxMm: ft(3), clause: 'Schedule-4' },
+    mumty: { height: { maxMm: ft(10), clause: '2.14.1' } },
     presets: CDA_PRESETS,
     notes: ['The smaller side setback goes on the south or west side.'],
   },
@@ -299,6 +345,29 @@ export const AUTHORITIES: Authority[] = [
     boundaryWall: { minMm: ft(5, 6), maxMm: ft(7, 6), clause: '8.62.3–8.62.5' },
     rooms: { rules: [{ names: HABITABLE, label: 'Habitable room', minSqFt: 80 }], clause: '8.56.1' },
     minTotalSqFt: { value: 2000, clause: '8.56.5.5' },
+    mumty: {
+      area: {
+        maxSqFt: ({ plotSqFt }) => {
+          const sqyd = plotSqFt / 9;
+          const row = [...DHA_MUMTY].reverse().find(([size]) => sqyd >= size - 0.5) ?? DHA_MUMTY[0];
+          return (plotSqFt * row[1]) / 100;
+        },
+        rule: 'A share of the plot: 20% (125 sq yd) down to 9% (500 sq yd and above)',
+        clause: '8.57.5',
+      },
+      height: { maxMm: ft(11), clause: '8.57.3' },
+      widthShare: { share: 0.5, clause: '8.57.2' },
+    },
+    carPorch: {
+      sizes: [
+        { sqyd: [0, 200], w: 14, d: 18 },
+        { sqyd: [201, 399], w: 20, d: 18 },
+        { sqyd: [400, 800], w: 30, d: 35 },
+        { sqyd: [801], w: 32, d: 35 },
+      ],
+      clause: '8.56.10.1',
+      note: 'A second porch only on corner plots or plots opening on two roads (18×18 and smaller).',
+    },
     presets: [
       { label: '25×50', w: 25, d: 50 },
       { label: '30×60', w: 30, d: 60 },

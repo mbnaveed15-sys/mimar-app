@@ -45,7 +45,7 @@ test("the grid can be restyled, hidden with Ctrl+' and its snapping turned off",
   await page.getByTestId('plan-canvas').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press(`Control+'`);
   await expect(grid).toHaveCount(0);
-  await expect(page.getByLabel('Show')).not.toBeChecked();
+  await expect(page.getByLabel(/^Show(?! plan hints)/)).not.toBeChecked();
   await page.keyboard.press(`Control+'`);
   await expect(grid).toBeVisible();
 

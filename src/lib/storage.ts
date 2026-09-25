@@ -385,6 +385,9 @@ export function normaliseDoc(raw: unknown): PlanDoc {
     plinthMm:
       typeof obj.plinthMm === 'number' && obj.plinthMm >= 0 && obj.plinthMm <= 3000 ? obj.plinthMm : DEFAULT_PLINTH_MM,
     ...(normaliseLayers(obj.layers) ? { layers: normaliseLayers(obj.layers) } : {}),
+    ...(typeof obj.northDeg === 'number' && Number.isFinite(obj.northDeg) && obj.northDeg % 360 !== 0
+      ? { northDeg: ((obj.northDeg % 360) + 360) % 360 }
+      : {}),
   };
 }
 

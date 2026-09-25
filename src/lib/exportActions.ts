@@ -4,6 +4,7 @@ import { roomAreaSqMm } from '../rooms';
 import { plannerStore } from '../store/plannerStore';
 import { exportPdf } from './exportPdf';
 import { planCheck } from './planCheck';
+import { planHints } from './planHints';
 import { downloadUrl, exportPng } from './exportPng';
 import { planToDxf } from './exportDxf';
 import { modelMeshes, toDae, toGlb, toObj } from './export3d';
@@ -49,7 +50,10 @@ export function exportPlanPng() {
 /** Download a print-ready PDF at a true scale. */
 export function exportPlanPdf() {
   const { paper, units, marlaSqFt, setWarning, pdfCheck, doc, wallHeightMm } = plannerStore.getState();
+  const { showHints, pdfHints } = plannerStore.getState();
   const check = planCheck(doc, { wallHeightMm, units });
+  const skipSizes = new Set(check?.rows.find((r) => r.id === 'rooms')?.ids ?? []);
+  const hints = showHints && pdfHints ? planHints(doc, { units, skipSizes }).map((h) => h.text) : [];
   const name = exportName();
   const covered = plannerStore
     .getState()
@@ -62,6 +66,8 @@ export function exportPlanPdf() {
     areaNote: covered ? `Covered area: ${formatArea(covered, units)}  ·  ${formatMarla(covered, marlaSqFt)}` : '',
     version: __APP_VERSION__,
     filename: `${name}.pdf`,
+    northDeg: doc.northDeg ?? 0,
+    hints,
     bylawNote: check
       ? `Bylaws: ${check.authority.name}${check.authority.status === 'provisional' ? ' (provisional)' : ''}${check.rule ? `, ${check.rule.label}` : ''}`
       : '',
