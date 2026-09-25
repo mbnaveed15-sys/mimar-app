@@ -70,6 +70,14 @@ const flagsOf = (raw: Record<string, unknown>) => ({
   ...(raw.locked === true ? { locked: true } : {}),
 });
 
+const inRange = (v: unknown, lo: number, hi: number): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+/** Height above the floor and window sill, kept only when set and sensible. */
+const heightsOf = (raw: Record<string, unknown>) => ({
+  ...(inRange(raw.elevMm, -5000, 30000) && raw.elevMm !== 0 ? { elevMm: raw.elevMm } : {}),
+  ...(inRange(raw.sillMm, 0, 3000) ? { sillMm: raw.sillMm } : {}),
+});
+
 /** Layer settings, keeping only known layers and true flags. */
 function normaliseLayers(raw: unknown): LayerState | undefined {
   if (!isObject(raw)) return undefined;
@@ -92,6 +100,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
     defKey: idOf(raw.defKey),
     levelId: idOf(raw.levelId),
     ...flagsOf(raw),
+    ...heightsOf(raw),
   };
   if (!base.id) return null;
   const num = (k: string) => (typeof raw[k] === 'number' ? (raw[k] as number) : NaN);

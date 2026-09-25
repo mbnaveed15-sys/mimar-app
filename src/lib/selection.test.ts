@@ -9,6 +9,7 @@ import {
   makeComponent,
   moveItems,
   placeComponent,
+  raiseItems,
   rotateItems,
   syncComponent,
   ungroup,
@@ -105,5 +106,31 @@ describe('groups and components', () => {
     expect(reopened.groups).toEqual(made.doc.groups);
     expect(reopened.components).toEqual(made.doc.components);
     expect(reopened.elements.find((e) => e.id === 'f')).toMatchObject({ groupId: made.groupId, defKey: 'f' });
+  });
+});
+
+describe('raising items', () => {
+  const doc = (): PlanDoc => ({
+    ...emptyDoc(),
+    elements: [
+      wall('w', 0, 0, 1000, 0),
+      { id: 'n', type: 'window', wallId: 'w', x: 500, y: 0, angle: 0, width: 120 },
+      { id: 'd', type: 'door', wallId: 'w', x: 200, y: 0, angle: 0, width: 90 },
+    ],
+  });
+
+  it('raises and lowers items, and drops the height when it comes back to the floor', () => {
+    const up = raiseItems(doc(), ['w'], 600);
+    expect((up.elements[0] as Wall).elevMm).toBe(600);
+    const down = raiseItems(up, ['w'], -600);
+    expect((down.elements[0] as Wall).elevMm).toBeUndefined();
+    expect((raiseItems(doc(), ['w'], -99999).elements[0] as Wall).elevMm).toBe(-5000);
+  });
+
+  it('moves a window sill instead, and leaves doors alone', () => {
+    const out = raiseItems(doc(), ['n', 'd'], 300);
+    expect((out.elements[1] as Opening).sillMm).toBe(914 + 300);
+    expect(out.elements[2]).toEqual(doc().elements[2]);
+    expect((raiseItems(doc(), ['n'], -2000).elements[1] as Opening).sillMm).toBe(0);
   });
 });

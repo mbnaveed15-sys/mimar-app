@@ -120,7 +120,7 @@ function buildMeshes(model: Model3D): THREE.Group {
     const shape = new THREE.Shape(floor.points.map(([x, z]) => new THREE.Vector2(x, -z)));
     const geometry = new THREE.ShapeGeometry(shape);
     geometry.rotateX(-Math.PI / 2);
-    const mesh = new THREE.Mesh(geometry, material(floor.color, 1, floor.finish));
+    const mesh = new THREE.Mesh(geometry, material(floor.color, floor.opacity ?? 1, floor.finish));
     mesh.position.y = floor.y + 0.005;
     mesh.receiveShadow = true;
     mesh.userData = { id: floor.id, level: floor.level };
@@ -322,11 +322,19 @@ function drawGrid(stage: Stage, s: PlannerState) {
   // An even number of squares puts the middle on a grid line, so snapping it keeps lines on the plan's grid.
   const divisions = 2 * Math.min(200, Math.max(1, Math.round(size / step / 2)));
   const colors = s.grid.colors[s.theme];
+  const strength = 0.5 + s.grid.strength / 200;
+  const ground = levelIndex(s, s.activeLevel) === 0;
+  // On the ground floor the grid is drawn as a backdrop: the plot, floors and everything solid cover it, so
+  // it never floats over the plot's grass. It can't fade there, so its colours are mixed with the ground's.
+  const shade = (c: string) =>
+    ground
+      ? '#' + new THREE.Color(themeColor('--plan-room', '#dfe5dc')).lerp(new THREE.Color(c), strength).getHexString()
+      : c;
   const grid = new THREE.GridHelper(
     divisions * step,
     divisions,
-    colors?.major ?? themeColor('--plan-grid-major', '#bbbbbb'),
-    colors?.minor ?? themeColor('--plan-grid', '#dddddd'),
+    shade(colors?.major ?? themeColor('--plan-grid-major', '#bbbbbb')),
+    shade(colors?.minor ?? themeColor('--plan-grid', '#dddddd')),
   );
   const snapTo = (v: number) => Math.round(v / step) * step;
   grid.position.set(
@@ -335,8 +343,14 @@ function drawGrid(stage: Stage, s: PlannerState) {
     snapTo(stage.last.centre.z),
   );
   const mat = grid.material as THREE.LineBasicMaterial;
-  mat.transparent = true;
-  mat.opacity = 0.5 + s.grid.strength / 200;
+  if (ground) {
+    mat.depthTest = false;
+    mat.depthWrite = false;
+    grid.renderOrder = -1;
+  } else {
+    mat.transparent = true;
+    mat.opacity = strength;
+  }
   stage.grid = grid;
   stage.scene.add(grid);
 }
@@ -399,6 +413,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       new THREE.MeshStandardMaterial({ color: themeColor('--plan-room', '#dfe5dc'), roughness: 1 }),
     );
     ground.receiveShadow = true;
+    ground.renderOrder = -2; // under the ground-floor grid
     scene.add(ground);
 
     const model = new THREE.Group();
@@ -767,7 +782,7 @@ function layoutLines(doc: PlanDoc, wallHeightMm: number): THREE.Object3D {
   for (const el of doc.elements) {
     if (el.type !== 'line') continue;
     const level = el.levelId ?? 'ground';
-    const y = levelBaseM(doc, level, wallHeightMm) + 0.012;
+    const y = levelBaseM(doc, level, wallHeightMm) + (el.elevMm ?? 0) / 1000 + 0.012;
     const pts = byLevel.get(level) ?? [];
     pts.push(
       new THREE.Vector3(el.x1 * M_PER_UNIT, y, el.y1 * M_PER_UNIT),

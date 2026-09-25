@@ -4,7 +4,17 @@ import { emptyDoc } from '../lib/storage';
 import { MM_PER_FOOT } from '../lib/units';
 import { createPlannerStore } from '../store/plannerStore';
 import type { Furniture, Wall } from '../types';
-import { applyMeasure, cancel, hover, press, release, toggleAxisLock, toggleCopy } from './controller';
+import {
+  applyMeasure,
+  cancel,
+  hover,
+  measureReadout,
+  press,
+  release,
+  toggleAxisLock,
+  toggleCopy,
+  toggleHeightLock,
+} from './controller';
 
 const FT = MM_PER_FOOT / 10; // plan units per foot
 const setup = () => {
@@ -91,6 +101,42 @@ describe('SketchUp-style tools', () => {
     applyMeasure(store, '/5');
     items = store.getState().doc.elements.filter((e) => e.type === 'furniture') as Furniture[];
     expect(items.map((f) => Math.round(f.x / FT))).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it('moves up and down the blue axis in 3D, by the pointer or a typed height', () => {
+    const store = setup();
+    store.getState().addFurniture({ x: 0, y: 0 });
+    const item = store.getState().doc.elements[0] as Furniture;
+    store.getState().select(item.id);
+    store.getState().setTool('move');
+    expect(toggleHeightLock(store)).toBe(false); // nothing is moving yet
+    store.getState().setView3d(true);
+    press(store, { x: 0, y: 0 });
+    hover(store, { x: 0, y: 0 }, false, 400);
+    expect(toggleHeightLock(store)).toBe(true);
+    expect(store.getState().axisLock).toBe('z');
+    // Across the floor is ignored; up the screen raises it.
+    hover(store, { x: 9 * FT, y: 9 * FT }, false, 300);
+    let moved = store.getState().doc.elements[0] as Furniture;
+    expect(moved.x).toBe(0);
+    expect(moved.elevMm).toBeGreaterThan(0);
+    expect(measureReadout(store.getState()).label).toBe('Height');
+    expect(applyMeasure(store, `2'`)).toBe(true);
+    moved = store.getState().doc.elements[0] as Furniture;
+    expect(moved.elevMm).toBeCloseTo(609.6);
+    expect(store.getState().draft).toBeNull();
+    expect(store.getState().axisLock).toBeNull();
+    store.getState().undo();
+    expect((store.getState().doc.elements[0] as Furniture).elevMm).toBeUndefined();
+  });
+
+  it('does not lock to the blue axis in 2D', () => {
+    const store = setup();
+    store.getState().addFurniture({ x: 0, y: 0 });
+    store.getState().select(store.getState().doc.elements[0].id);
+    store.getState().setTool('move');
+    press(store, { x: 0, y: 0 });
+    expect(toggleHeightLock(store)).toBe(false);
   });
 
   it('Esc puts a moved item back', () => {

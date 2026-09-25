@@ -3,6 +3,8 @@ import { buildableArea, stairLayout } from '../../lib/site';
 import { PLAN } from '../../theme/plan';
 import type { Plot, Point, Stair } from '../../types';
 
+const LAWN = '#86A95F';
+
 const pts = (list: Point[]) => list.map((p) => `${p.x},${p.y}`).join(' ');
 
 /** The plot line (chain-dotted), the buildable area inside the setbacks (dashed), and the road side. */
@@ -23,11 +25,12 @@ export function PlotShape({ plot, selected, k }: { plot: Plot; selected: boolean
   const road = { x: mid.x + nx * 64 * k, y: mid.y + ny * 64 * k };
   return (
     <g data-type="plot" data-id={plot.id}>
+      {/* A soft grass tint, so the plot reads on top of the grid. */}
       <polygon
         points={pts(plot.points)}
-        style={{ fill: PLAN.selection, stroke: selected ? PLAN.selection : PLAN.ink }}
-        fillOpacity={selected ? 0.06 : 0}
-        strokeWidth={(selected ? 3 : 1.5) * k}
+        style={{ fill: LAWN, stroke: selected ? PLAN.selection : PLAN.ink }}
+        fillOpacity={selected ? 0.3 : 0.2}
+        strokeWidth={(selected ? 3 : 2) * k}
         strokeDasharray={`${18 * k} ${4 * k} ${3 * k} ${4 * k}`}
       />
       <polygon

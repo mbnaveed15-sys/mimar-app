@@ -30,6 +30,7 @@ import {
   makeUnique,
   moveItems,
   placeComponent,
+  raiseItems,
   rotateItems,
   selectionBounds,
   syncComponent,
@@ -192,8 +193,8 @@ export interface PlannerState {
   measureText: string;
   /** What the pointer snapped to, shown as a coloured marker. */
   inference: Inference | null;
-  /** Arrow-key lock to the red (x) or green (y) axis while drawing. */
-  axisLock: 'x' | 'y' | null;
+  /** Locked to the red (x), green (y) or, moving in 3D, blue (z, up and down) axis. */
+  axisLock: 'x' | 'y' | 'z' | null;
   /** Direction held by Shift while drawing (inference lock). */
   shiftLock: Point | null;
   /** The last Move-copy, so `3x` or `/3` typed next can turn it into an array. */
@@ -254,7 +255,7 @@ export interface PlannerState {
   setWarning: (message: string | null) => void;
   setMeasureText: (text: string) => void;
   setInference: (inference: Inference | null) => void;
-  setAxisLock: (axis: 'x' | 'y' | null) => void;
+  setAxisLock: (axis: 'x' | 'y' | 'z' | null) => void;
   setShiftLock: (dir: Point | null) => void;
   setLastCopy: (copy: PlannerState['lastCopy']) => void;
   /** Add finished elements (copies, pastes) as one undo step. */
@@ -344,6 +345,8 @@ export interface PlannerState {
   updateElement: (next: PlanElement) => void;
   flipOpening: (id: Id, which: 'side' | 'hinge') => void;
   nudgeSelected: (dx: number, dy: number) => void;
+  /** Raise the selection by mm (lower it when negative); a window on its own moves its sill. */
+  raiseSelected: (mm: number) => void;
   rotateSelected: (degrees: number) => void;
 
   newPlan: () => void;
@@ -1346,6 +1349,10 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           return it && !('type' in it && (it.type === 'door' || it.type === 'window'));
         });
         if (movable.length) get().commit((d) => moveItems(d, movable, dx, dy));
+      },
+      raiseSelected: (mm) => {
+        const { selectedIds } = get();
+        if (selectedIds.length) get().commit((d) => raiseItems(d, selectedIds, mm));
       },
       rotateSelected: (degrees) => {
         const { doc, selectedIds } = get();

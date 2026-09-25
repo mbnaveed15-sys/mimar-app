@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { matchesKeys, type Command } from '../commands';
 import { isMeasureKey } from '../lib/measure';
 import { mirrorItems } from '../lib/modify';
-import { plannerStore } from '../store/plannerStore';
+import { MM_PER_UNIT, plannerStore } from '../store/plannerStore';
 import {
   anchorOf,
   applyMeasure,
@@ -11,6 +11,7 @@ import {
   MEASURE_TOOLS,
   toggleAxisLock,
   toggleCopy,
+  toggleHeightLock,
 } from '../tools/controller';
 import { modifyEnter } from '../tools/modifyTools';
 
@@ -74,7 +75,19 @@ export function useKeyboardShortcuts(commands: Command[]) {
         else if (d?.type === 'wall' || d?.type === 'line' || d?.type === 'tape') s.setDraft(null);
         return;
       }
+      const upDown = e.key === 'ArrowUp' || e.key === 'ArrowDown';
+      if (upDown && e.altKey && !e.ctrlKey && !e.metaKey && s.selectedIds.length && !s.draft) {
+        e.preventDefault();
+        // Alt+up/down raises or lowers by a grid square; with Shift by 1/5 of one.
+        const step = (e.shiftKey ? s.gridPx / 5 : s.gridPx) * MM_PER_UNIT;
+        s.raiseSelected(e.key === 'ArrowUp' ? step : -step);
+        return;
+      }
       if (e.key in ARROWS && !mod) {
+        if (upDown && toggleHeightLock(plannerStore)) {
+          e.preventDefault();
+          return;
+        }
         if (anchorOf(s)) {
           e.preventDefault();
           toggleAxisLock(plannerStore, e.key === 'ArrowRight' ? 'x' : 'y');

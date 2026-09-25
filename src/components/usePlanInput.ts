@@ -319,7 +319,7 @@ export function usePlanInput(
     }
 
     if (s.tool in MEASURE_TOOLS) {
-      hover(plannerStore, raw, e.shiftKey);
+      hover(plannerStore, raw, e.shiftKey, e.clientY);
       return;
     }
     const d = s.draft;

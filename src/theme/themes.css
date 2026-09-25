@@ -30,6 +30,7 @@
   --snap-edge: #b3261e;
   --axis-x: #b3261e;
   --axis-y: #1e7b34;
+  --axis-z: #1d4ed8;
   --danger: #b3261e;
   --shadow-popover: 0 8px 24px rgba(46, 39, 32, 0.16);
 }
@@ -63,6 +64,7 @@
   --snap-edge: #b3261e;
   --axis-x: #b3261e;
   --axis-y: #1e7b34;
+  --axis-z: #1d4ed8;
   --danger: #b3261e;
   --shadow-popover: 0 8px 24px rgba(20, 33, 61, 0.16);
 }
@@ -96,6 +98,7 @@
   --snap-edge: #f87171;
   --axis-x: #f87171;
   --axis-y: #4ade80;
+  --axis-z: #60a5fa;
   --danger: #f87171;
   --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.55);
 }
@@ -129,6 +132,7 @@
   --snap-edge: #b3261e;
   --axis-x: #b3261e;
   --axis-y: #1e7b34;
+  --axis-z: #1d4ed8;
   --danger: #b3261e;
   --shadow-popover: 0 8px 24px rgba(23, 25, 28, 0.14);
 }
@@ -162,6 +166,7 @@
   --snap-edge: #f87171;
   --axis-x: #f87171;
   --axis-y: #4ade80;
+  --axis-z: #60a5fa;
   --danger: #f87171;
   --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.5);
 }

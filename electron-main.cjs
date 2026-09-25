@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require('electron');
 const fs = require('fs/promises');
 const path = require('path');
 const { setupUpdates } = require('./updater.cjs');
@@ -101,6 +101,8 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Mimar draws its own menu bar, so drop Electron's default one (File, Edit, View, Window).
+  Menu.setApplicationMenu(null);
   setupUpdates(() => mainWindow);
   try {
     createSplash();

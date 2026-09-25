@@ -186,4 +186,19 @@ describe('3D site', () => {
     expect(floors).toHaveLength(1);
     expect(floors[0].y).toBe(0);
   });
+
+  it('lifts items by their height above the floor', () => {
+    const col: PlanElement = { id: 'c', type: 'column', x: 0, y: 0, w: 23, h: 30, shape: 'rect', elevMm: 500 };
+    const raised = { ...wall, elevMm: 1000 } as PlanElement;
+    const { solids } = buildModel(docWith(raised, col), opts);
+    expect(solids.find((s) => s.role === 'column')!.y0).toBeCloseTo(0.5);
+    expect(solids.find((s) => s.role === 'wall')!.y0).toBeCloseTo(1);
+  });
+
+  it('puts a window at its own sill height and keeps its size', () => {
+    const win: PlanElement = { id: 'n', type: 'window', wallId: 'w', x: 500, y: 0, angle: 0, width: 120, sillMm: 1200 };
+    const glass = buildModel(docWith(wall, win), opts).solids.find((s) => s.role === 'glass')!;
+    expect(glass.y0).toBeCloseTo(1.2);
+    expect(glass.h).toBeCloseTo(2.134 - 0.914);
+  });
 });

@@ -3,7 +3,7 @@ import { plannerStore, usePlanner } from '../store/plannerStore';
 import { applyMeasure, MEASURE_TOOLS, measureReadout, toolHint } from '../tools/controller';
 import { Icon } from './Icon';
 
-const AXIS_NAMES = { x: 'Red axis locked', y: 'Green axis locked' };
+const AXIS_NAMES = { x: 'Red axis locked', y: 'Green axis locked', z: 'Blue axis locked (up and down)' };
 
 /** Bottom bar: what the tool wants next, snap and axis state, grid chips and the Measurements box. */
 export function StatusBar() {
@@ -20,7 +20,7 @@ export function StatusBar() {
         {hint}
       </span>
       {axisLock && (
-        <span className="font-semibold" style={{ color: axisLock === 'x' ? 'var(--axis-x)' : 'var(--axis-y)' }}>
+        <span className="font-semibold" style={{ color: `var(--axis-${axisLock})` }}>
           {AXIS_NAMES[axisLock]}
         </span>
       )}

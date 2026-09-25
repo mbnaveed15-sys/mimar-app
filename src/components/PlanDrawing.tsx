@@ -1,4 +1,6 @@
-import { planBounds } from '../geometry';
+import { elementOutline, planBounds } from '../geometry';
+import { formatLength } from '../lib/units';
+import { PLAN } from '../theme/plan';
 import type { MarlaSqFt, PlanDoc, Units } from '../types';
 import { wallFaces } from '../rooms';
 import { DEFAULT_WALL_THICKNESS, placeWallDimension, thicknessOf, wallsOf } from '../walls';
@@ -119,6 +121,33 @@ export function PlanDrawing(props: PlanDrawingProps) {
           part="label"
         />
       ))}
+
+      {/* Items raised above (or sunk below) their floor carry their height, e.g. +2' 0". */}
+      {doc.elements.map((el) => {
+        if (!el.elevMm || (el.type === 'furniture' && !showFurniture)) return null;
+        const pts = elementOutline(el);
+        if (!pts.length) return null;
+        const at = {
+          x: pts.reduce((sum, p) => sum + p.x, 0) / pts.length,
+          y: pts.reduce((sum, p) => sum + p.y, 0) / pts.length + 12 * k,
+        };
+        return (
+          <text
+            key={`elev-${el.id}`}
+            data-testid="elevation-tag"
+            x={at.x}
+            y={at.y}
+            fontSize={10 * k}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{ fill: PLAN.dim, stroke: PLAN.paper }}
+            strokeWidth={3 * k}
+            paintOrder="stroke"
+          >
+            {`${el.elevMm > 0 ? '+' : ''}${formatLength(el.elevMm, units)}`}
+          </text>
+        );
+      })}
 
       {showDimensions &&
         walls.map((w) => {
