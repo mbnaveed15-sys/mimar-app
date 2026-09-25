@@ -14,7 +14,7 @@ Windows desktop app (Electron) and a web app (GitHub Pages, installable, works o
 
 | Version | Main additions |
 | --- | --- |
-| 1.17.0 | **Open as PR #20, to be merged.** First-run welcome and 6-step tour, sample 5-marla house, extruded-M logo everywhere, layout (drafting) lines with "Turn into walls", automatic layers by item type with hide/lock per layer and per item, drag-to-erase, grid points snap even under walls, room names drawn over furniture |
+| 1.17.0 | Released 25 Sep 2026. First-run welcome and 6-step tour, sample 5-marla house, extruded-M logo everywhere, layout (drafting) lines with "Turn into walls", automatic layers by item type with hide/lock per layer and per item, drag-to-erase, grid points snap even under walls, room names drawn over furniture |
 | 1.16.1 | Fixed a crash on mixed selections (columns, beams, slabs, plots, stairs); 3D selection box on screen; horizon guard; square-on 3D camera for empty plans; smoke test over every item type |
 | 1.16.0 | Build in 3D: every tool works in the 3D view (raycast to the floor), SketchUp-style camera (middle-drag orbit, Shift+middle pan, wheel zoom, Orbit tool O), 3D picking, previews and snap marker |
 | 1.15.0 | Grid colours per theme; touch (pinch, two-finger pan, long-press menu) and pen; web version (PWA, offline, Pages) |

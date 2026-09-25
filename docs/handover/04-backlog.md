@@ -2,10 +2,6 @@
 
 In the order agreed with the owner. Confirm the plan with the owner before starting each item.
 
-## First
-
-1. **Merge 1.17.0** (PR #20) and check the release (four files, not a draft) and the web version.
-
 ## Reported by the owner, queued "for later"
 
 2. **Plots are drawn under the grid.** The plot outline and lawn should sit above the grid lines (2D), and be easy
