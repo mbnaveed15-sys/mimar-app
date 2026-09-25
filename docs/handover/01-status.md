@@ -1,6 +1,6 @@
 # Status
 
-_Last updated: 25 September 2026 (with release 1.19.0, awaiting merge)._
+_Last updated: 25 September 2026 (with release 1.19.0)._
 
 Mimar is a house-planning app for Pakistan (feet and marla, local plot sizes and construction), built as a
 Windows desktop app (Electron) and a web app (GitHub Pages, installable, works offline) from the same code.
@@ -14,7 +14,7 @@ Windows desktop app (Electron) and a web app (GitHub Pages, installable, works o
 
 | Version | Main additions |
 | --- | --- |
-| 1.19.0 | Awaiting merge. Push/Pull (P) in 3D: wall tops (height), ends (length), sides (thickness); slab tops, bottoms and edges; column tops and sides; beam depth, width and length; blocks. Shape tool (Shift+R): rectangle, circle, arch or polygon on the floor, a slab or block top, or (in 3D) a wall face. Pull a floor shape up into a **block** (new item, own layer); push a wall shape half-way in to **cut an opening** of that shape (rectangular, round, arched or any outline; open or glazed); push a slab shape down through to make a **void**. Shaped openings are built as wall panels in 3D and exported (GLB/DAE/OBJ); voids and blocks go to DXF. Windows get a height field and "Open (no glass)"; walls and columns get their own height. Plot moved to Shift+P. Grid: minor and major sizes on sliders with stops (major as a length, a whole number of minor squares) |
+| 1.19.0 | Released 25 Sep 2026. Push/Pull (P) in 3D: wall tops (height), ends (length), sides (thickness); slab tops, bottoms and edges; column tops and sides; beam depth, width and length; blocks. Shape tool (Shift+R): rectangle, circle, arch or polygon on the floor, a slab or block top, or (in 3D) a wall face. Pull a floor shape up into a **block** (new item, own layer); push a wall shape half-way in to **cut an opening** of that shape (rectangular, round, arched or any outline; open or glazed); push a slab shape down through to make a **void**. Shaped openings are built as wall panels in 3D and exported (GLB/DAE/OBJ); voids and blocks go to DXF. Windows get a height field and "Open (no glass)"; walls and columns get their own height. Plot moved to Shift+P. Grid: minor and major sizes on sliders with stops (major as a length, a whole number of minor squares) |
 | 1.18.0 | Released 25 Sep 2026. Plots above the grid (grass tint in 2D; grid as a ground-floor backdrop under a slightly see-through lawn in 3D); "Height above floor" for walls, columns, beams, slabs, stairs, furniture and layout lines (negative for sunken); window sill height; Move in 3D with ↑/↓ locks to the blue axis (pointer or typed height); Alt+↑/↓ raises or lowers by a grid step (Shift: a fifth); "+2' 0"" tags in 2D; Electron's default menu bar removed |
 | 1.17.0 | Released 25 Sep 2026. First-run welcome and 6-step tour, sample 5-marla house, extruded-M logo everywhere, layout (drafting) lines with "Turn into walls", automatic layers by item type with hide/lock per layer and per item, drag-to-erase, grid points snap even under walls, room names drawn over furniture |
 | 1.16.1 | Fixed a crash on mixed selections (columns, beams, slabs, plots, stairs); 3D selection box on screen; horizon guard; square-on 3D camera for empty plans; smoke test over every item type |
