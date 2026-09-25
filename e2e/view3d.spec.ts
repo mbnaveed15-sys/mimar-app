@@ -26,7 +26,7 @@ test('shows the plan in 3D, follows edits, and switches back to 2D', async ({ pa
   await page.goto('/');
 
   await page.getByRole('radio', { name: '3D view' }).click();
-  await expect(page.getByText('Draw some walls in the 2D plan')).toBeVisible();
+  await expect(page.getByText('draw right here')).toBeVisible();
   await page.getByRole('radio', { name: '2D plan' }).click();
 
   await tool(page, 'wall');

@@ -516,6 +516,8 @@ export function toolHint(s: PlannerState): string {
       return 'Drag to move around. Middle-drag pans with any tool.';
     case 'zoom':
       return 'Drag up to zoom in, down to zoom out. Shift+Z fits the plan.';
+    case 'orbit':
+      return 'Drag to turn around the building; hold Shift to pan. Scroll zooms. Middle-drag orbits with any tool.';
     case 'wall':
       return d?.type === 'wall'
         ? 'Click the next corner or type a length and press Enter. Arrow keys lock an axis; Esc stops.'

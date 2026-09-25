@@ -40,7 +40,7 @@ export function useKeyboardShortcuts(commands: Command[]) {
       const s = plannerStore.getState();
       const mod = e.ctrlKey || e.metaKey || e.altKey;
       const kind = MEASURE_TOOLS[s.tool];
-      const measuring = !s.view3d && !!kind && kind !== 'none';
+      const measuring = !!kind && kind !== 'none';
 
       if (measuring && !mod) {
         if (isMeasureKey(e.key, s.measureText)) {
@@ -75,12 +75,12 @@ export function useKeyboardShortcuts(commands: Command[]) {
         return;
       }
       if (e.key in ARROWS && !mod) {
-        if (!s.view3d && anchorOf(s)) {
+        if (anchorOf(s)) {
           e.preventDefault();
           toggleAxisLock(plannerStore, e.key === 'ArrowRight' ? 'x' : 'y');
           return;
         }
-        if (s.selectedId && !s.view3d) {
+        if (s.selectedId) {
           e.preventDefault();
           // One grid square per press; hold Shift for a finer 1/5 step.
           const step = e.shiftKey ? s.gridPx / 5 : s.gridPx;

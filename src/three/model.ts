@@ -49,6 +49,9 @@ export interface Solid {
   color: string;
   opacity?: number;
   finish?: Finish;
+  /** The plan item it was made from, and its floor, for picking in 3D. */
+  id?: string;
+  level?: string;
   /** What it is, for tests and for picking materials. */
   role: 'wall' | 'glass' | 'door' | 'furniture' | 'column' | 'beam' | 'stair';
 }
@@ -59,6 +62,8 @@ export interface Floor {
   y: number;
   color: string;
   finish?: Finish;
+  id?: string;
+  level?: string;
 }
 
 /** A slab: an outline extruded upward from y0 by h, in metres. */
@@ -68,6 +73,8 @@ export interface Slab3D {
   h: number;
   color: string;
   finish?: Finish;
+  id?: string;
+  level?: string;
 }
 
 export interface Model3D {
@@ -135,7 +142,7 @@ function wallSolids(wall: Wall, walls: Wall[], openings: Opening[], heightMm: nu
     if (o.type === 'window') {
       const sill = Math.min(head, mmToM(WINDOW_SILL_MM));
       solids.push(piece(s0, s1, 0, sill));
-      solids.push({ ...piece(s0, s1, sill, head, 'glass', 0.012), color: GLASS_COLOR, opacity: 0.35 });
+      solids.push({ ...piece(s0, s1, sill, head, 'glass', 0.012), color: GLASS_COLOR, opacity: 0.35, id: o.id });
     }
     cursor = Math.max(cursor, s1);
   }
@@ -362,6 +369,15 @@ function beamSolid(b: Beam, top: number, color?: string): Solid | null {
   };
 }
 
+/** Height (metres) of a floor's finished level: the plinth plus a storey (walls and slab) per floor below. */
+export function levelBaseM(doc: PlanDoc, levelId: string, wallHeightMm: number): number {
+  const i = Math.max(
+    0,
+    doc.levels.findIndex((l) => l.id === levelId),
+  );
+  return mmToM(doc.plinthMm) + i * mmToM(wallHeightMm + SLAB_MM);
+}
+
 /**
  * Everything needed to draw the plan in 3D, in metres. Floors stack upward from the plinth: each
  * storey is the wall height plus a slab. Ground-floor walls also run down through the plinth.
@@ -392,6 +408,10 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   levels.forEach((level, i) => {
     const base = plinth + i * storey;
     const lift = (s: Solid): Solid => ({ ...s, y0: s.y0 + base });
+    /** Mark parts with the item they came from (a window's glass keeps the window's id). */
+    const from =
+      (id: string) =>
+      (s: Solid): Solid => ({ ...s, id: s.id ?? id, level: level.id });
     const els = doc.elements.filter((el) => levelOf(el) === level.id);
     const walls = wallsOf(els);
     const openings = els.filter((el): el is Opening => el.type === 'door' || el.type === 'window');
@@ -404,34 +424,39 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       const height = wall.heightMm ?? options.wallHeightMm;
       // A boundary wall stands on the natural ground, not on the plinth.
       if (wall.kind === 'boundary' && i === 0) {
-        solids.push(...wallSolids(wall, walls, own, height).map(paint));
+        solids.push(...wallSolids(wall, walls, own, height).map(paint).map(from(wall.id)));
         continue;
       }
-      solids.push(...wallSolids(wall, walls, own, height).map(paint).map(lift));
+      solids.push(...wallSolids(wall, walls, own, height).map(paint).map(lift).map(from(wall.id)));
       if (wall.kind) continue;
       // The plinth: ground-floor walls carry on down to the ground.
-      if (i === 0 && plinth > 0) solids.push(...wallSolids(wall, walls, [], doc.plinthMm).map(paint));
+      if (i === 0 && plinth > 0)
+        solids.push(...wallSolids(wall, walls, [], doc.plinthMm).map(paint).map(from(wall.id)));
     }
     for (const door of openings) {
       const host = walls.find((w) => w.id === door.wallId);
       if (door.type !== 'door' || !host) continue;
       const leaves = doorLeaves(door, host.heightMm ?? options.wallHeightMm);
-      solids.push(...(host.kind === 'boundary' && i === 0 ? leaves : leaves.map(lift)));
+      solids.push(...(host.kind === 'boundary' && i === 0 ? leaves : leaves.map(lift)).map(from(door.id)));
     }
     for (const el of els) {
       if (el.type === 'furniture' && options.showFurniture)
-        solids.push(...furnitureSolids(el, colorOf(el.material)).map(withFinish(el.material)).map(lift));
+        solids.push(
+          ...furnitureSolids(el, colorOf(el.material)).map(withFinish(el.material)).map(lift).map(from(el.id)),
+        );
       if (el.type === 'column')
-        solids.push(lift(withFinish(el.material, 'concrete')(columnSolid(el, wallTop, colorOf(el.material)))));
+        solids.push(
+          from(el.id)(lift(withFinish(el.material, 'concrete')(columnSolid(el, wallTop, colorOf(el.material))))),
+        );
       if (el.type === 'beam') {
         const b = beamSolid(el, wallTop, colorOf(el.material));
-        if (b) solids.push(lift(withFinish(el.material, 'concrete')(b)));
+        if (b) solids.push(from(el.id)(lift(withFinish(el.material, 'concrete')(b))));
       }
       if (el.type === 'stair') {
         // Steps up the plinth start from the natural ground; others from the floor they are on.
         const fromGround = i === 0 && Math.abs(el.riseMm - doc.plinthMm) < 1;
         const parts = stairSolids(el, colorOf(el.material)).map(withFinish(el.material, 'concrete'));
-        solids.push(...(fromGround ? parts : parts.map(lift)));
+        solids.push(...(fromGround ? parts : parts.map(lift)).map(from(el.id)));
       }
       if (el.type === 'plot' && i === 0)
         floors.push({
@@ -439,6 +464,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           y: 0,
           color: colorOf(el.material) ?? LAWN,
           finish: finishOf(el.material, 'grass'),
+          id: el.id,
+          level: level.id,
         });
       if (el.type === 'slab')
         slabs.push({
@@ -447,6 +474,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           h: m(el.thickness),
           color: colorOf(el.material) ?? CONCRETE,
           finish: finishOf(el.material, 'concrete'),
+          id: el.id,
+          level: level.id,
         });
     }
     for (const r of doc.rooms.filter((room) => levelOf(room) === level.id)) {
@@ -455,6 +484,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         y: base,
         color: colorOf(r.material) ?? DEFAULT_FLOOR,
         finish: finishOf(r.material),
+        id: r.id,
+        level: level.id,
       });
     }
   });

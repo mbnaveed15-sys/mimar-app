@@ -491,6 +491,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           shiftLock: null,
           lastCopy: null,
         }));
+        // Orbit only turns the 3D view, so it opens it.
+        if (tool === 'orbit' && !get().view3d) get().setView3d(true);
       },
       selectMaterial: (id) => set({ selectedMat: id }),
       select: (id) => {
@@ -1083,6 +1085,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       setView3d: (view3d) => {
         get().cancelBatch();
         set({ view3d, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
+        if (!view3d && get().tool === 'orbit') get().setTool('select');
       },
 
       addRoomAt: (p) => {

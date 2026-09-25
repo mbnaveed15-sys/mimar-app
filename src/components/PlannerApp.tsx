@@ -80,7 +80,7 @@ export default function PlannerApp() {
         <main className="relative min-w-0 flex-1 overflow-hidden bg-canvas">
           {view3d ? (
             <Suspense fallback={<div className="flex h-full items-center justify-center text-muted">Loading 3D…</div>}>
-              <Plan3DView />
+              <Plan3DView onContextMenu={setMenuAt} />
             </Suspense>
           ) : (
             <>

@@ -66,7 +66,25 @@ export interface ContextTarget {
 export function usePlanInput(
   toPlan: (e: { clientX: number; clientY: number }) => Point,
   onContextMenu?: (target: ContextTarget) => void,
+  /** In 3D: the id of the item right under the pointer, found by looking along the view. */
+  pickId?: (e: { clientX: number; clientY: number }) => string | null,
 ) {
+  /** The item under the pointer: what 3D picking saw, or else whatever is near the plan point. */
+  function hitAt(e: { clientX: number; clientY: number }, raw: Point): PlanElement | null {
+    const s = plannerStore.getState();
+    const id = pickId?.(e);
+    const picked = id ? s.visibleElements().find((el) => el.id === id) : undefined;
+    return picked ?? findElementNear(s.visibleElements(), raw, s.hitTolerance());
+  }
+  /** Item or room under the pointer (3D can pick a floor straight away). */
+  function idAt(e: { clientX: number; clientY: number }, raw: Point): string | null {
+    const s = plannerStore.getState();
+    const picked = pickId?.(e);
+    if (picked && (s.visibleElements().some((el) => el.id === picked) || s.levelRooms().some((r) => r.id === picked)))
+      return picked;
+    return hitAt(e, raw)?.id ?? s.roomAt(raw)?.id ?? null;
+  }
+
   const dragRef = useRef<Drag | null>(null);
   /** Where the current press started on screen, to tell a click from a drag. */
   const pressRef = useRef<{ x: number; y: number } | null>(null);
@@ -119,7 +137,7 @@ export function usePlanInput(
 
     switch (s.tool) {
       case 'select': {
-        const hit = findElementNear(s.visibleElements(), raw, s.hitTolerance());
+        const hit = hitAt(e, raw);
         if (!hit) {
           // Empty space (or inside a room): a click picks the room, a drag draws a selection box.
           startDrag(e, { kind: 'box', start: raw, additive: e.shiftKey });
@@ -146,7 +164,10 @@ export function usePlanInput(
         s.addFurniture(gridSnap(raw));
         break;
       case 'paint':
-        s.paintAt(raw);
+        if (pickId) {
+          const id = idAt(e, raw);
+          if (id) s.applyMaterial(id);
+        } else s.paintAt(raw);
         break;
       case 'brush':
         capture(e);
@@ -160,7 +181,9 @@ export function usePlanInput(
       case 'erase': {
         // Shift+click erases just the piece of wall between the walls crossing it (like Trim).
         const wall = e.shiftKey ? nearestWall(s.visibleElements(), raw, s.hitTolerance() * 1.5) : null;
+        const picked = !wall && pickId ? idAt(e, raw) : null;
         if (wall) s.commit((doc) => trimAt(doc, wall.id, raw, 10 * s.pxUnits()));
+        else if (picked) s.deleteElement(picked);
         else s.eraseAt(raw);
         break;
       }
@@ -311,7 +334,7 @@ export function usePlanInput(
     }
     if (s.tool !== 'select') return;
     const raw = toPlan(e);
-    const hit = findElementNear(s.visibleElements(), raw, s.hitTolerance());
+    const hit = hitAt(e, raw);
     // Double-click a group (or component copy) to edit inside it.
     const groupId = (hit ?? s.roomAt(raw))?.groupId;
     if (groupId && groupId !== s.openGroupId) {
@@ -338,8 +361,7 @@ export function usePlanInput(
     const s = plannerStore.getState();
     if (s.draft) return;
     const raw = toPlan(e);
-    const hit = findElementNear(s.visibleElements(), raw, s.hitTolerance());
-    const id = hit?.id ?? s.roomAt(raw)?.id ?? null;
+    const id = idAt(e, raw);
     if (!id || !s.selectedIds.includes(id)) s.select(id);
     onContextMenu?.({ x: e.clientX, y: e.clientY, id });
   }
