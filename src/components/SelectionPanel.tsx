@@ -1,11 +1,18 @@
 import { itemById } from '../lib/selection';
 import { plannerStore, usePlanner } from '../store/plannerStore';
+import type { PlanElement } from '../types';
 
-const NAMES: Record<string, [string, string]> = {
+/** Singular and plural names for every kind of item (the type makes sure none is left out). */
+const NAMES: Record<PlanElement['type'] | 'room', [string, string]> = {
   wall: ['wall', 'walls'],
   door: ['door', 'doors'],
   window: ['window', 'windows'],
   furniture: ['item', 'items'],
+  column: ['column', 'columns'],
+  beam: ['beam', 'beams'],
+  slab: ['slab', 'slabs'],
+  plot: ['plot', 'plots'],
+  stair: ['stair', 'stairs'],
   room: ['room', 'rooms'],
 };
 
@@ -24,7 +31,12 @@ export function SelectionPanel() {
     const kind = it ? ('type' in it ? it.type : 'room') : null;
     if (kind) counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
-  const summary = [...counts].map(([k, n]) => `${n} ${NAMES[k][n === 1 ? 0 : 1]}`).join(', ');
+  const summary = [...counts]
+    .map(([k, n]) => {
+      const [one, many] = NAMES[k as keyof typeof NAMES] ?? ['item', 'items'];
+      return `${n} ${n === 1 ? one : many}`;
+    })
+    .join(', ');
 
   function applyMaterial() {
     s.beginBatch();

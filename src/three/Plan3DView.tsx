@@ -10,7 +10,7 @@ import { formatLength } from '../lib/units';
 import { plannerStore, usePlanner, type PlannerState } from '../store/plannerStore';
 import { themeColor } from '../theme/themes';
 import { drawPattern } from '../lib/patterns';
-import type { Pattern, Point } from '../types';
+import type { Bounds, Pattern, Point } from '../types';
 import { CameraRig } from './cameraRig';
 import { draftElements, draftLines } from './draft3d';
 import { buildModel, levelBaseM, M_PER_UNIT, type Finish, type Model3D } from './model';
@@ -345,6 +345,8 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
   const pickRef = useRef<{ x: number; y: number; pick: Pick } | null>(null);
   /** A camera drag in progress (middle button, or the Orbit, Pan and Zoom tools). */
   const camRef = useRef<{ mode: 'orbit' | 'pan' | 'dolly'; x: number; y: number; id: number } | null>(null);
+  /** The selection box being dragged, in screen pixels. */
+  const [box, setBox] = useState<Bounds | null>(null);
 
   // Create the renderer, camera and lights once.
   useEffect(() => {
@@ -540,7 +542,9 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         new THREE.Vector3(),
       );
     }
-    if (!world) return last?.pick ?? null;
+    // Towards the horizon (or above it) the floor is too far away to draw on: keep the last point.
+    const far = Math.max(200, stage.rig.distance * 8);
+    if (!world || stage.camera.position.distanceTo(world) > far) return last?.pick ?? null;
     const distance = stage.camera.position.distanceTo(world);
     const metresPerPx = (2 * distance * Math.tan(THREE.MathUtils.degToRad(stage.camera.fov) / 2)) / rect.height;
     s.setPx3d(metresPerPx / M_PER_UNIT);
@@ -549,10 +553,23 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     return pick;
   }
 
+  /** Where a plan point on the floor being drawn appears on screen (far off-screen when behind the camera). */
+  function project(p: Point): Point {
+    const stage = stageRef.current;
+    if (!stage) return { x: NaN, y: NaN };
+    const s = plannerStore.getState();
+    const v = new THREE.Vector3(p.x * M_PER_UNIT, levelBaseM(s.doc, s.activeLevel, s.wallHeightMm), p.y * M_PER_UNIT);
+    v.project(stage.camera);
+    if (v.z > 1) return { x: NaN, y: NaN };
+    const r = stage.renderer.domElement.getBoundingClientRect();
+    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+  }
+
   const input = usePlanInput(
-    (e) => pickAt(e.clientX, e.clientY)?.plan ?? { x: 0, y: 0 },
+    (e) => pickAt(e.clientX, e.clientY)?.plan ?? pickRef.current?.pick.plan ?? { x: 0, y: 0 },
     onContextMenu,
     (e) => pickAt(e.clientX, e.clientY)?.id ?? null,
+    { show: setBox, project },
   );
 
   const touch = useTouch({
@@ -671,6 +688,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         onContextMenu={(e) => (touch.fromTouch() ? e.preventDefault() : input.onRightClick(e))}
         onAuxClick={(e) => e.preventDefault()}
       />
+      {box && <SelectionBox box={box} host={hostRef.current} />}
       <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
         <div className="flex gap-2">
           <button onClick={resetView} className={btn}>
@@ -705,5 +723,23 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         </div>
       )}
     </div>
+  );
+}
+
+/** The selection box being dragged in the 3D view. */
+function SelectionBox({ box, host }: { box: Bounds; host: HTMLElement | null }) {
+  const r = host?.getBoundingClientRect();
+  if (!r) return null;
+  return (
+    <div
+      data-testid="selection-box"
+      className="pointer-events-none absolute border border-accent bg-accent/10"
+      style={{
+        left: box.minX - r.left,
+        top: box.minY - r.top,
+        width: box.maxX - box.minX,
+        height: box.maxY - box.minY,
+      }}
+    />
   );
 }

@@ -639,7 +639,10 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         if (elements.length) updateElements((els) => [...els, ...elements]);
       },
       addRectangle: (a, b) => {
-        if (Math.abs(b.x - a.x) <= MIN_WALL_PX || Math.abs(b.y - a.y) <= MIN_WALL_PX) return;
+        if (Math.abs(b.x - a.x) <= MIN_WALL_PX || Math.abs(b.y - a.y) <= MIN_WALL_PX) {
+          get().setWarning('That rectangle has no width or no depth. Click the opposite corner further away.');
+          return;
+        }
         const corners = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
         get().beginBatch();
         corners.forEach((p, i) => get().addWall(p, corners[(i + 1) % 4]));
