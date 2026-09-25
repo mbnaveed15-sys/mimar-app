@@ -66,7 +66,7 @@ test('layers hide furniture and dimensions on screen and in the PDF', async ({ p
   await tool(page, 'furniture');
   await page.mouse.click(...(await at(page, 10, 7)));
 
-  await page.getByRole('checkbox', { name: 'Furniture' }).uncheck();
+  await page.getByRole('button', { name: 'Hide Furniture' }).click();
   await page.getByLabel('Dimensions').uncheck();
   await page.getByLabel('Room names & areas').uncheck();
   await expect(page.locator('[data-type="furniture"]')).toHaveCount(0);
@@ -79,7 +79,8 @@ test('layers hide furniture and dimensions on screen and in the PDF', async ({ p
   expect(pdf).toContain('%PDF-');
 
   await page.reload();
-  await expect(page.getByRole('checkbox', { name: 'Furniture' })).not.toBeChecked();
+  // The Furniture layer stays hidden after a reload.
+  await expect(page.getByRole('button', { name: 'Show Furniture' })).toBeVisible();
 });
 
 test('walls between rooms show their dimension only when selected', async ({ page }) => {

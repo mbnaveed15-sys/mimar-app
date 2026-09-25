@@ -53,7 +53,8 @@ export function centroid(points: Point[]): Point {
 }
 
 export function elementCenter(el: PlanElement): Point {
-  if (el.type === 'wall' || el.type === 'beam') return { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 };
+  if (el.type === 'wall' || el.type === 'beam' || el.type === 'line')
+    return { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 };
   if (el.type === 'slab' || el.type === 'plot') return centroid(el.points);
   return { x: el.x, y: el.y };
 }
@@ -76,6 +77,8 @@ export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
       return (
         pointToSegmentDistance(p, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 }) < Math.max(threshold, el.width / 2)
       );
+    case 'line':
+      return pointToSegmentDistance(p, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 }) < threshold;
     case 'slab':
     case 'plot': {
       // A slab is picked by its edge, so rooms and furniture on it stay clickable.
@@ -172,7 +175,7 @@ export function withWallLength(wall: Wall, length: number): Wall {
 }
 
 export function translateElement<T extends PlanElement>(el: T, dx: number, dy: number): T {
-  if (el.type === 'wall' || el.type === 'beam')
+  if (el.type === 'wall' || el.type === 'beam' || el.type === 'line')
     return { ...el, x1: el.x1 + dx, y1: el.y1 + dy, x2: el.x2 + dx, y2: el.y2 + dy };
   if (el.type === 'slab' || el.type === 'plot')
     return { ...el, points: el.points.map((p) => ({ x: p.x + dx, y: p.y + dy })) };
@@ -191,7 +194,7 @@ export function rotatePoint(p: Point, c: Point, degrees: number): Point {
 
 /** Turn any plan item about centre c. */
 export function rotateElement<T extends PlanElement>(el: T, c: Point, degrees: number): T {
-  if (el.type === 'wall' || el.type === 'beam') {
+  if (el.type === 'wall' || el.type === 'beam' || el.type === 'line') {
     const a = rotatePoint({ x: el.x1, y: el.y1 }, c, degrees);
     const b = rotatePoint({ x: el.x2, y: el.y2 }, c, degrees);
     return { ...el, x1: a.x, y1: a.y, x2: b.x, y2: b.y };
@@ -215,6 +218,7 @@ function elementPoints(el: PlanElement): Point[] {
   switch (el.type) {
     case 'wall':
     case 'beam':
+    case 'line':
       return [
         { x: el.x1, y: el.y1 },
         { x: el.x2, y: el.y2 },

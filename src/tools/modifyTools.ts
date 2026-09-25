@@ -28,7 +28,7 @@ const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 const tolOf = (s: PlannerState) => 10 * s.pxUnits();
 
 function wallAt(s: PlannerState, raw: Point): Wall | null {
-  return nearestWall(s.visibleElements(), raw, s.hitTolerance() * 1.5);
+  return nearestWall(s.pickableElements(), raw, s.hitTolerance() * 1.5);
 }
 
 function wallById(s: PlannerState, id: Id): Wall | undefined {
@@ -38,7 +38,7 @@ function wallById(s: PlannerState, id: Id): Wall | undefined {
 /** The selection, or whatever was clicked (which becomes the selection). */
 function selectionFor(store: Store, raw: Point): Id[] | null {
   const s = store.getState();
-  const hit = s.visibleElements().find((el) => el.id === wallAt(s, raw)?.id) ?? null;
+  const hit = s.pickableElements().find((el) => el.id === wallAt(s, raw)?.id) ?? null;
   if (!s.selectedIds.length && hit) s.select(hit.id);
   const ids = store.getState().selectedIds;
   return ids.length ? ids : null;

@@ -17,6 +17,8 @@ const SNAP_COLORS: Partial<Record<Inference['kind'], string>> = {
   endpoint: 'var(--snap-end)',
   midpoint: 'var(--snap-mid)',
   'on-wall': 'var(--snap-edge)',
+  'on-line': 'var(--snap-edge)',
+  intersection: 'var(--snap-end)',
   'axis-x': 'var(--axis-x)',
   'axis-y': 'var(--axis-y)',
   locked: 'var(--selection)',
@@ -161,6 +163,19 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k }: Prop
           fillOpacity={0.08}
           strokeWidth={1.25 * k}
           strokeDasharray={d.x2 < d.x1 ? `${5 * k} ${4 * k}` : undefined}
+        />
+      )}
+
+      {d?.type === 'line' && (
+        <line
+          data-testid="line-draft"
+          x1={d.x1}
+          y1={d.y1}
+          x2={d.x2}
+          y2={d.y2}
+          style={{ stroke: PLAN.draft }}
+          strokeWidth={1.5 * k}
+          strokeLinecap="round"
         />
       )}
 

@@ -1,12 +1,13 @@
 import { useEffect, type RefObject } from 'react';
-import { fromFurnitureLocal } from '../geometry';
+import { elementOutline, fromFurnitureLocal } from '../geometry';
 import { PLAN_FONT } from '../lib/planImage';
 import { panBy } from '../lib/view';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { PLAN } from '../theme/plan';
 import { selectionBounds } from '../lib/selection';
-import type { Furniture, Point } from '../types';
+import type { Furniture, PlanElement, Point } from '../types';
+import { wallPolygon, wallsOf } from '../walls';
 import { DrawingOverlay } from './DrawingOverlay';
 import { PlanDrawing } from './PlanDrawing';
 import { PlanGrid } from './PlanGrid';
@@ -214,6 +215,8 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         )}
       </g>
 
+      {draft?.type === 'erase' && <EraseMarks elements={doc.elements} ids={draft.ids} k={k} />}
+
       <DrawingOverlay draft={draft} inference={inference} axisLock={axisLock} units={units} k={k} />
     </svg>
   );
@@ -249,5 +252,38 @@ function FurnitureHandles({ item, k }: { item: Furniture; k: number }) {
       <Handle name="rotate" p={rotate} k={k} />
       <Handle name="resize" p={fromFurnitureLocal(item, { x: item.w / 2, y: item.h / 2 })} k={k} />
     </>
+  );
+}
+
+/** Items the eraser has passed over, outlined in red until it is let go. */
+function EraseMarks({ elements, ids, k }: { elements: PlanElement[]; ids: string[]; k: number }) {
+  const walls = wallsOf(elements);
+  const marked = new Set(ids);
+  return (
+    <g data-testid="erase-marks" pointerEvents="none">
+      {elements
+        .filter((el) => marked.has(el.id))
+        .map((el) => {
+          const pts = el.type === 'wall' ? wallPolygon(el, walls) : elementOutline(el);
+          return pts.length > 2 ? (
+            <polygon
+              key={el.id}
+              points={pts.map((p) => `${p.x},${p.y}`).join(' ')}
+              fill="#dc2626"
+              fillOpacity={0.25}
+              stroke="#dc2626"
+              strokeWidth={2 * k}
+            />
+          ) : (
+            <polyline
+              key={el.id}
+              points={pts.map((p) => `${p.x},${p.y}`).join(' ')}
+              fill="none"
+              stroke="#dc2626"
+              strokeWidth={4 * k}
+            />
+          );
+        })}
+    </g>
   );
 }

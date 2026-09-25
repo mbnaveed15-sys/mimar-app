@@ -7,6 +7,7 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
   pan: { label: 'Pan', icon: 'pan', key: 'H' },
   zoom: { label: 'Zoom', icon: 'zoom', key: 'Z' },
   orbit: { label: 'Orbit', icon: 'orbit', key: 'O' },
+  line: { label: 'Layout line', icon: 'line', key: 'Shift+L' },
   wall: { label: 'Wall', icon: 'wall', key: 'L' },
   rectangle: { label: 'Rectangle', icon: 'rectangle', key: 'R' },
   room: { label: 'Room', icon: 'room', key: 'A' },
@@ -40,6 +41,7 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
 /** Which menu each tool is listed in: drawing tools under Draw, the rest under Tools. */
 export const DRAW_TOOLS: Tool[] = [
   'wall',
+  'line',
   'rectangle',
   'room',
   'column',

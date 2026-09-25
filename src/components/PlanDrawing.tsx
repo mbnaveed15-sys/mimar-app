@@ -7,6 +7,7 @@ import { MaskShape } from './shapes/MaskShape';
 import { OpeningShape } from './shapes/OpeningShape';
 import { RoomShape } from './shapes/RoomShape';
 import { PlotShape, StairShape } from './shapes/SiteShapes';
+import { SketchLineShape } from './shapes/SketchLineShape';
 import { BeamShape, ColumnShape, SlabShape } from './shapes/StructureShapes';
 import { WallDimension } from './shapes/WallDimension';
 import { WallsLayer } from './shapes/WallsLayer';
@@ -52,12 +53,17 @@ export function PlanDrawing(props: PlanDrawingProps) {
           showLabel={showRoomLabels}
           showFill={showRoomFills}
           k={k}
+          part="area"
         />
       ))}
 
       {doc.masks.map((m) => (
         <MaskShape key={m.id} mask={m} color={colorOf(m.material)} />
       ))}
+
+      {doc.elements.map((el) =>
+        el.type === 'line' ? <SketchLineShape key={el.id} line={el} selected={selected.has(el.id)} k={k} /> : null,
+      )}
 
       <WallsLayer walls={walls} colorOf={colorOf} selected={selected} k={k} />
 
@@ -97,6 +103,22 @@ export function PlanDrawing(props: PlanDrawingProps) {
       {doc.elements.map((el) =>
         el.type === 'slab' ? <SlabShape key={el.id} slab={el} selected={selected.has(el.id)} k={k} /> : null,
       )}
+
+      {/* Room names and sizes sit on top of furniture, as on a drawing. */}
+      {doc.rooms.map((r) => (
+        <RoomShape
+          key={`label-${r.id}`}
+          room={r}
+          color={colorOf(r.material)}
+          selected={selected.has(r.id)}
+          units={units}
+          marlaSqFt={marlaSqFt}
+          showLabel={showRoomLabels}
+          showFill={showRoomFills}
+          k={k}
+          part="label"
+        />
+      ))}
 
       {showDimensions &&
         walls.map((w) => {

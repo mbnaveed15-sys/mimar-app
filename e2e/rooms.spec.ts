@@ -43,7 +43,7 @@ test('rooms show their area in sq ft and marla, and the covered area adds up', a
 
   await page.getByLabel('Name', { exact: true }).fill('Drawing room');
   await page.getByLabel('Name', { exact: true }).press('Enter');
-  await expect(page.locator('[data-type="room"] text').first()).toHaveText('Drawing room');
+  await expect(page.locator('[data-type="room-label"] text').first()).toHaveText('Drawing room');
 
   await page.mouse.click(...(await at(page, 20, 10)));
   await expect(page.getByTestId('area-summary')).toContainText('Covered area600 sq ft · 2.67 marla');

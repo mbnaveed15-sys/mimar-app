@@ -118,6 +118,13 @@ export function draftLines(s: PlannerState): [Point, Point][] {
   switch (d.type) {
     case 'tape':
       return [[d.a, d.b]];
+    case 'line':
+      return [
+        [
+          { x: d.x1, y: d.y1 },
+          { x: d.x2, y: d.y2 },
+        ],
+      ];
     case 'marquee':
       return box(d.x1, d.y1, d.x2, d.y2);
     case 'stretch':

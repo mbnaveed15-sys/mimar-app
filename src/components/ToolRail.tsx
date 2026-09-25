@@ -6,7 +6,7 @@ import { Icon } from './Icon';
 /** Tool rail groups, top to bottom: view, draw, change, finish, then the Pro tools and Modify tools. */
 const GROUPS: Tool[][] = [
   ['select', 'pan', 'zoom', 'orbit'],
-  ['wall', 'rectangle', 'room', 'door', 'window', 'furniture'],
+  ['wall', 'line', 'rectangle', 'room', 'door', 'window', 'furniture'],
   ['column', 'beam', 'slab', 'plot', 'stairs'],
   ['move', 'rotate', 'tape'],
   ['paint', 'erase'],

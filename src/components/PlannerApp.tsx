@@ -13,11 +13,13 @@ import { isDirty, useFileActions } from './useFileActions';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import { useOpenSections, type SectionId } from './useOpenSections';
 import { ViewControls } from './ViewControls';
+import { shouldWelcome } from '../lib/welcome';
+import { Welcome } from './Welcome';
 
 // three.js is large, so the 3D view loads the first time it is opened.
 const Plan3DView = lazy(() => import('../three/Plan3DView'));
 
-type Dialog = 'search' | 'shortcuts' | null;
+type Dialog = 'search' | 'shortcuts' | 'welcome' | null;
 
 /** The editor: menu bar, tool rail, plan, side panel and status bar, like a classic desktop CAD app. */
 export default function PlannerApp() {
@@ -29,7 +31,9 @@ export default function PlannerApp() {
   const dirty = usePlanner((s) => s.doc !== s.savedDoc);
   const { save, open, newPlan } = useFileActions();
   const [pending, setPending] = useState<'new' | 'open' | null>(null);
-  const [dialog, setDialog] = useState<Dialog>(null);
+  const [dialog, setDialog] = useState<Dialog>(() => (shouldWelcome() ? 'welcome' : null));
+  /** Replacing the plan from the welcome (the sample house) waits for this when there are unsaved changes. */
+  const [pendingReplace, setPendingReplace] = useState<(() => void) | null>(null);
   const [menuAt, setMenuAt] = useState<ContextMenuState | null>(null);
   const sections = useOpenSections();
   const { set: setSection } = sections;
@@ -58,6 +62,7 @@ export default function PlannerApp() {
         save: (saveAs) => void save(saveAs),
         openSearch: () => setDialog('search'),
         openShortcuts: () => setDialog('shortcuts'),
+        openWelcome: () => setDialog('welcome'),
         showSection,
         checkForUpdates: updates ? () => void updates.check() : undefined,
       }),
@@ -112,6 +117,22 @@ export default function PlannerApp() {
       {menuAt && <ContextMenu at={menuAt} onClose={() => setMenuAt(null)} onProperties={focusProperties} />}
       {dialog === 'search' && <CommandPalette commands={commands} onClose={() => setDialog(null)} />}
       {dialog === 'shortcuts' && <ShortcutsDialog commands={commands} onClose={() => setDialog(null)} />}
+      {dialog === 'welcome' && (
+        <Welcome
+          onClose={() => setDialog(null)}
+          confirmReplace={(then) => (isDirty() ? setPendingReplace(() => then) : then())}
+        />
+      )}
+      {pendingReplace && (
+        <DiscardDialog
+          action="open"
+          onCancel={() => setPendingReplace(null)}
+          onConfirm={() => {
+            pendingReplace();
+            setPendingReplace(null);
+          }}
+        />
+      )}
       {pending && (
         <DiscardDialog
           action={pending}

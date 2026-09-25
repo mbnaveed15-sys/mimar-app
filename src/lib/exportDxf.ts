@@ -22,6 +22,7 @@ const LAYERS = {
   'S-SLAB': { color: 1, ltype: 'DASHED' },
   'C-PROP': { color: 5, ltype: 'CONTINUOUS' },
   'C-PROP-SETB': { color: 5, ltype: 'DASHED' },
+  'A-ANNO-LAYT': { color: 9, ltype: 'CONTINUOUS' },
 } as const;
 type Layer = keyof typeof LAYERS;
 
@@ -304,6 +305,9 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       }
       case 'slab':
         dxf.poly('S-SLAB', el.points);
+        break;
+      case 'line':
+        dxf.line('A-ANNO-LAYT', { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 });
         break;
       case 'stair': {
         const layout = stairLayout(el);

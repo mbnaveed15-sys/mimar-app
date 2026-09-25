@@ -13,6 +13,7 @@ const NAMES: Record<PlanElement['type'] | 'room', [string, string]> = {
   slab: ['slab', 'slabs'],
   plot: ['plot', 'plots'],
   stair: ['stair', 'stairs'],
+  line: ['layout line', 'layout lines'],
   room: ['room', 'rooms'],
 };
 

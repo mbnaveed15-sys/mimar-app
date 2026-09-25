@@ -12,22 +12,30 @@ interface Props {
   showLabel: boolean;
   showFill: boolean;
   k: number;
+  /** Draw only the area (under everything) or only the name and size (over furniture). */
+  part?: 'area' | 'label';
 }
 
-export function RoomShape({ room, color, selected, units, marlaSqFt, showLabel, showFill, k }: Props) {
+export function RoomShape({ room, color, selected, units, marlaSqFt, showLabel, showFill, k, part }: Props) {
   const label = labelPoint(room.points);
   const area = roomAreaSqMm(room);
   const text = { textAnchor: 'middle' as const, strokeWidth: 3 * k, paintOrder: 'stroke' as const };
   return (
-    <g data-type="room" data-id={room.id}>
-      <polygon
-        points={room.points.map((p) => `${p.x},${p.y}`).join(' ')}
-        style={{ fill: showFill ? (color ?? PLAN.room) : 'none', stroke: selected ? PLAN.selection : 'none' }}
-        fillOpacity={color ? 0.45 : 1}
-        strokeWidth={3 * k}
-        strokeDasharray={`${6 * k} ${4 * k}`}
-      />
-      {showLabel && (
+    <g
+      data-type={part === 'label' ? 'room-label' : 'room'}
+      data-id={room.id}
+      pointerEvents={part === 'label' ? 'none' : undefined}
+    >
+      {part !== 'label' && (
+        <polygon
+          points={room.points.map((p) => `${p.x},${p.y}`).join(' ')}
+          style={{ fill: showFill ? (color ?? PLAN.room) : 'none', stroke: selected ? PLAN.selection : 'none' }}
+          fillOpacity={color ? 0.45 : 1}
+          strokeWidth={3 * k}
+          strokeDasharray={`${6 * k} ${4 * k}`}
+        />
+      )}
+      {showLabel && part !== 'area' && (
         <>
           <text
             x={label.x}

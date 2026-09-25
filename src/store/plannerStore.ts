@@ -37,11 +37,13 @@ import {
 } from '../lib/selection';
 import { boundaryWallLines, stairLayout } from '../lib/site';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
+import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from '../lib/layers';
 import { SLAB_MM } from '../three/model';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
 import type {
   Plot,
+  SketchLine,
   Slab,
   Stair,
   Draft,
@@ -100,6 +102,13 @@ export const DEFAULT_SITE: SiteSpec = {
   climb: 'floor',
 };
 
+/** A copy of an object without one key. */
+function omit<T extends object, K extends keyof T>(obj: T, key: K): T {
+  const copy = { ...obj };
+  delete copy[key];
+  return copy;
+}
+
 const inch = (n: number) => (n * 25.4) / MM_PER_UNIT;
 /** 9" × 12" columns, 9" × 18" beams and a 6" slab: common RCC sizes for Pakistani houses. */
 export const DEFAULT_STRUCTURE: StructureSpec = {
@@ -147,6 +156,10 @@ export interface PlannerState {
   setStructure: (patch: Partial<StructureSpec>) => void;
   addColumn: (p: Point) => void;
   addBeam: (a: Point, b: Point) => void;
+  /** A layout (drafting) line on the floor being drawn. */
+  addLine: (a: Point, b: Point) => void;
+  /** Make walls (current thickness) along the selected layout lines, and remove the lines. */
+  linesToWalls: () => void;
   addSlab: (points: Point[]) => void;
   /** Settings for plots, wall types, gates and stairs. */
   site: SiteSpec;
@@ -167,6 +180,7 @@ export interface PlannerState {
   showFurniture: boolean;
   showRoomLabels: boolean;
   showRoomFills: boolean;
+  exportLines: boolean;
   mode: Mode;
   wallThicknessMm: number;
   marlaSqFt: MarlaSqFt;
@@ -259,6 +273,8 @@ export interface PlannerState {
   brushAt: (p: Point) => void;
   eraseAt: (p: Point) => void;
   deleteElement: (id: Id) => void;
+  /** Remove several items in one step (with any doors and windows in removed walls). */
+  eraseMany: (ids: Id[]) => void;
   addMaskPoint: (p: Point) => void;
   finishMask: () => void;
   addMaterial: () => void;
@@ -270,12 +286,26 @@ export interface PlannerState {
 
   setUnits: (units: Units) => void;
   setShowDimensions: (show: boolean) => void;
-  setLayer: (layer: 'showFurniture' | 'showRoomLabels' | 'showRoomFills', show: boolean) => void;
+  setLayer: (layer: 'showFurniture' | 'showRoomLabels' | 'showRoomFills' | 'exportLines', show: boolean) => void;
   /** Library item placed by the Furniture tool. */
   furnitureKind: FurnitureKind;
   setFurnitureKind: (kind: FurnitureKind) => void;
   /** Elements that can be clicked: hidden furniture is left out. */
+  /** Items on the floor being drawn that are shown (not hidden, nor on a hidden layer). */
   visibleElements: () => PlanElement[];
+  /** Shown items that can be picked: not locked, nor on a locked layer. */
+  pickableElements: () => PlanElement[];
+  pickableRooms: () => Room[];
+  /** The plan without hidden items, for drawing and exports. */
+  shownDoc: () => PlanDoc;
+  /** Hide or lock a whole layer. */
+  setLayerFlags: (layer: LayerId, flags: LayerFlags) => void;
+  /** Hide the selection, or lock (or unlock) it. */
+  hideSelected: () => void;
+  lockSelected: (locked: boolean) => void;
+  /** Bring back everything hidden, or unlock everything locked (items and layers). */
+  showAllHidden: () => void;
+  unlockAll: () => void;
   setMode: (mode: Mode) => void;
   setWallThicknessMm: (mm: number) => void;
   setMarlaSqFt: (sqft: MarlaSqFt) => void;
@@ -332,7 +362,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
     };
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
-      const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills } = get();
+      const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines } = get();
       const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid } = get();
       savePrefs({
         units,
@@ -340,6 +370,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         showFurniture,
         showRoomLabels,
         showRoomFills,
+        exportLines,
         mode,
         wallThicknessMm,
         marlaSqFt,
@@ -413,6 +444,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       showFurniture: prefs.showFurniture,
       showRoomLabels: prefs.showRoomLabels,
       showRoomFills: prefs.showRoomFills,
+      exportLines: prefs.exportLines,
       furnitureKind: DEFAULT_FURNITURE_KIND,
       mode: prefs.mode,
       wallThicknessMm: prefs.wallThicknessMm,
@@ -524,7 +556,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         const { doc, openGroupId } = get();
         const pool = openGroupId
           ? [...doc.elements, ...doc.rooms].filter((it) => it.groupId === openGroupId)
-          : [...get().visibleElements(), ...get().levelRooms()];
+          : [...get().pickableElements(), ...get().pickableRooms()];
         get().setSelection(pool.map((it) => it.id));
       },
       deleteSelected: () => {
@@ -760,18 +792,23 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         );
       },
       paintAt: (p) => {
-        const hit = findElementNear(get().visibleElements(), p, get().hitTolerance()) ?? get().roomAt(p);
+        const hit = findElementNear(get().pickableElements(), p, get().hitTolerance()) ?? get().roomAt(p);
         if (hit) get().applyMaterial(hit.id);
       },
       brushAt: (p) => {
         const mat = activeMat();
         const r = get().brushSize;
+        // Only what can be picked on this floor (not hidden, locked, or on another floor).
+        const pick = new Set(
+          get()
+            .pickableElements()
+            .map((el) => el.id),
+        );
         updateElements((els) => {
           let changed = false;
           const next = els.map((el) => {
             const c = elementCenter(el);
-            if (el.material === mat || Math.hypot(c.x - p.x, c.y - p.y) > r) return el;
-            if (el.type === 'furniture' && !get().showFurniture) return el;
+            if (!pick.has(el.id) || el.material === mat || Math.hypot(c.x - p.x, c.y - p.y) > r) return el;
             changed = true;
             return { ...el, material: mat };
           });
@@ -783,22 +820,40 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           const tol = get().hitTolerance();
           const gone = new Set(
             get()
-              .visibleElements()
+              .pickableElements()
               .filter((el) => isNear(el, p, tol))
               .map((el) => el.id),
+          );
+          // Only rooms on this floor that can be picked.
+          const pickRooms = new Set(
+            get()
+              .pickableRooms()
+              .map((r) => r.id),
           );
           const elements = gone.size
             ? doc.elements.filter((el) => !gone.has(el.id) && !('wallId' in el && gone.has(el.wallId)))
             : doc.elements;
           const masks = doc.masks.filter((m) => !pointInPolygon(p, m.points));
           // Rooms are only erased by clicking inside them away from walls and furniture.
-          const rooms = gone.size ? doc.rooms : doc.rooms.filter((r) => !pointInPolygon(p, r.points));
+          const rooms = gone.size
+            ? doc.rooms
+            : doc.rooms.filter((r) => !(pickRooms.has(r.id) && pointInPolygon(p, r.points)));
           if (elements === doc.elements && masks.length === doc.masks.length && rooms.length === doc.rooms.length) {
             return doc;
           }
           return { ...doc, elements, masks, rooms };
         });
         get().select(get().selectedId);
+      },
+      eraseMany: (ids) => {
+        const gone = new Set(ids);
+        if (!gone.size) return;
+        get().commit((doc) => ({
+          ...doc,
+          elements: doc.elements.filter((el) => !gone.has(el.id) && !('wallId' in el && gone.has(el.wallId))),
+        }));
+        const keep = get().selectedIds.filter((id) => !gone.has(id));
+        set({ selectedIds: keep, selectedId: keep.length === 1 ? keep[0] : null });
       },
       deleteElement: (id) => {
         if (get().doc.rooms.some((r) => r.id === id)) {
@@ -888,9 +943,101 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
       setFurnitureKind: (furnitureKind) => set({ furnitureKind }),
       visibleElements: () => {
-        const { showFurniture } = get();
+        const { doc, showFurniture } = get();
+        const v = { layers: doc.layers, showFurniture };
         const els = get().levelElements();
-        return showFurniture ? els : els.filter((el) => el.type !== 'furniture');
+        const hiddenWalls = new Set(els.filter((el) => el.type === 'wall' && isHidden(el, v)).map((el) => el.id));
+        return els.filter((el) => !isHidden(el, v) && !('wallId' in el && hiddenWalls.has(el.wallId)));
+      },
+      pickableElements: () => {
+        const v = { layers: get().doc.layers, showFurniture: get().showFurniture };
+        return get()
+          .visibleElements()
+          .filter((el) => !isLocked(el, v));
+      },
+      pickableRooms: () => {
+        const v = { layers: get().doc.layers, showFurniture: get().showFurniture };
+        return get()
+          .levelRooms()
+          .filter((r) => !isHidden(r, v) && !isLocked(r, v));
+      },
+      shownDoc: () => withoutHidden(get().doc, { layers: get().doc.layers, showFurniture: get().showFurniture }),
+      setLayerFlags: (layer, flags) => {
+        if (layer === 'furniture' && flags.hidden !== undefined) {
+          get().setLayer('showFurniture', !flags.hidden);
+          const rest = omit(flags, 'hidden');
+          if (!Object.keys(rest).length) return;
+          flags = rest;
+        }
+        get().commit((doc) => {
+          const next = { ...doc.layers?.[layer], ...flags };
+          const layers = { ...doc.layers, [layer]: next };
+          if (!next.hidden && !next.locked) delete layers[layer];
+          return { ...doc, layers };
+        });
+        // Nothing hidden or locked stays selected.
+        const pick = new Set([...get().pickableElements(), ...get().pickableRooms()].map((it) => it.id));
+        get().setSelection(get().selectedIds.filter((id) => pick.has(id)));
+      },
+      hideSelected: () => {
+        const ids = new Set(get().selectedIds);
+        if (!ids.size) return;
+        get().commit((doc) => ({
+          ...doc,
+          elements: doc.elements.map((el) => (ids.has(el.id) ? { ...el, hidden: true } : el)),
+          rooms: doc.rooms.map((r) => (ids.has(r.id) ? { ...r, hidden: true } : r)),
+        }));
+        get().select(null);
+      },
+      lockSelected: (locked) => {
+        const ids = new Set(get().selectedIds);
+        if (!ids.size) return;
+        const flag = <T extends { locked?: boolean }>(it: T): T => {
+          return locked ? { ...it, locked: true } : omit(it, 'locked');
+        };
+        get().commit((doc) => ({
+          ...doc,
+          elements: doc.elements.map((el) => (ids.has(el.id) ? flag(el) : el)),
+          rooms: doc.rooms.map((r) => (ids.has(r.id) ? flag(r) : r)),
+        }));
+        if (locked) get().select(null);
+      },
+      showAllHidden: () => {
+        const clear = <T extends { hidden?: boolean }>(it: T): T => {
+          return it.hidden ? omit(it, 'hidden') : it;
+        };
+        if (!get().showFurniture) get().setLayer('showFurniture', true);
+        get().commit((doc) => {
+          const layers = Object.fromEntries(
+            Object.entries(doc.layers ?? {})
+              .map(([id, f]) => [id, { ...f, hidden: undefined }] as const)
+              .filter(([, f]) => f.locked),
+          );
+          return {
+            ...doc,
+            elements: doc.elements.map(clear),
+            rooms: doc.rooms.map(clear),
+            layers: Object.keys(layers).length ? layers : undefined,
+          };
+        });
+      },
+      unlockAll: () => {
+        const clear = <T extends { locked?: boolean }>(it: T): T => {
+          return it.locked ? omit(it, 'locked') : it;
+        };
+        get().commit((doc) => {
+          const layers = Object.fromEntries(
+            Object.entries(doc.layers ?? {})
+              .map(([id, f]) => [id, { ...f, locked: undefined }] as const)
+              .filter(([, f]) => f.hidden),
+          );
+          return {
+            ...doc,
+            elements: doc.elements.map(clear),
+            rooms: doc.rooms.map(clear),
+            layers: Object.keys(layers).length ? layers : undefined,
+          };
+        });
       },
       levelElements: () => {
         const { doc, activeLevel } = get();
@@ -945,6 +1092,25 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           shape: c.columnShape,
         };
         updateElements((els) => [...els, onActive(col)]);
+      },
+      addLine: (a, b) => {
+        if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
+        const line: PlanElement = { id: newId(), type: 'line', x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+        updateElements((els) => [...els, onActive(line)]);
+      },
+      linesToWalls: () => {
+        const { doc, selectedIds } = get();
+        const lines = doc.elements.filter((el): el is SketchLine => el.type === 'line' && selectedIds.includes(el.id));
+        if (!lines.length) {
+          get().setWarning('Select some layout lines first.');
+          return;
+        }
+        get().beginBatch();
+        const gone = new Set(lines.map((l) => l.id));
+        updateElements((els) => els.filter((el) => !gone.has(el.id)));
+        for (const l of lines) get().addWall({ x: l.x1, y: l.y1 }, { x: l.x2, y: l.y2 });
+        get().endBatch();
+        get().select(null);
       },
       addBeam: (a, b) => {
         if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
@@ -1092,7 +1258,12 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
 
       addRoomAt: (p) => {
-        const existing = get().roomAt(p);
+        // Any room already there (even a hidden or locked one) counts.
+        const existing =
+          get()
+            .levelRooms()
+            .filter((r) => pointInPolygon(p, r.points))
+            .at(-1) ?? null;
         if (existing) {
           get().select(existing.id);
           set({ warnings: [] });
@@ -1115,7 +1286,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
             : doc,
         ),
       roomAt: (p) => {
-        const rooms = get().levelRooms();
+        const rooms = get().pickableRooms();
         // Topmost (last added) room wins where rooms overlap.
         for (let i = rooms.length - 1; i >= 0; i--) if (pointInPolygon(p, rooms[i].points)) return rooms[i];
         return null;

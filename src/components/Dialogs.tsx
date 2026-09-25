@@ -235,6 +235,8 @@ export function ContextMenu({
     items.push({ label: 'Flip swing', run: () => s.flipOpening(el.id, 'side') });
     items.push({ label: 'Flip hinge', run: () => s.flipOpening(el.id, 'hinge') });
   }
+  if (s.selectedIds.some((id) => s.doc.elements.some((x) => x.id === id && x.type === 'line')))
+    items.push({ label: 'Turn into walls', run: () => s.linesToWalls() });
   if (el?.type === 'slab' && !many) items.push({ label: 'Parapet round roof', run: () => s.addParapetAround(el.id) });
   if (el?.type === 'stair' && !many) items.push({ label: 'Rotate 90°', run: () => s.rotateSelected(90) });
   if (group) {
@@ -248,6 +250,10 @@ export function ContextMenu({
     items.push({ label: 'Rotate 90°', run: () => s.rotateSelected(90) });
     items.push({ label: 'Duplicate', run: () => s.duplicateSelected() });
     items.push({ label: 'Move', run: () => s.setTool('move') });
+  }
+  if (el || room || many || group) {
+    items.push({ label: 'Hide', run: () => s.hideSelected() });
+    items.push({ label: 'Lock', run: () => s.lockSelected(true) });
   }
   if (el || room) {
     if (!many && !group) items.push({ label: room ? 'Rename…' : 'Properties', run: onProperties });
