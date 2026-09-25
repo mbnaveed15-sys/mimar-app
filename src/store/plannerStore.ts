@@ -259,6 +259,8 @@ export interface PlannerState {
   brushAt: (p: Point) => void;
   eraseAt: (p: Point) => void;
   deleteElement: (id: Id) => void;
+  /** Remove several items in one step (with any doors and windows in removed walls). */
+  eraseMany: (ids: Id[]) => void;
   addMaskPoint: (p: Point) => void;
   finishMask: () => void;
   addMaterial: () => void;
@@ -799,6 +801,16 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           return { ...doc, elements, masks, rooms };
         });
         get().select(get().selectedId);
+      },
+      eraseMany: (ids) => {
+        const gone = new Set(ids);
+        if (!gone.size) return;
+        get().commit((doc) => ({
+          ...doc,
+          elements: doc.elements.filter((el) => !gone.has(el.id) && !('wallId' in el && gone.has(el.wallId))),
+        }));
+        const keep = get().selectedIds.filter((id) => !gone.has(id));
+        set({ selectedIds: keep, selectedId: keep.length === 1 ? keep[0] : null });
       },
       deleteElement: (id) => {
         if (get().doc.rooms.some((r) => r.id === id)) {

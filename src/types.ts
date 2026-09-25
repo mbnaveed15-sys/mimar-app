@@ -335,6 +335,8 @@ export type Draft =
   | { type: 'marquee'; x1: number; y1: number; x2: number; y2: number; additive: boolean }
   | { type: 'mask'; points: Point[]; cursor?: Point }
   | { type: 'brush' }
+  /** Items the eraser has been dragged over, removed when it is let go. */
+  | { type: 'erase'; ids: Id[] }
   | null;
 
 export type Units = 'imperial' | 'metric';

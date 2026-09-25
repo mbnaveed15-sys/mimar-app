@@ -1,6 +1,7 @@
 import { useRef, type MouseEvent, type PointerEvent } from 'react';
 import {
   findElementNear,
+  isNear,
   nearestWall,
   nearestWallEnd,
   placeOnWall,
@@ -23,6 +24,8 @@ type Drag =
   | { kind: 'moveMany'; start: Point; ids: string[] }
   /** Pressed on empty space: becomes a selection box once the pointer moves. */
   | { kind: 'box'; start: Point; additive: boolean; client: Point; moved?: boolean }
+  /** Eraser pressed: a click erases what is there when let go; a drag erases all it passes over. */
+  | { kind: 'erase'; last: Point; click: () => void }
   | { kind: 'wall-start' | 'wall-end'; orig: Wall }
   | { kind: 'resize' | 'rotate'; orig: Furniture };
 
@@ -103,7 +106,7 @@ export function usePlanInput(
 
   function startDrag(e: PointerEvent<Element>, drag: Drag) {
     capture(e);
-    if (drag.kind !== 'pan' && drag.kind !== 'zoom' && drag.kind !== 'box') plannerStore.getState().beginBatch();
+    if (drag.kind !== 'pan' && drag.kind !== 'zoom' && drag.kind !== 'box' && drag.kind !== 'erase') plannerStore.getState().beginBatch();
     dragRef.current = drag;
   }
 
@@ -194,9 +197,12 @@ export function usePlanInput(
         // Shift+click erases just the piece of wall between the walls crossing it (like Trim).
         const wall = e.shiftKey ? nearestWall(s.visibleElements(), raw, s.hitTolerance() * 1.5) : null;
         const picked = !wall && pickId ? idAt(e, raw) : null;
-        if (wall) s.commit((doc) => trimAt(doc, wall.id, raw, 10 * s.pxUnits()));
-        else if (picked) s.deleteElement(picked);
-        else s.eraseAt(raw);
+        const click = () => {
+          if (wall) s.commit((doc) => trimAt(doc, wall.id, raw, 10 * s.pxUnits()));
+          else if (picked) s.deleteElement(picked);
+          else s.eraseAt(raw);
+        };
+        startDrag(e, { kind: 'erase', last: raw, click });
         break;
       }
     }
@@ -218,6 +224,29 @@ export function usePlanInput(
           s.zoomBy(Math.exp((drag.lastY - e.clientY) * 0.01), drag.at);
           drag.lastY = e.clientY;
           break;
+        case 'erase': {
+          const start = pressRef.current;
+          const d = s.draft;
+          if (d?.type !== 'erase' && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) <= DRAG_PX) break;
+          if (d && d.type !== 'erase') break; // Esc cancelled this drag
+          // Everything near the path since the last move (in small steps, so fast drags miss nothing).
+          const ids = new Set(d?.type === 'erase' ? d.ids : []);
+          const tol = s.hitTolerance();
+          const steps = Math.max(1, Math.ceil(Math.hypot(raw.x - drag.last.x, raw.y - drag.last.y) / (tol / 2)));
+          const items = s.visibleElements();
+          for (let i = 0; i <= steps; i++) {
+            const p = {
+              x: drag.last.x + ((raw.x - drag.last.x) * i) / steps,
+              y: drag.last.y + ((raw.y - drag.last.y) * i) / steps,
+            };
+            for (const el of items) if (isNear(el, p, tol)) ids.add(el.id);
+          }
+          const picked = pickId?.(e);
+          if (picked && items.some((el) => el.id === picked)) ids.add(picked);
+          drag.last = raw;
+          if (!d || ids.size !== d.ids.length) s.setDraft({ type: 'erase', ids: [...ids] });
+          break;
+        }
         case 'box': {
           const start = pressRef.current;
           if (!s.draft && !drag.moved && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) <= DRAG_PX)
@@ -301,6 +330,15 @@ export function usePlanInput(
     if (dragRef.current) {
       const drag = dragRef.current;
       dragRef.current = null;
+      if (drag.kind === 'erase') {
+        const d = s.draft;
+        const dragged = !!start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > DRAG_PX;
+        if (d?.type === 'erase') {
+          s.setDraft(null);
+          s.eraseMany(d.ids);
+        } else if (!dragged && !d) drag.click();
+        return;
+      }
       if (drag.kind === 'box') {
         if (screenBox && drag.moved) {
           screenBox.show(null);
@@ -400,9 +438,10 @@ export function usePlanInput(
     const drag = dragRef.current;
     dragRef.current = null;
     pressRef.current = null;
-    if (drag && drag.kind !== 'pan' && drag.kind !== 'zoom' && drag.kind !== 'box') s.cancelBatch();
+    if (drag && drag.kind !== 'pan' && drag.kind !== 'zoom' && drag.kind !== 'box' && drag.kind !== 'erase')
+      s.cancelBatch();
     if (drag?.kind === 'box') screenBox?.show(null);
-    if (s.draft?.type === 'marquee') s.setDraft(null);
+    if (s.draft?.type === 'marquee' || s.draft?.type === 'erase') s.setDraft(null);
     if (s.draft?.type === 'brush') {
       s.endBatch();
       s.setDraft(null);

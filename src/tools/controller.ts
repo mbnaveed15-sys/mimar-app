@@ -559,7 +559,7 @@ export function toolHint(s: PlannerState): string {
     case 'mask':
       return 'Click to add points. Double-click or press Enter to finish, Esc to cancel.';
     case 'erase':
-      return 'Click an item to remove it; Shift+click a wall to erase just the piece between crossing walls.';
+      return 'Click an item to remove it, or drag across several (Esc cancels). Shift+click a wall to erase just the piece between crossing walls.';
     default:
       return STRUCTURE_TOOLS.includes(s.tool) ? structureHint(s) : modifyHint(s);
   }

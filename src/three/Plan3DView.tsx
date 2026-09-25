@@ -159,8 +159,8 @@ interface Stage {
   raycaster: THREE.Raycaster;
   last: Model3D | null;
   fitted: boolean;
-  /** Materials made for faded floors and highlighted items, freed with the model. */
-  extras: THREE.Material[];
+  /** Materials made for faded floors and highlighted items (by look, then base material), freed with the model. */
+  extras: Map<string, Map<THREE.Material, THREE.Material>>;
   render: () => void;
 }
 
@@ -174,7 +174,9 @@ interface Pick {
 const SNAP_COLORS: Record<SnapKind, string> = {
   endpoint: '#16a34a',
   midpoint: '#0891b2',
+  intersection: '#9333ea',
   'on-wall': '#dc2626',
+  'on-line': '#dc2626',
   'axis-x': '#dc2626',
   'axis-y': '#16a34a',
   locked: '#7c3aed',
@@ -195,19 +197,25 @@ const levelIndex = (s: PlannerState, id: string | undefined) =>
 function styleMeshes(stage: Stage, s: PlannerState) {
   const active = levelIndex(s, s.activeLevel);
   const selected = new Set(s.selectedIds);
-  const faded = new Map<THREE.Material, THREE.Material>();
-  const lit = new Map<THREE.Material, THREE.Material>();
+  const erasing = new Set(s.draft?.type === 'erase' ? s.draft.ids : []);
+  const cache = (look: string) => {
+    let m = stage.extras.get(look);
+    if (!m) stage.extras.set(look, (m = new Map()));
+    return m;
+  };
+  const faded = cache('faded');
+  const lit = cache('lit');
+  const red = cache('red');
   const variant = (
-    cache: Map<THREE.Material, THREE.Material>,
+    looks: Map<THREE.Material, THREE.Material>,
     base: THREE.Material,
     make: (m: THREE.MeshStandardMaterial) => void,
   ) => {
-    let m = cache.get(base);
+    let m = looks.get(base);
     if (!m) {
       const copy = (base as THREE.MeshStandardMaterial).clone();
       make(copy);
-      stage.extras.push(copy);
-      cache.set(base, copy);
+      looks.set(base, copy);
       m = copy;
     }
     return m;
@@ -226,6 +234,11 @@ function styleMeshes(stage: Stage, s: PlannerState) {
         m.transparent = true;
         m.opacity = 0.12;
         m.depthWrite = false;
+      });
+    else if (obj.userData.id && erasing.has(obj.userData.id))
+      obj.material = variant(red, base, (m) => {
+        m.emissive = new THREE.Color('#dc2626');
+        m.emissiveIntensity = 0.6;
       });
     else if (obj.userData.id && selected.has(obj.userData.id))
       obj.material = variant(lit, base, (m) => {
@@ -403,7 +416,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       raycaster: new THREE.Raycaster(),
       last: null,
       fitted: false,
-      extras: [],
+      extras: new Map(),
       render: () => renderer.render(scene, camera),
     };
     stageRef.current = stage;
@@ -438,7 +451,8 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         drawOverlay(stage, s, (s.pxUnits() || 1) * M_PER_UNIT);
         stage.render();
       }
-      if (s.selectedIds !== prev.selectedIds || s.activeLevel !== prev.activeLevel) {
+      const erasing = (x: PlannerState) => (x.draft?.type === 'erase' ? x.draft : null);
+      if (s.selectedIds !== prev.selectedIds || s.activeLevel !== prev.activeLevel || erasing(s) !== erasing(prev)) {
         styleMeshes(stage, s);
         stage.render();
       }
@@ -453,7 +467,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       host.removeEventListener('wheel', onWheel);
       resize.disconnect();
       disposeGroup(scene);
-      stage.extras.forEach((m) => m.dispose());
+      stage.extras.forEach((looks) => looks.forEach((m) => m.dispose()));
       renderer.dispose();
       renderer.domElement.remove();
       stageRef.current = null;
@@ -469,8 +483,8 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     const model = buildModel(doc, { wallHeightMm, showFurniture });
     stage.scene.remove(stage.model);
     disposeGroup(stage.model);
-    stage.extras.forEach((m) => m.dispose());
-    stage.extras = [];
+    stage.extras.forEach((looks) => looks.forEach((m) => m.dispose()));
+    stage.extras = new Map();
     stage.model = buildMeshes(model);
     stage.scene.add(stage.model);
     stage.last = model;
