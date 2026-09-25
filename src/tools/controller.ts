@@ -1,5 +1,6 @@
 import { findElementNear, placeOnWall } from '../geometry';
-import { axisDirection, infer, type Inference } from '../lib/inference';
+import { axisDirection, infer, type Inference, type Segment } from '../lib/inference';
+import { buildingGuide } from '../lib/site';
 import { parseMeasure, type MeasureKind } from '../lib/measure';
 import {
   boundsCentre,
@@ -12,7 +13,7 @@ import {
 } from '../lib/selection';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
-import type { Id, PlanDoc, Point, SketchLine, Tool, Wall } from '../types';
+import type { Id, PlanDoc, Plot, Point, SketchLine, Tool, Wall } from '../types';
 import { MODIFY_TOOLS } from '../types';
 import { wallsOf } from '../walls';
 import {
@@ -76,12 +77,39 @@ const sub = (a: Point, b: Point) => ({ x: a.x - b.x, y: a.y - b.y });
 const same = (a: Point, b: Point, tol: number) => Math.hypot(a.x - b.x, a.y - b.y) <= tol;
 const degrees = (v: Point) => (Math.atan2(v.y, v.x) * 180) / Math.PI;
 
+/**
+ * The building line of each plot, set in so what the tool draws touches it from inside: by half a
+ * wall for walls, by half the column for columns; outlines (rooms, slabs, lines) go on the line.
+ */
+function buildingGuides(s: PlannerState): Segment[] {
+  const plots = s.doc.elements.filter((el): el is Plot => el.type === 'plot' && !el.hidden);
+  if (!plots.length) return [];
+  let half: ((dir: Point) => number) | null = null;
+  if (s.tool === 'wall' || s.tool === 'rectangle') {
+    const t = s.wallThicknessMm / MM_PER_UNIT / 2;
+    half = () => t;
+  } else if (s.tool === 'column') {
+    const { columnShape, columnW, columnH } = s.structure;
+    half = (d) => (columnShape === 'round' ? columnW / 2 : (Math.abs(d.y) * columnW + Math.abs(d.x) * columnH) / 2);
+  } else if (s.tool === 'line' || s.tool === 'room' || s.tool === 'slab') half = () => 0;
+  if (!half) return [];
+  const edge = half;
+  return plots.flatMap((plot) => {
+    const pts = buildingGuide(plot, edge);
+    return pts.map((a, i) => {
+      const b = pts[(i + 1) % pts.length];
+      return { id: `building-${plot.id}-${i}`, x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+    });
+  });
+}
+
 /** Snap a point for the active tool, drawing from `from` when there is one. */
 export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreIds?: Set<Id>): Inference {
   const lock = from ? (s.axisLock === 'x' || s.axisLock === 'y' ? axisDirection(s.axisLock) : s.shiftLock) : null;
   return infer(raw, {
     walls: wallsOf(s.visibleElements()),
     lines: s.visibleElements().filter((el): el is SketchLine => el.type === 'line'),
+    guides: buildingGuides(s),
     tolerance: 10 * s.reach() * s.pxUnits(),
     from,
     grid: s.grid.snap ? s.gridPx : null,

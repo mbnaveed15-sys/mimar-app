@@ -6,8 +6,8 @@ import { elementOutline, pointInPolygon, pointToSegmentDistance } from '../geome
 import { plotRule, plotSetbacks, type Authority, type PlotRule } from './bylaws';
 import { MM_PER_UNIT } from './scale';
 import { buildableArea } from './site';
-import { formatLength } from './units';
-import { roomAreaSqMm } from '../rooms';
+import { formatLength, MM_PER_FOOT } from './units';
+import { polygonArea, roomAreaSqMm, wallFaces } from '../rooms';
 import { levelBaseM, SLAB_MM } from '../three/model';
 import {
   levelOf,
@@ -71,6 +71,31 @@ function builtAreaSqFt(doc: PlanDoc, levelId: string): number {
     .filter((el): el is Wall => el.type === 'wall' && BUILT_KINDS(el) && levelOf(el) === levelId)
     .reduce((s, w) => s + Math.hypot(w.x2 - w.x1, w.y2 - w.y1) * thicknessOf(w) * MM_PER_UNIT * MM_PER_UNIT, 0);
   return (rooms + walls) / SQ_MM_PER_SQ_FT;
+}
+
+/** Rooms named as a mumty (stair tower), and floor names that mean the roof. */
+const MUMTY_ROOM = /mumty|mumtee|stair ?tower/i;
+const MUMTY_LEVEL = /mumty|mumtee|stair ?tower|roof/i;
+/** Rooms that are car porches (or garages). */
+export const PORCH_ROOM = /porch|garage/i;
+
+/** Floors above the ground that hold only the mumty: named so, or with a room named so. */
+export function mumtyLevelIds(doc: PlanDoc): Set<string> {
+  return new Set(
+    doc.levels
+      .slice(1)
+      .filter((l) => MUMTY_LEVEL.test(l.name) || doc.rooms.some((r) => levelOf(r) === l.id && MUMTY_ROOM.test(r.name)))
+      .map((l) => l.id),
+  );
+}
+
+/** A box's two sides (plan units): the shorter first. */
+function boxSides(pts: Point[]): [number, number] {
+  const xs = pts.map((p) => p.x);
+  const ys = pts.map((p) => p.y);
+  const w = Math.max(...xs) - Math.min(...xs);
+  const h = Math.max(...ys) - Math.min(...ys);
+  return w < h ? [w, h] : [h, w];
 }
 
 const pct = (v: number) => `${Math.round(v)}%`;
@@ -161,7 +186,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
         clause: clause(authority.setbackClause),
       });
     }
-    const first = doc.levels[1]?.id;
+    const first = doc.levels.slice(1).find((l) => !mumtyLevelIds(doc).has(l.id))?.id;
     const firstSqFt = first ? builtAreaSqFt(doc, first) : 0;
     if (rule.firstFloorPct !== undefined && firstSqFt > 0 && groundSqFt > 0) {
       const share = (firstSqFt / groundSqFt) * 100;
@@ -187,8 +212,9 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
 
   // Storeys and height: floors that have ordinary walls, and the top of everything built.
   const built = doc.elements.filter((el) => !el.hidden && el.type !== 'plot' && el.type !== 'line');
-  const storeyLevels = doc.levels.filter((l) =>
-    built.some((el) => el.type === 'wall' && BUILT_KINDS(el) && levelOf(el) === l.id),
+  const mumtys = mumtyLevelIds(doc);
+  const storeyLevels = doc.levels.filter(
+    (l) => !mumtys.has(l.id) && built.some((el) => el.type === 'wall' && BUILT_KINDS(el) && levelOf(el) === l.id),
   );
   if (authority.storeys && storeyLevels.length)
     rows.push({
@@ -199,13 +225,18 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       status: storeyLevels.length <= authority.storeys.max ? 'ok' : 'fail',
       clause: clause(authority.storeys.clause),
     });
-  const topMm = buildingTopMm(doc, built, ctx.wallHeightMm);
+  const withMumty = authority.height?.withMumty !== false;
+  const topMm = buildingTopMm(
+    doc,
+    withMumty ? built : built.filter((el) => !mumtys.has(levelOf(el))),
+    ctx.wallHeightMm,
+  );
   if (authority.height && topMm > 0)
     rows.push({
       id: 'height',
       label: 'Height',
       required: `At most ${len(authority.height.maxMm)}${authority.height.note ? ` (${authority.height.note.replace(/\.$/, '').toLowerCase()})` : ''}`,
-      actual: `About ${len(topMm)} from the ground`,
+      actual: `About ${len(topMm)} from the ground${mumtys.size && !withMumty ? ', without the mumty' : ''}`,
       status: topMm <= authority.height.maxMm + 1 ? 'ok' : 'fail',
       clause: clause(authority.height.clause),
     });
@@ -263,6 +294,101 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       });
   }
 
+  // The mumty (stair tower) on the roof.
+  const mumtyWalls = built.filter((el): el is Wall => el.type === 'wall' && BUILT_KINDS(el) && mumtys.has(levelOf(el)));
+  if (authority.mumty && mumtyWalls.length) {
+    const { area, height, widthShare } = authority.mumty;
+    const ids = mumtyWalls.map((w) => w.id);
+    if (area) {
+      const plotSqFt = plotAreaSqFt(plot);
+      const buildableSqFt = rule ? polygonSqFt(buildableArea({ ...plot, setbacks: plotSetbacks(rule) })) : plotSqFt;
+      const max = area.maxSqFt({ plotSqFt, buildableSqFt });
+      // The area its walls enclose, out to their outer faces (about), or its rooms if they are bigger.
+      const enclosed =
+        wallFaces(mumtyWalls).reduce((sum, f) => sum + polygonSqFt(f), 0) +
+        mumtyWalls.reduce((sum, w) => sum + (Math.hypot(w.x2 - w.x1, w.y2 - w.y1) * thicknessOf(w)) / 2, 0) *
+          ((MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT);
+      const has = Math.max(
+        enclosed,
+        [...mumtys].reduce((sum, id) => sum + builtAreaSqFt(doc, id), 0),
+      );
+      rows.push({
+        id: 'mumty-area',
+        label: 'Mumty area',
+        required: `At most ${sqft(max)} (${area.rule})`,
+        actual: `About ${sqft(has)}`,
+        status: has <= max + 0.5 ? 'ok' : 'fail',
+        clause: clause(area.clause),
+        ids: has <= max + 0.5 ? [] : ids,
+      });
+    }
+    if (height) {
+      const tall = mumtyWalls.filter((w) => (w.heightMm ?? ctx.wallHeightMm) + SLAB_MM > height.maxMm + 1);
+      const top = Math.max(...mumtyWalls.map((w) => (w.heightMm ?? ctx.wallHeightMm) + SLAB_MM));
+      rows.push({
+        id: 'mumty-height',
+        label: 'Mumty height',
+        required: `At most ${len(height.maxMm)} above the roof`,
+        actual: `About ${len(top)} with its roof slab`,
+        status: tall.length ? 'fail' : 'ok',
+        clause: clause(height.clause),
+        ids: tall.map((w) => w.id),
+      });
+    }
+    if (widthShare) {
+      const a = plot.points[plot.front % plot.points.length];
+      const b = plot.points[(plot.front + 1) % plot.points.length];
+      const c = plot.points[(plot.front + 2) % plot.points.length];
+      const d = plot.points[(plot.front + 3) % plot.points.length];
+      const along = { x: b.x - a.x, y: b.y - a.y };
+      const l = Math.hypot(along.x, along.y) || 1;
+      const u = { x: along.x / l, y: along.y / l };
+      const avg = (l + Math.hypot(d.x - c.x, d.y - c.y)) / 2;
+      const proj = mumtyWalls.flatMap((w) => wallCorners(w)).map((p) => p.x * u.x + p.y * u.y);
+      const width = Math.max(...proj) - Math.min(...proj);
+      const max = avg * widthShare.share;
+      rows.push({
+        id: 'mumty-width',
+        label: 'Mumty width',
+        required: `At most ${len(max * MM_PER_UNIT)} (half the plot's width)`,
+        actual: `About ${len(width * MM_PER_UNIT)} along the road`,
+        status: width <= max + TOLERANCE ? 'ok' : 'fail',
+        clause: clause(widthShare.clause),
+        ids: width <= max + TOLERANCE ? [] : ids,
+      });
+    }
+  }
+
+  // Car porches, by the rooms named so on the ground floor.
+  if (authority.carPorch) {
+    const ground = doc.levels[0]?.id ?? 'ground';
+    const porches = doc.rooms.filter((r) => !r.hidden && levelOf(r) === ground && PORCH_ROOM.test(r.name));
+    const sqyd = plotAreaSqFt(plot) / 9;
+    const size = authority.carPorch.sizes.find(
+      (z) => sqyd >= z.sqyd[0] - 0.5 && (z.sqyd[1] === undefined || sqyd <= z.sqyd[1] + 0.5),
+    );
+    if (porches.length && size) {
+      const lim = [size.w, size.d].sort((x, y) => x - y).map((f) => (f * MM_PER_FOOT) / MM_PER_UNIT);
+      const big = porches.filter((r) => {
+        const [short, long] = boxSides(r.points);
+        return short > lim[0] + TOLERANCE || long > lim[1] + TOLERANCE;
+      });
+      const main = porches.reduce((m, r) => (roomAreaSqMm(r) > roomAreaSqMm(m) ? r : m));
+      const [short, long] = boxSides(main.points);
+      rows.push({
+        id: 'car-porch',
+        label: porches.length > 1 ? 'Car porches' : 'Car porch',
+        required: `At most ${size.w}' × ${size.d}' (with the side setback)${porches.length > 1 && authority.carPorch.note ? `. ${authority.carPorch.note}` : ''}`,
+        actual: big.length
+          ? `Too big: ${big.map((r) => r.name).join(', ')}`
+          : `${len(short * MM_PER_UNIT)} × ${len(long * MM_PER_UNIT)}${porches.length > 1 ? ` (and ${porches.length - 1} more)` : ''}`,
+        status: big.length ? 'fail' : porches.length > 1 ? 'check' : 'ok',
+        clause: clause(authority.carPorch.clause),
+        ids: big.length ? big.map((r) => r.id) : porches.length > 1 ? porches.map((r) => r.id) : [],
+      });
+    }
+  }
+
   // The whole house's covered area.
   if (authority.minTotalSqFt) {
     const total = doc.levels.reduce((s, l) => s + builtAreaSqFt(doc, l.id), 0);
@@ -297,14 +423,8 @@ function itemOutline(el: PlanElement): Point[] | null {
   }
 }
 
-function plotAreaSqFt(plot: Plot): number {
-  let twice = 0;
-  plot.points.forEach((p, i) => {
-    const q = plot.points[(i + 1) % plot.points.length];
-    twice += p.x * q.y - q.x * p.y;
-  });
-  return ((Math.abs(twice) / 2) * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
-}
+const polygonSqFt = (pts: Point[]) => (polygonArea(pts) * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
+const plotAreaSqFt = (plot: Plot) => polygonSqFt(plot.points);
 
 /** How high the top of the building is above the ground (mm): walls, slabs and blocks. */
 function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: number): number {

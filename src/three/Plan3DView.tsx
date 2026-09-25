@@ -217,6 +217,7 @@ const SNAP_COLORS: Record<SnapKind, string> = {
   intersection: '#9333ea',
   'on-wall': '#dc2626',
   'on-line': '#dc2626',
+  'building-line': '#dc2626',
   'axis-x': '#dc2626',
   'axis-y': '#16a34a',
   locked: '#7c3aed',

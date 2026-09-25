@@ -1,4 +1,4 @@
-# Bylaw figures (used by the 1.22 "Bylaws and plan check")
+# Bylaw figures (used by the plan check, from 1.22)
 
 Collected with the owner on 25 September 2026. **Official** figures come from documents the owner uploaded
 (to the branch `mbnaveed15-sys-patch-1`, which is not to be merged) and screenshots of the same Gazette's
@@ -75,3 +75,19 @@ floor height 8'6"–16' (8.56.4); plinth 4'6" (8.56.7); room ≥ 80 sq ft (8.56.
   both). The summary's LDA heights and FAR are garbled and conflict with reports of the 2019 regulations: **not
   used** until the official LDA Building and Zoning Regulations 2019 are supplied.
 - Walled City (WCLA): left out (heritage zone).
+
+## Mumty and car porch (1.23)
+
+- **CDA (sectors), Schedule-I:** mumty up to ⅓ of the ground floor's permissible block (the block left by the
+  setbacks) on plots up to 200 sq yd, ¼ above; height up to 10' in houses (2.14.1). The 30' building height is taken
+  without the mumty.
+- **Islamabad private schemes, Schedule-5:** mumty 200 / 350 / 400 sq ft, but which plot sizes these go with could not
+  be read for certain, so only the 10' height (2.14.1) is checked.
+- **DHA Islamabad & Rawalpindi:** mumty area 8.57.5 as a share of the plot, from the row at or below its size: 125 sq
+  yd 20%, 200 13.5%, 250–400 11%, 500–1000 9% (e.g. 500 sq yd → 405 sq ft); height 11' from the first-floor roof slab
+  (8.57.3); width at most half the plot's average width (8.57.2); counted in the 37' height (8.56.3). Car porch
+  largest size including the side setback (8.56.10.1): up to 200 sq yd 14×18'; 201–399 20×18'; 400–800 30×35';
+  above 800 32×35'; a second porch (18×18' or smaller by size) only on corner plots or plots opening on two roads.
+
+In the plan, the mumty is a floor above the ground named Roof, Mumty or Stair tower (or holding a room so named); car
+porches are ground-floor rooms named Porch or Garage.

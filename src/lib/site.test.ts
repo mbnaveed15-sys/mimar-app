@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Plot } from '../types';
-import { boundaryWallLines, buildableArea, plotRect, stairLayout } from './site';
+import { boundaryWallLines, buildableArea, buildingGuide, plotRect, stairLayout } from './site';
 
 describe('plot and setbacks', () => {
   // 25' × 45' plot (5 marla), plan units of 10 mm; front (road) along the bottom edge.
@@ -18,6 +18,18 @@ describe('plot and setbacks', () => {
     expect(Math.min(...ys)).toBeCloseTo(60.96); // 2' at the rear (top)
     expect(Math.max(...ys)).toBeCloseTo(1371.6 - 152.4); // 5' at the front (bottom)
     expect(Math.min(...b.map((p) => p.x))).toBeCloseTo(0);
+  });
+
+  it('sets the building line in by half an item, per side, for snapping', () => {
+    // A 9" wall: its centre line runs 4½" inside the building line all round.
+    const wall = buildingGuide(plot, () => 11.43);
+    expect(Math.min(...wall.map((p) => p.y))).toBeCloseTo(60.96 + 11.43);
+    expect(Math.max(...wall.map((p) => p.y))).toBeCloseTo(1371.6 - 152.4 - 11.43);
+    expect(Math.min(...wall.map((p) => p.x))).toBeCloseTo(11.43);
+    // A 9" × 12" column: 4½" in from the sides, 6" in from the front and rear.
+    const column = buildingGuide(plot, (d) => (Math.abs(d.y) * 22.86 + Math.abs(d.x) * 30.48) / 2);
+    expect(Math.min(...column.map((p) => p.x))).toBeCloseTo(11.43);
+    expect(Math.min(...column.map((p) => p.y))).toBeCloseTo(60.96 + 15.24);
   });
 
   it('puts boundary walls just inside the plot line', () => {

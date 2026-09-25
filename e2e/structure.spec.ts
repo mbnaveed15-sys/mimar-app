@@ -162,3 +162,20 @@ test('a plot under CDA bylaws: preset size, setbacks from the table, and a live 
   await page.keyboard.press('Control+p');
   expect((await download).suggestedFilename()).toMatch(/\.pdf$/);
 });
+
+test('walls drawn on the building line sit inside it, touching it with their outer face', async ({ page }) => {
+  const click = async (x: number, y: number) => page.mouse.click(...(await at(page, ...P(x, y))));
+  await page.keyboard.press('Shift+P');
+  await page.getByLabel('Bylaws').selectOption('cda');
+  await page.getByRole('button', { name: '50×90' }).click();
+  await click(0, 0);
+  await page.keyboard.press('Shift+Z');
+  // The building line runs 5' in from the sides, 10' from the rear and 15' from the road.
+  await page.keyboard.press('r');
+  await page.mouse.move(...(await at(page, ...P(5, 10))));
+  await expect(page.getByText('On building line').first()).toBeVisible();
+  await click(5, 10);
+  await click(45, 75);
+  // Centred on the line, the walls would reach 4½" into the setbacks and fail the check.
+  await expect(page.getByTestId('plan-check-summary')).toHaveText('No problems found');
+});

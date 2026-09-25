@@ -299,6 +299,8 @@ export interface PlanDoc {
   levels: Level[];
   /** Height of the plinth (floor above natural ground), in millimetres. */
   plinthMm: number;
+  /** Which way north points on the plan, in degrees clockwise from straight up (up when missing). */
+  northDeg?: number;
   /** Layers that are hidden or locked (every item is on the layer for its kind). */
   layers?: LayerState;
 }
