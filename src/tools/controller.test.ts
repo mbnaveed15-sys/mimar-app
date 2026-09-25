@@ -3,7 +3,8 @@ import { DEFAULT_PREFS } from '../lib/prefs';
 import { emptyDoc } from '../lib/storage';
 import { MM_PER_FOOT } from '../lib/units';
 import { createPlannerStore } from '../store/plannerStore';
-import type { Furniture, Wall } from '../types';
+import { setPicker } from '../three/picker';
+import type { Block, Furniture, Wall } from '../types';
 import {
   applyMeasure,
   cancel,
@@ -167,5 +168,70 @@ describe('SketchUp-style tools', () => {
     store.getState().setTool('rectangle');
     expect(applyMeasure(store, `12',10'`)).toBe(false);
     expect(store.getState().warnings[0]).toMatch(/first corner/);
+  });
+
+  it('draws flat shapes on the floor: a rectangle by two clicks, a polygon closed on its first corner', () => {
+    const store = setup();
+    store.getState().setTool('shape');
+    click(store, 0, 0);
+    click(store, 4 * FT, 3 * FT);
+    const blocks = () => store.getState().doc.elements.filter((e): e is Block => e.type === 'block');
+    expect(blocks()).toHaveLength(1);
+    expect(blocks()[0]).toMatchObject({ heightMm: 0, shape: 'rect' });
+    store.getState().setShapeKind('polygon');
+    for (const [x, y] of [
+      [10, 0],
+      [14, 0],
+      [12, 3],
+      [10, 0],
+    ])
+      click(store, x * FT, y * FT);
+    expect(blocks()).toHaveLength(2);
+    expect(blocks()[1].points).toHaveLength(3);
+    // A circle by its radius, typed.
+    store.getState().setShapeKind('circle');
+    click(store, 20 * FT, 0);
+    expect(applyMeasure(store, `2'`)).toBe(true);
+    expect(blocks()[2]).toMatchObject({ shape: 'circle' });
+    expect(blocks()[2].points).toHaveLength(32);
+  });
+
+  it('pushes and pulls faces through the 3D view, and only there', () => {
+    const store = setup();
+    store.getState().addWall({ x: 0, y: 0 }, { x: 10 * FT, y: 0 });
+    const wall = walls(store)[0];
+    store.getState().setTool('pushpull');
+    click(store, 0, 0);
+    expect(store.getState().warnings.join(' ')).toContain('3D view');
+    // A stand-in for the 3D view: the pointer is on the wall's top, and has moved 0.6 m up from it.
+    let along = 0;
+    setPicker({
+      faceAt: () => ({ id: wall.id, point: [1, 3.048, 0], normal: [0, 1, 0] }),
+      onPlane: () => null,
+      alongLine: () => along,
+    });
+    try {
+      press(store, { x: 0, y: 0 });
+      along = 0.6;
+      hover(store, { x: 0, y: 0 });
+      expect(measureReadout(store.getState()).value).toBe(`2' 0"`); // 600 mm, in whole inches
+      release(store, true);
+      expect(walls(store)[0].heightMm).toBeCloseTo(3048 + 609.6);
+      store.getState().undo();
+      expect(walls(store)[0].heightMm).toBeUndefined();
+      // Or a click, then a typed distance.
+      press(store, { x: 0, y: 0 });
+      release(store, false);
+      expect(applyMeasure(store, `1'`)).toBe(true);
+      expect(walls(store)[0].heightMm).toBeCloseTo(3048 + 304.8);
+      // Esc puts it back.
+      press(store, { x: 0, y: 0 });
+      along = 1;
+      hover(store, { x: 0, y: 0 });
+      cancel(store);
+      expect(walls(store)[0].heightMm).toBeCloseTo(3048 + 304.8);
+    } finally {
+      setPicker(null);
+    }
   });
 });

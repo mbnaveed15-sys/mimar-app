@@ -33,6 +33,7 @@ import {
   structureReadout,
   structureRelease,
 } from './structureTools';
+import { SHAPE_TOOLS, shapeHint, shapeHover, shapeMeasure, shapePress, shapeReadout, shapeRelease } from './shapeTools';
 
 /** The bits of a zustand store the controller needs. */
 export interface Store {
@@ -62,6 +63,8 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   slab: 'pair',
   plot: 'pair',
   stairs: 'none',
+  shape: 'pair',
+  pushpull: 'length',
 };
 
 /** Rotation snaps to this many degrees unless Shift is held. */
@@ -104,6 +107,8 @@ export function anchorOf(s: PlannerState): Point | null {
       return d.base;
     case 'rotate':
       return d.center;
+    case 'shape':
+      return d.surface.on === 'floor' ? d.points[d.points.length - 1] : null;
     default:
       return null;
   }
@@ -154,11 +159,16 @@ export function hover(store: Store, raw: Point, shift = false, screenY?: number)
   const s = store.getState();
   const d = s.draft;
   if (!(s.tool in MEASURE_TOOLS)) return;
+  if (s.tool === 'pushpull') {
+    s.setInference(null);
+    return shapeHover(store, null);
+  }
   const from = anchorOf(s);
   const inf = inferAt(s, raw, from, movingIds(s));
   s.setInference(inf);
   if (MODIFY_TOOLS.includes(s.tool)) return modifyHover(store, raw, inf, shift);
   if (STRUCTURE_TOOLS.includes(s.tool)) return structureHover(store, inf);
+  if (SHAPE_TOOLS.includes(s.tool)) return shapeHover(store, inf);
   const p = inf.point;
   if (!d) return;
 
@@ -335,6 +345,10 @@ export function press(store: Store, raw: Point, opts: { ctrl?: boolean } = {}): 
     structurePress(store, inf);
     return true;
   }
+  if (SHAPE_TOOLS.includes(s.tool)) {
+    shapePress(store, inf);
+    return true;
+  }
 
   switch (s.tool) {
     case 'wall': {
@@ -448,6 +462,7 @@ export function release(store: Store, dragged: boolean) {
   const d = s.draft;
   if (MODIFY_TOOLS.includes(s.tool)) return modifyRelease(store, dragged);
   if (STRUCTURE_TOOLS.includes(s.tool)) return structureRelease(store, dragged);
+  if (SHAPE_TOOLS.includes(s.tool)) return shapeRelease(store, dragged);
   if (s.tool === 'line' && d?.type === 'line' && !d.chain) {
     // Like walls: a drag makes one line, a click starts click-by-click drawing.
     if (dragged) {
@@ -486,8 +501,12 @@ export function applyMeasure(store: Store, text: string): boolean {
     };
     return fail(hints[kind]);
   }
-  if (MODIFY_TOOLS.includes(s.tool) || STRUCTURE_TOOLS.includes(s.tool)) {
-    const error = MODIFY_TOOLS.includes(s.tool) ? modifyMeasure(store, m) : structureMeasure(store, m);
+  if (MODIFY_TOOLS.includes(s.tool) || STRUCTURE_TOOLS.includes(s.tool) || SHAPE_TOOLS.includes(s.tool)) {
+    const error = MODIFY_TOOLS.includes(s.tool)
+      ? modifyMeasure(store, m)
+      : SHAPE_TOOLS.includes(s.tool)
+        ? shapeMeasure(store, m)
+        : structureMeasure(store, m);
     if (error) return fail(error);
     s.setWarning(null);
     return true;
@@ -590,7 +609,7 @@ export function cancel(store: Store): boolean {
   }
   const d = s.draft;
   if (!d) return false;
-  if (['move', 'rotate', 'mirror', 'stretch', 'scale'].includes(d.type)) s.cancelBatch();
+  if (['move', 'rotate', 'mirror', 'stretch', 'scale', 'push'].includes(d.type)) s.cancelBatch();
   if (d.type === 'brush') s.endBatch();
   s.setDraft(null);
   return true;
@@ -629,6 +648,7 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
     case 'rotate':
       return { label: 'Angle', value: d?.type === 'rotate' ? `${Math.round(d.angle)}°` : '' };
     default:
+      if (SHAPE_TOOLS.includes(s.tool)) return shapeReadout(s);
       return STRUCTURE_TOOLS.includes(s.tool) ? structureReadout(s) : modifyReadout(s);
   }
 }
@@ -696,6 +716,7 @@ export function toolHint(s: PlannerState): string {
     case 'erase':
       return 'Click an item to remove it, or drag across several (Esc cancels). Shift+click a wall to erase just the piece between crossing walls.';
     default:
+      if (SHAPE_TOOLS.includes(s.tool)) return shapeHint(s);
       return STRUCTURE_TOOLS.includes(s.tool) ? structureHint(s) : modifyHint(s);
   }
 }

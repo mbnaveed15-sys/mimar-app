@@ -14,6 +14,7 @@ import {
   toggleHeightLock,
 } from '../tools/controller';
 import { modifyEnter } from '../tools/modifyTools';
+import { shapeEnter } from '../tools/shapeTools';
 
 /** Keys typed into a field, or used to move around a menu or dialog, are not shortcuts. */
 const isTyping = (target: EventTarget | null) =>
@@ -69,7 +70,7 @@ export function useKeyboardShortcuts(commands: Command[]) {
         return;
       }
       if (e.key === 'Enter') {
-        if (modifyEnter(plannerStore)) return;
+        if (modifyEnter(plannerStore) || shapeEnter(plannerStore)) return;
         const d = s.draft;
         if (d?.type === 'mask') s.finishMask();
         else if (d?.type === 'wall' || d?.type === 'line' || d?.type === 'tape') s.setDraft(null);

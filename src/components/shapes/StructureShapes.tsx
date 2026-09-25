@@ -1,6 +1,6 @@
 import { fromFurnitureLocal } from '../../geometry';
 import { PLAN } from '../../theme/plan';
-import type { Beam, Column, Slab } from '../../types';
+import type { Beam, Block, Column, Point, Slab } from '../../types';
 
 /** A column: solid, as it is cut by the plan. */
 export function ColumnShape({
@@ -64,17 +64,65 @@ export function BeamShape({ beam, selected, k }: { beam: Beam; selected: boolean
   );
 }
 
-/** A slab: its outline with a long-dash-dot line, like a drawing of work above. */
+const pts = (points: Point[]) => points.map((p) => `${p.x},${p.y}`).join(' ');
+const ring = (points: Point[]) => `M ${pts(points).replace(/ /g, ' L ')} Z`;
+
+/** A slab: its outline with a long-dash-dot line, like a drawing of work above; voids crossed through. */
 export function SlabShape({ slab, selected, k }: { slab: Slab; selected: boolean; k: number }) {
+  const stroke = { stroke: selected ? PLAN.selection : PLAN.inkMuted };
+  const holes = slab.holes ?? [];
+  return (
+    <g data-type="slab" data-id={slab.id}>
+      <path
+        d={[slab.points, ...holes].map(ring).join(' ')}
+        fillRule="evenodd"
+        style={{ fill: PLAN.selection, ...stroke }}
+        fillOpacity={selected ? 0.08 : 0}
+        strokeWidth={(selected ? 2.5 : 1) * k}
+        strokeDasharray={`${14 * k} ${4 * k} ${2 * k} ${4 * k}`}
+      />
+      {holes.map((h, i) => {
+        // A void is drawn with a cross from corner to corner, as on a drawing.
+        const xs = h.map((p) => p.x);
+        const ys = h.map((p) => p.y);
+        const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+        return (
+          <g key={i} data-testid="slab-void" style={stroke} strokeWidth={0.75 * k}>
+            <line x1={x0} y1={y0} x2={x1} y2={y1} />
+            <line x1={x0} y1={y1} x2={x1} y2={y0} />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+/** A block drawn solid-edged with a light fill; a flat shape (not pulled up yet) dashed in blue. */
+export function BlockShape({
+  block,
+  selected,
+  color,
+  k,
+}: {
+  block: Block;
+  selected: boolean;
+  color?: string;
+  k: number;
+}) {
+  const flat = block.heightMm <= 0;
   return (
     <polygon
-      data-type="slab"
-      data-id={slab.id}
-      points={slab.points.map((p) => `${p.x},${p.y}`).join(' ')}
-      style={{ fill: PLAN.selection, stroke: selected ? PLAN.selection : PLAN.inkMuted }}
-      fillOpacity={selected ? 0.08 : 0}
-      strokeWidth={(selected ? 2.5 : 1) * k}
-      strokeDasharray={`${14 * k} ${4 * k} ${2 * k} ${4 * k}`}
+      data-type="block"
+      data-id={block.id}
+      data-flat={flat || undefined}
+      points={pts(block.points)}
+      style={{
+        fill: flat ? PLAN.draft : (color ?? PLAN.furniture),
+        stroke: selected ? PLAN.selection : flat ? PLAN.draft : PLAN.furnitureEdge,
+      }}
+      fillOpacity={flat ? 0.12 : 0.85}
+      strokeWidth={(selected ? 2.5 : 1.25) * k}
+      strokeDasharray={flat ? `${6 * k} ${3 * k}` : undefined}
     />
   );
 }

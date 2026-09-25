@@ -31,13 +31,16 @@ test("the grid can be restyled, hidden with Ctrl+' and its snapping turned off",
   await expect(grid).toBeVisible();
   await expect(grid.locator('pattern')).toHaveCount(2); // minor and major lines
 
-  await page.getByRole('group', { name: 'Major grid line' }).getByRole('button', { name: 'Off' }).click();
+  // Sliders with stops: the first major stop is Off.
+  await page.getByLabel('Major grid size').fill('0');
   await expect(grid.locator('pattern')).toHaveCount(1);
   await page.getByRole('group', { name: 'Grid style' }).getByRole('button', { name: 'Dots' }).click();
   await expect(grid.locator('pattern circle')).toHaveCount(1);
 
-  await page.getByRole('group', { name: 'Grid spacing' }).getByRole('button', { name: `2'` }).click();
+  await page.getByLabel('Minor grid size').fill('5'); // 1", 2", 3", 6", 1', 2'
   await expect(page.getByLabel('Custom spacing')).toHaveValue(`2' 0"`);
+  await page.getByLabel('Major grid size').fill('4'); // every 5
+  await expect(page.getByLabel('Major grid size')).toHaveAttribute('aria-valuetext', `10' 0" (every 5)`);
 
   await page.getByTestId('plan-canvas').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press(`Control+'`);
@@ -49,5 +52,5 @@ test("the grid can be restyled, hidden with Ctrl+' and its snapping turned off",
   await page.getByLabel('Snap to grid').uncheck();
   await page.reload();
   await expect(page.getByLabel('Snap to grid')).not.toBeChecked();
-  await expect(page.getByTestId('plan-grid').locator('pattern circle')).toHaveCount(1);
+  await expect(page.getByTestId('plan-grid').locator('pattern circle')).toHaveCount(2); // minor and major dots
 });

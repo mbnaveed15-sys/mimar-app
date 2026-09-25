@@ -92,4 +92,43 @@ describe('storage', () => {
     expect(doc.elements.map((el) => el.elevMm)).toEqual([600, undefined, undefined, undefined, undefined]);
     expect(doc.elements.find((el) => el.id === 'n')).toMatchObject({ sillMm: 600 });
   });
+
+  it('keeps blocks, slab voids and shaped openings, and drops broken ones', () => {
+    const sq = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+    ];
+    const doc = normaliseDoc({
+      ...emptyDoc(),
+      elements: [
+        { id: 'b', type: 'block', points: sq, heightMm: 900, shape: 'circle', slabId: 's' },
+        { id: 'b2', type: 'block', points: sq.slice(0, 2), heightMm: 900, shape: 'rect' },
+        { id: 's', type: 'slab', points: sq, thickness: 15, holes: [sq, [{ x: 1, y: 1 }]] },
+        { id: 'w', type: 'wall', x1: 0, y1: 0, x2: 100, y2: 0, thickness: 23 },
+        {
+          id: 'n',
+          type: 'window',
+          wallId: 'w',
+          x: 50,
+          y: 0,
+          angle: 0,
+          width: 60,
+          shape: 'arch',
+          open: true,
+          heightMm: 2000,
+        },
+        { id: 'f', type: 'window', wallId: 'w', x: 20, y: 0, angle: 0, width: 20, flat: true, face: -1, shape: 'star' },
+        { id: 'p', type: 'window', wallId: 'w', x: 80, y: 0, angle: 0, width: 20, shape: 'polygon' },
+      ],
+    });
+    expect(doc.elements.map((e) => e.id)).toEqual(['b', 's', 'w', 'n', 'f', 'p']);
+    expect(doc.elements[0]).toMatchObject({ type: 'block', heightMm: 900, shape: 'circle', slabId: 's' });
+    expect(doc.elements[1]).toMatchObject({ holes: [sq] });
+    expect(doc.elements[3]).toMatchObject({ shape: 'arch', open: true, heightMm: 2000 });
+    expect(doc.elements[4]).toMatchObject({ flat: true, face: -1 });
+    expect(doc.elements[4]).not.toHaveProperty('shape');
+    // A polygon with no outline falls back to a plain window.
+    expect(doc.elements[5]).not.toHaveProperty('shape');
+  });
 });

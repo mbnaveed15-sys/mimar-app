@@ -82,4 +82,11 @@ describe('grid and theme preferences', () => {
       readGrid({ colors: { dark: { minor: '#112233', major: 'red' }, neon: { minor: '#000000' }, gold: {} } }).colors,
     ).toEqual({ dark: { minor: '#112233' } });
   });
+
+  it('keeps a major line every 2 to 20 minor lines (or none), and draws them at that spacing', () => {
+    expect(readGrid({ major: 3 }).major).toBe(3);
+    expect(readGrid({ major: 0 }).major).toBe(0);
+    for (const bad of [1, 25, 2.5, '4']) expect(readGrid({ major: bad }).major).toBe(5);
+    expect(gridLevels(10, 3, 0.1)).toEqual({ minor: 10, major: 30 });
+  });
 });

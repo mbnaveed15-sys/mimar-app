@@ -23,6 +23,7 @@ const LAYERS = {
   'C-PROP': { color: 5, ltype: 'CONTINUOUS' },
   'C-PROP-SETB': { color: 5, ltype: 'DASHED' },
   'A-ANNO-LAYT': { color: 9, ltype: 'CONTINUOUS' },
+  'A-FLOR-BLCK': { color: 8, ltype: 'CONTINUOUS' },
 } as const;
 type Layer = keyof typeof LAYERS;
 
@@ -223,7 +224,8 @@ class Dxf {
 export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
   const dxf = new Dxf(MM_PER_UNIT);
   const walls = wallsOf(doc.elements);
-  const openings = doc.elements.filter((el): el is Opening => el.type === 'door' || el.type === 'window');
+  // Shapes only drawn on a wall's face don't cut it (and aren't built), so they're left out.
+  const openings = doc.elements.filter((el): el is Opening => (el.type === 'door' || el.type === 'window') && !el.flat);
 
   for (const el of doc.elements)
     if (el.type === 'plot') {
@@ -253,6 +255,7 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
     const w = o.width;
     const layer: Layer = o.type === 'door' ? 'A-DOOR' : 'A-GLAZ';
     for (const x of [-w / 2, w / 2]) dxf.line(layer, at(x, -t), at(x, t));
+    if (o.type === 'window' && o.open) continue;
     if (o.type === 'window') {
       dxf.line('A-GLAZ', at(-w / 2, -t / 3), at(w / 2, -t / 3));
       dxf.line('A-GLAZ', at(-w / 2, t / 3), at(w / 2, t / 3));
@@ -305,6 +308,11 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       }
       case 'slab':
         dxf.poly('S-SLAB', el.points);
+        for (const h of el.holes ?? []) dxf.poly('S-SLAB', h);
+        break;
+      case 'block':
+        // Flat shapes are drafting aids, not built: only blocks with a height go out.
+        if (el.heightMm > 0) dxf.poly('A-FLOR-BLCK', el.points);
         break;
       case 'line':
         dxf.line('A-ANNO-LAYT', { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 });

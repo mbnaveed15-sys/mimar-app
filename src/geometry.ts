@@ -1,4 +1,15 @@
-import type { Bounds, Mask, Opening, PlanElement, Point, Wall } from './types';
+import {
+  hasPoints,
+  type Block,
+  type Bounds,
+  type Mask,
+  type Opening,
+  type PlanElement,
+  type Plot,
+  type Point,
+  type Slab,
+  type Wall,
+} from './types';
 
 /** Anything placed by its centre, with a size and an optional rotation (furniture, columns). */
 type Placed = { x: number; y: number; rotation?: number };
@@ -52,10 +63,21 @@ export function centroid(points: Point[]): Point {
   return { x: points.reduce((s, p) => s + p.x, 0) / n, y: points.reduce((s, p) => s + p.y, 0) / n };
 }
 
+/**
+ * An outlined item (slab, plot, block) with every point moved by f, voids included; `reverse` keeps
+ * the outlines running the same way round after a mirror.
+ */
+export function mapOutline<T extends Slab | Plot | Block>(el: T, f: (p: Point) => Point, reverse = false): T {
+  const map = (pts: Point[]) => (reverse ? pts.map(f).reverse() : pts.map(f));
+  return el.type === 'slab' && el.holes
+    ? { ...el, points: map(el.points), holes: el.holes.map(map) }
+    : { ...el, points: map(el.points) };
+}
+
 export function elementCenter(el: PlanElement): Point {
   if (el.type === 'wall' || el.type === 'beam' || el.type === 'line')
     return { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 };
-  if (el.type === 'slab' || el.type === 'plot') return centroid(el.points);
+  if (hasPoints(el)) return centroid(el.points);
   return { x: el.x, y: el.y };
 }
 
@@ -84,6 +106,12 @@ export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
       // A slab is picked by its edge, so rooms and furniture on it stay clickable.
       return el.points.some((a, i) => pointToSegmentDistance(p, a, el.points[(i + 1) % el.points.length]) < threshold);
     }
+    case 'block':
+      // A block (or a flat shape) is solid: anywhere on it counts.
+      return (
+        pointInPolygon(p, el.points) ||
+        el.points.some((a, i) => pointToSegmentDistance(p, a, el.points[(i + 1) % el.points.length]) < threshold)
+      );
     case 'door':
     case 'window': {
       const [a, b] = openingEndpoints(el);
@@ -177,8 +205,7 @@ export function withWallLength(wall: Wall, length: number): Wall {
 export function translateElement<T extends PlanElement>(el: T, dx: number, dy: number): T {
   if (el.type === 'wall' || el.type === 'beam' || el.type === 'line')
     return { ...el, x1: el.x1 + dx, y1: el.y1 + dy, x2: el.x2 + dx, y2: el.y2 + dy };
-  if (el.type === 'slab' || el.type === 'plot')
-    return { ...el, points: el.points.map((p) => ({ x: p.x + dx, y: p.y + dy })) };
+  if (hasPoints(el)) return mapOutline(el, (p) => ({ x: p.x + dx, y: p.y + dy }));
   return { ...el, x: el.x + dx, y: el.y + dy };
 }
 
@@ -199,8 +226,7 @@ export function rotateElement<T extends PlanElement>(el: T, c: Point, degrees: n
     const b = rotatePoint({ x: el.x2, y: el.y2 }, c, degrees);
     return { ...el, x1: a.x, y1: a.y, x2: b.x, y2: b.y };
   }
-  if (el.type === 'slab' || el.type === 'plot')
-    return { ...el, points: el.points.map((p) => rotatePoint(p, c, degrees)) };
+  if (hasPoints(el)) return mapOutline(el, (p) => rotatePoint(p, c, degrees));
   if (el.type === 'furniture' || el.type === 'column' || el.type === 'stair') {
     const p = rotatePoint({ x: el.x, y: el.y }, c, degrees);
     return { ...el, x: p.x, y: p.y, rotation: ((((el.rotation ?? 0) + degrees) % 360) + 360) % 360 };
@@ -225,6 +251,7 @@ function elementPoints(el: PlanElement): Point[] {
       ];
     case 'slab':
     case 'plot':
+    case 'block':
       return el.points;
     case 'furniture':
     case 'column':

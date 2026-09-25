@@ -36,6 +36,11 @@ autosaves to local storage on every change.
   long-press opens the menu.
 - `src/tools/controller.ts`: tools that take clicks and typed measurements (wall, line, rectangle, tape, move,
   rotate…), with `structureTools.ts` (column, beam, slab, plot, stairs) and `modifyTools.ts` (Modify menu).
+- Shapes and Push/Pull: `src/tools/shapeTools.ts` (the Shape and Push/Pull tools), `src/lib/pushPull.ts` (pure:
+  `faceOf` tells which face a 3D hit is on, `pushPull` returns the plan after moving it), `src/lib/shapes.ts`
+  (outlines; `openingProfileMm` for window shapes). A flat shape is a `block` with `heightMm: 0` on a floor, or a
+  `window` with `flat: true` on a wall face; cutting clears `flat` and sets `open`. The 3D view registers a picker
+  (`src/three/picker.ts`: face under the pointer, pointer on a plane, distance along a line) that these tools use.
 - `src/lib/inference.ts`: snapping order: ends → midpoints → intersections → grid points → axes → along
   walls/lines (in grid steps) → grid.
 - `src/commands.ts`: every menu item, shortcut and Ctrl+K palette entry in one registry.
@@ -44,7 +49,8 @@ autosaves to local storage on every change.
 
 - 2D: `Canvas.tsx` (SVG) → `PlanDrawing.tsx` → shapes in `src/components/shapes/`. The same drawing makes the
   PDF/PNG (`src/lib/planImage.tsx`, `exportPdf.ts`, `exportPng.ts`).
-- 3D: `src/three/model.ts` turns the plan into boxes, floors and slabs (pure, tested);
+- 3D: `src/three/model.ts` turns the plan into boxes, floors, slabs (with voids), blocks and upright panels
+  (the wall round a round/arched/polygon opening, its glass, and flat wall shapes) (pure, tested);
   `Plan3DView.tsx` renders with three.js, raycasts for picking/drawing, shows previews (`draft3d.ts`),
   and uses `cameraRig.ts` for the camera.
 - Materials: `src/lib/materials.ts` (library), `patterns.ts` (procedural textures for 3D and swatches).

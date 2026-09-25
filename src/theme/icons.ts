@@ -60,6 +60,8 @@ export const ICONS = {
   line: "<path d='M4 19 20 5' stroke-dasharray='1 0'/><circle cx='4' cy='19' r='1.6' fill='currentColor'/><circle cx='20' cy='5' r='1.6' fill='currentColor'/><path d='M2 20.8 4 19M20 5l2-1.8' opacity='.5'/>",
   beam: "<path d='M3 9h18M3 15h18' stroke-dasharray='3 2'/><rect x='2.5' y='7' width='3' height='10' fill='currentColor' stroke='none'/><rect x='18.5' y='7' width='3' height='10' fill='currentColor' stroke='none'/>",
   slab: "<path d='M3 9 12 4l9 5-9 5z'/><path d='M3 9v3l9 5 9-5V9'/>",
+  shape: "<rect x='3' y='11' width='9' height='9' rx='0.5'/><circle cx='16' cy='8' r='5'/>",
+  pushpull: "<path d='M4 15 12 11l8 4-8 4z'/><path d='M12 11V2.5M9 5.5l3-3 3 3'/>",
   eye: "<path d='M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z'/><circle cx='12' cy='12' r='3'/>",
   'eye-off':
     "<path d='M4 4l16 16'/><path d='M9.9 5.8A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.7 3.4M6.6 7.1A16.6 16.6 0 0 0 2.5 12s3.5 6.5 9.5 6.5c1.6 0 3-.4 4.2-1'/>",

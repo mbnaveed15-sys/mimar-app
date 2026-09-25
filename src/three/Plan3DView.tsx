@@ -14,6 +14,8 @@ import type { Bounds, Pattern, PlanDoc, Point } from '../types';
 import { CameraRig } from './cameraRig';
 import { draftElements, draftLines } from './draft3d';
 import { withoutHidden } from '../lib/layers';
+import { shapeDraftScene } from '../tools/shapeTools';
+import { setPicker } from './picker';
 import { buildModel, levelBaseM, M_PER_UNIT, type Finish, type Model3D } from './model';
 
 function hasWebGL(): boolean {
@@ -127,21 +129,56 @@ function buildMeshes(model: Model3D): THREE.Group {
     group.add(mesh);
   }
 
-  for (const slab of model.slabs) {
-    if (slab.points.length < 3) continue;
-    const shape = new THREE.Shape(slab.points.map(([x, z]) => new THREE.Vector2(x, -z)));
-    const geometry = new THREE.ExtrudeGeometry(shape, { depth: slab.h, bevelEnabled: false });
-    geometry.rotateX(-Math.PI / 2);
-    const mesh = new THREE.Mesh(geometry, material(slab.color, 1, slab.finish));
-    mesh.position.y = slab.y0;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.userData = { id: slab.id, level: slab.level };
+  /** A flat outline (with any holes) as a three.js shape, in its own axes. */
+  const shapeOf = (outline: [number, number][], holes: [number, number][][] = [], flipY = false) => {
+    const v = ([a, b]: [number, number]) => new THREE.Vector2(a, flipY ? -b : b);
+    const shape = new THREE.Shape(outline.map(v));
+    for (const h of holes) shape.holes.push(new THREE.Path(h.map(v)));
+    return shape;
+  };
+  const addWithEdges = (mesh: THREE.Mesh, level?: string, edges = true) => {
     group.add(mesh);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMaterial);
-    edges.position.copy(mesh.position);
-    edges.userData = { level: slab.level };
-    group.add(edges);
+    if (!edges) return;
+    const lines = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), edgeMaterial);
+    lines.position.copy(mesh.position);
+    lines.rotation.copy(mesh.rotation);
+    lines.userData = { level };
+    group.add(lines);
+  };
+
+  for (const slab of [...model.slabs, ...model.blocks]) {
+    if (slab.points.length < 3) continue;
+    // Shapes are drawn in x/y; turning them flat maps shape y to -z, so flip z here.
+    const geometry = new THREE.ExtrudeGeometry(shapeOf(slab.points, slab.holes, true), {
+      depth: slab.h,
+      bevelEnabled: false,
+    });
+    geometry.rotateX(-Math.PI / 2);
+    const flatShape = slab.role === 'shape';
+    const mesh = new THREE.Mesh(geometry, material(slab.color, slab.opacity ?? 1, slab.finish));
+    mesh.position.y = slab.y0;
+    mesh.castShadow = !flatShape;
+    mesh.receiveShadow = !flatShape;
+    mesh.userData = { id: slab.id, level: slab.level };
+    addWithEdges(mesh, slab.level);
+  }
+
+  for (const panel of model.panels) {
+    if (panel.outline.length < 3) continue;
+    const geometry = new THREE.ExtrudeGeometry(shapeOf(panel.outline, panel.holes), {
+      depth: panel.depth,
+      bevelEnabled: false,
+      curveSegments: 1,
+    });
+    geometry.translate(0, 0, -panel.depth / 2);
+    if (panel.finish) metricUVs(geometry);
+    const mesh = new THREE.Mesh(geometry, material(panel.color, panel.opacity ?? 1, panel.finish));
+    mesh.position.set(panel.x, panel.y0, panel.z);
+    mesh.rotation.y = panel.rotY;
+    mesh.castShadow = panel.role === 'wall';
+    mesh.receiveShadow = panel.role !== 'glass';
+    mesh.userData = { id: panel.id, level: panel.level };
+    addWithEdges(mesh, panel.level, panel.role !== 'glass');
   }
   return group;
 }
@@ -207,6 +244,7 @@ function styleMeshes(stage: Stage, s: PlannerState) {
   const faded = cache('faded');
   const lit = cache('lit');
   const red = cache('red');
+  const glow = cache('glow');
   const variant = (
     looks: Map<THREE.Material, THREE.Material>,
     base: THREE.Material,
@@ -245,6 +283,11 @@ function styleMeshes(stage: Stage, s: PlannerState) {
       obj.material = variant(lit, base, (m) => {
         m.emissive = new THREE.Color('#2563eb');
         m.emissiveIntensity = 0.45;
+      });
+    else if (obj.userData.id && obj.userData.id === s.hoverId)
+      obj.material = variant(glow, base, (m) => {
+        m.emissive = new THREE.Color('#f59e0b');
+        m.emissiveIntensity = 0.35;
       });
     else obj.material = base;
     obj.castShadow = !above;
@@ -294,6 +337,16 @@ function drawOverlay(stage: Stage, s: PlannerState, pxMetres: number) {
     ]);
     const geometry = new THREE.BufferGeometry().setFromPoints(pts);
     overlay.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: '#2563eb' })));
+  }
+  const outline = shapeDraftScene(s);
+  if (outline.length >= 2) {
+    const d = s.draft;
+    const closed = d?.type === 'shape' && d.kind !== 'polygon';
+    const pts = outline.map(([x, y, z]) => new THREE.Vector3(x, y, z));
+    const geometry = new THREE.BufferGeometry().setFromPoints(closed ? [...pts, pts[0]] : pts);
+    const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: '#2563eb', depthTest: false }));
+    line.renderOrder = 10;
+    overlay.add(line);
   }
   const inf = s.inference;
   if (inf) {
@@ -468,7 +521,12 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         stage.render();
       }
       const erasing = (x: PlannerState) => (x.draft?.type === 'erase' ? x.draft : null);
-      if (s.selectedIds !== prev.selectedIds || s.activeLevel !== prev.activeLevel || erasing(s) !== erasing(prev)) {
+      if (
+        s.selectedIds !== prev.selectedIds ||
+        s.activeLevel !== prev.activeLevel ||
+        s.hoverId !== prev.hoverId ||
+        erasing(s) !== erasing(prev)
+      ) {
         styleMeshes(stage, s);
         stage.render();
       }
@@ -530,6 +588,11 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     host.dataset.solids = String(model.solids.length);
     host.dataset.floors = String(model.floors.length);
     host.dataset.slabs = String(model.slabs.length);
+    host.dataset.blocks = String(model.blocks.filter((b) => b.role === 'block').length);
+    host.dataset.shapes = String(
+      model.blocks.filter((b) => b.role === 'shape').length + model.panels.filter((p) => p.role === 'shape').length,
+    );
+    host.dataset.panels = String(model.panels.filter((p) => p.role === 'wall').length);
     stage.render();
   }, [doc, wallHeightMm, showFurniture]);
 
@@ -542,6 +605,56 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     drawGrid(stage, plannerStore.getState());
     stage.render();
   }, [theme]);
+
+  // Let the Shape and Push/Pull tools look into the scene while the 3D view is showing.
+  useEffect(() => {
+    if (!supported) return;
+    const aim = (clientX: number, clientY: number) => {
+      const stage = stageRef.current;
+      if (!stage) return null;
+      const rect = stage.renderer.domElement.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      stage.raycaster.setFromCamera(
+        new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1),
+        stage.camera,
+      );
+      return stage;
+    };
+    const v = (p: [number, number, number]) => new THREE.Vector3(...p);
+    setPicker({
+      faceAt(clientX, clientY) {
+        const stage = aim(clientX, clientY);
+        if (!stage) return null;
+        const s = plannerStore.getState();
+        const hit = stage.raycaster
+          .intersectObjects(stage.model.children, false)
+          .find((h) => h.object instanceof THREE.Mesh && h.object.userData.pickable);
+        if (!hit?.face || (hit.object.userData.level ?? 'ground') !== s.activeLevel) return null;
+        const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+        return { id: hit.object.userData.id, point: [hit.point.x, hit.point.y, hit.point.z], normal: [n.x, n.y, n.z] };
+      },
+      onPlane(clientX, clientY, point, normal) {
+        const stage = aim(clientX, clientY);
+        if (!stage) return null;
+        const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(v(normal).normalize(), v(point));
+        const hit = stage.raycaster.ray.intersectPlane(plane, new THREE.Vector3());
+        return hit ? [hit.x, hit.y, hit.z] : null;
+      },
+      alongLine(clientX, clientY, origin, dir) {
+        const stage = aim(clientX, clientY);
+        if (!stage) return null;
+        // The point on the line nearest the line of sight (closest points of two lines).
+        const { origin: o, direction: d } = stage.raycaster.ray;
+        const n = v(dir).normalize();
+        const w0 = o.clone().sub(v(origin));
+        const b = d.dot(n);
+        const denom = 1 - b * b;
+        if (denom < 1e-4) return null; // looking straight along the line
+        return (w0.dot(n) - b * w0.dot(d)) / denom;
+      },
+    });
+    return () => setPicker(null);
+  }, [supported]);
 
   /** Look along the view from a screen position: what it hits, and where on the floor being drawn. */
   function pickAt(clientX: number, clientY: number): Pick | null {

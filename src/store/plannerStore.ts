@@ -8,6 +8,7 @@ import {
   planBounds,
   pointInPolygon,
   reattachOpening,
+  wallLength,
 } from '../geometry';
 import { DEFAULT_FILE_NAME } from '../lib/files';
 import { newId } from '../lib/ids';
@@ -43,6 +44,10 @@ import { SLAB_MM } from '../three/model';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
 import type {
+  Block,
+  Opening,
+  ShapeKind,
+  Wall,
   Plot,
   SketchLine,
   Slab,
@@ -162,6 +167,19 @@ export interface PlannerState {
   /** Make walls (current thickness) along the selected layout lines, and remove the lines. */
   linesToWalls: () => void;
   addSlab: (points: Point[]) => void;
+  /** What the Shape tool draws. */
+  shapeKind: ShapeKind;
+  setShapeKind: (kind: ShapeKind) => void;
+  /** A flat shape on the floor (or a slab's or block's top), ready for Push/Pull. Returns its id. */
+  addFloorShape: (points: Point[], kind: ShapeKind, on?: { elevMm?: number; slabId?: Id }) => Id | null;
+  /**
+   * A flat shape on a wall's face: outline along the wall from its start (x) and up from its foot
+   * (y), in plan units. Push/Pull it through to cut the opening. Returns its id.
+   */
+  addWallShape: (wallId: Id, face: 1 | -1, kind: ShapeKind, outline: Point[]) => Id | null;
+  /** The item Push/Pull would take hold of, lit up in 3D. */
+  hoverId: Id | null;
+  setHoverId: (id: Id | null) => void;
   /** Settings for plots, wall types, gates and stairs. */
   site: SiteSpec;
   setSite: (patch: Partial<SiteSpec>) => void;
@@ -525,6 +543,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           axisLock: null,
           shiftLock: null,
           lastCopy: null,
+          hoverId: null,
         }));
         // Orbit only turns the 3D view, so it opens it.
         if (tool === 'orbit' && !get().view3d) get().setView3d(true);
@@ -1134,6 +1153,56 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         if (points.length < 3) return;
         const slab: PlanElement = { id: newId(), type: 'slab', points, thickness: get().structure.slabThickness };
         updateElements((els) => [...els, onActive(slab)]);
+      },
+      shapeKind: 'rect',
+      setShapeKind: (shapeKind) => set({ shapeKind }),
+      addFloorShape: (points, kind, on = {}) => {
+        if (points.length < 3) return null;
+        const block: Block = {
+          id: newId(),
+          type: 'block',
+          points,
+          heightMm: 0,
+          shape: kind,
+          ...(on.slabId ? { slabId: on.slabId } : {}),
+          ...(on.elevMm ? { elevMm: on.elevMm } : {}),
+        };
+        updateElements((els) => [...els, onActive(block)]);
+        get().select(block.id);
+        return block.id;
+      },
+      addWallShape: (wallId, face, kind, outline) => {
+        const wall = get().doc.elements.find((el): el is Wall => el.type === 'wall' && el.id === wallId);
+        if (!wall || outline.length < 3) return null;
+        const xs = outline.map((p) => p.x);
+        const ys = outline.map((p) => p.y);
+        const [minS, maxS, minV, maxV] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+        const len = wallLength(wall) || 1;
+        const mid = (minS + maxS) / 2;
+        const at = { x: wall.x1 + ((wall.x2 - wall.x1) * mid) / len, y: wall.y1 + ((wall.y2 - wall.y1) * mid) / len };
+        const shape = kind === 'rect' ? undefined : kind;
+        const win: Opening = {
+          id: newId(),
+          type: 'window',
+          wallId,
+          ...placeOnWall(wall, at, maxS - minS),
+          sillMm: Math.max(0, minV * MM_PER_UNIT),
+          heightMm: (maxV - minV) * MM_PER_UNIT,
+          ...(shape ? { shape } : {}),
+          ...(shape === 'polygon'
+            ? { profile: outline.map((p) => ({ x: (p.x - mid) * MM_PER_UNIT, y: (p.y - minV) * MM_PER_UNIT })) }
+            : {}),
+          flat: true,
+          face,
+          ...(wall.levelId ? { levelId: wall.levelId } : {}),
+        };
+        updateElements((els) => [...els, win]);
+        get().select(win.id);
+        return win.id;
+      },
+      hoverId: null,
+      setHoverId: (hoverId) => {
+        if (get().hoverId !== hoverId) set({ hoverId });
       },
       site: DEFAULT_SITE,
       setSite: (patch) => set((st) => ({ site: { ...st.site, ...patch } })),

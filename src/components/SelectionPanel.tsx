@@ -11,6 +11,7 @@ const NAMES: Record<PlanElement['type'] | 'room', [string, string]> = {
   column: ['column', 'columns'],
   beam: ['beam', 'beams'],
   slab: ['slab', 'slabs'],
+  block: ['block', 'blocks'],
   plot: ['plot', 'plots'],
   stair: ['stair', 'stairs'],
   line: ['layout line', 'layout lines'],

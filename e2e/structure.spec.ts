@@ -57,7 +57,7 @@ test('columns, beams and slabs on two floors, shown stacked in 3D', async ({ pag
 
 test('a plot with setbacks and a boundary wall, a gate, and a stair', async ({ page }) => {
   const click = async (x: number, y: number) => page.mouse.click(...(await at(page, ...P(x, y))));
-  await page.keyboard.press('p');
+  await page.keyboard.press('Shift+P');
   await click(0, 0);
   await page.mouse.move(...(await at(page, ...P(5, 5))));
   await page.keyboard.type(`25',45'`);
