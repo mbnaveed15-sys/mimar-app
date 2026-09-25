@@ -1,8 +1,9 @@
-# Bylaw figures (for the 1.22 "Bylaws and plan check" release)
+# Bylaw figures (used by the 1.22 "Bylaws and plan check")
 
 Collected with the owner on 25 September 2026. **Official** figures come from documents the owner uploaded
-(to the branch `mbnaveed15-sys-patch-1`, which is not to be merged); **provisional** ones come from a compiled
-summary with no clause numbers, and are shown in the app as "provisional: check with your authority".
+(to the branch `mbnaveed15-sys-patch-1`, which is not to be merged) and screenshots of the same Gazette's
+schedules; **provisional** ones come from a compiled summary with no clause numbers, and are shown in the app as
+"provisional". The figures live in `src/lib/bylaws.ts`; keep the two in step.
 
 ## CDA Islamabad: official
 
@@ -17,17 +18,33 @@ depends on both size and frontage (note vii). CDA marla = 272.25 sq ft (9.9.11).
 | A | 201–300 | 30–35' | 10' | – | – | 8' |
 | A | 300–450 | 40–49' | 10' | – | 4' | 10' |
 | B semi-detached | 300–625 | 40–49' | 10' | – | 5' | 10' |
-| C detached | 400–1000 | 50–59' | 15' | **unclear in scan (8' or 5')** | 5' | 10' |
+| C detached | 400–1000 | 50–59' | 15' | 5' (from a redrawn copy; unclear in the scan) | 5' | 10' |
 | C | 530–1335 | 60–69' | 15' | 10' | 5' | 10' |
 | D detached | 700–1670 | 70–79' | 20' | 10' | 10' | 10' |
 | D | 885–2670 | 80–89' | 25' | 10' | 10' | 10' |
-| D | **unclear**–2900 | 90–99' | 30' | 10' | 10' | 10' |
+| D | 800–2900 (Gazette and Schedule-5 agree) | 90–99' | 30' | 10' | 10' | 10' |
 | D | 1770–2720 | 100'+ | 40' | 15' | 15' | 10' |
 
 All: construction may cover the block left by the setbacks (no coverage %); 2 storeys, height 30' (the house
 must look two-storey from the front); plinth 3'6" (A, B) or 5'0" (C, D); one housing unit (A, B) or two (C, D);
 mumty ⅓ (smaller A) or ¼ of the ground-floor block; basement under the plinth area only, clear height 8'6"–12';
 boundary wall 3'–7' (4.1.1); the smaller side setback on the south or west (note i).
+
+A redrawn Schedule-I (primarcstudio.com) differs on a few rows: 151–200 sq yd front 5' (Gazette 6', used, with a
+"check" note); type A rows 201–320 / 30–39'; type B up to 525; mumty ¼ for all type A. The Gazette is followed.
+
+**Schedule-2, minimum space standards** (all relaxable 10% with a penalty): living unit 600 sq ft; habitable rooms
+(bedroom, drawing, lounge) 100 sq ft, 8'6" wide, 9' high; kitchen 45 sq ft, 5' wide; bathroom 24 sq ft, WC 12, WC
+with basin 15, shower 12, all 3' wide; stair flight 3'3", headroom 6'6", doors 7'; air wells 50 sq ft / 5' (up to 2
+storeys), 100 sq ft / 8' above.
+
+**Schedule-3/4, roof projections:** into setbacks 3' (ground and first floor), 5' (first floor on a terrace only),
+3' (stair towers); terraced houses over streets 1'6" (street ≤ 20'), 2' (21–40'), 2'6" (> 40').
+
+**Schedule-5, private housing schemes/societies in ICT** (front / side 1 / side 2 / rear): up to 150 sq yd 5/–/–/5;
+151–200 5/–/–/5; 201–320 6/–/–/6; 300–450 10/4/–/5; semi-detached 300–625 10/4/–/5; type C 400–1000 **front
+unreadable ("3'" / "13"; 15' used, marked check)**/5/5/8; 530–1335 15/5/5/8; type D 700–1670 20/10/10/10;
+885–2670 25/10/10/10; 800–2900 30/10/10/10; 1770–2720 35/10/10/10. Mumty 200 / 350 / 400 sq ft.
 
 ## DHA Islamabad & Rawalpindi: official
 

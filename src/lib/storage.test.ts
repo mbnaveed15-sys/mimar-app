@@ -143,4 +143,24 @@ describe('storage', () => {
     // A polygon with no outline falls back to a plain window.
     expect(doc.elements[5]).not.toHaveProperty('shape');
   });
+
+  it("keeps a plot's bylaws and its second side setback, and drops unknown bylaws", () => {
+    const pts = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
+    ];
+    const base = { type: 'plot', points: pts, front: 2 };
+    const doc = normaliseDoc({
+      ...emptyDoc(),
+      elements: [
+        { ...base, id: 'a', authority: 'cda', setbacks: { front: 1, rear: 2, sides: 3, side2: 4 } },
+        { ...base, id: 'b', authority: 'mars', setbacks: { front: 1, rear: 2, sides: 3 } },
+      ],
+    });
+    expect(doc.elements[0]).toMatchObject({ authority: 'cda', setbacks: { side2: 4 } });
+    expect(doc.elements[1]).not.toHaveProperty('authority');
+    expect(doc.elements[1]).not.toHaveProperty('setbacks.side2');
+  });
 });

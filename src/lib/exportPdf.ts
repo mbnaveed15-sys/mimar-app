@@ -38,6 +38,60 @@ export interface PdfDetails {
   areaNote: string;
   version: string;
   filename: string;
+  /** e.g. "Bylaws: CDA Islamabad (sectors), Type C, 400–1000 sq yd", or empty. */
+  bylawNote?: string;
+  /** The plan check, printed on a page of its own. */
+  check?: {
+    heading: string;
+    rows: { status: 'ok' | 'fail' | 'check'; label: string; actual: string; required: string; clause: string }[];
+    footer: string;
+  };
+}
+
+type Pdf = InstanceType<typeof import('jspdf').jsPDF>;
+
+/** The plan check on a page of its own: a row per rule, with what's needed, what the plan has, and the clause. */
+function checkPage(pdf: Pdf, check: NonNullable<PdfDetails['check']>, title: string) {
+  pdf.addPage('a4', 'portrait');
+  const w = 210;
+  let y = 20;
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(14);
+  pdf.text(`Plan check · ${title}`, MARGIN, y);
+  y += 7;
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(9);
+  pdf.text(pdf.splitTextToSize(check.heading, w - 2 * MARGIN), MARGIN, y);
+  y += 10;
+  const cols = [MARGIN, MARGIN + 16, MARGIN + 62, MARGIN + 116, w - MARGIN - 28];
+  pdf.setFont('helvetica', 'bold');
+  ['', 'Rule', 'The plan', 'Required', 'Clause'].forEach((h, i) => pdf.text(h, cols[i], y));
+  pdf.setFont('helvetica', 'normal');
+  y += 2;
+  pdf.line(MARGIN, y, w - MARGIN, y);
+  y += 5;
+  const word = { ok: 'OK', fail: 'NOT MET', check: 'CHECK' } as const;
+  for (const r of check.rows) {
+    const cells = [
+      [word[r.status]],
+      pdf.splitTextToSize(r.label, 44),
+      pdf.splitTextToSize(r.actual, 52),
+      pdf.splitTextToSize(r.required, 70 - 28 + 18),
+      pdf.splitTextToSize(r.clause, 28),
+    ];
+    if (r.status === 'fail') pdf.setTextColor(180, 30, 30);
+    cells.forEach((c, i) => pdf.text(c, cols[i], y));
+    pdf.setTextColor(0);
+    y += Math.max(...cells.map((c) => c.length)) * 4 + 3;
+    if (y > 270) {
+      pdf.addPage('a4', 'portrait');
+      y = 20;
+    }
+  }
+  y += 4;
+  pdf.setTextColor(110);
+  pdf.text(pdf.splitTextToSize(check.footer, w - 2 * MARGIN), MARGIN, y);
+  pdf.setTextColor(0);
 }
 
 /** Export the plan as a print-ready PDF at a true architectural scale, with a title block. */
@@ -90,8 +144,11 @@ export async function exportPdf(content: PlanImageContent, area: Bounds, details
   pdf.text(new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), right, tbY + 3, {
     align: 'right',
   });
+  if (details.bylawNote) pdf.text(details.bylawNote, right, tbY + 9, { align: 'right' });
   pdf.setTextColor(120);
-  pdf.text(`Drawn with Mimar ${details.version}`, right, tbY + 9, { align: 'right' });
+  pdf.text(`Drawn with Mimar ${details.version}`, right, tbY + (details.bylawNote ? 14 : 9), { align: 'right' });
+  pdf.setTextColor(0);
+  if (details.check) checkPage(pdf, details.check, details.title);
 
   const url = URL.createObjectURL(pdf.output('blob'));
   downloadUrl(url, details.filename);

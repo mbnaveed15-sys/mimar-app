@@ -39,6 +39,7 @@ import {
   ungroup,
 } from '../lib/selection';
 import { boundaryWallLines, stairLayout } from '../lib/site';
+import { plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
 import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from '../lib/layers';
 import { SLAB_MM } from '../three/model';
@@ -81,6 +82,10 @@ export interface StructureSpec {
 
 export interface SiteSpec {
   setbacks: { front: number; rear: number; sides: number };
+  /** Bylaws for new plots: their setbacks come from the authority's table. */
+  authority?: AuthorityId;
+  /** A plot size picked from the presets (feet, width along the road × depth): the next click places it. */
+  plotSize?: { w: number; d: number };
   boundaryWall: boolean;
   /** Type of new walls drawn with the Wall and Rectangle tools. */
   wallKind: 'normal' | 'boundary' | 'parapet';
@@ -190,6 +195,8 @@ export interface PlannerState {
   setSite: (patch: Partial<SiteSpec>) => void;
   /** A plot with its setbacks, and a boundary wall round it when that option is on. */
   addPlot: (points: Point[]) => void;
+  /** Put a plot under an authority's bylaws (or none), taking its setbacks from their table. */
+  setPlotAuthority: (plotId: Id, authority: AuthorityId | undefined) => void;
   addStair: (p: Point) => void;
   /** Parapet walls round a roof slab, on the floor above it (a Roof floor is added if needed). */
   addParapetAround: (slabId: Id) => void;
@@ -310,7 +317,12 @@ export interface PlannerState {
 
   setUnits: (units: Units) => void;
   setShowDimensions: (show: boolean) => void;
-  setLayer: (layer: 'showFurniture' | 'showRoomLabels' | 'showRoomFills' | 'exportLines', show: boolean) => void;
+  setLayer: (
+    layer: 'showFurniture' | 'showRoomLabels' | 'showRoomFills' | 'exportLines' | 'pdfCheck',
+    show: boolean,
+  ) => void;
+  /** Add the plan check page to PDFs. */
+  pdfCheck: boolean;
   /** Library item placed by the Furniture tool. */
   furnitureKind: FurnitureKind;
   setFurnitureKind: (kind: FurnitureKind) => void;
@@ -388,7 +400,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
     };
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
-      const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines } = get();
+      const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
       const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars } = get();
       savePrefs({
         units,
@@ -397,6 +409,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         showRoomLabels,
         showRoomFills,
         exportLines,
+        pdfCheck,
         mode,
         wallThicknessMm,
         marlaSqFt,
@@ -472,6 +485,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       showRoomLabels: prefs.showRoomLabels,
       showRoomFills: prefs.showRoomFills,
       exportLines: prefs.exportLines,
+      pdfCheck: prefs.pdfCheck,
       furnitureKind: DEFAULT_FURNITURE_KIND,
       mode: prefs.mode,
       wallThicknessMm: prefs.wallThicknessMm,
@@ -1223,7 +1237,12 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       setSite: (patch) => set((st) => ({ site: { ...st.site, ...patch } })),
       addPlot: (points) => {
         const { site } = get();
-        const plot: PlanElement = { id: newId(), type: 'plot', points, front: 2, setbacks: { ...site.setbacks } };
+        let plot: Plot = { id: newId(), type: 'plot', points, front: 2, setbacks: { ...site.setbacks } };
+        if (site.authority) {
+          plot = { ...plot, authority: site.authority };
+          const rule = plotRule(plot)?.rule;
+          if (rule) plot = { ...plot, setbacks: plotSetbacks(rule) };
+        }
         get().beginBatch();
         updateElements((els) => [...els, plot]);
         if (site.boundaryWall) {
@@ -1242,6 +1261,14 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           updateElements((els) => [...els, ...walls]);
         }
         get().endBatch();
+      },
+      setPlotAuthority: (plotId, authority) => {
+        const plot = get().doc.elements.find((el): el is Plot => el.type === 'plot' && el.id === plotId);
+        if (!plot) return;
+        const next: Plot = { ...plot, authority };
+        if (!authority) delete next.authority;
+        const rule = authority ? plotRule(next)?.rule : null;
+        get().updateElement(rule ? { ...next, setbacks: plotSetbacks(rule) } : next);
       },
       addStair: (p) => {
         const { site, doc, wallHeightMm } = get();

@@ -95,7 +95,7 @@ test('tool bars dock at any side, next to each other, wrap instead of scrolling,
   await page.getByRole('radio', { name: 'Pro' }).click();
   await page.setViewportSize({ width: 1200, height: 520 });
   await expect(left.locator('[data-bar]').first()).toBeVisible();
-  const scrolls = await left.evaluate((el) => el.scrollHeight > el.clientHeight + 1);
-  expect(scrolls).toBe(false);
+  // The dock re-packs after its ResizeObserver fires, so wait for it rather than reading once.
+  await expect.poll(() => left.evaluate((el) => el.scrollHeight > el.clientHeight + 1)).toBe(false);
   await expect(left.getByRole('button', { name: 'Scale', exact: true })).toBeInViewport();
 });

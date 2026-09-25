@@ -11,6 +11,7 @@ import type { Opening, PlanElement, Stair, Wall } from '../types';
 import { thicknessOf } from '../walls';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { LengthField } from './LengthField';
+import { PlotBylawsPanel } from './PlotBylaws';
 import { SelectionPanel } from './SelectionPanel';
 
 /** Common room names in Pakistani homes, offered as suggestions. */
@@ -326,19 +327,7 @@ export function Inspector() {
 
             {el.type === 'plot' && (
               <>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['front', 'rear', 'sides'] as const).map((side) => (
-                    <LengthField
-                      key={side}
-                      id={`plot-${side}`}
-                      label={side === 'front' ? 'Front' : side === 'rear' ? 'Rear' : 'Sides'}
-                      mm={el.setbacks[side]}
-                      units={units}
-                      min={0}
-                      onCommit={(mm) => updateElement({ ...el, setbacks: { ...el.setbacks, [side]: mm } })}
-                    />
-                  ))}
-                </div>
+                <PlotBylawsPanel plot={el} />
                 <button
                   className={btn}
                   onClick={() => updateElement({ ...el, front: (el.front + 1) % el.points.length })}

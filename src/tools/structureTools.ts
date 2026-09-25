@@ -1,6 +1,6 @@
 import type { Inference } from '../lib/inference';
 import type { Measure } from '../lib/measure';
-import { formatLength } from '../lib/units';
+import { formatLength, MM_PER_FOOT } from '../lib/units';
 import { plotRect, stairLayout } from '../lib/site';
 import { detectRoom } from '../rooms';
 import { SLAB_MM } from '../three/model';
@@ -77,10 +77,17 @@ export function structurePress(store: Store, inf: Inference) {
       if (d?.type !== 'slab') return s.setDraft({ type: 'slab', x1: p.x, y1: p.y, x2: p.x, y2: p.y });
       if (Math.abs(p.x - d.x1) > 1 && Math.abs(p.y - d.y1) > 1) s.addSlab(rectPoints({ x: d.x1, y: d.y1 }, p));
       return s.setDraft(null);
-    case 'plot':
+    case 'plot': {
+      // A preset size: one click places the plot, this corner at the back left.
+      const size = s.site.plotSize;
+      if (size && d?.type !== 'plot') {
+        const u = (feet: number) => (feet * MM_PER_FOOT) / MM_PER_UNIT;
+        return s.addPlot(plotRect(p, { x: p.x + u(size.w), y: p.y + u(size.d) }));
+      }
       if (d?.type !== 'plot') return s.setDraft({ type: 'plot', x1: p.x, y1: p.y, x2: p.x, y2: p.y });
       if (Math.abs(p.x - d.x1) > 1 && Math.abs(p.y - d.y1) > 1) s.addPlot(plotRect({ x: d.x1, y: d.y1 }, p));
       return s.setDraft(null);
+    }
     case 'stairs':
       s.addStair(p);
       return;
@@ -199,7 +206,9 @@ export function structureHint(s: PlannerState): string {
     case 'plot':
       return d?.type === 'plot'
         ? `Click the opposite corner, or type width, depth (e.g. 25',45'). The bottom edge faces the road.`
-        : 'Click or drag the plot. Setbacks and a boundary wall are added from the options on the right.';
+        : s.site.plotSize
+          ? `Click where the plot's back-left corner goes (${s.site.plotSize.w}' × ${s.site.plotSize.d}'; the road is along the bottom).`
+          : 'Click or drag the plot, or pick a size on the right. Setbacks and a boundary wall are added for you.';
     case 'stairs':
       return 'Click to place a stair. Pick straight, L, U or a ramp on the right; risers are worked out for you.';
     default:

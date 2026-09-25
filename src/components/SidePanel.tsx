@@ -9,6 +9,7 @@ import { LayersPanel } from './LayersPanel';
 import { MaterialsPanel } from './MaterialsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { SiteOptions, WallKindPicker } from './SiteOptions';
+import { PlanCheckPanel } from './PlanCheckPanel';
 import { ShapeOptions } from './ShapeOptions';
 import { StructureOptions } from './StructureOptions';
 import { ThemePicker } from './ThemePicker';
@@ -106,6 +107,7 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
         {(!hasSelection || tool === 'shape') && <ToolOptions />}
         <Inspector />
       </div>
+      {section('check', 'Plan check', <PlanCheckPanel />)}
       {section('materials', 'Materials', <MaterialsPanel />)}
       {section('components', 'Components', <ComponentsPanel />)}
       {section('layers', 'Layers', <LayersPanel />)}

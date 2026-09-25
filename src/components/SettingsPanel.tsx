@@ -4,6 +4,8 @@ import type { MarlaSqFt, PaperSize, Units } from '../types';
 import { LengthField } from './LengthField';
 
 export function SettingsPanel() {
+  const pdfCheck = usePlanner((s) => s.pdfCheck);
+  const setLayer = usePlanner((s) => s.setLayer);
   const units = usePlanner((s) => s.units);
   const setUnits = usePlanner((s) => s.setUnits);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
@@ -66,6 +68,10 @@ export function SettingsPanel() {
         <option value="A4">A4</option>
         <option value="A3">A3</option>
       </select>
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={pdfCheck} onChange={(e) => setLayer('pdfCheck', e.target.checked)} />
+        Add the plan check page to PDFs
+      </label>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { planBounds } from '../geometry';
 import { roomAreaSqMm } from '../rooms';
 import { plannerStore } from '../store/plannerStore';
 import { exportPdf } from './exportPdf';
+import { planCheck } from './planCheck';
 import { downloadUrl, exportPng } from './exportPng';
 import { planToDxf } from './exportDxf';
 import { modelMeshes, toDae, toGlb, toObj } from './export3d';
@@ -47,7 +48,8 @@ export function exportPlanPng() {
 
 /** Download a print-ready PDF at a true scale. */
 export function exportPlanPdf() {
-  const { paper, units, marlaSqFt, setWarning } = plannerStore.getState();
+  const { paper, units, marlaSqFt, setWarning, pdfCheck, doc, wallHeightMm } = plannerStore.getState();
+  const check = planCheck(doc, { wallHeightMm, units });
   const name = exportName();
   const covered = plannerStore
     .getState()
@@ -60,6 +62,18 @@ export function exportPlanPdf() {
     areaNote: covered ? `Covered area: ${formatArea(covered, units)}  ·  ${formatMarla(covered, marlaSqFt)}` : '',
     version: __APP_VERSION__,
     filename: `${name}.pdf`,
+    bylawNote: check
+      ? `Bylaws: ${check.authority.name}${check.authority.status === 'provisional' ? ' (provisional)' : ''}${check.rule ? `, ${check.rule.label}` : ''}`
+      : '',
+    check:
+      check && pdfCheck
+        ? {
+            heading: `${check.authority.name}${check.rule ? ` · ${check.rule.label}` : ''} · ${check.authority.source}`,
+            rows: check.rows,
+            footer:
+              'Indicative only: measured from the drawing (areas and heights are approximate). Check with the authority before submitting.',
+          }
+        : undefined,
   }).catch((e) => setWarning(`The PDF could not be created. ${String(e)}`));
 }
 

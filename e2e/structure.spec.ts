@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { at, ready } from './helpers';
+import { at, openSection, ready } from './helpers';
 
 const FT = 30.48;
 const P = (x: number, y: number): [number, number] => [x * FT, y * FT];
@@ -121,4 +121,44 @@ test('raise an item above its floor, by its height or with Alt+arrows, and move 
   await page.keyboard.press('Enter');
   await page.keyboard.press('Control+1');
   await expect(page.getByTestId('elevation-tag')).toHaveText(`+2' 0"`);
+});
+
+test('a plot under CDA bylaws: preset size, setbacks from the table, and a live plan check', async ({ page }) => {
+  const click = async (x: number, y: number) => page.mouse.click(...(await at(page, ...P(x, y))));
+  await page.keyboard.press('Shift+P');
+  await page.getByLabel('Bylaws').selectOption('cda');
+  await page.getByRole('button', { name: '50×90' }).click();
+  await expect(page.getByTestId('tool-hint')).toContainText("50' × 90'");
+  await click(0, 0);
+  const check = page.getByTestId('plan-check');
+  await expect(check).toContainText('Type C, 400–1000 sq yd');
+  await page.keyboard.press('Shift+Z');
+
+  // A house inside the building line passes; one reaching into the 15' front setback doesn't.
+  await page.keyboard.press('r');
+  await click(6, 12);
+  await click(44, 70);
+  await expect(page.getByTestId('plan-check-summary')).toHaveText('No problems found');
+  await page.keyboard.press('l');
+  await click(6, 70);
+  await click(6, 82);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('plan-check-summary')).toHaveText('1 rule not met');
+  await expect(page.locator('[data-check-mark="fail"]')).toHaveCount(1);
+  // Clicking the row selects what breaks it.
+  await check.locator('[data-check="setbacks"]').click();
+  await expect(page.getByText('Selected: wall')).toBeVisible();
+
+  // The plot shows its bylaws and setbacks; the PDF comes out with its check page.
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Space');
+  // Lock the walls, so a click on the plot line picks the plot rather than its boundary wall.
+  await openSection(page, 'Layers');
+  await page.getByRole('button', { name: 'Lock Walls' }).click();
+  await click(25, 90);
+  await expect(page.getByTestId('plot-rule')).toContainText('Type C');
+  await expect(page.getByLabel('Front', { exact: true })).toHaveValue(`15' 0"`);
+  const download = page.waitForEvent('download');
+  await page.keyboard.press('Control+p');
+  expect((await download).suggestedFilename()).toMatch(/\.pdf$/);
 });

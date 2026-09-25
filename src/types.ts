@@ -1,5 +1,6 @@
 import type { LayerState } from './lib/layers';
 import type { FurnitureKind } from './furniture/catalog';
+import type { AuthorityId } from './lib/bylaws';
 
 export type Id = string;
 
@@ -172,7 +173,10 @@ export interface Plot extends Grouped {
   points: Point[];
   /** Index of the edge (points[i] to points[i+1]) along the road. */
   front: number;
-  setbacks: { front: number; rear: number; sides: number };
+  /** Side 1 (`sides`) is the side after the road edge going round the outline; side 2 the other (as side 1 when missing). */
+  setbacks: { front: number; rear: number; sides: number; side2?: number };
+  /** The authority whose bylaws apply (setbacks and the plan check). */
+  authority?: AuthorityId;
   material?: Id;
 }
 

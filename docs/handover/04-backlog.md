@@ -4,13 +4,7 @@ In the order agreed with the owner. Confirm the plan with the owner before start
 
 ## Next (agreed order)
 
-1. **1.22 Bylaws and plan check** (plan approved by the owner): authority + plot presets that fill setbacks from
-   size and frontage (separate Side 1/Side 2, choose which side), a live "Plan check" panel (setbacks against
-   walls/columns/blocks with offenders highlighted, coverage, first floor vs ground, storeys and height, plinth,
-   boundary wall, smallest room and house), each row with its clause; the check table and a title block in the
-   PDF. Figures and sources: `06-bylaws.md` (CDA and DHA I&R official; DHA Lahore, Bahria, LDA setbacks
-   provisional).
-2. **1.23 Plan hints**: rooms reachable through doors, bedrooms/kitchen on an outside wall, minimum sizes by name.
+1. **1.23 Plan hints**: rooms reachable through doors, bedrooms/kitchen on an outside wall, minimum sizes by name.
 
 ## Proposed next phases
 
@@ -27,6 +21,9 @@ In the order agreed with the owner. Confirm the plan with the owner before start
   highlighted part.
 - Moving up and down (blue axis) only works in 3D; in 2D use the "Height above floor" field or Alt+↑/↓.
 - Rooms (floor finishes) and plots can't be raised; a raised wall doesn't carry its room's floor up with it.
+- Plan check: coverage and total areas are rooms + walls (about); height adds the floors, slabs and parapets from
+  the ground; porches can't be told from other items in a setback, so columns, slabs and stairs there are "check".
+  Only the first plot with bylaws is checked. Mumty size and car porch area aren't checked yet.
 - In 2D, Push/Pull can't reach heights (wall tops, slab thickness) or round column sizes; those are in 3D or the
   side panel. Shapes on walls are pushed in 3D (or given a Depth in the side panel).
 - A shape drawn on a wall is sized by its outline's box: an arch drawn "upside down" still becomes an arch with
