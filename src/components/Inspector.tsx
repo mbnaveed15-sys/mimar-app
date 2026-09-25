@@ -4,6 +4,7 @@ import { stairLayout } from '../lib/site';
 import { SLAB_MM, WINDOW_SILL_MM } from '../three/model';
 import { formatArea, formatLength, formatMarla } from '../lib/units';
 import { WINDOW_HEIGHT_MM } from '../lib/shapes';
+import { withShapeDepth } from '../lib/pushPull';
 import { roomAreaSqMm } from '../rooms';
 import { KIND_HEIGHT_MM, MM_PER_UNIT, usePlanner } from '../store/plannerStore';
 import type { Opening, PlanElement, Stair, Wall } from '../types';
@@ -37,7 +38,8 @@ function itemName(el: PlanElement): string {
   if (el.type === 'furniture' && el.kind) return FURNITURE_CATALOG[el.kind].name;
   if (el.type === 'block')
     return el.heightMm > 0 ? `block (${SHAPE_NAMES[el.shape]})` : `${SHAPE_NAMES[el.shape]} shape`;
-  if (el.type === 'window' && el.flat) return 'shape on a wall';
+  if (el.type === 'window' && el.flat)
+    return (el.depthMm ?? 0) < 0 ? 'niche' : (el.depthMm ?? 0) > 0 ? 'projection' : 'shape on a wall';
   if (el.type === 'window' && el.shape) return el.open ? `${el.shape} opening` : `${el.shape} window`;
   if (el.type === 'window' && el.open) return 'opening';
   return el.type;
@@ -67,12 +69,7 @@ export function Inspector() {
   const materialName = (id?: string) => doc.materials.find((m) => m.id === id)?.name;
   const btn = 'm-btn';
   /** Cut a shape drawn on a wall right through it, as an open hole. */
-  const cutThrough = (w: Opening) => {
-    const cut = { ...w, open: true };
-    delete cut.flat;
-    delete cut.face;
-    updateElement(cut);
-  };
+  const cutThrough = (w: Opening) => updateElement(withShapeDepth(w, undefined, -Infinity).el);
   /** Change a stair and work its risers and footprint out again. */
   const restair = (st: Stair, patch: Partial<Stair>) => {
     const next = { ...st, ...patch };
@@ -195,8 +192,19 @@ export function Inspector() {
                 )}
                 {el.type === 'window' && el.flat && (
                   <>
+                    <LengthField
+                      id="shape-depth"
+                      label="Depth (minus: niche into the wall; plus: projection out)"
+                      mm={el.depthMm ?? 0}
+                      units={units}
+                      min={-3000}
+                      onCommit={(mm) => {
+                        const wall = doc.elements.find((w): w is Wall => w.type === 'wall' && w.id === el.wallId);
+                        updateElement(withShapeDepth(el, wall, mm).el);
+                      }}
+                    />
                     <div className="text-muted">
-                      Drawn on the wall's face. Push it through with Push/Pull (P) in 3D to cut the opening, or:
+                      Push/Pull (P) it in for a niche, all the way for an opening, or out for a chajja or ledge. Or:
                     </div>
                     <button className={btn} onClick={() => cutThrough(el)}>
                       Cut through the wall

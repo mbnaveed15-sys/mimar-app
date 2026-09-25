@@ -99,6 +99,11 @@ export interface Opening extends Grouped {
   flat?: boolean;
   /** For a flat shape: the face it is drawn on (1 = the left side going from the wall's start to its end). */
   face?: 1 | -1;
+  /**
+   * For a shape on a wall that isn't cut through, in millimetres: below zero a niche that deep,
+   * above zero a projection (a chajja, ledge or pilaster) standing out that far. Flat when missing.
+   */
+  depthMm?: number;
   material?: Id;
 }
 

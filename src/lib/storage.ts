@@ -258,6 +258,7 @@ function windowShapeOf(raw: Record<string, unknown>) {
     ...(shape === 'polygon' && profile.length >= 3 ? { profile } : {}),
     ...(raw.open === true ? { open: true } : {}),
     ...(raw.flat === true ? { flat: true, face: raw.face === -1 ? (-1 as const) : (1 as const) } : {}),
+    ...(raw.flat === true && inRange(raw.depthMm, -3000, 3000) && raw.depthMm !== 0 ? { depthMm: raw.depthMm } : {}),
   };
 }
 

@@ -206,6 +206,8 @@ describe('SketchUp-style tools', () => {
     // A stand-in for the 3D view: the pointer is on the wall's top, and has moved 0.6 m up from it.
     let along = 0;
     setPicker({
+      is3d: true,
+      highlight: () => {},
       faceAt: () => ({ id: wall.id, point: [1, 3.048, 0], normal: [0, 1, 0] }),
       onPlane: () => null,
       alongLine: () => along,

@@ -77,6 +77,32 @@ const ELEMENTS: PlanElement[] = [
   },
   { id: 'flat', type: 'window', wallId: 'w3', x: 0, y: 60, width: 40, angle: -90, flat: true, face: 1 },
   {
+    id: 'niche',
+    type: 'window',
+    wallId: 'w3',
+    x: 0,
+    y: 360,
+    width: 30,
+    angle: -90,
+    flat: true,
+    face: 1,
+    depthMm: -100,
+  },
+  {
+    id: 'ledge',
+    type: 'window',
+    wallId: 'w1',
+    x: 300,
+    y: 0,
+    width: 60,
+    angle: 0,
+    flat: true,
+    face: -1,
+    depthMm: 600,
+    sillMm: 2134,
+    heightMm: 100,
+  },
+  {
     id: 'blk',
     type: 'block',
     shape: 'rect',
@@ -177,10 +203,12 @@ describe('every kind of item', () => {
       'C-PROP',
       'A-FLOR-STRS',
       'A-FLOR-BLCK',
+      'A-WALL-PROJ',
     ])
       expect(dxf).toContain(`\r\n8\r\n${layer}\r\n`);
     // Round and arched openings are cut out of wall panels; the arch has glass; the flat shape is a skin.
-    expect(model.panels.filter((p) => p.role === 'wall')).toHaveLength(2);
+    // …plus two for the niche (the wall behind it, and the cut layer) and one for the ledge.
+    expect(model.panels.filter((p) => p.role === 'wall')).toHaveLength(5);
     expect(model.panels.filter((p) => p.role === 'glass')).toHaveLength(1);
     expect(model.panels.filter((p) => p.role === 'shape')).toHaveLength(1);
     expect(model.blocks.map((b) => b.role)).toEqual(['block', 'shape']);

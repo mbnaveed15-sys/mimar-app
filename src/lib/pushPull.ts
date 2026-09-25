@@ -5,7 +5,7 @@
 import { centroid, wallLength } from '../geometry';
 import { MM_PER_UNIT } from './scale';
 import { signedArea } from './shapes';
-import type { Block, Column, Id, PlanDoc, PlanElement, Point, PushFace, Slab, Vec3, Wall } from '../types';
+import type { Block, Column, Id, Opening, PlanDoc, PlanElement, Point, PushFace, Slab, Vec3, Wall } from '../types';
 import { thicknessOf } from '../walls';
 
 /** Plan units per scene metre (scene metres are x, z; plan units are 10 mm). */
@@ -54,8 +54,11 @@ export function faceOf(el: PlanElement, normal: Vec3, point: Vec3): PushFace | n
       if (down) return { part: 'bottom' };
       return { part: 'edge', index: nearestEdge(el.points, { x: point[0] * UNITS_PER_M, y: point[2] * UNITS_PER_M }) };
     }
-    case 'window':
-      return el.flat ? { part: 'into' } : null;
+    case 'window': {
+      // A shape on a wall is pushed in or pulled out by its face, not its sides.
+      const a = (el.angle * Math.PI) / 180;
+      return el.flat && Math.abs(-nx * Math.sin(a) + nz * Math.cos(a)) > 0.7 ? { part: 'into' } : null;
+    }
     default:
       return null;
   }
@@ -163,17 +166,34 @@ export function pushPull(
     case 'window': {
       if (face.part !== 'into' || !el.flat) return { doc, result: 'none' };
       const wall = doc.elements.find((x): x is Wall => x.type === 'wall' && x.id === el.wallId);
-      const through = wall ? thicknessOf(wall) * MM_PER_UNIT : 230;
-      // Pushed in (against the way the face points) at least half-way: cut it right through.
-      if (-mm < through / 2) return { doc, result: 'none' };
-      const cut = { ...el, open: true };
-      delete cut.flat;
-      delete cut.face;
-      return { ...replace(cut), result: 'cut' };
+      const next = withShapeDepth(el, wall, (el.depthMm ?? 0) + mm);
+      return { ...replace(next.el), result: next.cut ? 'cut' : 'changed' };
     }
     default:
       return { doc, result: 'none' };
   }
+}
+
+/** The least wall left behind a niche; pushed deeper than that, a shape cuts right through. */
+export const NICHE_BACK_MM = 50;
+/** How far a projection (chajja, ledge) can stand out. */
+export const MAX_PROJECTION_MM = 3000;
+
+/**
+ * A shape on a wall given a depth: a niche (below zero), flat (zero), a projection (above zero),
+ * or cut right through as an open hole when pushed to within 2" of the wall's far face.
+ */
+export function withShapeDepth(win: Opening, wall: Wall | undefined, depthMm: number): { el: Opening; cut: boolean } {
+  const through = wall ? thicknessOf(wall) * MM_PER_UNIT : 230;
+  const next = { ...win };
+  delete next.depthMm;
+  if (depthMm <= -(through - NICHE_BACK_MM)) {
+    delete next.flat;
+    delete next.face;
+    return { el: { ...next, open: true }, cut: true };
+  }
+  const d = round(Math.min(MAX_PROJECTION_MM, depthMm));
+  return { el: d ? { ...next, depthMm: d } : next, cut: false };
 }
 
 /** A wall or beam with one end moved along it by d (plan units); it can't get shorter than 10 cm. */

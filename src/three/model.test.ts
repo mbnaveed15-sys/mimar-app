@@ -201,4 +201,42 @@ describe('3D site', () => {
     expect(glass.y0).toBeCloseTo(1.2);
     expect(glass.h).toBeCloseTo(2.134 - 0.914);
   });
+
+  it('builds a niche as the wall behind plus a layer with the outline cut out, and a projection out front', () => {
+    const niche: PlanElement = {
+      id: 'n',
+      type: 'window',
+      wallId: 'w',
+      x: 300,
+      y: 0,
+      angle: 0,
+      width: 60,
+      flat: true,
+      face: 1,
+      depthMm: -100,
+    };
+    const ledge: PlanElement = {
+      id: 'p',
+      type: 'window',
+      wallId: 'w',
+      x: 700,
+      y: 0,
+      angle: 0,
+      width: 60,
+      flat: true,
+      face: -1,
+      depthMm: 300,
+    };
+    const { panels } = buildModel(docWith(wall, niche, ledge), opts);
+    const behind = panels.find((p) => p.id === 'n')!;
+    const front = panels.find((p) => p.holes?.length)!;
+    expect(behind.depth).toBeCloseTo(0.13);
+    expect(front.depth).toBeCloseTo(0.1);
+    // Face 1 is +z for a wall along +x: the cut layer is on that side, the wall behind on the other.
+    expect(front.z).toBeCloseTo(0.065);
+    expect(behind.z).toBeCloseTo(-0.05);
+    const out = panels.find((p) => p.id === 'p')!;
+    expect(out).toMatchObject({ role: 'wall', depth: 0.3 });
+    expect(out.z).toBeCloseTo(-(0.115 + 0.15));
+  });
 });
