@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
@@ -28,8 +29,38 @@ const cspPlugin = (): Plugin => ({
   ],
 });
 
+/** Every file in a folder, as paths relative to it with forward slashes. */
+function listFiles(dir: string, root = dir): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
+    d.isDirectory() ? listFiles(join(dir, d.name), root) : [relative(root, join(dir, d.name)).split('\\').join('/')],
+  );
+}
+
+/**
+ * Writes the offline service worker for the web version after each build, with the exact list of
+ * files to keep. Its text changes with every release, which is how browsers learn of an update.
+ */
+const serviceWorkerPlugin = (): Plugin => {
+  let outDir = 'dist';
+  return {
+    name: 'mimar-service-worker',
+    apply: 'build',
+    configResolved: (config) => {
+      outDir = resolve(config.root, config.build.outDir);
+    },
+    closeBundle: () => {
+      const files = listFiles(outDir).filter((f) => f !== 'sw.js' && !f.endsWith('.map'));
+      const template = readFileSync(new URL('./src/sw-template.js', import.meta.url), 'utf8');
+      const sw = template
+        .replace('__VERSION__', JSON.stringify(pkg.version))
+        .replace('__FILES__', JSON.stringify(['./', ...files.map((f) => `./${f}`)]));
+      writeFileSync(join(outDir, 'sw.js'), sw);
+    },
+  };
+};
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), cspPlugin()],
+  plugins: [react(), tailwindcss(), cspPlugin(), serviceWorkerPlugin()],
   base: './',
   root: '.',
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },

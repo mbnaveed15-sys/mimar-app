@@ -1,4 +1,5 @@
 import { gridLevels, type GridLook } from '../lib/grid';
+import type { GridColors } from '../lib/prefs';
 import { PLAN } from '../theme/plan';
 import type { Bounds } from '../types';
 
@@ -11,18 +12,26 @@ interface Props {
   k: number;
   /** Makes the pattern ids unique on the page. */
   id: string;
+  /** Your own line colours, instead of the theme's. */
+  colors?: GridColors;
 }
 
 /** The plan grid as lines or dots, with a heavier line every few steps. */
-export function PlanGrid({ area, step, look, k, id }: Props) {
+export function PlanGrid({ area, step, look, k, id, colors }: Props) {
   const levels = gridLevels(step, look.major, k);
   // 50 is the theme's own grid colour; below fades it, above makes the lines thicker.
   const opacity = look.strength >= 50 ? 1 : 0.15 + (0.85 * look.strength) / 50;
   const weight = look.strength <= 50 ? 1 : 1 + (look.strength - 50) / 50;
   const layers: { size: number; color: string; width: number; dot: number }[] = [];
-  if (levels.minor) layers.push({ size: levels.minor, color: PLAN.grid, width: k * weight, dot: 1.1 * k * weight });
+  if (levels.minor)
+    layers.push({ size: levels.minor, color: colors?.minor ?? PLAN.grid, width: k * weight, dot: 1.1 * k * weight });
   if (levels.major)
-    layers.push({ size: levels.major, color: PLAN.gridMajor, width: 1.25 * k * weight, dot: 1.8 * k * weight });
+    layers.push({
+      size: levels.major,
+      color: colors?.major ?? PLAN.gridMajor,
+      width: 1.25 * k * weight,
+      dot: 1.8 * k * weight,
+    });
 
   return (
     <g data-testid={`${id}-grid`} opacity={opacity} pointerEvents="none">

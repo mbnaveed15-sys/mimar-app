@@ -3,6 +3,7 @@ import { usePlanner } from '../store/plannerStore';
 import type { GridPrefs } from '../lib/prefs';
 import type { Units } from '../types';
 import { LengthField } from './LengthField';
+import { themeColor } from '../theme/themes';
 
 /** Grid spacing presets for each unit system, in millimetres. */
 const SPACING_PRESETS: Record<Units, { mm: number; label: string }[]> = {
@@ -114,6 +115,8 @@ export function GridSettings() {
         />
       </label>
 
+      <GridColorPickers />
+
       <label htmlFor="grid-snap" className="flex items-center gap-1.5">
         <input
           id="grid-snap"
@@ -125,4 +128,54 @@ export function GridSettings() {
       </label>
     </fieldset>
   );
+}
+
+/** Minor and major line colours for the current theme, each with a way back to the theme's own. */
+function GridColorPickers() {
+  const theme = usePlanner((s) => s.theme);
+  const colors = usePlanner((s) => s.grid.colors[theme]);
+  const setGridColor = usePlanner((s) => s.setGridColor);
+  const lines = [
+    { line: 'minor', label: 'Minor lines', cssVar: '--plan-grid' },
+    { line: 'major', label: 'Major lines', cssVar: '--plan-grid-major' },
+  ] as const;
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-muted">Colours (this theme)</span>
+      {lines.map(({ line, label, cssVar }) => {
+        const own = colors?.[line];
+        // The theme's colour, read fresh so it follows theme changes.
+        const shown = own ?? toHex(themeColor(cssVar, '#cccccc'));
+        return (
+          <div key={line} className="flex items-center gap-2">
+            <input
+              type="color"
+              aria-label={`${label} colour`}
+              value={shown}
+              onChange={(e) => setGridColor(line, e.target.value)}
+              className="h-6 w-9 cursor-pointer rounded-sm border"
+            />
+            <span className="flex-1">{label}</span>
+            <button className="m-btn px-2 py-0.5" disabled={!own} onClick={() => setGridColor(line, null)}>
+              Theme default
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** #rgb or rgb() from CSS as #rrggbb, which colour inputs need. */
+function toHex(css: string): string {
+  const c = css.trim();
+  if (/^#[0-9a-f]{6}$/i.test(c)) return c.toLowerCase();
+  if (/^#[0-9a-f]{3}$/i.test(c)) return `#${[...c.slice(1)].map((x) => x + x).join('')}`.toLowerCase();
+  const m = c.match(/\d+/g);
+  return m && m.length >= 3
+    ? `#${m
+        .slice(0, 3)
+        .map((n) => Number(n).toString(16).padStart(2, '0'))
+        .join('')}`
+    : '#cccccc';
 }

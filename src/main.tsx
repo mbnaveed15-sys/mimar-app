@@ -5,9 +5,12 @@ import '@fontsource-variable/instrument-sans/wdth.css';
 import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
 import './index.css';
+import { registerServiceWorker } from './lib/pwa';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
   </StrictMode>,
 );
+
+registerServiceWorker();

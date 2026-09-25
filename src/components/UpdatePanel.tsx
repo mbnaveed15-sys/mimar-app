@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { onWebUpdate } from '../lib/pwa';
 import { describeUpdate, type UpdateStatus } from '../lib/updates';
 import { Mark } from './Mark';
 
@@ -17,6 +18,10 @@ export function UpdatePanel() {
       off();
     };
   }, [bridge]);
+
+  // The web version: a new release has been downloaded in the background.
+  const [applyWebUpdate, setApplyWebUpdate] = useState<(() => void) | null>(null);
+  useEffect(() => onWebUpdate((apply) => setApplyWebUpdate(() => apply)), []);
 
   const busy = status.state === 'checking' || status.state === 'downloading';
   const btn = 'm-btn text-xs';
@@ -58,6 +63,26 @@ export function UpdatePanel() {
         <button onClick={() => bridge.openDownload()} className="m-btn m-btn-primary text-xs">
           Download Mimar {status.latest}
         </button>
+      )}
+      {applyWebUpdate && (
+        <>
+          <p role="status" className="font-medium text-accent-ink">
+            A new version of Mimar is ready. Your plan is kept.
+          </p>
+          <button onClick={applyWebUpdate} className="m-btn m-btn-primary text-xs">
+            Reload to update
+          </button>
+        </>
+      )}
+      {!bridge && (
+        <a
+          href="https://github.com/mbnaveed15-sys/mimar-app/releases/latest"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+        >
+          Get the Windows app
+        </a>
       )}
     </div>
   );
