@@ -425,6 +425,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       kind: 'radio',
       checked: (s) => s.mode === 'pro',
     },
+    { id: 'view.resetToolbars', label: 'Reset tool bars', menu: 'view', group: 4, run: () => st().resetToolbars() },
     ...THEMES.map((t): Command => ({
       id: `view.theme.${t.id}`,
       label: `Theme: ${t.name}`,

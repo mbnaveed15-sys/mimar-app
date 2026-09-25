@@ -13,6 +13,7 @@ import {
 import { DEFAULT_FILE_NAME } from '../lib/files';
 import { newId } from '../lib/ids';
 import { GRID_MAX_MM, GRID_MIN_MM, loadPrefs, savePrefs, type GridPrefs, type Prefs } from '../lib/prefs';
+import { DEFAULT_TOOLBARS, moveToolbar, type DockArea, type ToolbarId, type ToolbarLayout } from '../lib/toolbars';
 import { emptyDoc, loadPlan, savePlan } from '../lib/storage';
 import { MM_PER_UNIT } from '../lib/scale';
 import { DEFAULT_AREA, fitView, zoomAt, type Size } from '../lib/view';
@@ -167,6 +168,10 @@ export interface PlannerState {
   /** Make walls (current thickness) along the selected layout lines, and remove the lines. */
   linesToWalls: () => void;
   addSlab: (points: Point[]) => void;
+  /** Where each tool bar is docked; moving one keeps the order of the rest. */
+  toolbars: ToolbarLayout;
+  dockToolbar: (id: ToolbarId, area: DockArea, index?: number) => void;
+  resetToolbars: () => void;
   /** What the Shape tool draws. */
   shapeKind: ShapeKind;
   setShapeKind: (kind: ShapeKind) => void;
@@ -384,7 +389,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines } = get();
-      const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid } = get();
+      const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars } = get();
       savePrefs({
         units,
         showDimensions,
@@ -399,6 +404,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         wallHeightMm,
         theme,
         grid,
+        toolbars,
       });
     };
     const resetHistory = {
@@ -485,6 +491,15 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       setChamferDist: (chamferDist) => set({ chamferDist }),
       theme: prefs.theme,
       grid: prefs.grid,
+      toolbars: prefs.toolbars,
+      dockToolbar: (id, area, index) => {
+        set({ toolbars: moveToolbar(get().toolbars, id, area, index) });
+        persistPrefs();
+      },
+      resetToolbars: () => {
+        set({ toolbars: DEFAULT_TOOLBARS });
+        persistPrefs();
+      },
       view: { x: 0, y: 0, zoom: 1 },
       viewport: { width: 0, height: 0 },
 

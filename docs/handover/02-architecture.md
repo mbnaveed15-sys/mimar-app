@@ -46,6 +46,8 @@ autosaves to local storage on every change.
   `src/lib/faces2d.ts` (faces seen from above), so Push/Pull also works in 2D.
 - `src/lib/inference.ts`: snapping order: ends → midpoints → intersections → grid points → axes → along
   walls/lines (in grid steps) → grid.
+- Tool bars: `src/lib/toolbars.ts` (the bars, the saved layout in prefs, `moveToolbar`, `packColumns` which
+  wraps bars into columns) and `src/components/ToolDocks.tsx` (the four docks, grips, drag and drop, grip menu).
 - `src/commands.ts`: every menu item, shortcut and Ctrl+K palette entry in one registry.
 
 ## Drawing

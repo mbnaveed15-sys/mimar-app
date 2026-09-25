@@ -10,6 +10,7 @@ Read them in order before changing anything.
 | [03-workflow.md](03-workflow.md) | How work is done here: the owner's preferences, branches, pull requests, releases, tests |
 | [04-backlog.md](04-backlog.md) | What is queued next, in the agreed order, and known issues |
 | [05-auto-planner-review.md](05-auto-planner-review.md) | Report on the "PlanIt! Auto Planner" app and what could be brought into Mimar |
+| [06-bylaws.md](06-bylaws.md) | Bylaw figures (CDA, DHA Islamabad/Rawalpindi official; DHA Lahore, Bahria, LDA provisional) with their sources |
 
 ## Starting a new session
 
