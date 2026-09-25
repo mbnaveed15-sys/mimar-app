@@ -2,7 +2,11 @@ import { planBounds } from '../geometry';
 import { roomAreaSqMm } from '../rooms';
 import { plannerStore } from '../store/plannerStore';
 import { exportPdf } from './exportPdf';
-import { exportPng } from './exportPng';
+import { downloadUrl, exportPng } from './exportPng';
+import { planToDxf } from './exportDxf';
+import { modelMeshes, toDae, toGlb, toObj } from './export3d';
+import { zip } from './zip';
+import { buildModel } from '../three/model';
 import { baseName } from './files';
 import { formatArea, formatMarla, UNIT_LABELS } from './units';
 import { DEFAULT_AREA } from './view';
@@ -52,4 +56,56 @@ export function exportPlanPdf() {
     version: __APP_VERSION__,
     filename: `${name}.pdf`,
   }).catch((e) => setWarning(`The PDF could not be created. ${String(e)}`));
+}
+
+function saveBlob(data: BlobPart, type: string, filename: string) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  downloadUrl(url, filename);
+  // Give the download time to start before letting the data go.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Download the floor being viewed as an AutoCAD DXF, in millimetres. */
+export function exportPlanDxf() {
+  const s = plannerStore.getState();
+  const { doc } = exportContent();
+  try {
+    const text = planToDxf(doc, {
+      units: s.units,
+      marlaSqFt: s.marlaSqFt,
+      showDimensions: s.showDimensions,
+      showFurniture: s.showFurniture,
+      showRoomLabels: s.showRoomLabels,
+    });
+    saveBlob(text, 'application/dxf', `${exportName()}.dxf`);
+  } catch (e) {
+    s.setWarning(`The DXF could not be created. ${String(e)}`);
+  }
+}
+
+export type ModelFormat = 'glb' | 'dae' | 'obj';
+
+/** Download the whole building (every floor) as a 3D model. */
+export function exportModel(format: ModelFormat) {
+  const s = plannerStore.getState();
+  const name = baseName(s.fileName);
+  try {
+    const meshes = modelMeshes(buildModel(s.doc, { wallHeightMm: s.wallHeightMm, showFurniture: s.showFurniture }));
+    if (!meshes.length) {
+      s.setWarning('There is nothing to export yet. Draw some walls first.');
+      return;
+    }
+    if (format === 'glb') saveBlob(toGlb(meshes), 'model/gltf-binary', `${name}.glb`);
+    else if (format === 'dae') saveBlob(toDae(meshes, name), 'model/vnd.collada+xml', `${name}.dae`);
+    else {
+      const { obj, mtl } = toObj(meshes, `${name}.mtl`);
+      const files = [
+        { name: `${name}.obj`, data: obj },
+        { name: `${name}.mtl`, data: mtl },
+      ];
+      saveBlob(zip(files), 'application/zip', `${name} (OBJ).zip`);
+    }
+  } catch (e) {
+    s.setWarning(`The 3D model could not be created. ${String(e)}`);
+  }
 }

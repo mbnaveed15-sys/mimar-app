@@ -1,4 +1,4 @@
-import { exportPlanPdf, exportPlanPng } from './lib/exportActions';
+import { exportModel, exportPlanDxf, exportPlanPdf, exportPlanPng } from './lib/exportActions';
 import { plannerStore, type PlannerState } from './store/plannerStore';
 import { THEMES } from './theme/themes';
 import { DRAW_TOOLS, TOOL_INFO } from './tools/toolInfo';
@@ -102,6 +102,16 @@ export function buildCommands(ctx: CommandContext): Command[] {
     { id: 'file.saveAs', label: 'Save as…', menu: 'file', group: 1, keys: ['Ctrl+Shift+S'], run: () => ctx.save(true) },
     { id: 'file.pdf', label: 'Export PDF', menu: 'file', group: 2, keys: ['Ctrl+P'], run: exportPlanPdf },
     { id: 'file.png', label: 'Export PNG', menu: 'file', group: 2, run: exportPlanPng },
+    { id: 'file.dxf', label: 'Export DXF (AutoCAD)', menu: 'file', group: 2, run: exportPlanDxf },
+    {
+      id: 'file.glb',
+      label: 'Export 3D: GLB (Twinmotion)',
+      menu: 'file',
+      group: 3,
+      run: () => exportModel('glb'),
+    },
+    { id: 'file.dae', label: 'Export 3D: DAE (SketchUp)', menu: 'file', group: 3, run: () => exportModel('dae') },
+    { id: 'file.obj', label: 'Export 3D: OBJ (other 3D apps)', menu: 'file', group: 3, run: () => exportModel('obj') },
 
     // Edit
     {

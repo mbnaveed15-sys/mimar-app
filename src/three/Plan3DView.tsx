@@ -6,7 +6,9 @@ import { baseName } from '../lib/files';
 import { formatLength } from '../lib/units';
 import { usePlanner } from '../store/plannerStore';
 import { themeColor } from '../theme/themes';
-import { buildModel, type Model3D } from './model';
+import { drawPattern } from '../lib/patterns';
+import type { Pattern } from '../types';
+import { buildModel, type Finish, type Model3D } from './model';
 
 function hasWebGL(): boolean {
   try {
@@ -55,22 +57,61 @@ function disposeGroup(group: THREE.Object3D) {
     if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
       obj.geometry.dispose();
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      mats.forEach((m) => m.dispose());
+      mats.forEach((m) => {
+        if (m instanceof THREE.MeshStandardMaterial) m.map?.dispose();
+        m.dispose();
+      });
     }
   });
 }
 
+const TEXTURE_PX = 256;
+
+/** A repeating texture of the pattern in the given colour, one repeat per metre of UV. */
+function patternTexture(color: string, finish: Finish): THREE.Texture | null {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = TEXTURE_PX;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  drawPattern(ctx, TEXTURE_PX, { color, pattern: finish.pattern });
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(1 / finish.spanM, 1 / finish.spanM);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
+/** Box UVs in metres (instead of 0–1 per face), so patterns keep their real size on every face. */
+function metricUVs(geometry: THREE.BufferGeometry) {
+  const pos = geometry.getAttribute('position');
+  const normal = geometry.getAttribute('normal');
+  const uv = geometry.getAttribute('uv');
+  for (let i = 0; i < pos.count; i++) {
+    const [x, y, z] = [pos.getX(i), pos.getY(i), pos.getZ(i)];
+    const [nx, ny] = [Math.abs(normal.getX(i)), Math.abs(normal.getY(i))];
+    if (ny > 0.5) uv.setXY(i, x, z);
+    else if (nx > 0.5) uv.setXY(i, z, y);
+    else uv.setXY(i, x, y);
+  }
+  uv.needsUpdate = true;
+}
+
+const ROUGHNESS: Partial<Record<Pattern, number>> = { marble: 0.35, granite: 0.4, metal: 0.4, glass: 0.1, tiles: 0.5 };
+
 function buildMeshes(model: Model3D): THREE.Group {
   const group = new THREE.Group();
   const materials = new Map<string, THREE.Material>();
-  const material = (color: string, opacity = 1) => {
-    const key = `${color}/${opacity}`;
+  const material = (color: string, opacity = 1, finish?: Finish) => {
+    const key = `${color}/${opacity}/${finish?.pattern}/${finish?.spanM}`;
     let mat = materials.get(key);
     if (!mat) {
+      const map = finish ? patternTexture(color, finish) : null;
       mat = new THREE.MeshStandardMaterial({
-        color,
-        roughness: 0.85,
-        metalness: 0,
+        color: map ? '#ffffff' : color,
+        map,
+        roughness: (finish && ROUGHNESS[finish.pattern]) ?? 0.85,
+        metalness: finish?.pattern === 'metal' ? 0.5 : 0,
         transparent: opacity < 1,
         opacity,
         side: THREE.DoubleSide,
@@ -83,7 +124,8 @@ function buildMeshes(model: Model3D): THREE.Group {
 
   for (const s of model.solids) {
     const geometry = new THREE.BoxGeometry(Math.max(s.w, 0.001), Math.max(s.h, 0.001), Math.max(s.d, 0.001));
-    const mesh = new THREE.Mesh(geometry, material(s.color, s.opacity));
+    if (s.finish) metricUVs(geometry);
+    const mesh = new THREE.Mesh(geometry, material(s.color, s.opacity, s.finish));
     mesh.position.set(s.x, s.y0 + s.h / 2, s.z);
     mesh.rotation.y = s.rotY;
     mesh.castShadow = s.role !== 'glass';
@@ -103,7 +145,7 @@ function buildMeshes(model: Model3D): THREE.Group {
     const shape = new THREE.Shape(floor.points.map(([x, z]) => new THREE.Vector2(x, -z)));
     const geometry = new THREE.ShapeGeometry(shape);
     geometry.rotateX(-Math.PI / 2);
-    const mesh = new THREE.Mesh(geometry, material(floor.color));
+    const mesh = new THREE.Mesh(geometry, material(floor.color, 1, floor.finish));
     mesh.position.y = floor.y + 0.005;
     mesh.receiveShadow = true;
     group.add(mesh);
@@ -114,7 +156,7 @@ function buildMeshes(model: Model3D): THREE.Group {
     const shape = new THREE.Shape(slab.points.map(([x, z]) => new THREE.Vector2(x, -z)));
     const geometry = new THREE.ExtrudeGeometry(shape, { depth: slab.h, bevelEnabled: false });
     geometry.rotateX(-Math.PI / 2);
-    const mesh = new THREE.Mesh(geometry, material(slab.color));
+    const mesh = new THREE.Mesh(geometry, material(slab.color, 1, slab.finish));
     mesh.position.y = slab.y0;
     mesh.castShadow = true;
     mesh.receiveShadow = true;

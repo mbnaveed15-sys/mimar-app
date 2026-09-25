@@ -36,6 +36,7 @@ import {
   ungroup,
 } from '../lib/selection';
 import { boundaryWallLines, stairLayout } from '../lib/site';
+import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
 import { SLAB_MM } from '../three/model';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
@@ -46,6 +47,7 @@ import type {
   Draft,
   Id,
   MarlaSqFt,
+  Material,
   Mode,
   PaperSize,
   PlanDoc,
@@ -260,6 +262,11 @@ export interface PlannerState {
   addMaskPoint: (p: Point) => void;
   finishMask: () => void;
   addMaterial: () => void;
+  /** Make a plan or library material the active one, adding a library material to the plan first. */
+  pickMaterial: (id: Id) => void;
+  updateMaterial: (id: Id, patch: Partial<Omit<Material, 'id'>>) => void;
+  /** Take a material out of the plan; anything using it goes back to its default look. */
+  removeMaterial: (id: Id) => void;
 
   setUnits: (units: Units) => void;
   setShowDimensions: (show: boolean) => void;
@@ -814,10 +821,39 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         set({ draft: null, warnings: [] });
       },
       addMaterial: () => {
+        const id = `mat_custom_${newId()}`;
         get().commit((doc) => ({
           ...doc,
-          materials: [...doc.materials, { id: `mat_custom_${newId()}`, name: 'Custom', color: '#ffffff', texture: '' }],
+          materials: [...doc.materials, { id, name: 'Custom', color: '#ffffff', texture: '', pattern: 'plain' }],
         }));
+        set({ selectedMat: id });
+      },
+      pickMaterial: (id) => {
+        if (!get().doc.materials.some((m) => m.id === id)) {
+          const lib = MATERIAL_LIBRARY.find((m) => m.id === id);
+          if (!lib) return;
+          get().commit((doc) => ({ ...doc, materials: [...doc.materials, planMaterial(lib)] }));
+        }
+        set({ selectedMat: id });
+      },
+      updateMaterial: (id, patch) =>
+        get().commit((doc) => ({
+          ...doc,
+          materials: doc.materials.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+        })),
+      removeMaterial: (id) => {
+        if (get().doc.materials.length <= 1) return;
+        const clear = <T extends { material?: Id }>(item: T): T =>
+          item.material === id ? { ...item, material: undefined } : item;
+        get().commit((doc) => ({
+          ...doc,
+          materials: doc.materials.filter((m) => m.id !== id),
+          elements: doc.elements.map(clear),
+          rooms: doc.rooms.map(clear),
+          masks: doc.masks.map(clear),
+          components: doc.components.map((c) => ({ ...c, elements: c.elements.map(clear), rooms: c.rooms.map(clear) })),
+        }));
+        if (get().selectedMat === id) set({ selectedMat: get().doc.materials[0]?.id ?? '' });
       },
 
       setUnits: (units) => {
