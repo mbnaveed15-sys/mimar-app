@@ -166,6 +166,19 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k }: Prop
         />
       )}
 
+      {d?.type === 'line' && (
+        <line
+          data-testid="line-draft"
+          x1={d.x1}
+          y1={d.y1}
+          x2={d.x2}
+          y2={d.y2}
+          style={{ stroke: PLAN.draft }}
+          strokeWidth={1.5 * k}
+          strokeLinecap="round"
+        />
+      )}
+
       {d?.type === 'beam' && (
         <line
           data-testid="beam-draft"

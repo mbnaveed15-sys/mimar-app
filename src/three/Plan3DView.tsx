@@ -10,9 +10,10 @@ import { formatLength } from '../lib/units';
 import { plannerStore, usePlanner, type PlannerState } from '../store/plannerStore';
 import { themeColor } from '../theme/themes';
 import { drawPattern } from '../lib/patterns';
-import type { Bounds, Pattern, Point } from '../types';
+import type { Bounds, Pattern, PlanDoc, Point } from '../types';
 import { CameraRig } from './cameraRig';
 import { draftElements, draftLines } from './draft3d';
+import { withoutHidden } from '../lib/layers';
 import { buildModel, levelBaseM, M_PER_UNIT, type Finish, type Model3D } from './model';
 
 function hasWebGL(): boolean {
@@ -480,12 +481,14 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     const stage = stageRef.current;
     const host = hostRef.current;
     if (!stage || !host) return;
-    const model = buildModel(doc, { wallHeightMm, showFurniture });
+    const shown = withoutHidden(doc, { layers: doc.layers, showFurniture });
+    const model = buildModel(shown, { wallHeightMm, showFurniture });
     stage.scene.remove(stage.model);
     disposeGroup(stage.model);
     stage.extras.forEach((looks) => looks.forEach((m) => m.dispose()));
     stage.extras = new Map();
     stage.model = buildMeshes(model);
+    stage.model.add(layoutLines(shown, wallHeightMm));
     stage.scene.add(stage.model);
     stage.last = model;
     pickRef.current = null;
@@ -756,4 +759,27 @@ function SelectionBox({ box, host }: { box: Bounds; host: HTMLElement | null }) 
       }}
     />
   );
+}
+
+/** Layout (drafting) lines, lying faintly on their floors. */
+function layoutLines(doc: PlanDoc, wallHeightMm: number): THREE.Object3D {
+  const byLevel = new Map<string, THREE.Vector3[]>();
+  for (const el of doc.elements) {
+    if (el.type !== 'line') continue;
+    const level = el.levelId ?? 'ground';
+    const y = levelBaseM(doc, level, wallHeightMm) + 0.012;
+    const pts = byLevel.get(level) ?? [];
+    pts.push(new THREE.Vector3(el.x1 * M_PER_UNIT, y, el.y1 * M_PER_UNIT), new THREE.Vector3(el.x2 * M_PER_UNIT, y, el.y2 * M_PER_UNIT));
+    byLevel.set(level, pts);
+  }
+  const group = new THREE.Group();
+  for (const [level, pts] of byLevel) {
+    const lines = new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: '#57534e', transparent: true, opacity: 0.7 }),
+    );
+    lines.userData = { level };
+    group.add(lines);
+  }
+  return group;
 }

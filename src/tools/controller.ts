@@ -4,7 +4,7 @@ import { parseMeasure, type MeasureKind } from '../lib/measure';
 import { boundsCentre, copyItems, deleteItems, moveItems, rotateItems, selectionBounds } from '../lib/selection';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
-import type { Id, Point, Tool, Wall } from '../types';
+import type { Id, Point, SketchLine, Tool, Wall } from '../types';
 import { MODIFY_TOOLS } from '../types';
 import { wallsOf } from '../walls';
 import {
@@ -34,6 +34,7 @@ export interface Store {
 /** Tools that take clicks on the plan and a typed value in the Measurements box. */
 export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   wall: 'length',
+  line: 'length',
   rectangle: 'pair',
   tape: 'length',
   move: 'move',
@@ -68,7 +69,8 @@ const degrees = (v: Point) => (Math.atan2(v.y, v.x) * 180) / Math.PI;
 export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreIds?: Set<Id>): Inference {
   const lock = from ? (s.axisLock ? axisDirection(s.axisLock) : s.shiftLock) : null;
   return infer(raw, {
-    walls: wallsOf(s.levelElements()),
+    walls: wallsOf(s.visibleElements()),
+    lines: s.visibleElements().filter((el): el is SketchLine => el.type === 'line'),
     tolerance: 10 * s.reach() * s.pxUnits(),
     from,
     grid: s.grid.snap ? s.gridPx : null,
@@ -85,6 +87,7 @@ export function anchorOf(s: PlannerState): Point | null {
   if (d.type === 'beam' || d.type === 'slab' || d.type === 'plot') return { x: d.x1, y: d.y1 };
   switch (d.type) {
     case 'wall':
+    case 'line':
     case 'rectangle':
       return { x: d.x1, y: d.y1 };
     case 'tape':
@@ -102,7 +105,7 @@ export function anchorOf(s: PlannerState): Point | null {
 export function currentDirection(s: PlannerState): Point | null {
   const d = s.draft;
   if (!d) return null;
-  if (d.type === 'wall' || d.type === 'rectangle') return sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 });
+  if (d.type === 'wall' || d.type === 'line' || d.type === 'rectangle') return sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 });
   if (d.type === 'tape') return sub(d.b, d.a);
   if (d.type === 'move') return sub(d.to, d.base);
   return null;
@@ -114,7 +117,7 @@ export function currentDirection(s: PlannerState): Point | null {
  */
 function targetFor(store: Store, raw: Point, allowOpenings: boolean): Id[] | null {
   const s = store.getState();
-  const hit = findElementNear(s.visibleElements(), raw, s.hitTolerance());
+  const hit = findElementNear(s.pickableElements(), raw, s.hitTolerance());
   if (hit && !s.selectedIds.includes(hit.id)) s.select(hit.id);
   const { selectedIds: ids } = store.getState();
   if (!ids.length) return null;
@@ -152,6 +155,7 @@ export function hover(store: Store, raw: Point, shift = false) {
 
   switch (d.type) {
     case 'wall':
+    case 'line':
     case 'rectangle':
       s.setDraft({ ...d, x2: p.x, y2: p.y });
       break;
@@ -262,6 +266,14 @@ export function press(store: Store, raw: Point, opts: { ctrl?: boolean } = {}): 
       finishWallAt(store, p, tol);
       return true;
     }
+    case 'line': {
+      if (d?.type !== 'line') {
+        s.setDraft({ type: 'line', x1: p.x, y1: p.y, x2: p.x, y2: p.y });
+        return true;
+      }
+      if (d.chain) finishLineAt(store, p);
+      return true;
+    }
     case 'rectangle':
       if (d?.type !== 'rectangle') s.setDraft({ type: 'rectangle', x1: p.x, y1: p.y, x2: p.x, y2: p.y });
       else {
@@ -337,6 +349,16 @@ function finishWallAt(store: Store, p: Point, tol: number) {
   );
 }
 
+/** Add the layout line being drawn, ending at p, and carry on from p. */
+function finishLineAt(store: Store, p: Point) {
+  const s = store.getState();
+  const d = s.draft;
+  if (d?.type !== 'line' || same({ x: d.x1, y: d.y1 }, p, 0.01)) return;
+  s.addLine({ x: d.x1, y: d.y1 }, p);
+  s.setAxisLock(null);
+  s.setDraft({ type: 'line', x1: p.x, y1: p.y, x2: p.x, y2: p.y, chain: true });
+}
+
 /**
  * Pointer released. A wall drawn by dragging is finished here; a press without dragging starts
  * click-by-click drawing instead, where each click adds a wall.
@@ -346,6 +368,14 @@ export function release(store: Store, dragged: boolean) {
   const d = s.draft;
   if (MODIFY_TOOLS.includes(s.tool)) return modifyRelease(store, dragged);
   if (STRUCTURE_TOOLS.includes(s.tool)) return structureRelease(store, dragged);
+  if (s.tool === 'line' && d?.type === 'line' && !d.chain) {
+    // Like walls: a drag makes one line, a click starts click-by-click drawing.
+    if (dragged) {
+      s.addLine({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 });
+      s.setDraft(null);
+    } else s.setDraft({ ...d, chain: true });
+    return;
+  }
   if (s.tool !== 'wall' || d?.type !== 'wall' || d.chain) return;
   if (dragged) {
     s.addWall({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 });
@@ -393,6 +423,12 @@ export function applyMeasure(store: Store, text: string): boolean {
 
   s.setWarning(null);
   switch (s.tool) {
+    case 'line': {
+      if (d?.type !== 'line' || m.kind !== 'length') return fail('Click where the line starts, then type its length.');
+      const end = along({ x: d.x1, y: d.y1 }, lockDir ?? currentDirection(s), m.mm);
+      finishLineAt(store, end);
+      return true;
+    }
     case 'wall': {
       if (d?.type !== 'wall' || m.kind !== 'length') return fail('Click where the wall starts, then type its length.');
       const end = along({ x: d.x1, y: d.y1 }, lockDir ?? currentDirection(s), m.mm);
@@ -485,6 +521,8 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
   const d = s.draft;
   const len = (v: Point) => formatLength(Math.hypot(v.x, v.y) * MM_PER_UNIT, s.units);
   switch (s.tool) {
+    case 'line':
+      return { label: 'Length', value: d?.type === 'line' ? len(sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 })) : '' };
     case 'wall':
       return { label: 'Length', value: d?.type === 'wall' ? len(sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 })) : '' };
     case 'rectangle':
@@ -518,6 +556,10 @@ export function toolHint(s: PlannerState): string {
       return 'Drag up to zoom in, down to zoom out. Shift+Z fits the plan.';
     case 'orbit':
       return 'Drag to turn around the building; hold Shift to pan. Scroll zooms. Middle-drag orbits with any tool.';
+    case 'line':
+      return d?.type === 'line'
+        ? 'Click the next point (or type a length). Lines chain until Esc; select them and use "Turn into walls" to build.'
+        : 'Draw layout lines to plan with: click to chain, drag for one line. They snap like walls.';
     case 'wall':
       return d?.type === 'wall'
         ? 'Click the next corner or type a length and press Enter. Arrow keys lock an axis; Esc stops.'

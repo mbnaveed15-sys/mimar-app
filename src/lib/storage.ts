@@ -12,6 +12,7 @@ import {
   type Room,
 } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
+import { LAYERS, type LayerState } from './layers';
 import { defaultMaterials, PATTERNS } from './materials';
 
 export const STORAGE_KEY = 'mimar.plan';
@@ -63,6 +64,23 @@ export function browserStorage(): KeyValueStore | null {
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+/** Hidden and locked, kept only when set. */
+const flagsOf = (raw: Record<string, unknown>) => ({
+  ...(raw.hidden === true ? { hidden: true } : {}),
+  ...(raw.locked === true ? { locked: true } : {}),
+});
+
+/** Layer settings, keeping only known layers and true flags. */
+function normaliseLayers(raw: unknown): LayerState | undefined {
+  if (!isObject(raw)) return undefined;
+  const out: LayerState = {};
+  for (const { id } of LAYERS) {
+    const v = raw[id];
+    if (isObject(v) && (v.hidden === true || v.locked === true)) out[id] = flagsOf(v);
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 const idOf = (v: unknown): string | undefined => (v === undefined || v === null ? undefined : String(v));
 
 function normaliseElement(raw: unknown): PlanElement | null {
@@ -73,6 +91,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
     groupId: idOf(raw.groupId),
     defKey: idOf(raw.defKey),
     levelId: idOf(raw.levelId),
+    ...flagsOf(raw),
   };
   if (!base.id) return null;
   const num = (k: string) => (typeof raw[k] === 'number' ? (raw[k] as number) : NaN);
@@ -134,6 +153,10 @@ function normaliseElement(raw: unknown): PlanElement | null {
         shape: raw.shape === 'round' ? ('round' as const) : ('rect' as const),
       };
       return [el.x, el.y, el.w, el.h].every(Number.isFinite) && el.w > 0 && el.h > 0 ? el : null;
+    }
+    case 'line': {
+      const el = { ...base, type: 'line' as const, x1: num('x1'), y1: num('y1'), x2: num('x2'), y2: num('y2') };
+      return [el.x1, el.y1, el.x2, el.y2].every(Number.isFinite) ? el : null;
     }
     case 'beam': {
       const el = {
@@ -236,6 +259,7 @@ function normaliseRoom(raw: unknown, index: number): Room | null {
     groupId: idOf(obj.groupId),
     defKey: idOf(obj.defKey),
     levelId: idOf(obj.levelId),
+    ...flagsOf(obj),
   };
 }
 
@@ -309,6 +333,7 @@ export function normaliseDoc(raw: unknown): PlanDoc {
     levels: normaliseLevels(obj.levels),
     plinthMm:
       typeof obj.plinthMm === 'number' && obj.plinthMm >= 0 && obj.plinthMm <= 3000 ? obj.plinthMm : DEFAULT_PLINTH_MM,
+    ...(normaliseLayers(obj.layers) ? { layers: normaliseLayers(obj.layers) } : {}),
   };
 }
 

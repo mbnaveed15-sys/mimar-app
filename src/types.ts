@@ -1,3 +1,4 @@
+import type { LayerState } from './lib/layers';
 import type { FurnitureKind } from './furniture/catalog';
 
 export type Id = string;
@@ -41,6 +42,10 @@ export interface Material {
 export interface Grouped {
   /** The level this item is on; missing means the ground floor. */
   levelId?: Id;
+  /** Hidden from view (and exports); it comes back with Show all hidden. */
+  hidden?: boolean;
+  /** Can't be picked or changed, but still shows and snaps. */
+  locked?: boolean;
   /** The group this item belongs to. */
   groupId?: Id;
   /** For a component copy: which item of the component definition this is. */
@@ -168,7 +173,18 @@ export interface Stair extends Grouped {
   material?: Id;
 }
 
-export type PlanElement = Wall | Opening | Furniture | Column | Beam | Slab | Plot | Stair;
+/** A layout (drafting) line: a pencil line to plan with, not built. Walls can be made from it. */
+export interface SketchLine extends Grouped {
+  id: Id;
+  type: 'line';
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  material?: Id;
+}
+
+export type PlanElement = Wall | Opening | Furniture | Column | Beam | Slab | Plot | Stair | SketchLine;
 
 /** A floor of the building. Levels stack in list order, starting with the ground floor. */
 export interface Level {
@@ -229,6 +245,8 @@ export interface PlanDoc {
   levels: Level[];
   /** Height of the plinth (floor above natural ground), in millimetres. */
   plinthMm: number;
+  /** Layers that are hidden or locked (every item is on the layer for its kind). */
+  layers?: LayerState;
 }
 
 export type Tool =
@@ -263,7 +281,8 @@ export type Tool =
   | 'beam'
   | 'slab'
   | 'plot'
-  | 'stairs';
+  | 'stairs'
+  | 'line';
 
 /** Every tool, in tool-rail order. */
 export const TOOLS: Tool[] = [
@@ -272,6 +291,7 @@ export const TOOLS: Tool[] = [
   'zoom',
   'orbit',
   'wall',
+  'line',
   'rectangle',
   'room',
   'column',
@@ -316,6 +336,7 @@ export type Draft =
     }
   | { type: 'rectangle'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'beam'; x1: number; y1: number; x2: number; y2: number }
+  | { type: 'line'; x1: number; y1: number; x2: number; y2: number; chain?: boolean }
   | { type: 'slab'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'plot'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'tape'; a: Point; b: Point; done?: boolean }

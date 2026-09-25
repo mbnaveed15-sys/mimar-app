@@ -1,3 +1,4 @@
+import { levelOf } from '../types';
 import { planBounds } from '../geometry';
 import { roomAreaSqMm } from '../rooms';
 import { plannerStore } from '../store/plannerStore';
@@ -19,7 +20,11 @@ function exportArea() {
 /** The floor being viewed: exports show one floor at a time. */
 function exportContent() {
   const s = plannerStore.getState();
-  const doc = { ...s.doc, elements: s.levelElements(), rooms: s.levelRooms() };
+  const shown = s.shownDoc();
+  const onLevel = <T extends { levelId?: string }>(it: T) => levelOf(it) === s.activeLevel;
+  // Layout lines are for planning, so they stay out of drawings unless asked for.
+  const elements = shown.elements.filter((el) => onLevel(el) && (s.exportLines || el.type !== 'line'));
+  const doc = { ...shown, elements, rooms: shown.rooms.filter(onLevel) };
   const { units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills } = s;
   return { doc, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills };
 }
@@ -90,7 +95,7 @@ export function exportModel(format: ModelFormat) {
   const s = plannerStore.getState();
   const name = baseName(s.fileName);
   try {
-    const meshes = modelMeshes(buildModel(s.doc, { wallHeightMm: s.wallHeightMm, showFurniture: s.showFurniture }));
+    const meshes = modelMeshes(buildModel(s.shownDoc(), { wallHeightMm: s.wallHeightMm, showFurniture: s.showFurniture }));
     if (!meshes.length) {
       s.setWarning('There is nothing to export yet. Draw some walls first.');
       return;

@@ -88,14 +88,14 @@ export function usePlanInput(
   function hitAt(e: { clientX: number; clientY: number }, raw: Point): PlanElement | null {
     const s = plannerStore.getState();
     const id = pickId?.(e);
-    const picked = id ? s.visibleElements().find((el) => el.id === id) : undefined;
-    return picked ?? findElementNear(s.visibleElements(), raw, s.hitTolerance());
+    const picked = id ? s.pickableElements().find((el) => el.id === id) : undefined;
+    return picked ?? findElementNear(s.pickableElements(), raw, s.hitTolerance());
   }
   /** Item or room under the pointer (3D can pick a floor straight away). */
   function idAt(e: { clientX: number; clientY: number }, raw: Point): string | null {
     const s = plannerStore.getState();
     const picked = pickId?.(e);
-    if (picked && (s.visibleElements().some((el) => el.id === picked) || s.levelRooms().some((r) => r.id === picked)))
+    if (picked && (s.pickableElements().some((el) => el.id === picked) || s.pickableRooms().some((r) => r.id === picked)))
       return picked;
     return hitAt(e, raw)?.id ?? s.roomAt(raw)?.id ?? null;
   }
@@ -195,7 +195,7 @@ export function usePlanInput(
         break;
       case 'erase': {
         // Shift+click erases just the piece of wall between the walls crossing it (like Trim).
-        const wall = e.shiftKey ? nearestWall(s.visibleElements(), raw, s.hitTolerance() * 1.5) : null;
+        const wall = e.shiftKey ? nearestWall(s.pickableElements(), raw, s.hitTolerance() * 1.5) : null;
         const picked = !wall && pickId ? idAt(e, raw) : null;
         const click = () => {
           if (wall) s.commit((doc) => trimAt(doc, wall.id, raw, 10 * s.pxUnits()));
@@ -233,7 +233,7 @@ export function usePlanInput(
           const ids = new Set(d?.type === 'erase' ? d.ids : []);
           const tol = s.hitTolerance();
           const steps = Math.max(1, Math.ceil(Math.hypot(raw.x - drag.last.x, raw.y - drag.last.y) / (tol / 2)));
-          const items = s.visibleElements();
+          const items = s.pickableElements();
           for (let i = 0; i <= steps; i++) {
             const p = {
               x: drag.last.x + ((raw.x - drag.last.x) * i) / steps,
@@ -279,7 +279,7 @@ export function usePlanInput(
             if (wall) s.updateElement({ ...orig, ...placeOnWall(wall, raw, orig.width) });
           } else {
             const anchor =
-              orig.type === 'wall' || orig.type === 'beam'
+              orig.type === 'wall' || orig.type === 'beam' || orig.type === 'line'
                 ? { x: orig.x1, y: orig.y1 }
                 : orig.type === 'slab' || orig.type === 'plot'
                   ? orig.points[0]
@@ -343,7 +343,7 @@ export function usePlanInput(
         if (screenBox && drag.moved) {
           screenBox.show(null);
           const crossing = e.clientX < drag.client.x;
-          const pool = [...s.visibleElements(), ...s.levelRooms()].filter(
+          const pool = [...s.pickableElements(), ...s.pickableRooms()].filter(
             (it) => !s.openGroupId || it.groupId === s.openGroupId,
           );
           const box = boundsOf(drag.client, { x: e.clientX, y: e.clientY });
@@ -386,7 +386,7 @@ export function usePlanInput(
     };
     // Right to left is a crossing selection, like SketchUp and AutoCAD.
     const crossing = end.x < d.x1;
-    const pool = [...s.visibleElements(), ...s.levelRooms()].filter(
+    const pool = [...s.pickableElements(), ...s.pickableRooms()].filter(
       (it) => !s.openGroupId || it.groupId === s.openGroupId,
     );
     s.setSelection(itemsInBox(pool, box, crossing), d.additive);

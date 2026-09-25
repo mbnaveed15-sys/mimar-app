@@ -57,8 +57,13 @@ export const ICONS = {
   scale: "<rect x='3.5' y='10.5' width='10' height='10' rx='0.5'/><path d='M13.5 10.5l6.5-6.5M15 4h5v5'/>",
   column:
     "<rect x='8' y='8' width='8' height='8' fill='currentColor' stroke='none'/><path d='M4 4h16v16H4z' stroke-dasharray='2 2'/>",
+  line: "<path d='M4 19 20 5' stroke-dasharray='1 0'/><circle cx='4' cy='19' r='1.6' fill='currentColor'/><circle cx='20' cy='5' r='1.6' fill='currentColor'/><path d='M2 20.8 4 19M20 5l2-1.8' opacity='.5'/>",
   beam: "<path d='M3 9h18M3 15h18' stroke-dasharray='3 2'/><rect x='2.5' y='7' width='3' height='10' fill='currentColor' stroke='none'/><rect x='18.5' y='7' width='3' height='10' fill='currentColor' stroke='none'/>",
   slab: "<path d='M3 9 12 4l9 5-9 5z'/><path d='M3 9v3l9 5 9-5V9'/>",
+  eye: "<path d='M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z'/><circle cx='12' cy='12' r='3'/>",
+  'eye-off': "<path d='M4 4l16 16'/><path d='M9.9 5.8A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.7 3.4M6.6 7.1A16.6 16.6 0 0 0 2.5 12s3.5 6.5 9.5 6.5c1.6 0 3-.4 4.2-1'/>",
+  lock: "<rect x='5' y='11' width='14' height='9.5' rx='1.5'/><path d='M8 11V8a4 4 0 0 1 8 0v3'/>",
+  unlock: "<rect x='5' y='11' width='14' height='9.5' rx='1.5'/><path d='M8 11V8a4 4 0 0 1 7.7-1.5'/>",
   levels: "<path d='M4 20h16M4 14h16M4 8h16'/><path d='M8 20v-6M16 14V8'/>",
   plot: "<path d='M3.5 3.5h17v17h-17z' stroke-dasharray='4 2 1 2'/><path d='M7 7h10v10H7z'/>",
   stairs: "<path d='M4 20h4v-4h4v-4h4V8h4'/><path d='M16 4h4v4' />",

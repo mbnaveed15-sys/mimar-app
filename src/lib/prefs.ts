@@ -44,6 +44,8 @@ export interface Prefs {
   showFurniture: boolean;
   showRoomLabels: boolean;
   showRoomFills: boolean;
+  /** Put layout (drafting) lines in PDF, PNG and DXF exports. */
+  exportLines: boolean;
   mode: Mode;
   /** Thickness for new walls, in millimetres. */
   wallThicknessMm: number;
@@ -62,6 +64,7 @@ export const DEFAULT_PREFS: Prefs = {
   showFurniture: true,
   showRoomLabels: true,
   showRoomFills: true,
+  exportLines: false,
   mode: 'simple',
   wallThicknessMm: 228.6,
   marlaSqFt: 225,
@@ -118,6 +121,7 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       showFurniture: raw?.showFurniture !== false,
       showRoomLabels: raw?.showRoomLabels !== false,
       showRoomFills: raw?.showRoomFills !== false,
+      exportLines: raw?.exportLines === true,
       mode: raw?.mode === 'pro' ? 'pro' : 'simple',
       wallThicknessMm: thickness >= 25 && thickness <= 1000 ? thickness : DEFAULT_PREFS.wallThicknessMm,
       marlaSqFt: raw?.marlaSqFt === 272.25 ? 272.25 : 225,

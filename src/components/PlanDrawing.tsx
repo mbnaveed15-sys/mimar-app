@@ -7,6 +7,7 @@ import { MaskShape } from './shapes/MaskShape';
 import { OpeningShape } from './shapes/OpeningShape';
 import { RoomShape } from './shapes/RoomShape';
 import { PlotShape, StairShape } from './shapes/SiteShapes';
+import { SketchLineShape } from './shapes/SketchLineShape';
 import { BeamShape, ColumnShape, SlabShape } from './shapes/StructureShapes';
 import { WallDimension } from './shapes/WallDimension';
 import { WallsLayer } from './shapes/WallsLayer';
@@ -58,6 +59,10 @@ export function PlanDrawing(props: PlanDrawingProps) {
       {doc.masks.map((m) => (
         <MaskShape key={m.id} mask={m} color={colorOf(m.material)} />
       ))}
+
+      {doc.elements.map((el) =>
+        el.type === 'line' ? <SketchLineShape key={el.id} line={el} selected={selected.has(el.id)} k={k} /> : null,
+      )}
 
       <WallsLayer walls={walls} colorOf={colorOf} selected={selected} k={k} />
 

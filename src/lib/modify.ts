@@ -314,7 +314,7 @@ export function mirrorItems(doc: PlanDoc, ids: Id[], a: Point, b: Point, flip: b
     if (el.type === 'wall') {
       // Swap the ends so the wall still runs the same way round a room.
       mirrored.set(el.id, withEnds({ ...el, ...fresh, id }, reflect(end(el), a, b), reflect(start(el), a, b)));
-    } else if (el.type === 'beam') {
+    } else if (el.type === 'beam' || el.type === 'line') {
       const p1 = reflect({ x: el.x1, y: el.y1 }, a, b);
       const p2 = reflect({ x: el.x2, y: el.y2 }, a, b);
       mirrored.set(el.id, { ...el, ...fresh, id, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
@@ -379,7 +379,7 @@ export function scaleItems(doc: PlanDoc, ids: Id[], base: Point, factor: number)
       walls.set(w.id, w);
       return w;
     }
-    if (el.type === 'beam') {
+    if (el.type === 'beam' || el.type === 'line') {
       const p1 = sc({ x: el.x1, y: el.y1 });
       const p2 = sc({ x: el.x2, y: el.y2 });
       return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
@@ -421,7 +421,7 @@ export function stretchItems(doc: PlanDoc, box: Bounds, dx: number, dy: number):
     }
     if (el.type === 'furniture' || el.type === 'column' || el.type === 'stair')
       return inBox(el, box) ? { ...el, x: el.x + dx, y: el.y + dy } : el;
-    if (el.type === 'beam') {
+    if (el.type === 'beam' || el.type === 'line') {
       const p1 = move({ x: el.x1, y: el.y1 });
       const p2 = move({ x: el.x2, y: el.y2 });
       return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };

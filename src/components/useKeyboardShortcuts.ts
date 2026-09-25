@@ -71,7 +71,7 @@ export function useKeyboardShortcuts(commands: Command[]) {
         if (modifyEnter(plannerStore)) return;
         const d = s.draft;
         if (d?.type === 'mask') s.finishMask();
-        else if (d?.type === 'wall' || d?.type === 'tape') s.setDraft(null);
+        else if (d?.type === 'wall' || d?.type === 'line' || d?.type === 'tape') s.setDraft(null);
         return;
       }
       if (e.key in ARROWS && !mod) {
