@@ -235,6 +235,8 @@ export function ContextMenu({
     items.push({ label: 'Flip swing', run: () => s.flipOpening(el.id, 'side') });
     items.push({ label: 'Flip hinge', run: () => s.flipOpening(el.id, 'hinge') });
   }
+  if (el?.type === 'slab' && !many) items.push({ label: 'Parapet round roof', run: () => s.addParapetAround(el.id) });
+  if (el?.type === 'stair' && !many) items.push({ label: 'Rotate 90°', run: () => s.rotateSelected(90) });
   if (group) {
     items.push({ label: group.componentId ? 'Edit component' : 'Edit group', run: () => s.openGroup(group.id) });
     items.push({ label: group.componentId ? 'Explode' : 'Ungroup', run: () => s.ungroupSelected() });

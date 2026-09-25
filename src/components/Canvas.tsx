@@ -251,7 +251,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
             const anchor =
               orig.type === 'wall' || orig.type === 'beam'
                 ? { x: orig.x1, y: orig.y1 }
-                : orig.type === 'slab'
+                : orig.type === 'slab' || orig.type === 'plot'
                   ? orig.points[0]
                   : { x: orig.x, y: orig.y };
             const moved = { x: anchor.x + raw.x - drag.start.x, y: anchor.y + raw.y - drag.start.y };

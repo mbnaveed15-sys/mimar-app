@@ -189,6 +189,17 @@ export function buildCommands(ctx: CommandContext): Command[] {
       enabled: (s) => selectedElement(s)?.type === 'door',
     },
     {
+      id: 'edit.parapet',
+      label: 'Parapet round roof',
+      menu: 'edit',
+      group: 2,
+      run: () => {
+        const id = st().selectedId;
+        if (id) st().addParapetAround(id);
+      },
+      enabled: (s) => selectedElement(s)?.type === 'slab',
+    },
+    {
       id: 'edit.selectAll',
       label: 'Select all',
       menu: 'edit',

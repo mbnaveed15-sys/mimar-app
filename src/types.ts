@@ -34,6 +34,10 @@ export interface Wall extends Grouped {
   y2: number;
   /** Wall thickness in plan units; the default (9") is used when missing. */
   thickness?: number;
+  /** A boundary wall stands on natural ground (7' tall); a parapet runs round a roof (3'). */
+  kind?: 'boundary' | 'parapet';
+  /** Height in millimetres, when it differs from the usual wall height (e.g. a boundary wall). */
+  heightMm?: number;
   material?: Id;
 }
 
@@ -50,6 +54,8 @@ export interface Opening extends Grouped {
   flipSide?: boolean;
   /** Door hinge is at the other end. */
   flipHinge?: boolean;
+  /** A gate: a wide double-leaf opening in a boundary wall, open to the sky. */
+  gate?: boolean;
   material?: Id;
 }
 
@@ -106,7 +112,41 @@ export interface Slab extends Grouped {
   material?: Id;
 }
 
-export type PlanElement = Wall | Opening | Furniture | Column | Beam | Slab;
+/** The plot: its outline, which edge faces the road, and the setbacks (in mm) from each side. */
+export interface Plot extends Grouped {
+  id: Id;
+  type: 'plot';
+  /** Four corners, in order round the plot. */
+  points: Point[];
+  /** Index of the edge (points[i] to points[i+1]) along the road. */
+  front: number;
+  setbacks: { front: number; rear: number; sides: number };
+  material?: Id;
+}
+
+/** A stair or ramp, drawn from its computed flights. */
+export interface Stair extends Grouped {
+  id: Id;
+  type: 'stair';
+  /** Centre of its footprint, and its turn about that centre. */
+  x: number;
+  y: number;
+  rotation?: number;
+  shape: 'straight' | 'L' | 'U' | 'ramp';
+  /** Clear width of a flight, in plan units. */
+  width: number;
+  /** Total height it climbs, in millimetres. */
+  riseMm: number;
+  /** Riser height and tread depth in millimetres (ramps use riseMm and a 1:12 slope instead). */
+  riserMm: number;
+  treadMm: number;
+  /** Footprint size in plan units (w across, h along the climb), worked out from the rest. */
+  w: number;
+  h: number;
+  material?: Id;
+}
+
+export type PlanElement = Wall | Opening | Furniture | Column | Beam | Slab | Plot | Stair;
 
 /** A floor of the building. Levels stack in list order, starting with the ground floor. */
 export interface Level {
@@ -198,7 +238,9 @@ export type Tool =
   | 'scale'
   | 'column'
   | 'beam'
-  | 'slab';
+  | 'slab'
+  | 'plot'
+  | 'stairs';
 
 /** Every tool, in tool-rail order. */
 export const TOOLS: Tool[] = [
@@ -211,6 +253,8 @@ export const TOOLS: Tool[] = [
   'column',
   'beam',
   'slab',
+  'plot',
+  'stairs',
   'door',
   'window',
   'furniture',
@@ -249,6 +293,7 @@ export type Draft =
   | { type: 'rectangle'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'beam'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'slab'; x1: number; y1: number; x2: number; y2: number }
+  | { type: 'plot'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'tape'; a: Point; b: Point; done?: boolean }
   | { type: 'move'; ids: Id[]; base: Point; to: Point; copy: boolean }
   | { type: 'rotate'; ids: Id[]; center: Point; start?: Point; angle: number }

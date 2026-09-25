@@ -318,7 +318,7 @@ export function mirrorItems(doc: PlanDoc, ids: Id[], a: Point, b: Point, flip: b
       const p1 = reflect({ x: el.x1, y: el.y1 }, a, b);
       const p2 = reflect({ x: el.x2, y: el.y2 }, a, b);
       mirrored.set(el.id, { ...el, ...fresh, id, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
-    } else if (el.type === 'slab') {
+    } else if (el.type === 'slab' || el.type === 'plot') {
       mirrored.set(el.id, { ...el, ...fresh, id, points: el.points.map((p) => reflect(p, a, b)).reverse() });
     } else {
       const p = reflect(el, a, b);
@@ -384,12 +384,12 @@ export function scaleItems(doc: PlanDoc, ids: Id[], base: Point, factor: number)
       const p2 = sc({ x: el.x2, y: el.y2 });
       return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
     }
-    if (el.type === 'slab') return { ...el, points: el.points.map(sc) };
+    if (el.type === 'slab' || el.type === 'plot') return { ...el, points: el.points.map(sc) };
     const p = sc(el);
-    // Columns keep their size (a structural size), furniture scales.
-    return el.type === 'column'
-      ? { ...el, x: p.x, y: p.y }
-      : { ...el, x: p.x, y: p.y, w: el.w * factor, h: el.h * factor };
+    // Furniture scales; columns and stairs keep their (structural) size.
+    return el.type === 'furniture'
+      ? { ...el, x: p.x, y: p.y, w: el.w * factor, h: el.h * factor }
+      : { ...el, x: p.x, y: p.y };
   });
   return {
     ...doc,
@@ -419,14 +419,14 @@ export function stretchItems(doc: PlanDoc, box: Bounds, dx: number, dy: number):
       walls.set(w.id, w);
       return w;
     }
-    if (el.type === 'furniture' || el.type === 'column')
+    if (el.type === 'furniture' || el.type === 'column' || el.type === 'stair')
       return inBox(el, box) ? { ...el, x: el.x + dx, y: el.y + dy } : el;
     if (el.type === 'beam') {
       const p1 = move({ x: el.x1, y: el.y1 });
       const p2 = move({ x: el.x2, y: el.y2 });
       return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
     }
-    if (el.type === 'slab') return { ...el, points: el.points.map(move) };
+    if (el.type === 'slab' || el.type === 'plot') return { ...el, points: el.points.map(move) };
     return el;
   });
   return {

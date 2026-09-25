@@ -164,10 +164,23 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k }: Prop
         />
       )}
 
-      {d?.type === 'rectangle' && (
+      {d?.type === 'beam' && (
+        <line
+          data-testid="beam-draft"
+          x1={d.x1}
+          y1={d.y1}
+          x2={d.x2}
+          y2={d.y2}
+          style={{ stroke: PLAN.draft }}
+          strokeWidth={2 * k}
+          strokeDasharray={`${8 * k} ${4 * k}`}
+        />
+      )}
+
+      {(d?.type === 'rectangle' || d?.type === 'slab' || d?.type === 'plot') && (
         <>
           <rect
-            data-testid="rectangle-draft"
+            data-testid={`${d.type}-draft`}
             x={Math.min(d.x1, d.x2)}
             y={Math.min(d.y1, d.y2)}
             width={Math.abs(d.x2 - d.x1)}

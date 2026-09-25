@@ -1,5 +1,6 @@
 import { wallLength, wallParam } from '../geometry';
 import { MM_PER_UNIT } from '../lib/scale';
+import { stairLayout } from '../lib/site';
 import {
   levelOf,
   type Beam,
@@ -8,6 +9,7 @@ import {
   type Opening,
   type PlanDoc,
   type Point,
+  type Stair,
   type Wall,
 } from '../types';
 import { thicknessOf, wallExtensions, wallsOf } from '../walls';
@@ -37,7 +39,7 @@ export interface Solid {
   color: string;
   opacity?: number;
   /** What it is, for tests and for picking materials. */
-  role: 'wall' | 'glass' | 'door' | 'furniture' | 'column' | 'beam';
+  role: 'wall' | 'glass' | 'door' | 'furniture' | 'column' | 'beam' | 'stair';
 }
 
 /** A flat floor area at height y, as [x, z] points in metres. */
@@ -74,6 +76,7 @@ const GLASS_COLOR = '#9fd3f0';
 const DOOR_COLOR = '#8b5e3c';
 const DEFAULT_FLOOR = '#f1f5f9';
 const CONCRETE = '#c9c6bf';
+const LAWN = '#a7c48a';
 
 const m = (units: number) => units * M_PER_UNIT;
 const mmToM = (mm: number) => mm / 1000;
@@ -114,7 +117,8 @@ function wallSolids(wall: Wall, walls: Wall[], openings: Opening[], heightMm: nu
   for (const { o, s0, s1 } of gaps) {
     if (s0 > cursor) solids.push(piece(cursor, s0, 0, top));
     const head = Math.min(top, mmToM(o.type === 'door' ? DOOR_HEAD_MM : WINDOW_HEAD_MM));
-    if (top > head) solids.push(piece(s0, s1, head, top));
+    // A gate is open to the sky: no lintel over it.
+    if (top > head && !o.gate) solids.push(piece(s0, s1, head, top));
     if (o.type === 'window') {
       const sill = Math.min(head, mmToM(WINDOW_SILL_MM));
       solids.push(piece(s0, s1, 0, sill));
@@ -126,7 +130,25 @@ function wallSolids(wall: Wall, walls: Wall[], openings: Opening[], heightMm: nu
   return solids;
 }
 
-/** An open door leaf, standing where the 2D swing line is drawn. */
+/** An open door leaf (or a gate's two leaves), standing where the 2D swing lines are drawn. */
+function doorLeaves(door: Opening, heightMm: number): Solid[] {
+  const sy = door.flipSide ? -1 : 1;
+  if (door.gate) {
+    const half = door.width / 2;
+    return [-1, 1].map((side) => ({
+      ...toScene(door, door.angle, { x: (side * door.width) / 2, y: (-half / 2) * sy }),
+      y0: 0,
+      h: Math.min(mmToM(DOOR_HEAD_MM), mmToM(heightMm)) - 0.01,
+      w: 0.05,
+      d: m(half),
+      rotY: (-door.angle * Math.PI) / 180,
+      color: DOOR_COLOR,
+      role: 'door' as const,
+    }));
+  }
+  return [doorLeaf(door, heightMm)];
+}
+
 function doorLeaf(door: Opening, heightMm: number): Solid {
   const hx = door.flipHinge ? -1 : 1;
   const sy = door.flipSide ? -1 : 1;
@@ -267,6 +289,36 @@ function furnitureSolids(f: Furniture, color?: string): Solid[] {
   return parts;
 }
 
+const RAMP_SLICES = 12;
+
+/** A stair's treads and landings as solid blocks from the floor up; a ramp as a run of thin slices. */
+function stairSolids(st: Stair, color?: string): Solid[] {
+  const layout = stairLayout(st);
+  const solids: Solid[] = [];
+  const block = (x: number, y: number, w: number, h: number, topMm: number) =>
+    solids.push({
+      ...toScene(st, st.rotation ?? 0, { x: x + w / 2, y: y + h / 2 }),
+      y0: 0,
+      h: Math.max(0.01, mmToM(topMm)),
+      w: m(w),
+      d: m(h),
+      rotY: (-(st.rotation ?? 0) * Math.PI) / 180,
+      color: color ?? CONCRETE,
+      role: 'stair',
+    });
+  for (const part of layout.parts) {
+    if (part.kind !== 'ramp') {
+      block(part.x, part.y, part.w, part.h, part.topMm);
+      continue;
+    }
+    // The ramp rises from its bottom edge (+y) to its top edge (-y).
+    const slice = part.h / RAMP_SLICES;
+    for (let i = 0; i < RAMP_SLICES; i++)
+      block(part.x, part.y + part.h - (i + 1) * slice, part.w, slice, (part.topMm * (i + 1)) / RAMP_SLICES);
+  }
+  return solids;
+}
+
 function columnSolid(c: Column, top: number, color?: string): Solid {
   return {
     ...toScene(c, 0, { x: 0, y: 0 }),
@@ -322,13 +374,22 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       const own = openings.filter((o) => o.wallId === wall.id);
       const color = colorOf(wall.material);
       const paint = (s: Solid) => (color && s.role === 'wall' ? { ...s, color } : s);
-      solids.push(...wallSolids(wall, walls, own, options.wallHeightMm).map(paint).map(lift));
+      const height = wall.heightMm ?? options.wallHeightMm;
+      // A boundary wall stands on the natural ground, not on the plinth.
+      if (wall.kind === 'boundary' && i === 0) {
+        solids.push(...wallSolids(wall, walls, own, height).map(paint));
+        continue;
+      }
+      solids.push(...wallSolids(wall, walls, own, height).map(paint).map(lift));
+      if (wall.kind) continue;
       // The plinth: ground-floor walls carry on down to the ground.
       if (i === 0 && plinth > 0) solids.push(...wallSolids(wall, walls, [], doc.plinthMm).map(paint));
     }
     for (const door of openings) {
-      if (door.type === 'door' && walls.some((w) => w.id === door.wallId))
-        solids.push(lift(doorLeaf(door, options.wallHeightMm)));
+      const host = walls.find((w) => w.id === door.wallId);
+      if (door.type !== 'door' || !host) continue;
+      const leaves = doorLeaves(door, host.heightMm ?? options.wallHeightMm);
+      solids.push(...(host.kind === 'boundary' && i === 0 ? leaves : leaves.map(lift)));
     }
     for (const el of els) {
       if (el.type === 'furniture' && options.showFurniture)
@@ -338,6 +399,18 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         const b = beamSolid(el, wallTop, colorOf(el.material));
         if (b) solids.push(lift(b));
       }
+      if (el.type === 'stair') {
+        // Steps up the plinth start from the natural ground; others from the floor they are on.
+        const fromGround = i === 0 && Math.abs(el.riseMm - doc.plinthMm) < 1;
+        const parts = stairSolids(el, colorOf(el.material));
+        solids.push(...(fromGround ? parts : parts.map(lift)));
+      }
+      if (el.type === 'plot' && i === 0)
+        floors.push({
+          points: el.points.map((p) => [m(p.x), m(p.y)] as [number, number]),
+          y: 0,
+          color: colorOf(el.material) ?? LAWN,
+        });
       if (el.type === 'slab')
         slabs.push({
           points: el.points.map((p) => [m(p.x), m(p.y)] as [number, number]),

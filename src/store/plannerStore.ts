@@ -35,9 +35,14 @@ import {
   syncComponent,
   ungroup,
 } from '../lib/selection';
+import { boundaryWallLines, stairLayout } from '../lib/site';
+import { SLAB_MM } from '../three/model';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
 import type {
+  Plot,
+  Slab,
+  Stair,
   Draft,
   Id,
   MarlaSqFt,
@@ -62,6 +67,36 @@ export interface StructureSpec {
   beamDepth: number;
   slabThickness: number;
 }
+
+export interface SiteSpec {
+  setbacks: { front: number; rear: number; sides: number };
+  boundaryWall: boolean;
+  /** Type of new walls drawn with the Wall and Rectangle tools. */
+  wallKind: 'normal' | 'boundary' | 'parapet';
+  /** Door tool places a door or a gate. */
+  gate: boolean;
+  gateWidthMm: number;
+  stairShape: Stair['shape'];
+  stairWidthMm: number;
+  treadMm: number;
+  /** A stair climbs a full floor; a ramp or plinth steps climb the plinth. */
+  climb: 'floor' | 'plinth';
+}
+
+/** Heights of boundary walls (7') and parapets (3'). */
+export const KIND_HEIGHT_MM = { boundary: 2133.6, parapet: 914.4 } as const;
+
+export const DEFAULT_SITE: SiteSpec = {
+  setbacks: { front: 1524, rear: 609.6, sides: 0 },
+  boundaryWall: true,
+  wallKind: 'normal',
+  gate: false,
+  gateWidthMm: 3048,
+  stairShape: 'straight',
+  stairWidthMm: 914.4,
+  treadMm: 254,
+  climb: 'floor',
+};
 
 const inch = (n: number) => (n * 25.4) / MM_PER_UNIT;
 /** 9" × 12" columns, 9" × 18" beams and a 6" slab: common RCC sizes for Pakistani houses. */
@@ -111,6 +146,14 @@ export interface PlannerState {
   addColumn: (p: Point) => void;
   addBeam: (a: Point, b: Point) => void;
   addSlab: (points: Point[]) => void;
+  /** Settings for plots, wall types, gates and stairs. */
+  site: SiteSpec;
+  setSite: (patch: Partial<SiteSpec>) => void;
+  /** A plot with its setbacks, and a boundary wall round it when that option is on. */
+  addPlot: (points: Point[]) => void;
+  addStair: (p: Point) => void;
+  /** Parapet walls round a roof slab, on the floor above it (a Roof floor is added if needed). */
+  addParapetAround: (slabId: Id) => void;
   brushSize: number;
   gridPx: number;
   scaleMMperPx: number;
@@ -299,6 +342,9 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       lastCopy: null,
       activeLevel: GROUND_LEVEL,
     };
+    /** Type and height fields for a new wall of the given kind. */
+    const kindFields = (kind: SiteSpec['wallKind']) =>
+      kind === 'normal' ? {} : { kind, heightMm: KIND_HEIGHT_MM[kind] };
     /** Put a new item on the active floor. */
     const onActive = <T extends { levelId?: Id }>(item: T): T => {
       const level = get().activeLevel;
@@ -635,6 +681,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           y2: b.y,
           thickness: get().wallThicknessMm / MM_PER_UNIT,
           material: activeMat(),
+          ...kindFields(get().site.wallKind),
         } as PlanElement);
         updateElements((els) => [...els, wall]);
       },
@@ -644,10 +691,18 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           get().setWarning(`Click on a wall to place a ${type}.`);
           return;
         }
-        const pos = placeOnWall(wall, p, mmToPx(OPENING_WIDTH_MM[type]));
+        const gate = type === 'door' && get().site.gate;
+        const pos = placeOnWall(wall, p, mmToPx(gate ? get().site.gateWidthMm : OPENING_WIDTH_MM[type]));
         updateElements((els) => [
           ...els,
-          onActive<PlanElement>({ id: newId(), type, wallId: wall.id, ...pos, material: activeMat() }),
+          onActive<PlanElement>({
+            id: newId(),
+            type,
+            wallId: wall.id,
+            ...pos,
+            material: activeMat(),
+            ...(gate ? { gate: true } : {}),
+          }),
         ]);
         get().setWarning(null);
       },
@@ -857,6 +912,81 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         if (points.length < 3) return;
         const slab: PlanElement = { id: newId(), type: 'slab', points, thickness: get().structure.slabThickness };
         updateElements((els) => [...els, onActive(slab)]);
+      },
+      site: DEFAULT_SITE,
+      setSite: (patch) => set((st) => ({ site: { ...st.site, ...patch } })),
+      addPlot: (points) => {
+        const { site } = get();
+        const plot: PlanElement = { id: newId(), type: 'plot', points, front: 2, setbacks: { ...site.setbacks } };
+        get().beginBatch();
+        updateElements((els) => [...els, plot]);
+        if (site.boundaryWall) {
+          const thickness = inch(9);
+          const walls = boundaryWallLines(plot as Plot, thickness).map(([a, b]): PlanElement => ({
+            id: newId(),
+            type: 'wall',
+            x1: a.x,
+            y1: a.y,
+            x2: b.x,
+            y2: b.y,
+            thickness,
+            kind: 'boundary',
+            heightMm: KIND_HEIGHT_MM.boundary,
+          }));
+          updateElements((els) => [...els, ...walls]);
+        }
+        get().endBatch();
+      },
+      addStair: (p) => {
+        const { site, doc, wallHeightMm } = get();
+        const riseMm = site.climb === 'plinth' ? doc.plinthMm : wallHeightMm + SLAB_MM;
+        const spec = { shape: site.stairShape, width: site.stairWidthMm / MM_PER_UNIT, riseMm, treadMm: site.treadMm };
+        const layout = stairLayout(spec);
+        const stair: PlanElement = {
+          id: newId(),
+          type: 'stair',
+          x: p.x,
+          y: p.y,
+          ...spec,
+          riserMm: layout.riserMm,
+          w: layout.w,
+          h: layout.h,
+        };
+        updateElements((els) => [...els, onActive(stair)]);
+      },
+      addParapetAround: (slabId) => {
+        const slab = get().doc.elements.find((el): el is Slab => el.type === 'slab' && el.id === slabId);
+        if (!slab) return;
+        const levels = get().doc.levels;
+        const index = levels.findIndex((l) => l.id === levelOf(slab));
+        get().beginBatch();
+        let roof = levels[index + 1];
+        if (!roof) {
+          roof = { id: newId(), name: 'Roof' };
+          const added = roof;
+          get().commit((doc) => ({ ...doc, levels: [...doc.levels, added] }));
+        }
+        const thickness = inch(4.5);
+        const inner = boundaryWallLines(
+          { id: '', type: 'plot', points: slab.points, front: 0, setbacks: { front: 0, rear: 0, sides: 0 } },
+          thickness,
+        );
+        const roofId = roof.id;
+        const walls = inner.map(([a, b]): PlanElement => ({
+          id: newId(),
+          type: 'wall',
+          x1: a.x,
+          y1: a.y,
+          x2: b.x,
+          y2: b.y,
+          thickness,
+          kind: 'parapet',
+          heightMm: KIND_HEIGHT_MM.parapet,
+          levelId: roofId,
+        }));
+        updateElements((els) => [...els, ...walls]);
+        get().endBatch();
+        get().setActiveLevel(roofId);
       },
       setPlinthMm: (mm) =>
         get().commit((doc) => (doc.plinthMm === mm ? doc : { ...doc, plinthMm: Math.max(0, Math.min(3000, mm)) })),

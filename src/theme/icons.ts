@@ -60,6 +60,9 @@ export const ICONS = {
   beam: "<path d='M3 9h18M3 15h18' stroke-dasharray='3 2'/><rect x='2.5' y='7' width='3' height='10' fill='currentColor' stroke='none'/><rect x='18.5' y='7' width='3' height='10' fill='currentColor' stroke='none'/>",
   slab: "<path d='M3 9 12 4l9 5-9 5z'/><path d='M3 9v3l9 5 9-5V9'/>",
   levels: "<path d='M4 20h16M4 14h16M4 8h16'/><path d='M8 20v-6M16 14V8'/>",
+  plot: "<path d='M3.5 3.5h17v17h-17z' stroke-dasharray='4 2 1 2'/><path d='M7 7h10v10H7z'/>",
+  stairs: "<path d='M4 20h4v-4h4v-4h4V8h4'/><path d='M16 4h4v4' />",
+  gate: "<path d='M3 20V6M21 20V6M3 9h18M3 20h18'/><path d='M8 9v11M12 9v11M16 9v11'/>",
 } as const;
 
 export type IconName = keyof typeof ICONS;

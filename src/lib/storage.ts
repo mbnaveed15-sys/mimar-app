@@ -86,6 +86,8 @@ function normaliseElement(raw: unknown): PlanElement | null {
         x2: num('x2'),
         y2: num('y2'),
         thickness: thickness > 0 ? thickness : undefined,
+        kind: raw.kind === 'boundary' || raw.kind === 'parapet' ? (raw.kind as 'boundary' | 'parapet') : undefined,
+        heightMm: num('heightMm') > 0 ? num('heightMm') : undefined,
       };
       return [el.x1, el.y1, el.x2, el.y2].every(Number.isFinite) ? el : null;
     }
@@ -101,6 +103,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
         width: num('width'),
         flipSide: raw.flipSide === true || undefined,
         flipHinge: raw.flipHinge === true || undefined,
+        gate: raw.gate === true || undefined,
       };
       return el.wallId && [el.x, el.y, el.angle, el.width].every(Number.isFinite) ? el : null;
     }
@@ -148,6 +151,43 @@ function normaliseElement(raw: unknown): PlanElement | null {
       const points = readPoints(raw.points);
       const thickness = num('thickness');
       return points.length >= 3 && thickness > 0 ? { ...base, type: 'slab' as const, points, thickness } : null;
+    }
+    case 'plot': {
+      const points = readPoints(raw.points);
+      const sb = isObject(raw.setbacks) ? raw.setbacks : {};
+      const mm = (v: unknown) => (typeof v === 'number' && v >= 0 ? v : 0);
+      if (points.length < 3) return null;
+      const front = Number.isInteger(raw.front) && (raw.front as number) < points.length ? (raw.front as number) : 0;
+      return {
+        ...base,
+        type: 'plot' as const,
+        points,
+        front,
+        setbacks: { front: mm(sb.front), rear: mm(sb.rear), sides: mm(sb.sides) },
+      };
+    }
+    case 'stair': {
+      const shape = ['straight', 'L', 'U', 'ramp'].includes(raw.shape as string)
+        ? (raw.shape as 'straight')
+        : 'straight';
+      const el = {
+        ...base,
+        type: 'stair' as const,
+        x: num('x'),
+        y: num('y'),
+        rotation: typeof raw.rotation === 'number' && Number.isFinite(raw.rotation) ? raw.rotation : undefined,
+        shape,
+        width: num('width'),
+        riseMm: num('riseMm'),
+        riserMm: num('riserMm'),
+        treadMm: num('treadMm'),
+        w: num('w'),
+        h: num('h'),
+      };
+      const ok = [el.x, el.y, el.width, el.riseMm, el.riserMm, el.treadMm, el.w, el.h].every(
+        (v) => Number.isFinite(v) && v >= 0,
+      );
+      return ok && el.width > 0 ? el : null;
     }
     default:
       return null;

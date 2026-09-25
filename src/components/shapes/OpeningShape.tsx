@@ -23,7 +23,20 @@ export function OpeningShape({ opening, color, selected, wallThickness }: Props)
       <rect x={-w / 2} y={-t} width={w} height={2 * t} style={{ fill: PLAN.paper }} />
       <line x1={-w / 2} y1={-t} x2={-w / 2} y2={t} style={stroke} strokeWidth={2} />
       <line x1={w / 2} y1={-t} x2={w / 2} y2={t} style={stroke} strokeWidth={2} />
-      {opening.type === 'door' ? (
+      {opening.type === 'door' && opening.gate ? (
+        <g data-testid="gate">
+          {/* Two leaves, each half the width, swinging open from either jamb. */}
+          <line x1={-w / 2} y1={0} x2={-w / 2} y2={-w / 2} style={stroke} strokeWidth={2} />
+          <line x1={w / 2} y1={0} x2={w / 2} y2={-w / 2} style={stroke} strokeWidth={2} />
+          <path
+            d={`M ${-w / 2} ${-w / 2} A ${w / 2} ${w / 2} 0 0 1 0 0 A ${w / 2} ${w / 2} 0 0 1 ${w / 2} ${-w / 2}`}
+            fill="none"
+            style={stroke}
+            strokeWidth={1}
+            strokeDasharray="4 3"
+          />
+        </g>
+      ) : opening.type === 'door' ? (
         <g>
           <line x1={-w / 2} y1={0} x2={-w / 2} y2={-w} style={stroke} strokeWidth={2} />
           <path

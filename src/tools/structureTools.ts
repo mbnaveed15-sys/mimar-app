@@ -1,7 +1,9 @@
 import type { Inference } from '../lib/inference';
 import type { Measure } from '../lib/measure';
 import { formatLength } from '../lib/units';
+import { plotRect, stairLayout } from '../lib/site';
 import { detectRoom } from '../rooms';
+import { SLAB_MM } from '../three/model';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
 import type { Point, Tool } from '../types';
 
@@ -10,7 +12,7 @@ interface Store {
   getState: () => PlannerState;
 }
 
-export const STRUCTURE_TOOLS: Tool[] = ['column', 'beam', 'slab'];
+export const STRUCTURE_TOOLS: Tool[] = ['column', 'beam', 'slab', 'plot', 'stairs'];
 
 /** Default wall half-thickness (4½"), how far a slab reaches past a room's inner faces to the wall centres. */
 const SLAB_OVERHANG = (4.5 * 25.4) / MM_PER_UNIT;
@@ -75,13 +77,21 @@ export function structurePress(store: Store, inf: Inference) {
       if (d?.type !== 'slab') return s.setDraft({ type: 'slab', x1: p.x, y1: p.y, x2: p.x, y2: p.y });
       if (Math.abs(p.x - d.x1) > 1 && Math.abs(p.y - d.y1) > 1) s.addSlab(rectPoints({ x: d.x1, y: d.y1 }, p));
       return s.setDraft(null);
+    case 'plot':
+      if (d?.type !== 'plot') return s.setDraft({ type: 'plot', x1: p.x, y1: p.y, x2: p.x, y2: p.y });
+      if (Math.abs(p.x - d.x1) > 1 && Math.abs(p.y - d.y1) > 1) s.addPlot(plotRect({ x: d.x1, y: d.y1 }, p));
+      return s.setDraft(null);
+    case 'stairs':
+      s.addStair(p);
+      return;
   }
 }
 
 export function structureHover(store: Store, inf: Inference) {
   const s = store.getState();
   const d = s.draft;
-  if (d?.type === 'beam' || d?.type === 'slab') s.setDraft({ ...d, x2: inf.point.x, y2: inf.point.y });
+  if (d?.type === 'beam' || d?.type === 'slab' || d?.type === 'plot')
+    s.setDraft({ ...d, x2: inf.point.x, y2: inf.point.y });
 }
 
 /**
@@ -91,6 +101,11 @@ export function structureHover(store: Store, inf: Inference) {
 export function structureRelease(store: Store, dragged: boolean) {
   const s = store.getState();
   const d = s.draft;
+  if (s.tool === 'plot' && d?.type === 'plot' && dragged) {
+    if (Math.abs(d.x2 - d.x1) > 1 && Math.abs(d.y2 - d.y1) > 1)
+      s.addPlot(plotRect({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 }));
+    return s.setDraft(null);
+  }
   if (s.tool !== 'slab' || d?.type !== 'slab' || (d.x1 !== d.x2 && !dragged)) return;
   if (dragged) {
     s.addSlab(rectPoints({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 }));
@@ -128,6 +143,17 @@ export function structureMeasure(store: Store, m: Measure): string | null {
     s.setDraft(null);
     return null;
   }
+  if (s.tool === 'plot') {
+    if (d?.type !== 'plot') return `Click one corner of the plot, then type its width and depth, e.g. 25',45'.`;
+    const [a, b] = m.kind === 'pair' ? [m.a, m.b] : m.kind === 'length' ? [m.mm, m.mm] : [0, 0];
+    if (!a || !b) return `Type width and depth, e.g. 25',45'.`;
+    const sx = d.x2 < d.x1 ? -1 : 1;
+    const sy = d.y2 < d.y1 ? -1 : 1;
+    s.addPlot(plotRect({ x: d.x1, y: d.y1 }, { x: d.x1 + sx * units(a), y: d.y1 + sy * units(b) }));
+    s.setDraft(null);
+    return null;
+  }
+  if (s.tool === 'stairs') return 'Stairs are placed by clicking; set their shape and width on the right.';
   return 'Columns are placed by clicking; set their size on the right.';
 }
 
@@ -136,10 +162,23 @@ export function structureReadout(s: PlannerState): { label: string; value: strin
   const len = (u: number) => formatLength(u * MM_PER_UNIT, s.units);
   if (s.tool === 'beam')
     return { label: 'Length', value: d?.type === 'beam' ? len(Math.hypot(d.x2 - d.x1, d.y2 - d.y1)) : '' };
-  if (s.tool === 'slab')
+  if (s.tool === 'stairs') {
+    const { site } = s;
+    if (site.stairShape === 'ramp') return { label: 'Ramp', value: `1 in 12` };
+    const riseMm = site.climb === 'plinth' ? s.doc.plinthMm : s.wallHeightMm + SLAB_MM;
+    const l = stairLayout({
+      shape: site.stairShape,
+      width: site.stairWidthMm / MM_PER_UNIT,
+      riseMm,
+      treadMm: site.treadMm,
+    });
+    return { label: 'Risers', value: `${l.risers} × ${formatLength(l.riserMm, s.units)}` };
+  }
+  if (s.tool === 'slab' || s.tool === 'plot')
     return {
       label: 'Size',
-      value: d?.type === 'slab' ? `${len(Math.abs(d.x2 - d.x1))}, ${len(Math.abs(d.y2 - d.y1))}` : '',
+      value:
+        d?.type === 'slab' || d?.type === 'plot' ? `${len(Math.abs(d.x2 - d.x1))}, ${len(Math.abs(d.y2 - d.y1))}` : '',
     };
   return { label: '', value: '' };
 }
@@ -157,6 +196,12 @@ export function structureHint(s: PlannerState): string {
       return d?.type === 'slab'
         ? `Click the opposite corner, or type width, depth (e.g. 20',30').`
         : 'Click inside walls to cover that area with a slab, or drag a rectangle.';
+    case 'plot':
+      return d?.type === 'plot'
+        ? `Click the opposite corner, or type width, depth (e.g. 25',45'). The bottom edge faces the road.`
+        : 'Click or drag the plot. Setbacks and a boundary wall are added from the options on the right.';
+    case 'stairs':
+      return 'Click to place a stair. Pick straight, L, U or a ramp on the right; risers are worked out for you.';
     default:
       return '';
   }

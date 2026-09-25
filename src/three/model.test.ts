@@ -136,3 +136,49 @@ describe('3D model', () => {
     expect(slabs[0].h).toBeCloseTo(0.15);
   });
 });
+
+describe('3D site', () => {
+  it('stands boundary walls on the ground at their own height, with gates open to the sky', () => {
+    const boundary: PlanElement = { ...wall, kind: 'boundary', heightMm: 2133.6 };
+    const gate: PlanElement = { id: 'g', type: 'door', wallId: 'w', x: 500, y: 0, width: 300, angle: 0, gate: true };
+    const { solids } = buildModel({ ...docWith(boundary, gate), plinthMm: 450 }, opts);
+    const walls = solids.filter((s) => s.role === 'wall');
+    expect(walls).toHaveLength(2); // either side of the gate, no lintel, no plinth piece
+    expect(walls.every((s) => s.y0 === 0 && Math.abs(s.h - 2.1336) < 1e-6)).toBe(true);
+    expect(solids.filter((s) => s.role === 'door')).toHaveLength(2);
+  });
+
+  it('builds stairs from their treads, and lays a lawn over the plot', () => {
+    const stair: PlanElement = {
+      id: 'st',
+      type: 'stair',
+      x: 0,
+      y: 0,
+      shape: 'straight',
+      width: 91.44,
+      riseMm: 3200,
+      riserMm: 3200 / 18,
+      treadMm: 254,
+      w: 91.44,
+      h: 431.8,
+    };
+    const plot: PlanElement = {
+      id: 'p',
+      type: 'plot',
+      front: 2,
+      setbacks: { front: 0, rear: 0, sides: 0 },
+      points: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ],
+    };
+    const { solids, floors } = buildModel(docWith(stair, plot), opts);
+    const steps = solids.filter((s) => s.role === 'stair');
+    expect(steps).toHaveLength(17);
+    expect(Math.max(...steps.map((s) => s.h))).toBeCloseTo((17 * 3200) / 18 / 1000);
+    expect(floors).toHaveLength(1);
+    expect(floors[0].y).toBe(0);
+  });
+});

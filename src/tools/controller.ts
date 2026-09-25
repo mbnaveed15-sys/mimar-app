@@ -51,6 +51,8 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   column: 'none',
   beam: 'length',
   slab: 'pair',
+  plot: 'pair',
+  stairs: 'none',
 };
 
 /** Rotation snaps to this many degrees unless Shift is held. */
@@ -80,7 +82,7 @@ export function anchorOf(s: PlannerState): Point | null {
   const d = s.draft;
   if (!d) return null;
   if (MODIFY_TOOLS.includes(s.tool)) return modifyAnchor(s);
-  if (d.type === 'beam' || d.type === 'slab') return { x: d.x1, y: d.y1 };
+  if (d.type === 'beam' || d.type === 'slab' || d.type === 'plot') return { x: d.x1, y: d.y1 };
   switch (d.type) {
     case 'wall':
     case 'rectangle':
