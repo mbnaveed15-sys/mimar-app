@@ -4,11 +4,13 @@ In the order agreed with the owner. Confirm the plan with the owner before start
 
 ## Next (agreed order)
 
-1. **Bylaws and plan check** (after the Push/Pull follow-ups in 1.20, as the owner asked): plot presets with
-   authority setbacks and coverage, a live compliance panel (coverage, setbacks against the real footprint,
-   floors, FAR) and plan hints. See `05-auto-planner-review.md`. **Needs from the owner first:** which authorities
-   and plot sizes, and bylaw figures they trust (the Auto Planner's are placeholders, and its floors and setback
-   checks are broken).
+1. **1.22 Bylaws and plan check** (plan approved by the owner): authority + plot presets that fill setbacks from
+   size and frontage (separate Side 1/Side 2, choose which side), a live "Plan check" panel (setbacks against
+   walls/columns/blocks with offenders highlighted, coverage, first floor vs ground, storeys and height, plinth,
+   boundary wall, smallest room and house), each row with its clause; the check table and a title block in the
+   PDF. Figures and sources: `06-bylaws.md` (CDA and DHA I&R official; DHA Lahore, Bahria, LDA setbacks
+   provisional).
+2. **1.23 Plan hints**: rooms reachable through doors, bedrooms/kitchen on an outside wall, minimum sizes by name.
 
 ## Proposed next phases
 

@@ -2,6 +2,7 @@ import { DEFAULT_THEME, isThemeId, type ThemeId } from '../theme/themes';
 import type { MarlaSqFt, Mode, PaperSize, Units } from '../types';
 import { browserStorage } from './storage';
 import { GRID_MM } from './units';
+import { DEFAULT_TOOLBARS, readToolbars, type ToolbarLayout } from './toolbars';
 
 export interface GridPrefs {
   /** Show the grid on the plan (it still snaps when hidden, if snap is on). */
@@ -55,6 +56,8 @@ export interface Prefs {
   wallHeightMm: number;
   theme: ThemeId;
   grid: GridPrefs;
+  /** Where each tool bar is docked. */
+  toolbars: ToolbarLayout;
 }
 
 const PREFS_KEY = 'mimar.prefs';
@@ -72,6 +75,7 @@ export const DEFAULT_PREFS: Prefs = {
   wallHeightMm: 3048,
   theme: DEFAULT_THEME,
   grid: DEFAULT_GRID,
+  toolbars: DEFAULT_TOOLBARS,
 };
 
 const spacingOk = (mm: unknown): mm is number => typeof mm === 'number' && mm >= GRID_MIN_MM && mm <= GRID_MAX_MM;
@@ -135,6 +139,7 @@ export function loadPrefs(storage = browserStorage()): Prefs {
           : DEFAULT_PREFS.wallHeightMm,
       theme: isThemeId(raw?.theme) ? raw.theme : DEFAULT_THEME,
       grid: readGrid(raw?.grid),
+      toolbars: readToolbars(raw?.toolbars),
     };
   } catch {
     return DEFAULT_PREFS;

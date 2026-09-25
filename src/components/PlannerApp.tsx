@@ -8,7 +8,7 @@ import { Icon } from './Icon';
 import { MenuBar } from './MenuBar';
 import { SidePanel } from './SidePanel';
 import { StatusBar } from './StatusBar';
-import { ToolRail } from './ToolRail';
+import { ToolDock, ToolDockOverlay } from './ToolDocks';
 import { isDirty, useFileActions } from './useFileActions';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import { useOpenSections, type SectionId } from './useOpenSections';
@@ -80,8 +80,9 @@ export default function PlannerApp() {
   return (
     <div className="flex h-screen flex-col bg-surface text-ink">
       <MenuBar commands={commands} onSearch={() => setDialog('search')} />
+      <ToolDock area="top" />
       <div className="flex min-h-0 flex-1">
-        <ToolRail />
+        <ToolDock area="left" />
         <main className="relative min-w-0 flex-1 overflow-hidden bg-canvas">
           {view3d ? (
             <Suspense fallback={<div className="flex h-full items-center justify-center text-muted">Loading 3D…</div>}>
@@ -110,9 +111,12 @@ export default function PlannerApp() {
             </div>
           )}
         </main>
+        <ToolDock area="right" />
         <SidePanel sections={sections} />
       </div>
+      <ToolDock area="bottom" />
       <StatusBar />
+      <ToolDockOverlay />
 
       {menuAt && <ContextMenu at={menuAt} onClose={() => setMenuAt(null)} onProperties={focusProperties} />}
       {dialog === 'search' && <CommandPalette commands={commands} onClose={() => setDialog(null)} />}
