@@ -73,7 +73,6 @@ function toolCommand(tool: Tool, menu: MenuId, group: number): Command {
     run: () => {
       const s = st();
       if (!SIMPLE_TOOLS.includes(tool) && s.mode === 'simple') s.setMode('pro');
-      if (s.view3d) s.setView3d(false);
       s.setTool(tool);
     },
     kind: 'radio',
@@ -399,7 +398,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       toolCommand(
         t,
         'tools',
-        ['select', 'pan', 'zoom'].includes(t) ? 0 : ['move', 'rotate', 'tape'].includes(t) ? 1 : 2,
+        ['select', 'pan', 'zoom', 'orbit'].includes(t) ? 0 : ['move', 'rotate', 'tape'].includes(t) ? 1 : 2,
       ),
     ),
 

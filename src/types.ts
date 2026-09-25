@@ -235,6 +235,7 @@ export type Tool =
   | 'select'
   | 'pan'
   | 'zoom'
+  | 'orbit'
   | 'wall'
   | 'rectangle'
   | 'room'
@@ -269,6 +270,7 @@ export const TOOLS: Tool[] = [
   'select',
   'pan',
   'zoom',
+  'orbit',
   'wall',
   'rectangle',
   'room',

@@ -6,6 +6,7 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
   select: { label: 'Select', icon: 'select', key: 'Space' },
   pan: { label: 'Pan', icon: 'pan', key: 'H' },
   zoom: { label: 'Zoom', icon: 'zoom', key: 'Z' },
+  orbit: { label: 'Orbit', icon: 'orbit', key: 'O' },
   wall: { label: 'Wall', icon: 'wall', key: 'L' },
   rectangle: { label: 'Rectangle', icon: 'rectangle', key: 'R' },
   room: { label: 'Room', icon: 'room', key: 'A' },

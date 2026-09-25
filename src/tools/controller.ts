@@ -69,7 +69,7 @@ export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreI
   const lock = from ? (s.axisLock ? axisDirection(s.axisLock) : s.shiftLock) : null;
   return infer(raw, {
     walls: wallsOf(s.levelElements()),
-    tolerance: (10 * s.reach()) / s.view.zoom,
+    tolerance: 10 * s.reach() * s.pxUnits(),
     from,
     grid: s.grid.snap ? s.gridPx : null,
     lock,
@@ -242,7 +242,7 @@ export function press(store: Store, raw: Point, opts: { ctrl?: boolean } = {}): 
   const from = anchorOf(s);
   const inf = inferAt(s, raw, from, movingIds(s));
   const p = inf.point;
-  const tol = (10 * s.reach()) / s.view.zoom;
+  const tol = 10 * s.reach() * s.pxUnits();
   if (MODIFY_TOOLS.includes(s.tool)) {
     modifyPress(store, raw, inf, opts);
     return true;
@@ -397,7 +397,7 @@ export function applyMeasure(store: Store, text: string): boolean {
       if (d?.type !== 'wall' || m.kind !== 'length') return fail('Click where the wall starts, then type its length.');
       const end = along({ x: d.x1, y: d.y1 }, lockDir ?? currentDirection(s), m.mm);
       if (!d.chain) s.setDraft({ ...d, chain: true });
-      finishWallAt(store, end, (10 * s.reach()) / s.view.zoom);
+      finishWallAt(store, end, 10 * s.reach() * s.pxUnits());
       return true;
     }
     case 'rectangle': {
@@ -516,6 +516,8 @@ export function toolHint(s: PlannerState): string {
       return 'Drag to move around. Middle-drag pans with any tool.';
     case 'zoom':
       return 'Drag up to zoom in, down to zoom out. Shift+Z fits the plan.';
+    case 'orbit':
+      return 'Drag to turn around the building; hold Shift to pan. Scroll zooms. Middle-drag orbits with any tool.';
     case 'wall':
       return d?.type === 'wall'
         ? 'Click the next corner or type a length and press Enter. Arrow keys lock an axis; Esc stops.'

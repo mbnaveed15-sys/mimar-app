@@ -5,7 +5,7 @@ import { Icon } from './Icon';
 
 /** Tool rail groups, top to bottom: view, draw, change, finish, then the Pro tools and Modify tools. */
 const GROUPS: Tool[][] = [
-  ['select', 'pan', 'zoom'],
+  ['select', 'pan', 'zoom', 'orbit'],
   ['wall', 'rectangle', 'room', 'door', 'window', 'furniture'],
   ['column', 'beam', 'slab', 'plot', 'stairs'],
   ['move', 'rotate', 'tape'],
@@ -19,8 +19,6 @@ export function ToolRail() {
   const tool = usePlanner((s) => s.tool);
   const setTool = usePlanner((s) => s.setTool);
   const mode = usePlanner((s) => s.mode);
-  const view3d = usePlanner((s) => s.view3d);
-  const setView3d = usePlanner((s) => s.setView3d);
   const canUndo = usePlanner((s) => s.past.length > 0);
   const canRedo = usePlanner((s) => s.future.length > 0);
   const undo = usePlanner((s) => s.undo);
@@ -38,14 +36,11 @@ export function ToolRail() {
         <div key={i} className={`flex flex-col gap-0.5 ${i ? 'mt-1 border-t border-line pt-1' : ''}`}>
           {group.map((t) => {
             const info = TOOL_INFO[t];
-            const active = tool === t && !view3d;
+            const active = tool === t;
             return (
               <button
                 key={t}
-                onClick={() => {
-                  if (view3d) setView3d(false);
-                  setTool(t);
-                }}
+                onClick={() => setTool(t)}
                 aria-pressed={active}
                 aria-label={info.label}
                 title={`${info.label} (${info.key})`}

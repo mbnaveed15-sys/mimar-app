@@ -94,8 +94,11 @@ describe('3D model', () => {
       ],
       color: '#C29B6C',
       finish: { pattern: 'wood', spanM: 0.72, name: 'Wood' }, // four 180 mm planks
+      id: 'r',
+      level: 'ground',
     });
     expect(model.solids[0].finish?.pattern).toBe('brick');
+    expect(model.solids[0]).toMatchObject({ id: 'w', level: 'ground' });
   });
 
   it('raises the ground floor on the plinth, with the walls running down into it', () => {

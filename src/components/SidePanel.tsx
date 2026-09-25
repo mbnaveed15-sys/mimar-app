@@ -54,8 +54,6 @@ function ToolOptions() {
   const tool = usePlanner((s) => s.tool);
   const brushSize = usePlanner((s) => s.brushSize);
   const setBrushSize = usePlanner((s) => s.setBrushSize);
-  const view3d = usePlanner((s) => s.view3d);
-  if (view3d) return null;
   if (tool === 'wall' || tool === 'rectangle')
     return (
       <>

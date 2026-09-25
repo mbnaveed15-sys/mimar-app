@@ -8,10 +8,10 @@ const AXIS_NAMES = { x: 'Red axis locked', y: 'Green axis locked' };
 /** Bottom bar: what the tool wants next, snap and axis state, grid chips and the Measurements box. */
 export function StatusBar() {
   const state = usePlanner((s) => s);
-  const { tool, measureText, inference, axisLock, grid, view3d } = state;
-  const hint = view3d ? 'Drag to turn around the house, right-drag to move, scroll to zoom.' : toolHint(state);
+  const { tool, measureText, inference, axisLock, grid } = state;
+  const hint = toolHint(state);
   const readout = measureReadout(state);
-  const measuring = !view3d && tool in MEASURE_TOOLS;
+  const measuring = tool in MEASURE_TOOLS;
   const chip = 'flex h-5 items-center gap-1 rounded-sm border px-1.5 text-[11px]';
 
   return (
