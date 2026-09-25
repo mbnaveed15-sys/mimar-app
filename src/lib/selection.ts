@@ -87,10 +87,16 @@ function segmentTouches(a: Point, b: Point, r: Bounds): boolean {
  * Items picked by a selection box. Dragging left to right (window) takes items entirely inside;
  * right to left (crossing) takes anything the box touches, like SketchUp.
  */
-export function itemsInBox(items: Item[], box: Bounds, crossing: boolean): Id[] {
+export function itemsInBox(
+  items: Item[],
+  box: Bounds,
+  crossing: boolean,
+  /** Where each plan point lands, when the box is drawn somewhere else (the 3D view's screen). */
+  project: (p: Point) => Point = (p) => p,
+): Id[] {
   return items
     .filter((item) => {
-      const pts = pointsOf(item);
+      const pts = pointsOf(item).map(project);
       if (!crossing) return pts.every((p) => inside(p, box));
       const closed = pts.length > 2;
       return (

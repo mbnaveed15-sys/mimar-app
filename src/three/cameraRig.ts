@@ -68,7 +68,8 @@ export class CameraRig {
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
     this.target.set(centre.x, 1, centre.z);
     this.distance = radius / Math.sin(Math.min(vFov, hFov) / 2);
-    this.azimuth = MathUtils.degToRad(35);
+    // Square on to the plan when drawing from scratch, so screen directions match the plan's.
+    this.azimuth = MathUtils.degToRad(steep ? 0 : 35);
     this.elevation = MathUtils.degToRad(steep ? 62 : 42);
     this.apply();
   }

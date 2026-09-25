@@ -13,7 +13,7 @@ import { itemsInBox, moveItems } from '../lib/selection';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore } from '../store/plannerStore';
 import { DRAG_PX, hover, MEASURE_TOOLS, press, release } from '../tools/controller';
-import type { Furniture, PlanElement, Point, Wall } from '../types';
+import type { Bounds, Furniture, PlanElement, Point, Wall } from '../types';
 
 type Drag =
   | { kind: 'pan'; lastX: number; lastY: number }
@@ -22,7 +22,7 @@ type Drag =
   /** Dragging several selected items (or a group) together. */
   | { kind: 'moveMany'; start: Point; ids: string[] }
   /** Pressed on empty space: becomes a selection box once the pointer moves. */
-  | { kind: 'box'; start: Point; additive: boolean }
+  | { kind: 'box'; start: Point; additive: boolean; client: Point; moved?: boolean }
   | { kind: 'wall-start' | 'wall-end'; orig: Wall }
   | { kind: 'resize' | 'rotate'; orig: Furniture };
 
@@ -51,6 +51,13 @@ function snapPoint(raw: Point, ignoreId?: string): Point {
   return nearestWallEnd(s.doc.elements, raw, 10 * s.pxUnits(), ignoreId) ?? gridSnap(raw);
 }
 
+const boundsOf = (a: Point, b: Point): Bounds => ({
+  minX: Math.min(a.x, b.x),
+  minY: Math.min(a.y, b.y),
+  maxX: Math.max(a.x, b.x),
+  maxY: Math.max(a.y, b.y),
+});
+
 /** What was right-clicked: screen position and the item there, if any. */
 export interface ContextTarget {
   x: number;
@@ -68,6 +75,11 @@ export function usePlanInput(
   onContextMenu?: (target: ContextTarget) => void,
   /** In 3D: the id of the item right under the pointer, found by looking along the view. */
   pickId?: (e: { clientX: number; clientY: number }) => string | null,
+  /**
+   * In 3D a selection box is a rectangle on the screen: `show` draws it (null hides it) and
+   * `project` says where a plan point appears on screen.
+   */
+  screenBox?: { show: (box: Bounds | null) => void; project: (p: Point) => Point },
 ) {
   /** The item under the pointer: what 3D picking saw, or else whatever is near the plan point. */
   function hitAt(e: { clientX: number; clientY: number }, raw: Point): PlanElement | null {
@@ -140,7 +152,7 @@ export function usePlanInput(
         const hit = hitAt(e, raw);
         if (!hit) {
           // Empty space (or inside a room): a click picks the room, a drag draws a selection box.
-          startDrag(e, { kind: 'box', start: raw, additive: e.shiftKey });
+          startDrag(e, { kind: 'box', start: raw, additive: e.shiftKey, client: { x: e.clientX, y: e.clientY } });
           return;
         }
         if (e.shiftKey) {
@@ -208,7 +220,13 @@ export function usePlanInput(
           break;
         case 'box': {
           const start = pressRef.current;
-          if (!s.draft && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) <= DRAG_PX) break;
+          if (!s.draft && !drag.moved && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) <= DRAG_PX)
+            break;
+          if (screenBox) {
+            drag.moved = true;
+            screenBox.show(boundsOf(drag.client, { x: e.clientX, y: e.clientY }));
+            break;
+          }
           const { x, y } = drag.start;
           s.setDraft({ type: 'marquee', x1: x, y1: y, x2: raw.x, y2: raw.y, additive: drag.additive });
           break;
@@ -284,6 +302,16 @@ export function usePlanInput(
       const drag = dragRef.current;
       dragRef.current = null;
       if (drag.kind === 'box') {
+        if (screenBox && drag.moved) {
+          screenBox.show(null);
+          const crossing = e.clientX < drag.client.x;
+          const pool = [...s.visibleElements(), ...s.levelRooms()].filter(
+            (it) => !s.openGroupId || it.groupId === s.openGroupId,
+          );
+          const box = boundsOf(drag.client, { x: e.clientX, y: e.clientY });
+          s.setSelection(itemsInBox(pool, box, crossing, screenBox.project), drag.additive);
+          return;
+        }
         finishBox(drag, toPlan(e));
         return;
       }
@@ -373,6 +401,7 @@ export function usePlanInput(
     dragRef.current = null;
     pressRef.current = null;
     if (drag && drag.kind !== 'pan' && drag.kind !== 'zoom' && drag.kind !== 'box') s.cancelBatch();
+    if (drag?.kind === 'box') screenBox?.show(null);
     if (s.draft?.type === 'marquee') s.setDraft(null);
     if (s.draft?.type === 'brush') {
       s.endBatch();
