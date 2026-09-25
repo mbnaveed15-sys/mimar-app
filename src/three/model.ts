@@ -1,6 +1,7 @@
 import { wallLength, wallParam } from '../geometry';
 import { patternSpanMm } from '../lib/patterns';
 import { MM_PER_UNIT } from '../lib/scale';
+import { openingProfileMm } from '../lib/shapes';
 import { stairLayout } from '../lib/site';
 import {
   levelOf,
@@ -11,6 +12,7 @@ import {
   type Pattern,
   type PlanDoc,
   type Point,
+  type Slab,
   type Stair,
   type Wall,
 } from '../types';
@@ -56,6 +58,27 @@ export interface Solid {
   role: 'wall' | 'glass' | 'door' | 'furniture' | 'column' | 'beam' | 'stair';
 }
 
+/**
+ * An upright flat outline pushed through a depth: the piece of wall round a shaped opening, its
+ * glass, or a flat shape drawn on a wall. Placed like a box: centred at x/z, from y0, turned by
+ * rotY; the outline is [along, up] in metres from that centre (along its own x axis) and base.
+ */
+export interface Panel {
+  outline: [number, number][];
+  holes?: [number, number][][];
+  x: number;
+  z: number;
+  y0: number;
+  rotY: number;
+  depth: number;
+  color: string;
+  opacity?: number;
+  finish?: Finish;
+  id?: string;
+  level?: string;
+  role: 'wall' | 'glass' | 'shape';
+}
+
 /** A flat floor area at height y, as [x, z] points in metres. */
 export interface Floor {
   points: [number, number][];
@@ -68,21 +91,29 @@ export interface Floor {
   level?: string;
 }
 
-/** A slab: an outline extruded upward from y0 by h, in metres. */
+/** A slab (or block): an outline, less any voids, extruded upward from y0 by h, in metres. */
 export interface Slab3D {
   points: [number, number][];
+  holes?: [number, number][][];
   y0: number;
   h: number;
   color: string;
+  opacity?: number;
   finish?: Finish;
   id?: string;
   level?: string;
+  /** A flat shape waiting for Push/Pull, which isn't built (or exported). */
+  role?: 'slab' | 'block' | 'shape';
 }
 
 export interface Model3D {
   solids: Solid[];
   floors: Floor[];
   slabs: Slab3D[];
+  /** Blocks, and flat shapes on floors (role 'shape'). */
+  blocks: Slab3D[];
+  /** Pieces of wall round shaped openings, their glass, and flat shapes on walls. */
+  panels: Panel[];
   /** Centre and size of the building, for positioning the camera. */
   centre: { x: number; z: number };
   size: number;
@@ -98,6 +129,9 @@ const GLASS_COLOR = '#9fd3f0';
 const DOOR_COLOR = '#8b5e3c';
 const DEFAULT_FLOOR = '#f1f5f9';
 const CONCRETE = '#c9c6bf';
+/** Flat shapes waiting for Push/Pull. */
+export const SHAPE_COLOR = '#3b82f6';
+const SHAPE_OPACITY = 0.35;
 const LAWN = '#a7c48a';
 
 const m = (units: number) => units * M_PER_UNIT;
@@ -112,10 +146,21 @@ function toScene(origin: Point, angleDeg: number, local: Point): { x: number; z:
   };
 }
 
-function wallSolids(wall: Wall, walls: Wall[], openings: Opening[], heightMm: number): Solid[] {
+/** Pieces of a wall: boxes, plus panels round shaped openings and flat shapes drawn on it. */
+interface WallParts {
+  solids: Solid[];
+  panels: Panel[];
+}
+
+/** Room left beside and above a shaped opening inside its panel, so the outline never touches the edge. */
+const PANEL_PAD = 2; // plan units (20 mm)
+const PANEL_EDGE_M = 0.005;
+
+function wallParts(wall: Wall, walls: Wall[], openings: Opening[], heightMm: number): WallParts {
   const len = wallLength(wall);
-  if (len === 0) return [];
+  if (len === 0) return { solids: [], panels: [] };
   const angle = (Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1) * 180) / Math.PI;
+  const rotY = (-angle * Math.PI) / 180;
   const origin = { x: wall.x1, y: wall.y1 };
   const thickness = m(thicknessOf(wall));
   const top = mmToM(heightMm);
@@ -124,35 +169,102 @@ function wallSolids(wall: Wall, walls: Wall[], openings: Opening[], heightMm: nu
   /** A piece of wall from s0 to s1 along it (plan units), between two heights (metres). */
   const piece = (s0: number, s1: number, y0: number, y1: number, role: Solid['role'] = 'wall', depth = thickness) => {
     const c = toScene(origin, angle, { x: (s0 + s1) / 2, y: 0 });
-    return { ...c, y0, h: y1 - y0, w: m(s1 - s0), d: depth, rotY: (-angle * Math.PI) / 180, color: WALL_COLOR, role };
+    return { ...c, y0, h: y1 - y0, w: m(s1 - s0), d: depth, rotY, color: WALL_COLOR, role };
   };
+  /** An opening's outline, [along, up] in metres from its centre and the wall's foot. */
+  const outline = (o: Opening): [number, number][] =>
+    openingProfileMm(o).map((p) => [
+      p.x / 1000,
+      Math.min(top - PANEL_EDGE_M, Math.max(PANEL_EDGE_M, (p.y + (o.sillMm ?? WINDOW_SILL_MM)) / 1000)),
+    ]);
+
+  const panels: Panel[] = [];
+  // Flat shapes are only drawn on the face (a thin see-through skin); they don't cut the wall.
+  for (const o of openings.filter((x) => x.flat)) {
+    const mid = wallParam(wall, o) * len;
+    const c = toScene(origin, angle, { x: mid, y: (o.face ?? 1) * (thicknessOf(wall) / 2 + 0.3) });
+    panels.push({
+      ...c,
+      y0: 0,
+      rotY,
+      outline: outline(o),
+      depth: 0.004,
+      color: SHAPE_COLOR,
+      opacity: SHAPE_OPACITY,
+      id: o.id,
+      role: 'shape',
+    });
+  }
 
   const gaps = openings
+    .filter((o) => !o.flat)
     .map((o) => {
       const mid = wallParam(wall, o) * len;
-      return { o, s0: Math.max(0, mid - o.width / 2), s1: Math.min(len, mid + o.width / 2) };
+      const pad = o.shape ? PANEL_PAD : 0;
+      return {
+        o,
+        mid,
+        s0: Math.max(-start, mid - o.width / 2 - pad),
+        s1: Math.min(len + end, mid + o.width / 2 + pad),
+      };
     })
     .sort((a, b) => a.s0 - b.s0);
 
   const solids: Solid[] = [];
   let cursor = -start;
-  for (const { o, s0, s1 } of gaps) {
+  for (const { o, mid, s0, s1 } of gaps) {
     if (s0 > cursor) solids.push(piece(cursor, s0, 0, top));
+    cursor = Math.max(cursor, s1);
+    if (o.type === 'window' && o.shape) {
+      // A shaped opening: the wall round it is one upright panel with the outline cut out of it.
+      const c = toScene(origin, angle, { x: (s0 + s1) / 2, y: 0 });
+      const shift = m(mid - (s0 + s1) / 2);
+      const hole = outline(o).map(([u, v]): [number, number] => [u + shift, v]);
+      const [l, r] = [-m(s1 - s0) / 2, m(s1 - s0) / 2];
+      panels.push({
+        ...c,
+        y0: 0,
+        rotY,
+        outline: [
+          [l, 0],
+          [r, 0],
+          [r, top],
+          [l, top],
+        ],
+        holes: [hole],
+        depth: thickness,
+        color: WALL_COLOR,
+        role: 'wall',
+      });
+      if (!o.open)
+        panels.push({
+          ...c,
+          y0: 0,
+          rotY,
+          outline: hole,
+          depth: 0.012,
+          color: GLASS_COLOR,
+          opacity: 0.35,
+          id: o.id,
+          role: 'glass',
+        });
+      continue;
+    }
     // A window keeps its height when its sill is raised or lowered.
     const sillMm = o.sillMm ?? WINDOW_SILL_MM;
-    const headMm = o.type === 'door' ? DOOR_HEAD_MM : sillMm + WINDOW_HEAD_MM - WINDOW_SILL_MM;
+    const headMm = o.type === 'door' ? DOOR_HEAD_MM : sillMm + (o.heightMm ?? WINDOW_HEAD_MM - WINDOW_SILL_MM);
     const head = Math.min(top, mmToM(headMm));
     // A gate is open to the sky: no lintel over it.
     if (top > head && !o.gate) solids.push(piece(s0, s1, head, top));
     if (o.type === 'window') {
       const sill = Math.min(head, mmToM(sillMm));
       solids.push(piece(s0, s1, 0, sill));
-      solids.push({ ...piece(s0, s1, sill, head, 'glass', 0.012), color: GLASS_COLOR, opacity: 0.35, id: o.id });
+      if (!o.open)
+        solids.push({ ...piece(s0, s1, sill, head, 'glass', 0.012), color: GLASS_COLOR, opacity: 0.35, id: o.id });
     }
-    cursor = Math.max(cursor, s1);
   }
   if (len + end > cursor) solids.push(piece(cursor, len + end, 0, top));
-  return solids;
+  return { solids, panels };
 }
 
 /** An open door leaf (or a gate's two leaves), standing where the 2D swing lines are drawn. */
@@ -374,6 +486,11 @@ function beamSolid(b: Beam, top: number, color?: string): Solid | null {
   };
 }
 
+/** Anything placed at a height and picked by the item it came from. */
+type Part = { y0: number; id?: string; level?: string };
+
+const toXZ = (p: Point): [number, number] => [m(p.x), m(p.y)];
+
 /** Height (metres) of a floor's finished level: the plinth plus a storey (walls and slab) per floor below. */
 export function levelBaseM(doc: PlanDoc, levelId: string, wallHeightMm: number): number {
   const i = Math.max(
@@ -405,6 +522,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const solids: Solid[] = [];
   const floors: Floor[] = [];
   const slabs: Slab3D[] = [];
+  const blocks: Slab3D[] = [];
+  const panels: Panel[] = [];
   const plinth = mmToM(doc.plinthMm);
   const wallTop = mmToM(options.wallHeightMm);
   const storey = mmToM(options.wallHeightMm + SLAB_MM);
@@ -412,16 +531,16 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
 
   levels.forEach((level, i) => {
     const base = plinth + i * storey;
-    const lift = (s: Solid): Solid => ({ ...s, y0: s.y0 + base });
+    const lift = <T extends Part>(s: T): T => ({ ...s, y0: s.y0 + base });
     /** Raise an item's parts by its height above the floor. */
     const raise =
       (el: { elevMm?: number }) =>
-      (s: Solid): Solid =>
+      <T extends Part>(s: T): T =>
         el.elevMm ? { ...s, y0: s.y0 + mmToM(el.elevMm) } : s;
     /** Mark parts with the item they came from (a window's glass keeps the window's id). */
     const from =
       (id: string) =>
-      (s: Solid): Solid => ({ ...s, id: s.id ?? id, level: level.id });
+      <T extends Part>(s: T): T => ({ ...s, id: s.id ?? id, level: level.id });
     const els = doc.elements.filter((el) => levelOf(el) === level.id);
     const walls = wallsOf(els);
     const openings = els.filter((el): el is Opening => el.type === 'door' || el.type === 'window');
@@ -430,18 +549,18 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       const own = openings.filter((o) => o.wallId === wall.id);
       const color = colorOf(wall.material);
       const finish = finishOf(wall.material);
-      const paint = (s: Solid) => (color && s.role === 'wall' ? { ...s, color, finish } : s);
+      const paint = <T extends Solid | Panel>(s: T): T => (color && s.role === 'wall' ? { ...s, color, finish } : s);
       const height = wall.heightMm ?? options.wallHeightMm;
       // A boundary wall stands on the natural ground, not on the plinth.
-      if (wall.kind === 'boundary' && i === 0) {
-        solids.push(...wallSolids(wall, walls, own, height).map(paint).map(raise(wall)).map(from(wall.id)));
-        continue;
-      }
-      solids.push(...wallSolids(wall, walls, own, height).map(paint).map(lift).map(raise(wall)).map(from(wall.id)));
+      const onGround = wall.kind === 'boundary' && i === 0;
+      const place = <T extends Part>(s: T): T => from(wall.id)(raise(wall)(onGround ? s : lift(s)));
+      const parts = wallParts(wall, walls, own, height);
+      solids.push(...parts.solids.map(paint).map(place));
+      panels.push(...parts.panels.map(paint).map(place));
       if (wall.kind) continue;
       // The plinth: ground-floor walls carry on down to the ground (not under a raised wall).
       if (i === 0 && plinth > 0 && !wall.elevMm)
-        solids.push(...wallSolids(wall, walls, [], doc.plinthMm).map(paint).map(from(wall.id)));
+        solids.push(...wallParts(wall, walls, [], doc.plinthMm).solids.map(paint).map(from(wall.id)));
     }
     for (const door of openings) {
       const host = walls.find((w) => w.id === door.wallId);
@@ -461,7 +580,14 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       if (el.type === 'column')
         solids.push(
           from(el.id)(
-            raise(el)(lift(withFinish(el.material, 'concrete')(columnSolid(el, wallTop, colorOf(el.material))))),
+            raise(el)(
+              lift(
+                withFinish(
+                  el.material,
+                  'concrete',
+                )(columnSolid(el, el.heightMm ? mmToM(el.heightMm) : wallTop, colorOf(el.material))),
+              ),
+            ),
           ),
         );
       if (el.type === 'beam') {
@@ -486,14 +612,33 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         });
       if (el.type === 'slab')
         slabs.push({
-          points: el.points.map((p) => [m(p.x), m(p.y)] as [number, number]),
+          points: el.points.map(toXZ),
+          ...(el.holes?.length ? { holes: el.holes.map((h) => h.map(toXZ)) } : {}),
           y0: base + wallTop + mmToM(el.elevMm ?? 0),
           h: m(el.thickness),
           color: colorOf(el.material) ?? CONCRETE,
           finish: finishOf(el.material, 'concrete'),
           id: el.id,
           level: level.id,
+          role: 'slab',
         });
+      if (el.type === 'block') {
+        // On a slab it stands on the slab's top; otherwise on the floor.
+        const host = el.slabId ? els.find((x): x is Slab => x.type === 'slab' && x.id === el.slabId) : undefined;
+        const foot = host ? base + wallTop + mmToM(host.elevMm ?? 0) + m(host.thickness) : base;
+        const flatShape = el.heightMm <= 0;
+        blocks.push({
+          points: el.points.map(toXZ),
+          // A flat shape floats just over the floor finish (drawn 5 mm up) so it shows.
+          y0: foot + mmToM(el.elevMm ?? 0) + (flatShape ? 0.007 : 0),
+          h: flatShape ? 0.003 : mmToM(el.heightMm),
+          color: flatShape ? SHAPE_COLOR : (colorOf(el.material) ?? CONCRETE),
+          ...(flatShape ? { opacity: SHAPE_OPACITY } : { finish: finishOf(el.material, 'concrete') }),
+          id: el.id,
+          level: level.id,
+          role: flatShape ? 'shape' : 'block',
+        });
+      }
     }
     for (const r of doc.rooms.filter((room) => levelOf(room) === level.id)) {
       floors.push({
@@ -507,12 +652,12 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
     }
   });
 
-  const flat = [...floors, ...slabs].flatMap((f) => f.points);
+  const flat = [...floors, ...slabs, ...blocks].flatMap((f) => f.points);
   const xs = [...solids.map((s) => s.x), ...flat.map((p) => p[0])];
   const zs = [...solids.map((s) => s.z), ...flat.map((p) => p[1])];
   const centre = xs.length
     ? { x: (Math.min(...xs) + Math.max(...xs)) / 2, z: (Math.min(...zs) + Math.max(...zs)) / 2 }
     : { x: 8, z: 5 };
   const size = xs.length ? Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs), 4) : 16;
-  return { solids, floors, slabs, centre, size };
+  return { solids, floors, slabs, blocks, panels, centre, size };
 }

@@ -1,31 +1,31 @@
-import { MM_PER_FOOT, MM_PER_INCH } from '../lib/units';
+import { formatLength, MM_PER_FOOT, MM_PER_INCH } from '../lib/units';
 import { usePlanner } from '../store/plannerStore';
 import type { GridPrefs } from '../lib/prefs';
 import type { Units } from '../types';
 import { LengthField } from './LengthField';
 import { themeColor } from '../theme/themes';
 
-/** Grid spacing presets for each unit system, in millimetres. */
-const SPACING_PRESETS: Record<Units, { mm: number; label: string }[]> = {
+/** Where the minor grid slider stops, for each unit system, in millimetres. */
+const MINOR_STOPS: Record<Units, number[]> = {
   imperial: [
-    { mm: 6 * MM_PER_INCH, label: '6"' },
-    { mm: MM_PER_FOOT, label: "1'" },
-    { mm: 2 * MM_PER_FOOT, label: "2'" },
-    { mm: 5 * MM_PER_FOOT, label: "5'" },
+    MM_PER_INCH,
+    2 * MM_PER_INCH,
+    3 * MM_PER_INCH,
+    6 * MM_PER_INCH,
+    MM_PER_FOOT,
+    2 * MM_PER_FOOT,
+    3 * MM_PER_FOOT,
+    5 * MM_PER_FOOT,
   ],
-  metric: [
-    { mm: 100, label: '100 mm' },
-    { mm: 250, label: '250 mm' },
-    { mm: 500, label: '500 mm' },
-    { mm: 1000, label: '1 m' },
-  ],
+  metric: [10, 25, 50, 100, 250, 500, 1000],
 };
 
-const MAJOR: { value: GridPrefs['major']; label: string }[] = [
-  { value: 0, label: 'Off' },
-  { value: 5, label: 'Every 5' },
-  { value: 10, label: 'Every 10' },
-];
+/** Where the major grid slider stops: off, or a heavier line every this many minor lines. */
+const MAJOR_STOPS = [0, 2, 3, 4, 5, 6, 8, 10, 12];
+
+/** The stop nearest a value. */
+const nearest = (stops: number[], v: number) =>
+  stops.reduce((best, s, i) => (Math.abs(s - v) < Math.abs(stops[best] - v) ? i : best), 0);
 
 const STYLES: { value: GridPrefs['style']; label: string }[] = [
   { value: 'lines', label: 'Lines' },
@@ -38,6 +38,9 @@ export function GridSettings() {
   const setGrid = usePlanner((s) => s.setGrid);
   const units = usePlanner((s) => s.units);
   const spacing = grid.spacingMm[units];
+  const minorStops = MINOR_STOPS[units];
+  // The major lines' size as a length: always a whole number of minor squares, so they line up.
+  const majorLabel = grid.major ? `${formatLength(spacing * grid.major, units)} (every ${grid.major})` : 'Off';
 
   return (
     <fieldset className="flex flex-col gap-2 text-xs" aria-label="Grid">
@@ -56,38 +59,46 @@ export function GridSettings() {
         </label>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <span className="text-muted">Spacing</span>
-        <div className="m-seg" role="group" aria-label="Grid spacing">
-          {SPACING_PRESETS[units].map((p) => (
-            <button
-              key={p.mm}
-              aria-pressed={Math.abs(spacing - p.mm) < 0.5}
-              onClick={() => setGrid({ spacingMm: p.mm })}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <LengthField
-          id="grid-spacing"
-          label="Custom spacing"
-          mm={spacing}
-          units={units}
-          onCommit={(mm) => setGrid({ spacingMm: mm })}
+      <label htmlFor="grid-minor" className="flex flex-col gap-1">
+        <span className="flex justify-between text-muted">
+          Minor grid <span className="tabular-nums text-ink">{formatLength(spacing, units)}</span>
+        </span>
+        <input
+          id="grid-minor"
+          type="range"
+          aria-label="Minor grid size"
+          aria-valuetext={formatLength(spacing, units)}
+          min={0}
+          max={minorStops.length - 1}
+          step={1}
+          value={nearest(minorStops, spacing)}
+          onChange={(e) => setGrid({ spacingMm: minorStops[Number(e.target.value)] })}
         />
-      </div>
+      </label>
+      <LengthField
+        id="grid-spacing"
+        label="Custom spacing"
+        mm={spacing}
+        units={units}
+        onCommit={(mm) => setGrid({ spacingMm: mm })}
+      />
 
-      <div className="flex flex-col gap-1">
-        <span className="text-muted">Major line</span>
-        <div className="m-seg" role="group" aria-label="Major grid line">
-          {MAJOR.map((m) => (
-            <button key={m.value} aria-pressed={grid.major === m.value} onClick={() => setGrid({ major: m.value })}>
-              {m.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <label htmlFor="grid-major" className="flex flex-col gap-1">
+        <span className="flex justify-between text-muted">
+          Major grid <span className="tabular-nums text-ink">{majorLabel}</span>
+        </span>
+        <input
+          id="grid-major"
+          type="range"
+          aria-label="Major grid size"
+          aria-valuetext={majorLabel}
+          min={0}
+          max={MAJOR_STOPS.length - 1}
+          step={1}
+          value={nearest(MAJOR_STOPS, grid.major)}
+          onChange={(e) => setGrid({ major: MAJOR_STOPS[Number(e.target.value)] })}
+        />
+      </label>
 
       <div className="flex flex-col gap-1">
         <span className="text-muted">Style</span>

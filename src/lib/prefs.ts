@@ -8,8 +8,8 @@ export interface GridPrefs {
   show: boolean;
   /** Distance between grid lines for each unit system, in millimetres. */
   spacingMm: Record<Units, number>;
-  /** A heavier line every this many steps, or 0 for none. */
-  major: 0 | 5 | 10;
+  /** A heavier line every this many minor steps (2 to 20), or 0 for none. */
+  major: number;
   style: 'lines' | 'dots';
   /** How strong the grid looks, from 0 (faint) to 100 (bold). */
   strength: number;
@@ -89,7 +89,10 @@ export function readGrid(raw: unknown): GridPrefs {
       imperial: spacingOk(spacing.imperial) ? spacing.imperial : DEFAULT_GRID.spacingMm.imperial,
       metric: spacingOk(spacing.metric) ? spacing.metric : DEFAULT_GRID.spacingMm.metric,
     },
-    major: g.major === 0 || g.major === 10 ? g.major : 5,
+    major:
+      g.major === 0 || (Number.isInteger(g.major) && (g.major as number) >= 2 && (g.major as number) <= 20)
+        ? (g.major as number)
+        : 5,
     style: g.style === 'dots' ? 'dots' : 'lines',
     strength: Number.isFinite(strength) ? Math.min(100, Math.max(0, strength)) : DEFAULT_GRID.strength,
     snap: g.snap !== false,

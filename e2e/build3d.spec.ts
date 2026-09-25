@@ -21,6 +21,8 @@ async function clickAt(page: Page, fx: number, fy: number) {
 }
 
 test('builds, selects, paints and orbits in the 3D view', async ({ page }) => {
+  // Many steps, each drawn by software 3D on test machines: give it room when they are busy.
+  test.slow();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.keyboard.press('Control+2');

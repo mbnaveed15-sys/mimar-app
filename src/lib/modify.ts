@@ -2,8 +2,9 @@
  * AutoCAD-style editing of walls: trim, extend, break, join, fillet, chamfer and offset, plus
  * mirror, scale and stretch for any selection. Everything here is pure: plan in, plan out.
  */
-import { placeOnWall, wallParam } from '../geometry';
+import { mapOutline, placeOnWall, wallParam } from '../geometry';
 import {
+  hasPoints,
   levelOf,
   type Bounds,
   type Id,
@@ -318,8 +319,8 @@ export function mirrorItems(doc: PlanDoc, ids: Id[], a: Point, b: Point, flip: b
       const p1 = reflect({ x: el.x1, y: el.y1 }, a, b);
       const p2 = reflect({ x: el.x2, y: el.y2 }, a, b);
       mirrored.set(el.id, { ...el, ...fresh, id, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
-    } else if (el.type === 'slab' || el.type === 'plot') {
-      mirrored.set(el.id, { ...el, ...fresh, id, points: el.points.map((p) => reflect(p, a, b)).reverse() });
+    } else if (hasPoints(el)) {
+      mirrored.set(el.id, { ...mapOutline(el, (p) => reflect(p, a, b), true), ...fresh, id });
     } else {
       const p = reflect(el, a, b);
       mirrored.set(el.id, {
@@ -384,7 +385,7 @@ export function scaleItems(doc: PlanDoc, ids: Id[], base: Point, factor: number)
       const p2 = sc({ x: el.x2, y: el.y2 });
       return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
     }
-    if (el.type === 'slab' || el.type === 'plot') return { ...el, points: el.points.map(sc) };
+    if (hasPoints(el)) return mapOutline(el, sc);
     const p = sc(el);
     // Furniture scales; columns and stairs keep their (structural) size.
     return el.type === 'furniture'
@@ -426,7 +427,7 @@ export function stretchItems(doc: PlanDoc, box: Bounds, dx: number, dy: number):
       const p2 = move({ x: el.x2, y: el.y2 });
       return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
     }
-    if (el.type === 'slab' || el.type === 'plot') return { ...el, points: el.points.map(move) };
+    if (hasPoints(el)) return mapOutline(el, move);
     return el;
   });
   return {

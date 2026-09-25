@@ -2,7 +2,11 @@ import { SNAP_LABELS, type Inference } from '../lib/inference';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT } from '../store/plannerStore';
 import { PLAN } from '../theme/plan';
+import { draftOutline } from '../lib/shapes';
 import type { Draft, Point, Units } from '../types';
+
+/** An outline with its first point repeated at the end, when it should be drawn closed. */
+const closedShape = (points: Point[], closed: boolean) => (closed && points.length ? [...points, points[0]] : points);
 
 interface Props {
   draft: Draft;
@@ -212,6 +216,19 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k }: Prop
             {len({ x: 0, y: d.y1 }, { x: 0, y: d.y2 })}
           </Label>
         </>
+      )}
+
+      {d?.type === 'shape' && d.surface.on === 'floor' && (
+        <polyline
+          data-testid="shape-draft"
+          points={closedShape(draftOutline(d.kind, d.points, d.cursor), d.kind !== 'polygon')
+            .map((p) => `${p.x},${p.y}`)
+            .join(' ')}
+          fill="none"
+          style={{ stroke: PLAN.draft }}
+          strokeWidth={2 * k}
+          strokeDasharray={dash}
+        />
       )}
 
       {d?.type === 'tape' && (

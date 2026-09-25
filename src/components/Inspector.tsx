@@ -3,9 +3,10 @@ import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { stairLayout } from '../lib/site';
 import { SLAB_MM, WINDOW_SILL_MM } from '../three/model';
 import { formatArea, formatLength, formatMarla } from '../lib/units';
+import { WINDOW_HEIGHT_MM } from '../lib/shapes';
 import { roomAreaSqMm } from '../rooms';
 import { KIND_HEIGHT_MM, MM_PER_UNIT, usePlanner } from '../store/plannerStore';
-import type { Stair, Wall } from '../types';
+import type { Opening, PlanElement, Stair, Wall } from '../types';
 import { thicknessOf } from '../walls';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { LengthField } from './LengthField';
@@ -28,6 +29,19 @@ const ROOM_NAMES = [
   'Servant quarter',
   'Laundry',
 ];
+
+const SHAPE_NAMES = { rect: 'rectangle', circle: 'circle', arch: 'arch', polygon: 'polygon' } as const;
+
+/** What to call a selected item. */
+function itemName(el: PlanElement): string {
+  if (el.type === 'furniture' && el.kind) return FURNITURE_CATALOG[el.kind].name;
+  if (el.type === 'block')
+    return el.heightMm > 0 ? `block (${SHAPE_NAMES[el.shape]})` : `${SHAPE_NAMES[el.shape]} shape`;
+  if (el.type === 'window' && el.flat) return 'shape on a wall';
+  if (el.type === 'window' && el.shape) return el.open ? `${el.shape} opening` : `${el.shape} window`;
+  if (el.type === 'window' && el.open) return 'opening';
+  return el.type;
+}
 
 /** Properties of the selected wall, opening, item or room, and a summary of the plan. */
 export function Inspector() {
@@ -52,6 +66,13 @@ export function Inspector() {
   const toUnits = (mm: number) => mm / MM_PER_UNIT;
   const materialName = (id?: string) => doc.materials.find((m) => m.id === id)?.name;
   const btn = 'm-btn';
+  /** Cut a shape drawn on a wall right through it, as an open hole. */
+  const cutThrough = (w: Opening) => {
+    const cut = { ...w, open: true };
+    delete cut.flat;
+    delete cut.face;
+    updateElement(cut);
+  };
   /** Change a stair and work its risers and footprint out again. */
   const restair = (st: Stair, patch: Partial<Stair>) => {
     const next = { ...st, ...patch };
@@ -68,9 +89,7 @@ export function Inspector() {
           </div>
         ) : el ? (
           <div className="mb-3 flex flex-col gap-2 rounded-md border border-line bg-raised p-2 text-xs">
-            <div className="font-medium">
-              Selected: {el.type === 'furniture' && el.kind ? FURNITURE_CATALOG[el.kind].name : el.type}
-            </div>
+            <div className="font-medium">Selected: {itemName(el)}</div>
 
             {el.type === 'wall' && (
               <LengthField
@@ -111,11 +130,11 @@ export function Inspector() {
                 ))}
               </div>
             )}
-            {el.type === 'wall' && el.kind && (
+            {el.type === 'wall' && (
               <LengthField
-                id="wall-height"
+                id="wall-height-edit"
                 label="Height"
-                mm={el.heightMm ?? KIND_HEIGHT_MM[el.kind]}
+                mm={el.heightMm ?? (el.kind ? KIND_HEIGHT_MM[el.kind] : wallHeightMm)}
                 units={units}
                 min={100}
                 onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 10000) })}
@@ -155,14 +174,44 @@ export function Inspector() {
                   </div>
                 )}
                 {el.type === 'window' && (
-                  <LengthField
-                    id="window-sill"
-                    label="Sill height"
-                    mm={el.sillMm ?? WINDOW_SILL_MM}
-                    units={units}
-                    min={0}
-                    onCommit={(mm) => updateElement({ ...el, sillMm: Math.min(mm, 3000) })}
-                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <LengthField
+                      id="window-sill"
+                      label="Sill height"
+                      mm={el.sillMm ?? WINDOW_SILL_MM}
+                      units={units}
+                      min={0}
+                      onCommit={(mm) => updateElement({ ...el, sillMm: Math.min(mm, 3000) })}
+                    />
+                    <LengthField
+                      id="window-height"
+                      label="Height"
+                      mm={el.heightMm ?? WINDOW_HEIGHT_MM}
+                      units={units}
+                      min={50}
+                      onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 10000) })}
+                    />
+                  </div>
+                )}
+                {el.type === 'window' && el.flat && (
+                  <>
+                    <div className="text-muted">
+                      Drawn on the wall's face. Push it through with Push/Pull (P) in 3D to cut the opening, or:
+                    </div>
+                    <button className={btn} onClick={() => cutThrough(el)}>
+                      Cut through the wall
+                    </button>
+                  </>
+                )}
+                {el.type === 'window' && !el.flat && (
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!!el.open}
+                      onChange={(e) => updateElement({ ...el, open: e.target.checked || undefined })}
+                    />
+                    Open (no glass)
+                  </label>
                 )}
                 <div className="text-muted">Drag it to slide along the wall.</div>
               </>
@@ -191,6 +240,16 @@ export function Inspector() {
                   />
                 )}
               </div>
+            )}
+            {el.type === 'column' && (
+              <LengthField
+                id="column-height"
+                label="Height"
+                mm={el.heightMm ?? wallHeightMm}
+                units={units}
+                min={100}
+                onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 30000) })}
+              />
             )}
             {el.type === 'beam' && (
               <div className="grid grid-cols-2 gap-2">
@@ -226,6 +285,35 @@ export function Inspector() {
               <button className={btn} onClick={() => addParapetAround(el.id)}>
                 Parapet round this roof
               </button>
+            )}
+            {el.type === 'slab' && !!el.holes?.length && (
+              <div className="flex items-center justify-between gap-2">
+                <span data-testid="slab-voids">
+                  {el.holes.length} {el.holes.length === 1 ? 'void' : 'voids'}
+                </span>
+                <button className={btn} onClick={() => updateElement({ ...el, holes: undefined })}>
+                  Fill voids
+                </button>
+              </div>
+            )}
+            {el.type === 'block' && (
+              <>
+                <LengthField
+                  id="block-height"
+                  label="Height"
+                  mm={el.heightMm}
+                  units={units}
+                  min={0}
+                  onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 30000) })}
+                />
+                <div className="text-muted">
+                  {el.heightMm > 0
+                    ? 'Push/Pull (P) its top or sides in 3D to change its size.'
+                    : el.slabId
+                      ? 'A flat shape on a slab: pull it up into a block, or push it down through the slab for a void.'
+                      : 'A flat shape: pull it up with Push/Pull (P) in 3D, or give it a height here.'}
+                </div>
+              </>
             )}
 
             {el.type === 'plot' && (

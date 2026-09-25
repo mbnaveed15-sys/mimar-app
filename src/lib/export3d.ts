@@ -1,5 +1,5 @@
 import { ShapeUtils, Vector2 } from 'three';
-import type { Model3D, Solid } from '../three/model';
+import type { Model3D, Panel, Slab3D, Solid } from '../three/model';
 
 /** One mesh of triangles, all in one material, in metres with y up. */
 export interface ExportMesh {
@@ -85,66 +85,127 @@ function addBox(mesh: ExportMesh, s: Solid) {
   face(mesh, [c(-1, 0, -1), c(-1, 1, -1), c(1, 1, -1), c(1, 0, -1)], turn(0, -1));
 }
 
-/** Triangles of a flat outline (x, z in metres), wound so they face up. */
-function triangulate(points: [number, number][]): [number, number, number][] {
+type Ring = [number, number][];
+
+/** Signed area of an outline (positive when it runs anticlockwise in its own a/b axes). */
+function area(ring: Ring): number {
+  let sum = 0;
+  ring.forEach(([ax, ay], i) => {
+    const [bx, by] = ring[(i + 1) % ring.length];
+    sum += ax * by - bx * ay;
+  });
+  return sum / 2;
+}
+
+/**
+ * An outline less its holes, given in its own flat axes (a, b), pushed through from t = 0 to 1:
+ * both caps and every side, including the sides of the holes. `at` places a point in the scene
+ * and `dir` turns a direction given in (a, b, t) into the scene.
+ */
+function addExtrusion(
+  mesh: ExportMesh,
+  outer: Ring,
+  holes: Ring[],
+  at: (a: number, b: number, t: number) => V3,
+  dir: (a: number, b: number, t: number) => V3,
+) {
+  const tris = ShapeUtils.triangulateShape(
+    outer.map(([a, b]) => new Vector2(a, b)),
+    holes.map((h) => h.map(([a, b]) => new Vector2(a, b))),
+  );
+  const all = [...outer, ...holes.flat()];
+  for (const t of [0, 1]) {
+    const start = mesh.positions.length / 3;
+    const n = dir(0, 0, t ? 1 : -1);
+    for (const [a, b] of all) {
+      mesh.positions.push(...at(a, b, t));
+      mesh.normals.push(...n);
+    }
+    for (const [i, j, k] of tris) {
+      // Keep each cap's triangles facing out: check against the cap's normal.
+      const [p, q, r] = [at(...all[i], t), at(...all[j], t), at(...all[k], t)];
+      const u = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
+      const v = [r[0] - p[0], r[1] - p[1], r[2] - p[2]];
+      const cross = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+      const out = cross[0] * n[0] + cross[1] * n[1] + cross[2] * n[2] >= 0;
+      mesh.indices.push(...(out ? [start + i, start + j, start + k] : [start + i, start + k, start + j]));
+    }
+  }
+  // Sides face away from the solid: out of the outline, and into each hole.
+  for (const [ring, isHole] of [[outer, false], ...holes.map((h) => [h, true] as const)] as [Ring, boolean][]) {
+    const turn = (area(ring) >= 0 ? 1 : -1) * (isHole ? -1 : 1);
+    ring.forEach(([a0, b0], i) => {
+      const [a1, b1] = ring[(i + 1) % ring.length];
+      const len = Math.hypot(a1 - a0, b1 - b0) || 1;
+      const n = dir(((b1 - b0) / len) * turn, (-(a1 - a0) / len) * turn, 0);
+      const quad: V3[] = [at(a0, b0, 0), at(a1, b1, 0), at(a1, b1, 1), at(a0, b0, 1)];
+      const u = quad[1].map((c, k) => c - quad[0][k]);
+      const v = quad[3].map((c, k) => c - quad[0][k]);
+      const cross = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+      const out = cross[0] * n[0] + cross[1] * n[1] + cross[2] * n[2] >= 0;
+      face(mesh, out ? quad : [...quad].reverse(), n);
+    });
+  }
+}
+
+/** A flat outline at height y, facing up. */
+function addFlat(mesh: ExportMesh, points: Ring, y: number) {
   const tris = ShapeUtils.triangulateShape(
     points.map(([x, z]) => new Vector2(x, z)),
     [],
   );
-  return tris.map(([a, b, c]) => {
+  const start = mesh.positions.length / 3;
+  for (const [x, z] of points) {
+    mesh.positions.push(x, y, z);
+    mesh.normals.push(0, 1, 0);
+  }
+  for (const [a, b, c] of tris) {
     const [ax, az] = points[a];
     const [bx, bz] = points[b];
     const [cx, cz] = points[c];
     // Facing +y needs (b - a) × (c - a) to point up.
     const up = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
-    return up >= 0 ? [a, b, c] : [a, c, b];
-  });
-}
-
-/** A flat outline at height y, facing up (or down). */
-function addFlat(mesh: ExportMesh, points: [number, number][], y: number, down = false) {
-  const start = mesh.positions.length / 3;
-  for (const [x, z] of points) {
-    mesh.positions.push(x, y, z);
-    mesh.normals.push(0, down ? -1 : 1, 0);
+    mesh.indices.push(...(up >= 0 ? [start + a, start + b, start + c] : [start + a, start + c, start + b]));
   }
-  for (const [a, b, c] of triangulate(points))
-    mesh.indices.push(...(down ? [start + a, start + c, start + b] : [start + a, start + b, start + c]));
 }
 
-/** An outline extruded upward: a slab. */
-function addPrism(mesh: ExportMesh, points: [number, number][], y0: number, h: number) {
-  addFlat(mesh, points, y0 + h);
-  addFlat(mesh, points, y0, true);
-  // Sides face away from the middle of the outline.
-  const cx = points.reduce((sum, p) => sum + p[0], 0) / points.length;
-  const cz = points.reduce((sum, p) => sum + p[1], 0) / points.length;
-  points.forEach(([ax, az], i) => {
-    const [bx, bz] = points[(i + 1) % points.length];
-    const len = Math.hypot(bx - ax, bz - az) || 1;
-    let n: V3 = [(bz - az) / len, 0, -(bx - ax) / len];
-    if (n[0] * ((ax + bx) / 2 - cx) + n[2] * ((az + bz) / 2 - cz) < 0) n = [-n[0], 0, -n[2]];
-    const quad: V3[] = [
-      [ax, y0, az],
-      [bx, y0, bz],
-      [bx, y0 + h, bz],
-      [ax, y0 + h, az],
-    ];
-    // Wind the quad counter-clockwise as seen from outside: its normal is (b - a) × (0, h, 0).
-    const cross: V3 = [-(bz - az) * h, 0, (bx - ax) * h];
-    const outward = cross[0] * n[0] + cross[2] * n[2] > 0;
-    face(mesh, outward ? quad : [...quad].reverse(), n);
-  });
+/** An outline (less its holes) extruded upward: a slab or a block. */
+function addPrism(mesh: ExportMesh, s: Slab3D) {
+  addExtrusion(
+    mesh,
+    s.points,
+    s.holes ?? [],
+    (x, z, t) => [x, s.y0 + t * s.h, z],
+    (x, z, t) => [x, t, z],
+  );
 }
 
-/** Every part of the 3D model as meshes grouped by what they are and their material. */
+/** An upright panel: its outline (less holes) turned and placed like a box, pushed through its depth. */
+function addPanel(mesh: ExportMesh, p: Panel) {
+  const cos = Math.cos(p.rotY);
+  const sin = Math.sin(p.rotY);
+  // Three.js turns by rotY about y: x' = x cos + z sin, z' = -x sin + z cos.
+  const place = (x: number, y: number, z: number): V3 => [p.x + x * cos + z * sin, p.y0 + y, p.z - x * sin + z * cos];
+  addExtrusion(
+    mesh,
+    p.outline,
+    p.holes ?? [],
+    (u, v, t) => place(u, v, (t - 0.5) * p.depth),
+    (u, v, t) => [u * cos + t * sin, v, -u * sin + t * cos],
+  );
+}
+
+/** Every part of the 3D model as meshes grouped by what they are and their material. Flat shapes are left out. */
 export function modelMeshes(model: Model3D): ExportMesh[] {
   const set = new MeshSet();
   for (const s of model.solids) addBox(set.mesh(s.role, s.color, s.opacity ?? 1, s.finish?.name), s);
   for (const f of model.floors)
     if (f.points.length >= 3) addFlat(set.mesh('floor', f.color, 1, f.finish?.name), f.points, f.y + FLOOR_LIFT);
-  for (const s of model.slabs)
-    if (s.points.length >= 3) addPrism(set.mesh('slab', s.color, 1, s.finish?.name), s.points, s.y0, s.h);
+  for (const s of [...model.slabs, ...model.blocks])
+    if (s.points.length >= 3 && s.role !== 'shape') addPrism(set.mesh(s.role ?? 'slab', s.color, 1, s.finish?.name), s);
+  for (const p of model.panels)
+    if (p.outline.length >= 3 && p.role !== 'shape')
+      addPanel(set.mesh(p.role, p.color, p.opacity ?? 1, p.finish?.name), p);
   return set.list().filter((m) => m.indices.length > 0);
 }
 

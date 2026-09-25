@@ -14,7 +14,8 @@ import { itemsInBox, moveItems } from '../lib/selection';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore } from '../store/plannerStore';
 import { DRAG_PX, hover, MEASURE_TOOLS, press, release } from '../tools/controller';
-import type { Bounds, Furniture, PlanElement, Point, Wall } from '../types';
+import { setPointer } from '../three/picker';
+import { hasPoints, type Bounds, type Furniture, type PlanElement, type Point, type Wall } from '../types';
 
 type Drag =
   | { kind: 'pan'; lastX: number; lastY: number }
@@ -116,6 +117,7 @@ export function usePlanInput(
 
   function onPointerDown(e: PointerEvent<Element>) {
     const s = plannerStore.getState();
+    setPointer(e.clientX, e.clientY);
     const raw = toPlan(e);
     pressRef.current = { x: e.clientX, y: e.clientY };
 
@@ -214,6 +216,7 @@ export function usePlanInput(
 
   function onPointerMove(e: PointerEvent<Element>) {
     const s = plannerStore.getState();
+    setPointer(e.clientX, e.clientY);
     const drag = dragRef.current;
     const raw = toPlan(e);
 
@@ -285,7 +288,7 @@ export function usePlanInput(
             const anchor =
               orig.type === 'wall' || orig.type === 'beam' || orig.type === 'line'
                 ? { x: orig.x1, y: orig.y1 }
-                : orig.type === 'slab' || orig.type === 'plot'
+                : hasPoints(orig)
                   ? orig.points[0]
                   : { x: orig.x, y: orig.y };
             const moved = { x: anchor.x + raw.x - drag.start.x, y: anchor.y + raw.y - drag.start.y };
@@ -329,6 +332,7 @@ export function usePlanInput(
 
   function onPointerUp(e: PointerEvent<Element>) {
     const s = plannerStore.getState();
+    setPointer(e.clientX, e.clientY);
     const start = pressRef.current;
     pressRef.current = null;
     if (dragRef.current) {

@@ -10,7 +10,7 @@ import { OpeningShape } from './shapes/OpeningShape';
 import { RoomShape } from './shapes/RoomShape';
 import { PlotShape, StairShape } from './shapes/SiteShapes';
 import { SketchLineShape } from './shapes/SketchLineShape';
-import { BeamShape, ColumnShape, SlabShape } from './shapes/StructureShapes';
+import { BeamShape, BlockShape, ColumnShape, SlabShape } from './shapes/StructureShapes';
 import { WallDimension } from './shapes/WallDimension';
 import { WallsLayer } from './shapes/WallsLayer';
 
@@ -97,6 +97,8 @@ export function PlanDrawing(props: PlanDrawingProps) {
             return <BeamShape key={el.id} beam={el} selected={isSelected} k={k} />;
           case 'stair':
             return <StairShape key={el.id} stair={el} selected={isSelected} k={k} />;
+          case 'block':
+            return <BlockShape key={el.id} block={el} selected={isSelected} color={color} k={k} />;
           default:
             return null;
         }

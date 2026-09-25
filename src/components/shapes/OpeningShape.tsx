@@ -14,6 +14,28 @@ export function OpeningShape({ opening, color, selected, wallThickness }: Props)
   const w = opening.width;
   const stroke = { stroke: selected ? PLAN.selection : PLAN.wallEdge };
   const t = wallThickness / 2 + 1;
+  if (opening.flat) {
+    // Only drawn on the wall's face so far: a dashed line along that face, the wall left whole.
+    const y = (opening.face ?? 1) * t;
+    return (
+      <g
+        data-type={opening.type}
+        data-id={opening.id}
+        data-flat
+        transform={`translate(${opening.x},${opening.y}) rotate(${opening.angle})`}
+      >
+        <line
+          x1={-w / 2}
+          y1={y}
+          x2={w / 2}
+          y2={y}
+          style={{ stroke: selected ? PLAN.selection : PLAN.draft }}
+          strokeWidth={3}
+          strokeDasharray="6 3"
+        />
+      </g>
+    );
+  }
   return (
     <g
       data-type={opening.type}
@@ -46,6 +68,11 @@ export function OpeningShape({ opening, color, selected, wallThickness }: Props)
             strokeWidth={1}
             strokeDasharray="4 3"
           />
+        </g>
+      ) : opening.open ? (
+        // An open hole: the gap and its jambs, with the head above shown dashed.
+        <g data-testid="open-hole">
+          <line x1={-w / 2} y1={0} x2={w / 2} y2={0} style={stroke} strokeWidth={1} strokeDasharray="4 3" />
         </g>
       ) : (
         <g>

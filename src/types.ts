@@ -87,6 +87,18 @@ export interface Opening extends Grouped {
   gate?: boolean;
   /** Window sill height above the floor, in millimetres (3' when missing). */
   sillMm?: number;
+  /** Window height in millimetres (4' when missing). */
+  heightMm?: number;
+  /** A window made with the Shape tool: round, arched or any outline (rectangular when missing). */
+  shape?: 'circle' | 'arch' | 'polygon';
+  /** A polygon's corners in millimetres: x along the wall from its centre, y up from the sill. */
+  profile?: Point[];
+  /** An open hole: no glass. */
+  open?: boolean;
+  /** Only drawn on the wall's face so far; Push/Pull it through the wall to cut it. */
+  flat?: boolean;
+  /** For a flat shape: the face it is drawn on (1 = the left side going from the wall's start to its end). */
+  face?: 1 | -1;
   material?: Id;
 }
 
@@ -116,6 +128,8 @@ export interface Column extends Grouped {
   h: number;
   rotation?: number;
   shape: 'rect' | 'round';
+  /** Height in millimetres, when it differs from floor to ceiling. */
+  heightMm?: number;
   material?: Id;
 }
 
@@ -140,6 +154,8 @@ export interface Slab extends Grouped {
   points: Point[];
   /** Thickness in plan units. */
   thickness: number;
+  /** Voids through it (stair openings, skylights, shafts): outlines in plan units. */
+  holes?: Point[][];
   material?: Id;
 }
 
@@ -188,7 +204,32 @@ export interface SketchLine extends Grouped {
   material?: Id;
 }
 
-export type PlanElement = Wall | Opening | Furniture | Column | Beam | Slab | Plot | Stair | SketchLine;
+/** The outlines the Shape tool draws. */
+export type ShapeKind = 'rect' | 'circle' | 'polygon' | 'arch';
+
+/**
+ * A solid block pulled up from a shape (a platform, planter, counter or pillar). With no height it
+ * is a flat shape on the floor (or on a slab, or on another block's top), waiting for Push/Pull.
+ */
+export interface Block extends Grouped {
+  id: Id;
+  type: 'block';
+  /** Outline in plan units. */
+  points: Point[];
+  /** Height in millimetres; 0 while it is a flat shape. */
+  heightMm: number;
+  /** What was drawn, for its name and so a circle stays round when it is pushed wider. */
+  shape: ShapeKind;
+  /** Drawn on top of this slab (its height above floor then counts from the slab's top). */
+  slabId?: Id;
+  material?: Id;
+}
+
+export type PlanElement = Wall | Opening | Furniture | Column | Beam | Slab | Plot | Stair | SketchLine | Block;
+
+/** Items outlined by a list of points. */
+export const hasPoints = (el: PlanElement): el is Slab | Plot | Block =>
+  el.type === 'slab' || el.type === 'plot' || el.type === 'block';
 
 /** A floor of the building. Levels stack in list order, starting with the ground floor. */
 export interface Level {
@@ -286,7 +327,9 @@ export type Tool =
   | 'slab'
   | 'plot'
   | 'stairs'
-  | 'line';
+  | 'line'
+  | 'shape'
+  | 'pushpull';
 
 /** Every tool, in tool-rail order. */
 export const TOOLS: Tool[] = [
@@ -306,6 +349,8 @@ export const TOOLS: Tool[] = [
   'door',
   'window',
   'furniture',
+  'shape',
+  'pushpull',
   'move',
   'rotate',
   'tape',
@@ -375,7 +420,37 @@ export type Draft =
   | { type: 'brush' }
   /** Items the eraser has been dragged over, removed when it is let go. */
   | { type: 'erase'; ids: Id[] }
+  /** Shape tool: the corners clicked so far on a surface, and where the pointer is. */
+  | { type: 'shape'; kind: ShapeKind; surface: ShapeSurface; points: Point[]; cursor: Point }
+  /**
+   * Push/Pull: the face of an item being pushed or pulled, where it was grabbed (scene metres),
+   * the way it faces, and how far it has gone so far (mm, outward is positive).
+   */
+  | { type: 'push'; id: Id; face: PushFace; origin: Vec3; normal: Vec3; dist: number; dragged?: boolean }
   | null;
+
+/** A point or direction in the 3D scene, in metres (y up, z = plan y). */
+export type Vec3 = [number, number, number];
+
+/**
+ * Where a shape is drawn. On a floor (or a slab's or block's top), its points are plan points; on a
+ * wall's face they are along the wall from its start (x) and up from its foot (y), in plan units.
+ */
+export type ShapeSurface =
+  { on: 'floor'; elevMm: number; slabId?: Id; levelId?: Id } | { on: 'wall'; wallId: Id; face: 1 | -1 };
+
+/** Which face of an item Push/Pull has hold of. */
+export type PushFace =
+  | { part: 'top' }
+  | { part: 'bottom' }
+  /** A wall's or beam's end: 1 is its start, 2 its end. */
+  | { part: 'end'; end: 1 | 2 }
+  /** A side: of a wall or beam (1 = left going from start to end), or of a column along its x or y. */
+  | { part: 'side'; sign: 1 | -1; axis?: 'x' | 'y' }
+  /** One edge of a slab's or block's outline (from points[index] to the next point). */
+  | { part: 'edge'; index: number }
+  /** A flat shape on a wall, pushed into it. */
+  | { part: 'into' };
 
 export type Units = 'imperial' | 'metric';
 

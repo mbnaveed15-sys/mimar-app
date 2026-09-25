@@ -10,6 +10,7 @@ import {
   type PlanElement,
   type Point,
   type Room,
+  type ShapeKind,
 } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
 import { LAYERS, type LayerState } from './layers';
@@ -133,6 +134,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
         flipSide: raw.flipSide === true || undefined,
         flipHinge: raw.flipHinge === true || undefined,
         gate: raw.gate === true || undefined,
+        ...(raw.type === 'window' ? windowShapeOf(raw) : {}),
       };
       return el.wallId && [el.x, el.y, el.angle, el.width].every(Number.isFinite) ? el : null;
     }
@@ -160,6 +162,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
         h: num('h'),
         rotation: typeof raw.rotation === 'number' && Number.isFinite(raw.rotation) ? raw.rotation : undefined,
         shape: raw.shape === 'round' ? ('round' as const) : ('rect' as const),
+        ...(inRange(raw.heightMm, 50, 30000) ? { heightMm: raw.heightMm } : {}),
       };
       return [el.x, el.y, el.w, el.h].every(Number.isFinite) && el.w > 0 && el.h > 0 ? el : null;
     }
@@ -183,7 +186,23 @@ function normaliseElement(raw: unknown): PlanElement | null {
     case 'slab': {
       const points = readPoints(raw.points);
       const thickness = num('thickness');
-      return points.length >= 3 && thickness > 0 ? { ...base, type: 'slab' as const, points, thickness } : null;
+      const holes = (Array.isArray(raw.holes) ? raw.holes : []).map(readPoints).filter((h) => h.length >= 3);
+      return points.length >= 3 && thickness > 0
+        ? { ...base, type: 'slab' as const, points, thickness, ...(holes.length ? { holes } : {}) }
+        : null;
+    }
+    case 'block': {
+      const points = readPoints(raw.points);
+      const shape = SHAPE_KINDS.includes(raw.shape as ShapeKind) ? (raw.shape as ShapeKind) : 'polygon';
+      if (points.length < 3) return null;
+      return {
+        ...base,
+        type: 'block' as const,
+        points,
+        heightMm: inRange(raw.heightMm, 0, 30000) ? raw.heightMm : 0,
+        shape,
+        slabId: idOf(raw.slabId),
+      };
     }
     case 'plot': {
       const points = readPoints(raw.points);
@@ -225,6 +244,21 @@ function normaliseElement(raw: unknown): PlanElement | null {
     default:
       return null;
   }
+}
+
+const SHAPE_KINDS: ShapeKind[] = ['rect', 'circle', 'polygon', 'arch'];
+
+/** A window's shape, height, and whether it is open or still flat on the wall; kept only when set. */
+function windowShapeOf(raw: Record<string, unknown>) {
+  const shape = (['circle', 'arch', 'polygon'] as const).find((k) => k === raw.shape);
+  const profile = readPoints(raw.profile);
+  return {
+    ...(inRange(raw.heightMm, 50, 10000) ? { heightMm: raw.heightMm } : {}),
+    ...(shape && (shape !== 'polygon' || profile.length >= 3) ? { shape } : {}),
+    ...(shape === 'polygon' && profile.length >= 3 ? { profile } : {}),
+    ...(raw.open === true ? { open: true } : {}),
+    ...(raw.flat === true ? { flat: true, face: raw.face === -1 ? (-1 as const) : (1 as const) } : {}),
+  };
 }
 
 function readPoints(raw: unknown): Point[] {

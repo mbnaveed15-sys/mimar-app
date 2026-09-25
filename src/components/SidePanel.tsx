@@ -9,6 +9,7 @@ import { LayersPanel } from './LayersPanel';
 import { MaterialsPanel } from './MaterialsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { SiteOptions, WallKindPicker } from './SiteOptions';
+import { ShapeOptions } from './ShapeOptions';
 import { StructureOptions } from './StructureOptions';
 import { ThemePicker } from './ThemePicker';
 import { UpdatePanel } from './UpdatePanel';
@@ -64,6 +65,7 @@ function ToolOptions() {
   if (tool === 'plot' || tool === 'stairs' || tool === 'door') return <SiteOptions />;
   if (tool === 'furniture') return <FurnitureLibrary />;
   if (tool === 'column' || tool === 'beam' || tool === 'slab') return <StructureOptions />;
+  if (tool === 'shape') return <ShapeOptions />;
   if (tool === 'brush')
     return (
       <div className="flex flex-col gap-1 text-xs">
@@ -100,7 +102,8 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
     >
       <div className="flex flex-col gap-2 p-3">
         <h2 className="m-heading">{hasSelection ? 'Properties' : TOOL_INFO[tool].label}</h2>
-        {!hasSelection && <ToolOptions />}
+        {/* The Shape tool's choice stays in view, as each new shape is selected once drawn. */}
+        {(!hasSelection || tool === 'shape') && <ToolOptions />}
         <Inspector />
       </div>
       {section('materials', 'Materials', <MaterialsPanel />)}

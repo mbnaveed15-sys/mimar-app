@@ -8,6 +8,7 @@ const GROUPS: Tool[][] = [
   ['select', 'pan', 'zoom', 'orbit'],
   ['wall', 'line', 'rectangle', 'room', 'door', 'window', 'furniture'],
   ['column', 'beam', 'slab', 'plot', 'stairs'],
+  ['shape', 'pushpull'],
   ['move', 'rotate', 'tape'],
   ['paint', 'erase'],
   ['brush', 'mask'],
