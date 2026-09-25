@@ -48,7 +48,10 @@ for (const f of files) {
 const browser = await chromium.launch();
 const page = await browser.newPage();
 async function render(file, out, width, height) {
-  const svg = readFileSync(new URL(file, root), 'utf8').replace('<svg ', `<svg style="width:${width}px;height:${height}px;display:block" `);
+  const svg = readFileSync(new URL(file, root), 'utf8').replace(
+    '<svg ',
+    `<svg style="width:${width}px;height:${height}px;display:block" `,
+  );
   await page.setViewportSize({ width, height });
   await page.setContent(`<body style="margin:0;background:transparent">${svg}</body>`);
   await page.screenshot({ path: new URL(out, root).pathname, omitBackground: true });

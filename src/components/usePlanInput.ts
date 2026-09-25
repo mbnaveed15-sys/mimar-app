@@ -95,7 +95,10 @@ export function usePlanInput(
   function idAt(e: { clientX: number; clientY: number }, raw: Point): string | null {
     const s = plannerStore.getState();
     const picked = pickId?.(e);
-    if (picked && (s.pickableElements().some((el) => el.id === picked) || s.pickableRooms().some((r) => r.id === picked)))
+    if (
+      picked &&
+      (s.pickableElements().some((el) => el.id === picked) || s.pickableRooms().some((r) => r.id === picked))
+    )
       return picked;
     return hitAt(e, raw)?.id ?? s.roomAt(raw)?.id ?? null;
   }
@@ -106,7 +109,8 @@ export function usePlanInput(
 
   function startDrag(e: PointerEvent<Element>, drag: Drag) {
     capture(e);
-    if (drag.kind !== 'pan' && drag.kind !== 'zoom' && drag.kind !== 'box' && drag.kind !== 'erase') plannerStore.getState().beginBatch();
+    if (drag.kind !== 'pan' && drag.kind !== 'zoom' && drag.kind !== 'box' && drag.kind !== 'erase')
+      plannerStore.getState().beginBatch();
     dragRef.current = drag;
   }
 

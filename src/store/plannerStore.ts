@@ -102,6 +102,13 @@ export const DEFAULT_SITE: SiteSpec = {
   climb: 'floor',
 };
 
+/** A copy of an object without one key. */
+function omit<T extends object, K extends keyof T>(obj: T, key: K): T {
+  const copy = { ...obj };
+  delete copy[key];
+  return copy;
+}
+
 const inch = (n: number) => (n * 25.4) / MM_PER_UNIT;
 /** 9" × 12" columns, 9" × 18" beams and a 6" slab: common RCC sizes for Pakistani houses. */
 export const DEFAULT_STRUCTURE: StructureSpec = {
@@ -958,7 +965,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       setLayerFlags: (layer, flags) => {
         if (layer === 'furniture' && flags.hidden !== undefined) {
           get().setLayer('showFurniture', !flags.hidden);
-          const { hidden: _hidden, ...rest } = flags;
+          const rest = omit(flags, 'hidden');
           if (!Object.keys(rest).length) return;
           flags = rest;
         }
@@ -986,9 +993,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         const ids = new Set(get().selectedIds);
         if (!ids.size) return;
         const flag = <T extends { locked?: boolean }>(it: T): T => {
-          if (locked) return { ...it, locked: true };
-          const { locked: _locked, ...rest } = it;
-          return rest as T;
+          return locked ? { ...it, locked: true } : omit(it, 'locked');
         };
         get().commit((doc) => ({
           ...doc,
@@ -999,9 +1004,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
       showAllHidden: () => {
         const clear = <T extends { hidden?: boolean }>(it: T): T => {
-          if (!it.hidden) return it;
-          const { hidden: _hidden, ...rest } = it;
-          return rest as T;
+          return it.hidden ? omit(it, 'hidden') : it;
         };
         if (!get().showFurniture) get().setLayer('showFurniture', true);
         get().commit((doc) => {
@@ -1020,9 +1023,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
       unlockAll: () => {
         const clear = <T extends { locked?: boolean }>(it: T): T => {
-          if (!it.locked) return it;
-          const { locked: _locked, ...rest } = it;
-          return rest as T;
+          return it.locked ? omit(it, 'locked') : it;
         };
         get().commit((doc) => {
           const layers = Object.fromEntries(

@@ -58,7 +58,9 @@ export function isLocked(item: PlanElement | Room, v: Visibility): boolean {
 
 /** The plan without hidden items (doors and windows go with a hidden wall). */
 export function withoutHidden(doc: PlanDoc, v: Visibility): PlanDoc {
-  const hiddenWalls = new Set<Id>(doc.elements.filter((el) => el.type === 'wall' && isHidden(el, v)).map((el) => el.id));
+  const hiddenWalls = new Set<Id>(
+    doc.elements.filter((el) => el.type === 'wall' && isHidden(el, v)).map((el) => el.id),
+  );
   return {
     ...doc,
     elements: doc.elements.filter((el) => !isHidden(el, v) && !('wallId' in el && hiddenWalls.has(el.wallId))),

@@ -39,7 +39,10 @@ export function LayersPanel() {
       <div className="flex flex-col gap-0.5">
         {LAYERS.map((l) => (
           <div key={l.id}>
-            <div className={`flex items-center gap-1 ${hidden(l.id) ? 'opacity-55' : ''}`} data-testid={`layer-${l.id}`}>
+            <div
+              className={`flex items-center gap-1 ${hidden(l.id) ? 'opacity-55' : ''}`}
+              data-testid={`layer-${l.id}`}
+            >
               <button
                 className={btn}
                 aria-label={`${hidden(l.id) ? 'Show' : 'Hide'} ${l.label}`}
@@ -53,7 +56,9 @@ export function LayersPanel() {
                 className={btn}
                 aria-label={`${locked(l.id) ? 'Unlock' : 'Lock'} ${l.label}`}
                 aria-pressed={locked(l.id)}
-                title={locked(l.id) ? 'Locked: click to unlock' : 'Click to lock (it stays visible but cannot be picked)'}
+                title={
+                  locked(l.id) ? 'Locked: click to unlock' : 'Click to lock (it stays visible but cannot be picked)'
+                }
                 onClick={() => setLayerFlags(l.id, { locked: !locked(l.id) })}
               >
                 <Icon name={locked(l.id) ? 'lock' : 'unlock'} size={15} className={locked(l.id) ? '' : 'opacity-40'} />
@@ -68,7 +73,8 @@ export function LayersPanel() {
                 {sub('layer-room-fills', 'Room colours', showRoomFills, (v) => setLayer('showRoomFills', v))}
               </>
             )}
-            {l.id === 'lines' && sub('layer-export-lines', 'Include in exports', exportLines, (v) => setLayer('exportLines', v))}
+            {l.id === 'lines' &&
+              sub('layer-export-lines', 'Include in exports', exportLines, (v) => setLayer('exportLines', v))}
           </div>
         ))}
         {(anyHidden || anyLocked) && (
@@ -85,7 +91,9 @@ export function LayersPanel() {
             )}
           </div>
         )}
-        <p className="mt-1 text-muted">Hidden items don&apos;t print or export. Locked items show but can&apos;t be picked.</p>
+        <p className="mt-1 text-muted">
+          Hidden items don&apos;t print or export. Locked items show but can&apos;t be picked.
+        </p>
       </div>
     </fieldset>
   );

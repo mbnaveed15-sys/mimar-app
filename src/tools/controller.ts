@@ -105,7 +105,8 @@ export function anchorOf(s: PlannerState): Point | null {
 export function currentDirection(s: PlannerState): Point | null {
   const d = s.draft;
   if (!d) return null;
-  if (d.type === 'wall' || d.type === 'line' || d.type === 'rectangle') return sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 });
+  if (d.type === 'wall' || d.type === 'line' || d.type === 'rectangle')
+    return sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 });
   if (d.type === 'tape') return sub(d.b, d.a);
   if (d.type === 'move') return sub(d.to, d.base);
   return null;

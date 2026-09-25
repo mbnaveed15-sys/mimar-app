@@ -24,8 +24,16 @@ describe('layers', () => {
     const store = createPlannerStore(doc(), undefined, DEFAULT_PREFS);
     const s = () => store.getState();
     s().setLayerFlags('walls', { hidden: true });
-    expect(s().visibleElements().map((el) => el.id)).toEqual(['c', 'l']);
-    expect(s().shownDoc().elements.map((el) => el.id)).toEqual(['c', 'l']);
+    expect(
+      s()
+        .visibleElements()
+        .map((el) => el.id),
+    ).toEqual(['c', 'l']);
+    expect(
+      s()
+        .shownDoc()
+        .elements.map((el) => el.id),
+    ).toEqual(['c', 'l']);
     s().undo();
     expect(s().visibleElements()).toHaveLength(4);
   });
@@ -34,8 +42,16 @@ describe('layers', () => {
     const store = createPlannerStore(doc(), undefined, DEFAULT_PREFS);
     const s = () => store.getState();
     s().setLayerFlags('columns', { locked: true });
-    expect(s().visibleElements().some((el) => el.id === 'c')).toBe(true);
-    expect(s().pickableElements().some((el) => el.id === 'c')).toBe(false);
+    expect(
+      s()
+        .visibleElements()
+        .some((el) => el.id === 'c'),
+    ).toBe(true);
+    expect(
+      s()
+        .pickableElements()
+        .some((el) => el.id === 'c'),
+    ).toBe(false);
     s().selectAll();
     expect(s().selectedIds).not.toContain('c');
   });
@@ -46,10 +62,18 @@ describe('layers', () => {
     s().select('c');
     s().hideSelected();
     expect(s().selectedIds).toEqual([]);
-    expect(s().visibleElements().some((el) => el.id === 'c')).toBe(false);
+    expect(
+      s()
+        .visibleElements()
+        .some((el) => el.id === 'c'),
+    ).toBe(false);
     s().select('l');
     s().lockSelected(true);
-    expect(s().pickableElements().map((el) => el.id)).toEqual(['w', 'd']);
+    expect(
+      s()
+        .pickableElements()
+        .map((el) => el.id),
+    ).toEqual(['w', 'd']);
     // Kept when saved.
     const saved = normaliseDoc(JSON.parse(JSON.stringify(s().doc)));
     expect(saved.elements.find((el) => el.id === 'c')?.hidden).toBe(true);

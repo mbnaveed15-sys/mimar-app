@@ -41,6 +41,8 @@ export interface CommandContext {
   save: (saveAs?: boolean) => void;
   openSearch: () => void;
   openShortcuts: () => void;
+  /** The welcome and tour. */
+  openWelcome: () => void;
   /** Open and scroll to a section of the side panel, e.g. 'grid'. */
   showSection: (id: string) => void;
   checkForUpdates?: () => void;
@@ -215,8 +217,22 @@ export function buildCommands(ctx: CommandContext): Command[] {
       run: () => st().lockSelected(true),
       enabled: (s) => s.selectedIds.length > 0,
     },
-    { id: 'edit.showHidden', label: 'Show all hidden', menu: 'edit', group: 3, keys: ['Ctrl+Shift+H'], run: () => st().showAllHidden() },
-    { id: 'edit.unlockAll', label: 'Unlock all', menu: 'edit', group: 3, keys: ['Ctrl+Shift+L'], run: () => st().unlockAll() },
+    {
+      id: 'edit.showHidden',
+      label: 'Show all hidden',
+      menu: 'edit',
+      group: 3,
+      keys: ['Ctrl+Shift+H'],
+      run: () => st().showAllHidden(),
+    },
+    {
+      id: 'edit.unlockAll',
+      label: 'Unlock all',
+      menu: 'edit',
+      group: 3,
+      keys: ['Ctrl+Shift+L'],
+      run: () => st().unlockAll(),
+    },
     {
       id: 'edit.linesToWalls',
       label: 'Turn lines into walls',
@@ -431,6 +447,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
     ),
 
     // Help
+    { id: 'help.welcome', label: 'Getting started', menu: 'help', group: 0, run: ctx.openWelcome },
     { id: 'help.shortcuts', label: 'Keyboard shortcuts', menu: 'help', group: 0, keys: ['?'], run: ctx.openShortcuts },
     { id: 'help.search', label: 'Search actions…', menu: 'help', group: 0, keys: ['Ctrl+K'], run: ctx.openSearch },
     ...(ctx.checkForUpdates

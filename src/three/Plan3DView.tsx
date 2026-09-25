@@ -769,7 +769,10 @@ function layoutLines(doc: PlanDoc, wallHeightMm: number): THREE.Object3D {
     const level = el.levelId ?? 'ground';
     const y = levelBaseM(doc, level, wallHeightMm) + 0.012;
     const pts = byLevel.get(level) ?? [];
-    pts.push(new THREE.Vector3(el.x1 * M_PER_UNIT, y, el.y1 * M_PER_UNIT), new THREE.Vector3(el.x2 * M_PER_UNIT, y, el.y2 * M_PER_UNIT));
+    pts.push(
+      new THREE.Vector3(el.x1 * M_PER_UNIT, y, el.y1 * M_PER_UNIT),
+      new THREE.Vector3(el.x2 * M_PER_UNIT, y, el.y2 * M_PER_UNIT),
+    );
     byLevel.set(level, pts);
   }
   const group = new THREE.Group();

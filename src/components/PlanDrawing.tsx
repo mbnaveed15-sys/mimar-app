@@ -53,6 +53,7 @@ export function PlanDrawing(props: PlanDrawingProps) {
           showLabel={showRoomLabels}
           showFill={showRoomFills}
           k={k}
+          part="area"
         />
       ))}
 
@@ -102,6 +103,22 @@ export function PlanDrawing(props: PlanDrawingProps) {
       {doc.elements.map((el) =>
         el.type === 'slab' ? <SlabShape key={el.id} slab={el} selected={selected.has(el.id)} k={k} /> : null,
       )}
+
+      {/* Room names and sizes sit on top of furniture, as on a drawing. */}
+      {doc.rooms.map((r) => (
+        <RoomShape
+          key={`label-${r.id}`}
+          room={r}
+          color={colorOf(r.material)}
+          selected={selected.has(r.id)}
+          units={units}
+          marlaSqFt={marlaSqFt}
+          showLabel={showRoomLabels}
+          showFill={showRoomFills}
+          k={k}
+          part="label"
+        />
+      ))}
 
       {showDimensions &&
         walls.map((w) => {

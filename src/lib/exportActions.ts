@@ -95,7 +95,9 @@ export function exportModel(format: ModelFormat) {
   const s = plannerStore.getState();
   const name = baseName(s.fileName);
   try {
-    const meshes = modelMeshes(buildModel(s.shownDoc(), { wallHeightMm: s.wallHeightMm, showFurniture: s.showFurniture }));
+    const meshes = modelMeshes(
+      buildModel(s.shownDoc(), { wallHeightMm: s.wallHeightMm, showFurniture: s.showFurniture }),
+    );
     if (!meshes.length) {
       s.setWarning('There is nothing to export yet. Draw some walls first.');
       return;

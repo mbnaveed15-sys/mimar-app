@@ -53,7 +53,8 @@ export function centroid(points: Point[]): Point {
 }
 
 export function elementCenter(el: PlanElement): Point {
-  if (el.type === 'wall' || el.type === 'beam' || el.type === 'line') return { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 };
+  if (el.type === 'wall' || el.type === 'beam' || el.type === 'line')
+    return { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 };
   if (el.type === 'slab' || el.type === 'plot') return centroid(el.points);
   return { x: el.x, y: el.y };
 }
