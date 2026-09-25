@@ -25,7 +25,7 @@ interface Store {
 
 const sub = (a: Point, b: Point) => ({ x: a.x - b.x, y: a.y - b.y });
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
-const tolOf = (s: PlannerState) => 10 / s.view.zoom;
+const tolOf = (s: PlannerState) => 10 * s.pxUnits();
 
 function wallAt(s: PlannerState, raw: Point): Wall | null {
   return nearestWall(s.visibleElements(), raw, s.hitTolerance() * 1.5);

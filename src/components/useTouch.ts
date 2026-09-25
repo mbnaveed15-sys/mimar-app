@@ -1,18 +1,31 @@
-import { useEffect, useLayoutEffect, useRef, type MouseEvent, type PointerEvent, type RefObject } from 'react';
-import { panBy } from '../lib/view';
+import { useEffect, useLayoutEffect, useRef, type MouseEvent, type PointerEvent } from 'react';
 import { plannerStore } from '../store/plannerStore';
 import { DRAG_PX } from '../tools/controller';
 
-type SvgPointer = PointerEvent<SVGSVGElement>;
+type SvgPointer = PointerEvent<Element>;
 
 interface Handlers {
   down: (e: SvgPointer) => void;
   move: (e: SvgPointer) => void;
   up: (e: SvgPointer) => void;
-  doubleClick: (e: MouseEvent<SVGSVGElement>) => void;
-  contextMenu: (e: MouseEvent<SVGSVGElement>) => void;
+  doubleClick: (e: MouseEvent<Element>) => void;
+  contextMenu: (e: MouseEvent<Element>) => void;
   /** Undo whatever the first finger started, because a second finger turned it into a pinch. */
   abort: () => void;
+  /**
+   * Two or three fingers moved: by (dx, dy) screen pixels, spread by `scale`, about (x, y) in the
+   * element. Two fingers pan and zoom; three fingers turn the 3D view.
+   */
+  gesture: (g: Gesture) => void;
+}
+
+export interface Gesture {
+  dx: number;
+  dy: number;
+  scale: number;
+  x: number;
+  y: number;
+  fingers: 2 | 3;
 }
 
 /** A finger waits this long before it counts as a press (a second finger may still come). */
@@ -34,7 +47,7 @@ interface Snapshot {
   metaKey: boolean;
   altKey: boolean;
   target: EventTarget;
-  currentTarget: SVGSVGElement;
+  currentTarget: Element;
   preventDefault: () => void;
 }
 
@@ -58,7 +71,7 @@ const snapshot = (e: SvgPointer): Snapshot => ({
  * drag to pan; a long press (with Select) opens the item's menu; a double tap works like a
  * double-click. Mouse and pen go straight through.
  */
-export function useTouch(svgRef: RefObject<SVGSVGElement | null>, handlers: Handlers) {
+export function useTouch(handlers: Handlers) {
   const h = useRef(handlers);
   // Timers fire after render, so they always see the latest handlers.
   useLayoutEffect(() => {
@@ -75,6 +88,7 @@ export function useTouch(svgRef: RefObject<SVGSVGElement | null>, handlers: Hand
     lastTap: { time: 0, x: 0, y: 0 },
     lastTouch: 0,
     gesture: { x: 0, y: 0, dist: 1 },
+    element: null as Element | null,
   });
 
   useEffect(() => {
@@ -101,9 +115,15 @@ export function useTouch(svgRef: RefObject<SVGSVGElement | null>, handlers: Hand
     h.current.down(e as unknown as SvgPointer);
   };
 
-  const twoFingers = () => {
-    const [a, b] = [...state.current.touches.values()];
-    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, dist: Math.hypot(a.x - b.x, a.y - b.y) || 1 };
+  /** Middle of the fingers and how far apart the first two are. */
+  const fingers = () => {
+    const pts = [...state.current.touches.values()];
+    const [a, b] = pts;
+    return {
+      x: pts.reduce((sum, p) => sum + p.x, 0) / pts.length,
+      y: pts.reduce((sum, p) => sum + p.y, 0) / pts.length,
+      dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+    };
   };
 
   const longPress = () => {
@@ -116,10 +136,10 @@ export function useTouch(svgRef: RefObject<SVGSVGElement | null>, handlers: Hand
     const e = {
       clientX: st.start.x,
       clientY: st.start.y,
-      currentTarget: svgRef.current,
+      currentTarget: st.element,
       preventDefault: () => {},
     };
-    h.current.contextMenu(e as unknown as MouseEvent<SVGSVGElement>);
+    h.current.contextMenu(e as unknown as MouseEvent<Element>);
   };
 
   function onPointerDown(e: SvgPointer) {
@@ -132,6 +152,7 @@ export function useTouch(svgRef: RefObject<SVGSVGElement | null>, handlers: Hand
     plannerStore.getState().setTouchInput(true);
     st.lastTouch = Date.now();
     st.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    st.element = e.currentTarget;
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
@@ -146,12 +167,12 @@ export function useTouch(svgRef: RefObject<SVGSVGElement | null>, handlers: Hand
       st.longTimer = window.setTimeout(longPress, LONG_PRESS_MS);
       return;
     }
-    if (st.touches.size === 2) {
+    if (st.touches.size === 2 || st.touches.size === 3) {
       clearTimers();
       if (st.mode === 'single') h.current.abort();
       st.pending = null;
       st.mode = 'gesture';
-      st.gesture = twoFingers();
+      st.gesture = fingers();
     }
   }
 
@@ -165,11 +186,17 @@ export function useTouch(svgRef: RefObject<SVGSVGElement | null>, handlers: Hand
     st.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (st.mode === 'gesture') {
       if (st.touches.size < 2) return;
-      const now = twoFingers();
-      const s = plannerStore.getState();
-      s.setView(panBy(s.view, now.x - st.gesture.x, now.y - st.gesture.y));
+      const now = fingers();
       const r = e.currentTarget.getBoundingClientRect();
-      plannerStore.getState().zoomBy(now.dist / st.gesture.dist, { x: now.x - r.left, y: now.y - r.top });
+      const three = st.touches.size >= 3;
+      h.current.gesture({
+        dx: now.x - st.gesture.x,
+        dy: now.y - st.gesture.y,
+        scale: three ? 1 : now.dist / st.gesture.dist,
+        x: now.x - r.left,
+        y: now.y - r.top,
+        fingers: three ? 3 : 2,
+      });
       st.gesture = now;
       return;
     }
@@ -203,7 +230,7 @@ export function useTouch(svgRef: RefObject<SVGSVGElement | null>, handlers: Hand
     const tap = st.lastTap;
     if (now - tap.time < DOUBLE_TAP_MS && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < DOUBLE_TAP_PX) {
       st.lastTap = { time: 0, x: 0, y: 0 };
-      h.current.doubleClick(e as unknown as MouseEvent<SVGSVGElement>);
+      h.current.doubleClick(e as unknown as MouseEvent<Element>);
     } else st.lastTap = { time: now, x: e.clientX, y: e.clientY };
   }
 

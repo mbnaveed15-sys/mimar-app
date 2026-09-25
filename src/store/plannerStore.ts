@@ -304,6 +304,11 @@ export interface PlannerState {
   setTouchInput: (on: boolean) => void;
   /** How much further to reach for touch (1 for mouse and pen). */
   reach: () => number;
+  /** Plan units per screen pixel where the 3D view's pointer is (null until it has been over the model). */
+  px3d: number | null;
+  setPx3d: (units: number | null) => void;
+  /** Plan units per screen pixel: the 2D zoom, or in 3D the size of a pixel where the pointer is. */
+  pxUnits: () => number;
 
   /** Replace an element; doors and windows follow their wall if it changed. */
   updateElement: (next: PlanElement) => void;
@@ -1124,7 +1129,13 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         if (!viewport.width || !viewport.height) return;
         set({ view: fitView(planBounds(doc.elements, doc.masks) ?? DEFAULT_AREA, viewport) });
       },
-      hitTolerance: () => Math.max(2, (12 * get().reach()) / get().view.zoom),
+      hitTolerance: () => Math.max(2, 12 * get().reach() * get().pxUnits()),
+      px3d: null,
+      setPx3d: (px3d) => set({ px3d }),
+      pxUnits: () => {
+        const { view3d, px3d, view } = get();
+        return view3d && px3d ? px3d : 1 / view.zoom;
+      },
       touchInput: false,
       setTouchInput: (on) => {
         if (get().touchInput !== on) set({ touchInput: on });
