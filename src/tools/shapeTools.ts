@@ -96,7 +96,7 @@ function pointerOnWall(s: PlannerState, wallId: Id, face: 1 | -1): Point | null 
 function surfaceAt(s: PlannerState): { surface: ShapeSurface; wallPoint?: Point } {
   const picker = getPicker();
   const floor: ShapeSurface = { on: 'floor', elevMm: 0, levelId: s.activeLevel };
-  if (!picker) return { surface: floor };
+  if (!picker?.is3d) return { surface: floor };
   const { x, y } = getPointer();
   const hit = picker.faceAt(x, y);
   const el = hit && s.pickableElements().find((e) => e.id === hit.id);
@@ -149,9 +149,7 @@ function finishPush(store: Store) {
   const result = base ? pushPull(base, d.id, d.face, d.dist, { wallHeightMm: s.wallHeightMm }).result : 'none';
   s.endBatch();
   s.setDraft(null);
-  if (result === 'none' && d.face.part === 'into')
-    s.setWarning('Push the shape at least half-way into the wall to cut the opening.');
-  else if (result === 'none' && d.dist < 0)
+  if (result === 'none' && d.dist < 0)
     s.setWarning('Push the shape at least half-way down into the slab to make a void.');
   else s.setWarning(null);
 }
@@ -211,6 +209,7 @@ export function shapePress(store: Store, inf: Inference) {
     return;
   }
   s.setWarning(null);
+  picker.highlight(null);
   s.select(el.id);
   s.beginBatch();
   s.setDraft({ type: 'push', id: el.id, face, origin: hit.point, normal: hit.normal, dist: 0 });
@@ -236,7 +235,7 @@ export function shapeHover(store: Store, inf: Inference | null) {
     const { x, y } = getPointer();
     const hit = picker?.faceAt(x, y);
     const el = hit && s.pickableElements().find((e) => e.id === hit.id);
-    s.setHoverId(el && faceOf(el, hit.normal, hit.point) ? el.id : null);
+    picker?.highlight(el && faceOf(el, hit.normal, hit.point) ? hit : null);
   }
 }
 
@@ -311,11 +310,11 @@ export function shapeHint(s: PlannerState): string {
   }
   if (d?.type === 'push')
     return d.face.part === 'into'
-      ? 'Push into the wall (at least half-way) to cut the opening, or type a depth.'
+      ? 'Push in for a niche (all the way to cut an opening), or pull out for a chajja or ledge. Or type a depth.'
       : 'Move to push or pull, then click (or type a distance and press Enter).';
   return s.view3d
     ? 'Click a face to push or pull it: a wall’s top or side, a slab, column, beam, block or shape.'
-    : 'Push/Pull works in the 3D view (Ctrl+2).';
+    : 'Click a wall’s side or end, or the edge of a slab, block, column or beam, to push or pull it. Heights are in 3D (Ctrl+2).';
 }
 
 export function shapeReadout(s: PlannerState): { label: string; value: string } {

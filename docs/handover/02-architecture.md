@@ -39,8 +39,11 @@ autosaves to local storage on every change.
 - Shapes and Push/Pull: `src/tools/shapeTools.ts` (the Shape and Push/Pull tools), `src/lib/pushPull.ts` (pure:
   `faceOf` tells which face a 3D hit is on, `pushPull` returns the plan after moving it), `src/lib/shapes.ts`
   (outlines; `openingProfileMm` for window shapes). A flat shape is a `block` with `heightMm: 0` on a floor, or a
-  `window` with `flat: true` on a wall face; cutting clears `flat` and sets `open`. The 3D view registers a picker
-  (`src/three/picker.ts`: face under the pointer, pointer on a plane, distance along a line) that these tools use.
+  `window` with `flat: true` on a wall face, whose `depthMm` makes it a niche (< 0) or a projection (> 0);
+  `withShapeDepth` cuts it through (clears `flat`, sets `open`) within 2" of the far face. The 3D view registers a picker
+  (`src/three/picker.ts`: face under the pointer, pointer on a plane, distance along a line, and `highlight` to
+  light up just that face) that these tools use. The 2D plan registers one too (`is3d: false`), built on
+  `src/lib/faces2d.ts` (faces seen from above), so Push/Pull also works in 2D.
 - `src/lib/inference.ts`: snapping order: ends → midpoints → intersections → grid points → axes → along
   walls/lines (in grid steps) → grid.
 - `src/commands.ts`: every menu item, shortcut and Ctrl+K palette entry in one registry.

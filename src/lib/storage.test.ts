@@ -118,7 +118,19 @@ describe('storage', () => {
           open: true,
           heightMm: 2000,
         },
-        { id: 'f', type: 'window', wallId: 'w', x: 20, y: 0, angle: 0, width: 20, flat: true, face: -1, shape: 'star' },
+        {
+          id: 'f',
+          type: 'window',
+          wallId: 'w',
+          x: 20,
+          y: 0,
+          angle: 0,
+          width: 20,
+          flat: true,
+          face: -1,
+          shape: 'star',
+          depthMm: -80,
+        },
         { id: 'p', type: 'window', wallId: 'w', x: 80, y: 0, angle: 0, width: 20, shape: 'polygon' },
       ],
     });
@@ -126,7 +138,7 @@ describe('storage', () => {
     expect(doc.elements[0]).toMatchObject({ type: 'block', heightMm: 900, shape: 'circle', slabId: 's' });
     expect(doc.elements[1]).toMatchObject({ holes: [sq] });
     expect(doc.elements[3]).toMatchObject({ shape: 'arch', open: true, heightMm: 2000 });
-    expect(doc.elements[4]).toMatchObject({ flat: true, face: -1 });
+    expect(doc.elements[4]).toMatchObject({ flat: true, face: -1, depthMm: -80 });
     expect(doc.elements[4]).not.toHaveProperty('shape');
     // A polygon with no outline falls back to a plain window.
     expect(doc.elements[5]).not.toHaveProperty('shape');

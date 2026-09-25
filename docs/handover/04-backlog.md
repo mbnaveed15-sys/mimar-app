@@ -2,13 +2,13 @@
 
 In the order agreed with the owner. Confirm the plan with the owner before starting each item.
 
-## Follow-ups to Push/Pull (held back from 1.19 to keep it safe)
+## Next (agreed order)
 
-1. **Niches and pull-outs:** pushing a wall shape only part-way in (an alcove or shelf niche), and pulling a shape
-   out of a wall (a ledge or pilaster). Today a wall shape must go at least half-way in, and is then cut right
-   through.
-2. **Push/Pull in the 2D view** (wall ends and slab edges seen from above). Today it asks for the 3D view.
-3. Hovering a face lights up the whole item, not just the face under the pointer.
+1. **Bylaws and plan check** (after the Push/Pull follow-ups in 1.20, as the owner asked): plot presets with
+   authority setbacks and coverage, a live compliance panel (coverage, setbacks against the real footprint,
+   floors, FAR) and plan hints. See `05-auto-planner-review.md`. **Needs from the owner first:** which authorities
+   and plot sizes, and bylaw figures they trust (the Auto Planner's are placeholders, and its floors and setback
+   checks are broken).
 
 ## Proposed next phases
 
@@ -25,6 +25,8 @@ In the order agreed with the owner. Confirm the plan with the owner before start
   highlighted part.
 - Moving up and down (blue axis) only works in 3D; in 2D use the "Height above floor" field or Alt+↑/↓.
 - Rooms (floor finishes) and plots can't be raised; a raised wall doesn't carry its room's floor up with it.
+- In 2D, Push/Pull can't reach heights (wall tops, slab thickness) or round column sizes; those are in 3D or the
+  side panel. Shapes on walls are pushed in 3D (or given a Depth in the side panel).
 - A shape drawn on a wall is sized by its outline's box: an arch drawn "upside down" still becomes an arch with
   its round top up.
 - Blocks stand on the floor or a slab; they don't cut into walls they overlap.

@@ -9,6 +9,9 @@ import { selectionBounds } from '../lib/selection';
 import type { Furniture, PlanElement, Point } from '../types';
 import { wallPolygon, wallsOf } from '../walls';
 import { DrawingOverlay } from './DrawingOverlay';
+import { faceAt2D } from '../lib/faces2d';
+import { getPicker, setPicker, type Picker3D } from '../three/picker';
+import { M_PER_UNIT } from '../three/model';
 import { PlanDrawing } from './PlanDrawing';
 import { PlanGrid } from './PlanGrid';
 import { usePlanInput, type ContextTarget } from './usePlanInput';
@@ -35,6 +38,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const draft = usePlanner((s) => s.draft);
   const inference = usePlanner((s) => s.inference);
   const axisLock = usePlanner((s) => s.axisLock);
+  const hoverEdge = usePlanner((s) => s.hoverEdge);
   const selectedIds = usePlanner((s) => s.selectedIds);
   const openGroupId = usePlanner((s) => s.openGroupId);
   const gridPx = usePlanner((s) => s.gridPx);
@@ -51,6 +55,40 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
   const touchInput = usePlanner((s) => s.touchInput);
   const input = usePlanInput((e) => (svgRef.current ? toPlanPoint(svgRef.current, e) : { x: 0, y: 0 }), onContextMenu);
+
+  // Push/Pull in the plan: faces seen from above (wall sides and ends, slab and block edges, columns, beams).
+  useEffect(() => {
+    const at = (clientX: number, clientY: number) =>
+      svgRef.current ? toPlanPoint(svgRef.current, { clientX, clientY }) : null;
+    const picker: Picker3D = {
+      is3d: false,
+      highlight: (hit) => plannerStore.getState().setHoverEdge(hit?.edge ?? null),
+      faceAt(clientX, clientY) {
+        const p = at(clientX, clientY);
+        const s = plannerStore.getState();
+        const face = p && faceAt2D(s.pickableElements(), p, 10 * s.reach() * s.pxUnits());
+        if (!p || !face) return null;
+        return {
+          id: face.id,
+          point: [p.x * M_PER_UNIT, 0, p.y * M_PER_UNIT],
+          normal: [face.normal.x, 0, face.normal.y],
+          edge: [face.a, face.b],
+        };
+      },
+      onPlane: () => null,
+      alongLine(clientX, clientY, origin, dir) {
+        const p = at(clientX, clientY);
+        const len = Math.hypot(dir[0], dir[2]);
+        if (!p || !len) return null;
+        return ((p.x * M_PER_UNIT - origin[0]) * dir[0] + (p.y * M_PER_UNIT - origin[2]) * dir[2]) / len;
+      },
+    };
+    setPicker(picker);
+    return () => {
+      plannerStore.getState().setHoverEdge(null);
+      if (getPicker() === picker) setPicker(null);
+    };
+  }, [svgRef]);
 
   const k = 1 / view.zoom; // plan units per screen pixel
   const vbW = viewport.width / view.zoom || 1600;
@@ -217,7 +255,14 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
 
       {draft?.type === 'erase' && <EraseMarks elements={doc.elements} ids={draft.ids} k={k} />}
 
-      <DrawingOverlay draft={draft} inference={inference} axisLock={axisLock} units={units} k={k} />
+      <DrawingOverlay
+        draft={draft}
+        inference={inference}
+        axisLock={axisLock}
+        units={units}
+        k={k}
+        hoverEdge={hoverEdge}
+      />
     </svg>
   );
 }

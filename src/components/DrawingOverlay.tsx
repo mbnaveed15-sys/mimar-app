@@ -12,6 +12,8 @@ interface Props {
   draft: Draft;
   inference: Inference | null;
   axisLock: 'x' | 'y' | 'z' | null;
+  /** The face Push/Pull would take hold of, lit up. */
+  hoverEdge?: [Point, Point] | null;
   units: Units;
   /** Plan units per screen pixel. */
   k: number;
@@ -53,7 +55,7 @@ function Label({ p, k, children, color = PLAN.ink }: { p: Point; k: number; chil
 }
 
 /** Rubber bands, previews and the snap marker for the drawing tools. */
-export function DrawingOverlay({ draft: d, inference, axisLock, units, k }: Props) {
+export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverEdge }: Props) {
   const dash = `${6 * k} ${4 * k}`;
   const len = (a: Point, b: Point) => formatLength(Math.hypot(b.x - a.x, b.y - a.y) * MM_PER_UNIT, units);
   const band = bandColor(inference, axisLock);
@@ -216,6 +218,20 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k }: Prop
             {len({ x: 0, y: d.y1 }, { x: 0, y: d.y2 })}
           </Label>
         </>
+      )}
+
+      {hoverEdge && (
+        <line
+          data-testid="face-highlight"
+          x1={hoverEdge[0].x}
+          y1={hoverEdge[0].y}
+          x2={hoverEdge[1].x}
+          y2={hoverEdge[1].y}
+          stroke="#f59e0b"
+          strokeWidth={5 * k}
+          strokeLinecap="round"
+          opacity={0.85}
+        />
       )}
 
       {d?.type === 'shape' && d.surface.on === 'floor' && (

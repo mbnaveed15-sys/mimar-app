@@ -24,6 +24,7 @@ const LAYERS = {
   'C-PROP-SETB': { color: 5, ltype: 'DASHED' },
   'A-ANNO-LAYT': { color: 9, ltype: 'CONTINUOUS' },
   'A-FLOR-BLCK': { color: 8, ltype: 'CONTINUOUS' },
+  'A-WALL-PROJ': { color: 7, ltype: 'DASHED' },
 } as const;
 type Layer = keyof typeof LAYERS;
 
@@ -240,6 +241,22 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       openings.filter((o) => o.wallId === wall.id),
     ))
       dxf.poly('A-WALL', piece);
+
+  // Niches and projections: their outline on the face they're on.
+  for (const o of doc.elements) {
+    if (o.type !== 'window' || !o.flat || !o.depthMm) continue;
+    const host = walls.find((w) => w.id === o.wallId);
+    const face = o.face ?? 1;
+    const y = face * ((host ? thicknessOf(host) : 23) / 2);
+    const y2 = y + (face * o.depthMm) / MM_PER_UNIT;
+    const a = (o.angle * Math.PI) / 180;
+    const at = (x: number, yy: number): Point => ({
+      x: o.x + x * Math.cos(a) - yy * Math.sin(a),
+      y: o.y + x * Math.sin(a) + yy * Math.cos(a),
+    });
+    const w = o.width / 2;
+    dxf.poly('A-WALL-PROJ', [at(-w, y), at(-w, y2), at(w, y2), at(w, y)], false);
+  }
 
   for (const o of openings) {
     const host = walls.find((w) => w.id === o.wallId);

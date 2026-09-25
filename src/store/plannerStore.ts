@@ -177,9 +177,9 @@ export interface PlannerState {
    * (y), in plan units. Push/Pull it through to cut the opening. Returns its id.
    */
   addWallShape: (wallId: Id, face: 1 | -1, kind: ShapeKind, outline: Point[]) => Id | null;
-  /** The item Push/Pull would take hold of, lit up in 3D. */
-  hoverId: Id | null;
-  setHoverId: (id: Id | null) => void;
+  /** The face Push/Pull would take hold of in the 2D plan, lit up. */
+  hoverEdge: [Point, Point] | null;
+  setHoverEdge: (edge: [Point, Point] | null) => void;
   /** Settings for plots, wall types, gates and stairs. */
   site: SiteSpec;
   setSite: (patch: Partial<SiteSpec>) => void;
@@ -543,7 +543,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
           axisLock: null,
           shiftLock: null,
           lastCopy: null,
-          hoverId: null,
+          hoverEdge: null,
         }));
         // Orbit only turns the 3D view, so it opens it.
         if (tool === 'orbit' && !get().view3d) get().setView3d(true);
@@ -1200,9 +1200,9 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         get().select(win.id);
         return win.id;
       },
-      hoverId: null,
-      setHoverId: (hoverId) => {
-        if (get().hoverId !== hoverId) set({ hoverId });
+      hoverEdge: null,
+      setHoverEdge: (hoverEdge) => {
+        if (hoverEdge || get().hoverEdge) set({ hoverEdge });
       },
       site: DEFAULT_SITE,
       setSite: (patch) => set((st) => ({ site: { ...st.site, ...patch } })),

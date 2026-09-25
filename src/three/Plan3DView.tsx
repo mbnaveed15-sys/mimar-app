@@ -15,7 +15,7 @@ import { CameraRig } from './cameraRig';
 import { draftElements, draftLines } from './draft3d';
 import { withoutHidden } from '../lib/layers';
 import { shapeDraftScene } from '../tools/shapeTools';
-import { setPicker } from './picker';
+import { getPicker, setPicker, type FaceHit, type Picker3D } from './picker';
 import { buildModel, levelBaseM, M_PER_UNIT, type Finish, type Model3D } from './model';
 
 function hasWebGL(): boolean {
@@ -194,6 +194,8 @@ interface Stage {
   /** What is being drawn, snap markers and guide lines. */
   overlay: THREE.Group;
   grid: THREE.Object3D | null;
+  /** The face Push/Pull would take hold of, lit up. */
+  highlight: THREE.Mesh | null;
   raycaster: THREE.Raycaster;
   last: Model3D | null;
   fitted: boolean;
@@ -244,7 +246,6 @@ function styleMeshes(stage: Stage, s: PlannerState) {
   const faded = cache('faded');
   const lit = cache('lit');
   const red = cache('red');
-  const glow = cache('glow');
   const variant = (
     looks: Map<THREE.Material, THREE.Material>,
     base: THREE.Material,
@@ -284,14 +285,57 @@ function styleMeshes(stage: Stage, s: PlannerState) {
         m.emissive = new THREE.Color('#2563eb');
         m.emissiveIntensity = 0.45;
       });
-    else if (obj.userData.id && obj.userData.id === s.hoverId)
-      obj.material = variant(glow, base, (m) => {
-        m.emissive = new THREE.Color('#f59e0b');
-        m.emissiveIntensity = 0.35;
-      });
     else obj.material = base;
     obj.castShadow = !above;
   });
+}
+
+const FACE_GLOW = new THREE.MeshBasicMaterial({
+  color: '#f59e0b',
+  transparent: true,
+  opacity: 0.5,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+  polygonOffset: true,
+  polygonOffsetFactor: -2,
+  polygonOffsetUnits: -2,
+});
+
+/** Take the face highlight away. */
+function clearHighlight(stage: Stage) {
+  if (!stage.highlight) return;
+  stage.scene.remove(stage.highlight);
+  stage.highlight.geometry.dispose();
+  stage.highlight = null;
+}
+
+/**
+ * The triangles of a mesh that lie in the plane of a face hit (all of that face, whatever its
+ * shape), in the scene's coordinates.
+ */
+function faceGeometry(mesh: THREE.Mesh, hit: THREE.Intersection): THREE.BufferGeometry | null {
+  if (!hit.face) return null;
+  const pos = mesh.geometry.getAttribute('position');
+  const index = mesh.geometry.getIndex();
+  const n = hit.face.normal.clone().normalize();
+  const p = mesh.worldToLocal(hit.point.clone());
+  const [a, b, c] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const tri = new THREE.Triangle();
+  const faceN = new THREE.Vector3();
+  const out: number[] = [];
+  const count = index ? index.count : pos.count;
+  for (let i = 0; i + 2 < count; i += 3) {
+    const [ia, ib, ic] = index ? [index.getX(i), index.getX(i + 1), index.getX(i + 2)] : [i, i + 1, i + 2];
+    a.fromBufferAttribute(pos, ia);
+    b.fromBufferAttribute(pos, ib);
+    c.fromBufferAttribute(pos, ic);
+    tri.set(a, b, c).getNormal(faceN);
+    if (faceN.dot(n) > 0.999 && Math.abs(a.clone().sub(p).dot(n)) < 1e-4) out.push(...a, ...b, ...c);
+  }
+  if (!out.length) return null;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(out, 3));
+  return geometry.applyMatrix4(mesh.matrixWorld);
 }
 
 const GHOST = new THREE.MeshStandardMaterial({
@@ -482,6 +526,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       model,
       overlay,
       grid: null,
+      highlight: null,
       raycaster: new THREE.Raycaster(),
       last: null,
       fitted: false,
@@ -511,6 +556,10 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
 
     // Redraw the preview whenever what is being drawn, or where the pointer snaps, changes.
     const unsubscribe = plannerStore.subscribe((s, prev) => {
+      if (s.tool !== prev.tool && stage.highlight) {
+        clearHighlight(stage);
+        stage.render();
+      }
       if (
         s.draft !== prev.draft ||
         s.inference !== prev.inference ||
@@ -521,12 +570,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         stage.render();
       }
       const erasing = (x: PlannerState) => (x.draft?.type === 'erase' ? x.draft : null);
-      if (
-        s.selectedIds !== prev.selectedIds ||
-        s.activeLevel !== prev.activeLevel ||
-        s.hoverId !== prev.hoverId ||
-        erasing(s) !== erasing(prev)
-      ) {
+      if (s.selectedIds !== prev.selectedIds || s.activeLevel !== prev.activeLevel || erasing(s) !== erasing(prev)) {
         styleMeshes(stage, s);
         stage.render();
       }
@@ -556,6 +600,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     if (!stage || !host) return;
     const shown = withoutHidden(doc, { layers: doc.layers, showFurniture });
     const model = buildModel(shown, { wallHeightMm, showFurniture });
+    clearHighlight(stage);
     stage.scene.remove(stage.model);
     disposeGroup(stage.model);
     stage.extras.forEach((looks) => looks.forEach((m) => m.dispose()));
@@ -621,7 +666,24 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       return stage;
     };
     const v = (p: [number, number, number]) => new THREE.Vector3(...p);
-    setPicker({
+    /** What each face handed out was, so it can be lit up. */
+    const hits = new WeakMap<object, THREE.Intersection>();
+    const picker: Picker3D = {
+      is3d: true,
+      highlight(hit) {
+        const stage = stageRef.current;
+        if (!stage) return;
+        const was = stage.highlight;
+        clearHighlight(stage);
+        const from = hit && hits.get(hit);
+        const geometry = from && from.object instanceof THREE.Mesh ? faceGeometry(from.object, from) : null;
+        if (geometry) {
+          stage.highlight = new THREE.Mesh(geometry, FACE_GLOW);
+          stage.highlight.renderOrder = 5;
+          stage.scene.add(stage.highlight);
+        }
+        if (was || geometry) stage.render();
+      },
       faceAt(clientX, clientY) {
         const stage = aim(clientX, clientY);
         if (!stage) return null;
@@ -631,7 +693,13 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
           .find((h) => h.object instanceof THREE.Mesh && h.object.userData.pickable);
         if (!hit?.face || (hit.object.userData.level ?? 'ground') !== s.activeLevel) return null;
         const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
-        return { id: hit.object.userData.id, point: [hit.point.x, hit.point.y, hit.point.z], normal: [n.x, n.y, n.z] };
+        const face: FaceHit = {
+          id: hit.object.userData.id,
+          point: [hit.point.x, hit.point.y, hit.point.z],
+          normal: [n.x, n.y, n.z],
+        };
+        hits.set(face, hit);
+        return face;
       },
       onPlane(clientX, clientY, point, normal) {
         const stage = aim(clientX, clientY);
@@ -652,8 +720,12 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         if (denom < 1e-4) return null; // looking straight along the line
         return (w0.dot(n) - b * w0.dot(d)) / denom;
       },
-    });
-    return () => setPicker(null);
+    };
+    setPicker(picker);
+    return () => {
+      if (stageRef.current) clearHighlight(stageRef.current);
+      if (getPicker() === picker) setPicker(null);
+    };
   }, [supported]);
 
   /** Look along the view from a screen position: what it hits, and where on the floor being drawn. */

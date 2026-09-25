@@ -1,4 +1,5 @@
 import type { Opening } from '../../types';
+import { MM_PER_UNIT } from '../../lib/scale';
 import { PLAN } from '../../theme/plan';
 
 interface Props {
@@ -15,24 +16,30 @@ export function OpeningShape({ opening, color, selected, wallThickness }: Props)
   const stroke = { stroke: selected ? PLAN.selection : PLAN.wallEdge };
   const t = wallThickness / 2 + 1;
   if (opening.flat) {
-    // Only drawn on the wall's face so far: a dashed line along that face, the wall left whole.
-    const y = (opening.face ?? 1) * t;
+    // Not cut through: a line along the face it's drawn on, or the outline of a niche (into the wall)
+    // or a projection (out from it), dashed as it is above or below the plan's cut.
+    const face = opening.face ?? 1;
+    const y = face * (wallThickness / 2);
+    const depth = (opening.depthMm ?? 0) / MM_PER_UNIT;
+    const style = { stroke: selected ? PLAN.selection : depth ? PLAN.wallEdge : PLAN.draft };
     return (
       <g
         data-type={opening.type}
         data-id={opening.id}
         data-flat
+        data-depth={depth ? (depth < 0 ? 'niche' : 'projection') : undefined}
         transform={`translate(${opening.x},${opening.y}) rotate(${opening.angle})`}
       >
-        <line
-          x1={-w / 2}
-          y1={y}
-          x2={w / 2}
-          y2={y}
-          style={{ stroke: selected ? PLAN.selection : PLAN.draft }}
-          strokeWidth={3}
-          strokeDasharray="6 3"
-        />
+        {depth ? (
+          <polygon
+            points={`${-w / 2},${y} ${-w / 2},${y + face * depth} ${w / 2},${y + face * depth} ${w / 2},${y}`}
+            style={{ ...style, fill: depth < 0 ? PLAN.paper : 'none' }}
+            strokeWidth={1.5}
+            strokeDasharray="5 3"
+          />
+        ) : (
+          <line x1={-w / 2} y1={y} x2={w / 2} y2={y} style={style} strokeWidth={3} strokeDasharray="6 3" />
+        )}
       </g>
     );
   }

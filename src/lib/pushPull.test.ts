@@ -109,7 +109,7 @@ describe('push and pull', () => {
     expect(get<Slab>(out.doc, 's').holes).toEqual([hole]);
   });
 
-  it('cuts a shape on a wall right through once pushed half-way in', () => {
+  it('pushes a shape on a wall in for a niche, out for a projection, or right through', () => {
     const win: Opening = {
       id: 'n',
       type: 'window',
@@ -121,14 +121,23 @@ describe('push and pull', () => {
       flat: true,
       face: 1,
     };
-    expect(pushPull(docWith(wall, win), 'n', { part: 'into' }, -100, ctx).result).toBe('none');
-    expect(pushPull(docWith(wall, win), 'n', { part: 'into' }, 300, ctx).result).toBe('none');
-    const out = pushPull(docWith(wall, win), 'n', { part: 'into' }, -120, ctx);
+    const push = (el: Opening, mm: number) => pushPull(docWith(wall, el), 'n', { part: 'into' }, mm, ctx);
+    // 230 mm wall: 100 in is a niche; 150 out a projection; back to zero is flat again.
+    const niche = push(win, -100);
+    expect(niche.result).toBe('changed');
+    expect(get<Opening>(niche.doc, 'n')).toMatchObject({ flat: true, depthMm: -100 });
+    expect(get<Opening>(push(win, 150).doc, 'n').depthMm).toBe(150);
+    expect(get<Opening>(push({ ...win, depthMm: -100 }, 100).doc, 'n').depthMm).toBeUndefined();
+    // Within 2" (50 mm) of the far face it cuts right through, as an open hole.
+    const out = push(win, -190);
     expect(out.result).toBe('cut');
     const cut = get<Opening>(out.doc, 'n');
     expect(cut).toMatchObject({ open: true });
     expect(cut.flat).toBeUndefined();
     expect(cut.face).toBeUndefined();
+    expect(cut.depthMm).toBeUndefined();
+    // Only its face pushes: not a side.
+    expect(faceOf(win, [1, 0, 0], [5, 1, 0.12])).toBeNull();
   });
 });
 

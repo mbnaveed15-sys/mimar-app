@@ -179,8 +179,9 @@ function wallParts(wall: Wall, walls: Wall[], openings: Opening[], heightMm: num
     ]);
 
   const panels: Panel[] = [];
+  const tUnits = thicknessOf(wall);
   // Flat shapes are only drawn on the face (a thin see-through skin); they don't cut the wall.
-  for (const o of openings.filter((x) => x.flat)) {
+  for (const o of openings.filter((x) => x.flat && !x.depthMm)) {
     const mid = wallParam(wall, o) * len;
     const c = toScene(origin, angle, { x: mid, y: (o.face ?? 1) * (thicknessOf(wall) / 2 + 0.3) });
     panels.push({
@@ -196,11 +197,20 @@ function wallParts(wall: Wall, walls: Wall[], openings: Opening[], heightMm: num
     });
   }
 
+  // A projection (chajja, ledge, pilaster): the shape pushed out from the face, in the wall's colour.
+  for (const o of openings.filter((x) => x.flat && (x.depthMm ?? 0) > 0)) {
+    const out = o.depthMm! / MM_PER_UNIT;
+    const mid = wallParam(wall, o) * len;
+    const c = toScene(origin, angle, { x: mid, y: (o.face ?? 1) * (tUnits / 2 + out / 2) });
+    panels.push({ ...c, y0: 0, rotY, outline: outline(o), depth: m(out), color: WALL_COLOR, id: o.id, role: 'wall' });
+  }
+
+  const isNiche = (o: Opening) => !!o.flat && (o.depthMm ?? 0) < 0;
   const gaps = openings
-    .filter((o) => !o.flat)
+    .filter((o) => !o.flat || isNiche(o))
     .map((o) => {
       const mid = wallParam(wall, o) * len;
-      const pad = o.shape ? PANEL_PAD : 0;
+      const pad = o.shape || isNiche(o) ? PANEL_PAD : 0;
       return {
         o,
         mid,
@@ -215,6 +225,43 @@ function wallParts(wall: Wall, walls: Wall[], openings: Opening[], heightMm: num
   for (const { o, mid, s0, s1 } of gaps) {
     if (s0 > cursor) solids.push(piece(cursor, s0, 0, top));
     cursor = Math.max(cursor, s1);
+    if (isNiche(o)) {
+      // A niche: the wall behind it (which picks as the niche, so its back can be pushed and pulled),
+      // and in front a layer as deep as the niche with the outline cut out of it.
+      const face = o.face ?? 1;
+      const deep = Math.min(-o.depthMm! / MM_PER_UNIT, tUnits - 1);
+      const shift = m(mid - (s0 + s1) / 2);
+      const hole = outline(o).map(([u, v]): [number, number] => [u + shift, v]);
+      const [l, r] = [-m(s1 - s0) / 2, m(s1 - s0) / 2];
+      const rect: [number, number][] = [
+        [l, 0],
+        [r, 0],
+        [r, top],
+        [l, top],
+      ];
+      const at = (across: number) => toScene(origin, angle, { x: (s0 + s1) / 2, y: across });
+      panels.push({
+        ...at((-face * deep) / 2),
+        y0: 0,
+        rotY,
+        outline: rect,
+        depth: m(tUnits - deep),
+        color: WALL_COLOR,
+        id: o.id,
+        role: 'wall',
+      });
+      panels.push({
+        ...at(face * (tUnits / 2 - deep / 2)),
+        y0: 0,
+        rotY,
+        outline: rect,
+        holes: [hole],
+        depth: m(deep),
+        color: WALL_COLOR,
+        role: 'wall',
+      });
+      continue;
+    }
     if (o.type === 'window' && o.shape) {
       // A shaped opening: the wall round it is one upright panel with the outline cut out of it.
       const c = toScene(origin, angle, { x: (s0 + s1) / 2, y: 0 });
