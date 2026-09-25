@@ -8,6 +8,7 @@ import { Inspector } from './Inspector';
 import { LayersPanel } from './LayersPanel';
 import { MaterialsPanel } from './MaterialsPanel';
 import { SettingsPanel } from './SettingsPanel';
+import { SiteOptions, WallKindPicker } from './SiteOptions';
 import { StructureOptions } from './StructureOptions';
 import { ThemePicker } from './ThemePicker';
 import { UpdatePanel } from './UpdatePanel';
@@ -55,7 +56,14 @@ function ToolOptions() {
   const setBrushSize = usePlanner((s) => s.setBrushSize);
   const view3d = usePlanner((s) => s.view3d);
   if (view3d) return null;
-  if (tool === 'wall' || tool === 'rectangle') return <WallThicknessPicker />;
+  if (tool === 'wall' || tool === 'rectangle')
+    return (
+      <>
+        <WallThicknessPicker />
+        <WallKindPicker />
+      </>
+    );
+  if (tool === 'plot' || tool === 'stairs' || tool === 'door') return <SiteOptions />;
   if (tool === 'furniture') return <FurnitureLibrary />;
   if (tool === 'column' || tool === 'beam' || tool === 'slab') return <StructureOptions />;
   if (tool === 'brush')

@@ -54,3 +54,33 @@ test('columns, beams and slabs on two floors, shown stacked in 3D', async ({ pag
   const view = page.getByTestId('plan-3d');
   await expect(view).toHaveAttribute('data-slabs', '1');
 });
+
+test('a plot with setbacks and a boundary wall, a gate, and a stair', async ({ page }) => {
+  const click = async (x: number, y: number) => page.mouse.click(...(await at(page, ...P(x, y))));
+  await page.keyboard.press('p');
+  await click(0, 0);
+  await page.mouse.move(...(await at(page, ...P(5, 5))));
+  await page.keyboard.type(`25',45'`);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-type="plot"]')).toHaveCount(1);
+  await expect(page.getByTestId('buildable-area')).toHaveCount(1);
+  await expect(page.locator('[data-type="wall"]')).toHaveCount(4);
+  await page.keyboard.press('Shift+Z'); // a 45' plot is taller than the window
+
+  await page.keyboard.press('d');
+  await page.getByRole('button', { name: 'Gate', exact: true }).click();
+  await click(12, 44.6);
+  await expect(page.getByTestId('gate')).toHaveCount(1);
+
+  await page.keyboard.press('u');
+  await page.getByRole('button', { name: 'L-shaped' }).click();
+  await click(12, 20);
+  await expect(page.locator('[data-type="stair"]')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Space');
+  await click(12, 20);
+  await expect(page.getByTestId('stair-risers')).toContainText('risers');
+
+  await page.keyboard.press('Control+2');
+  await expect(page.getByTestId('plan-3d')).toHaveAttribute('data-floors', '1');
+});

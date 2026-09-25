@@ -1,9 +1,11 @@
 import { placeOnWall, wallLength, withWallLength } from '../geometry';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
+import { stairLayout } from '../lib/site';
+import { SLAB_MM } from '../three/model';
 import { formatArea, formatLength, formatMarla } from '../lib/units';
 import { roomAreaSqMm } from '../rooms';
-import { MM_PER_UNIT, usePlanner } from '../store/plannerStore';
-import type { Wall } from '../types';
+import { KIND_HEIGHT_MM, MM_PER_UNIT, usePlanner } from '../store/plannerStore';
+import type { Stair, Wall } from '../types';
 import { thicknessOf } from '../walls';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { LengthField } from './LengthField';
@@ -39,6 +41,9 @@ export function Inspector() {
   const updateRoom = usePlanner((s) => s.updateRoom);
   const mode = usePlanner((s) => s.mode);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
+  const addParapetAround = usePlanner((s) => s.addParapetAround);
+  const plinthMm = usePlanner((s) => s.doc.plinthMm);
+  const wallHeightMm = usePlanner((s) => s.wallHeightMm);
 
   const multi = usePlanner((s) => s.selectedIds.length > 1 || s.selectedGroup() !== null);
   const el = doc.elements.find((e) => e.id === selectedId);
@@ -47,6 +52,12 @@ export function Inspector() {
   const toUnits = (mm: number) => mm / MM_PER_UNIT;
   const materialName = (id?: string) => doc.materials.find((m) => m.id === id)?.name;
   const btn = 'm-btn';
+  /** Change a stair and work its risers and footprint out again. */
+  const restair = (st: Stair, patch: Partial<Stair>) => {
+    const next = { ...st, ...patch };
+    const l = stairLayout(next);
+    updateElement({ ...next, riserMm: l.riserMm, w: l.w, h: l.h });
+  };
 
   return (
     <div className="flex flex-col">
@@ -80,6 +91,36 @@ export function Inspector() {
                 onCommit={(mm) => updateElement({ ...el, thickness: toUnits(Math.min(mm, 1000)) })}
               />
             )}
+            {el.type === 'wall' && (
+              <div className="flex flex-wrap gap-1">
+                {(
+                  [
+                    [undefined, 'Wall'],
+                    ['boundary', 'Boundary'],
+                    ['parapet', 'Parapet'],
+                  ] as const
+                ).map(([kind, label]) => (
+                  <button
+                    key={label}
+                    className="m-btn px-2 py-0.5"
+                    aria-pressed={el.kind === kind}
+                    onClick={() => updateElement({ ...el, kind, heightMm: kind ? KIND_HEIGHT_MM[kind] : undefined })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {el.type === 'wall' && el.kind && (
+              <LengthField
+                id="wall-height"
+                label="Height"
+                mm={el.heightMm ?? KIND_HEIGHT_MM[el.kind]}
+                units={units}
+                min={100}
+                onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 10000) })}
+              />
+            )}
 
             {(el.type === 'door' || el.type === 'window') && (
               <>
@@ -93,6 +134,16 @@ export function Inspector() {
                     if (wall) updateElement({ ...el, ...placeOnWall(wall, el, toUnits(mm)) });
                   }}
                 />
+                {el.type === 'door' && (
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!!el.gate}
+                      onChange={(e) => updateElement({ ...el, gate: e.target.checked || undefined })}
+                    />
+                    Gate (double leaf, no lintel)
+                  </label>
+                )}
                 {el.type === 'door' && (
                   <div className="flex gap-2">
                     <button onClick={() => flipOpening(el.id, 'side')} className={btn}>
@@ -160,6 +211,97 @@ export function Inspector() {
                 min={50}
                 onCommit={(mm) => updateElement({ ...el, thickness: toUnits(mm) })}
               />
+            )}
+            {el.type === 'slab' && (
+              <button className={btn} onClick={() => addParapetAround(el.id)}>
+                Parapet round this roof
+              </button>
+            )}
+
+            {el.type === 'plot' && (
+              <>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['front', 'rear', 'sides'] as const).map((side) => (
+                    <LengthField
+                      key={side}
+                      id={`plot-${side}`}
+                      label={side === 'front' ? 'Front' : side === 'rear' ? 'Rear' : 'Sides'}
+                      mm={el.setbacks[side]}
+                      units={units}
+                      min={0}
+                      onCommit={(mm) => updateElement({ ...el, setbacks: { ...el.setbacks, [side]: mm } })}
+                    />
+                  ))}
+                </div>
+                <button
+                  className={btn}
+                  onClick={() => updateElement({ ...el, front: (el.front + 1) % el.points.length })}
+                >
+                  Road on the next side
+                </button>
+                <div className="text-muted">The dashed line shows where you may build inside the setbacks.</div>
+              </>
+            )}
+
+            {el.type === 'stair' && (
+              <>
+                <div className="flex flex-wrap gap-1">
+                  {(['straight', 'L', 'U', 'ramp'] as const).map((shape) => (
+                    <button
+                      key={shape}
+                      className="m-btn px-2 py-0.5"
+                      aria-pressed={el.shape === shape}
+                      onClick={() =>
+                        restair(el, {
+                          shape,
+                          // A ramp usually climbs just the plinth; a stair a full floor.
+                          riseMm:
+                            shape === 'ramp'
+                              ? Math.min(el.riseMm, plinthMm)
+                              : el.shape === 'ramp'
+                                ? wallHeightMm + SLAB_MM
+                                : el.riseMm,
+                        })
+                      }
+                    >
+                      {shape === 'straight' ? 'Straight' : shape === 'ramp' ? 'Ramp' : `${shape}-shaped`}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <LengthField
+                    id="stair-width-edit"
+                    label="Width"
+                    mm={el.width * MM_PER_UNIT}
+                    units={units}
+                    min={600}
+                    onCommit={(mm) => restair(el, { width: toUnits(mm) })}
+                  />
+                  <LengthField
+                    id="stair-rise-edit"
+                    label="Climbs"
+                    mm={el.riseMm}
+                    units={units}
+                    min={100}
+                    onCommit={(mm) => restair(el, { riseMm: Math.min(mm, 10000) })}
+                  />
+                  {el.shape !== 'ramp' && (
+                    <LengthField
+                      id="stair-tread-edit"
+                      label="Tread"
+                      mm={el.treadMm}
+                      units={units}
+                      min={200}
+                      onCommit={(mm) => restair(el, { treadMm: mm })}
+                    />
+                  )}
+                </div>
+                <div className="text-muted" data-testid="stair-risers">
+                  {el.shape === 'ramp'
+                    ? `Ramp 1 in 12, ${formatLength(el.h * MM_PER_UNIT, units)} long`
+                    : `${stairLayout(el).risers} risers of ${formatLength(el.riserMm, units)}`}
+                </div>
+              </>
             )}
 
             {el.type === 'furniture' && (
