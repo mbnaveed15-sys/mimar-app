@@ -98,6 +98,11 @@ autosaves to local storage on every change.
   the side in use). The 3D view publishes its camera to `src/three/cameraEye.ts`, which the plan draws
   (`CameraEyeMark` in `Canvas.tsx`). `useShownDoc` in `Plan3DView.tsx` holds back 3D rebuilds while a drag runs on
   the plan side.
+- Quantities and cost: `src/lib/quantities.ts` measures each floor (pure, tested); `src/lib/estimate.ts` holds the
+  starter rates and ratios, prices the quantities into lines and works out the materials, and writes the CSV;
+  `src/lib/costReport.ts` puts them together for the panel (`CostPanel.tsx`), the CSV and the PDF page
+  (`costPage` in `exportPdf.ts`). Rates live in `src/store/costStore.ts` (browser storage key `mimar.cost`, not
+  in the plan file).
 - Materials: `src/lib/materials.ts` (library), `patterns.ts` (procedural textures for 3D and swatches).
 
 ## Exports

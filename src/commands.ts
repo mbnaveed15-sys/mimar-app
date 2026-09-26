@@ -1,6 +1,6 @@
 import { getViewControls, isParallel, requestView, toggleParallel } from './three/viewControls';
 import { aliasesFor } from './lib/aliases';
-import { exportModel, exportPlanDxf, exportPlanPdf, exportPlanPng } from './lib/exportActions';
+import { exportCostCsv, exportModel, exportPlanDxf, exportPlanPdf, exportPlanPng } from './lib/exportActions';
 import { plannerStore, type PlannerState } from './store/plannerStore';
 import { THEMES } from './theme/themes';
 import { pasteToPlace } from './tools/controller';
@@ -110,6 +110,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
     { id: 'file.pdf', label: 'Export PDF', menu: 'file', group: 2, keys: ['Ctrl+P'], run: exportPlanPdf },
     { id: 'file.png', label: 'Export PNG', menu: 'file', group: 2, run: exportPlanPng },
     { id: 'file.dxf', label: 'Export DXF (AutoCAD)', menu: 'file', group: 2, run: exportPlanDxf },
+    { id: 'file.cost', label: 'Export quantities and cost (CSV)', menu: 'file', group: 2, run: () => exportCostCsv() },
     {
       id: 'file.glb',
       label: 'Export 3D: GLB (Twinmotion)',

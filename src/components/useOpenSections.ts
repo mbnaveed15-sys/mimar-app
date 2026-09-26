@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { browserStorage } from '../lib/storage';
 
-export type SectionId = 'check' | 'materials' | 'components' | 'layers' | 'grid' | 'theme' | 'settings';
+export type SectionId = 'check' | 'cost' | 'materials' | 'components' | 'layers' | 'grid' | 'theme' | 'settings';
 
 const OPEN_KEY = 'mimar.panels';
 const DEFAULT_OPEN: SectionId[] = ['check', 'materials', 'layers'];

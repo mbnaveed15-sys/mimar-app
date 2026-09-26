@@ -8,6 +8,8 @@ import { downloadUrl, exportPng } from './exportPng';
 import { planToDxf } from './exportDxf';
 import { modelMeshes, toDae, toGlb, toObj } from './export3d';
 import { zip } from './zip';
+import { costCsv, costPdf, costReport } from './costReport';
+import { costStore } from '../store/costStore';
 import { buildModel } from '../three/model';
 import { baseName } from './files';
 import { formatArea, formatMarla, SQ_MM_PER_SQ_FT, UNIT_LABELS } from './units';
@@ -30,11 +32,14 @@ function exportContent() {
   return { doc, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills };
 }
 
-/** "House" or "House – First floor" when the plan has more than one floor. */
+/**
+ * "House" or "House - First floor" when the plan has more than one floor (a plain hyphen: browsers
+ * give up on file names with a dash like "–" and save them as "download").
+ */
 function exportName() {
   const { doc, fileName, activeLevel } = plannerStore.getState();
   const level = doc.levels.find((l) => l.id === activeLevel);
-  return doc.levels.length > 1 && level ? `${baseName(fileName)} – ${level.name}` : baseName(fileName);
+  return doc.levels.length > 1 && level ? `${baseName(fileName)} - ${level.name}` : baseName(fileName);
 }
 
 /** Say so, rather than make a blank drawing, when the floor being viewed has nothing on it. */
@@ -82,6 +87,9 @@ export function exportPlanPdf() {
     northDeg: doc.northDeg ?? 0,
     checkTitle: baseName(plannerStore.getState().fileName),
     hints,
+    cost: costStore.getState().pdfCost
+      ? costPdf(costReport(doc, wallHeightMm, 'all', costStore.getState()))
+      : undefined,
     bylawNote: check
       ? `Bylaws: ${check.authority.name}${check.authority.status === 'provisional' ? ' (provisional)' : ''}${check.rule ? `, ${check.rule.label}` : ''}`
       : '',
@@ -121,6 +129,18 @@ export function exportPlanDxf() {
   } catch (e) {
     s.setWarning(`The DXF could not be created. ${String(e)}`);
   }
+}
+
+/** Download the bill of quantities and cost estimate (the whole building) as a CSV file for Excel. */
+export function exportCostCsv(floor = 'all') {
+  const s = plannerStore.getState();
+  if (!s.doc.elements.length && !s.doc.rooms.length) {
+    s.setWarning('The plan is empty, so there is nothing to measure yet. Draw some walls or rooms first.');
+    return;
+  }
+  const report = costReport(s.doc, s.wallHeightMm, floor, costStore.getState());
+  // A byte-order mark so Excel reads the text as UTF-8.
+  saveBlob('\ufeff' + costCsv(baseName(s.fileName), report), 'text/csv', `${baseName(s.fileName)} quantities.csv`);
 }
 
 export type ModelFormat = 'glb' | 'dae' | 'obj';
