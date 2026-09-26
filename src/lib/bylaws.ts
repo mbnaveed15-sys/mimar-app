@@ -106,6 +106,14 @@ const DHA_MUMTY: [number, number][] = [
 ];
 
 const HABITABLE = /bed|drawing|lounge|living|dining|study|guest|family/i;
+/** Baths and WCs, whatever else is in the name ("Guest bath", "Master bath", "Bed 1 WC"). */
+export const WET_ROOM = /bath|toilet|\bw\.?c\b|washroom|powder|shower|ensuite|en-suite|lavatory/i;
+
+/** The room-size rule for a room of this name: a bath or WC never counts as a habitable room. */
+export function roomRuleFor(rules: RoomRule[], name: string): RoomRule | null {
+  const wet = WET_ROOM.test(name);
+  return rules.find((r) => r.names.test(name) && !(wet && r.names === HABITABLE)) ?? null;
+}
 
 /** CDA Schedule-2 room sizes (both CDA tables). */
 const CDA_ROOMS: RoomRule[] = [
@@ -235,7 +243,7 @@ export const AUTHORITIES: Authority[] = [
     mumty: {
       area: {
         maxSqFt: ({ plotSqFt, buildableSqFt }) => buildableSqFt / (plotSqFt / 9 <= 200.5 ? 3 : 4),
-        rule: '⅓ of the block left by the setbacks (up to 200 sq yd), ¼ above',
+        rule: 'a third of the block left by the setbacks (up to 200 sq yd), a quarter above',
         clause: 'Schedule-I',
       },
       height: { maxMm: ft(10), clause: '2.14.1' },
@@ -453,8 +461,8 @@ export const AUTHORITIES: Authority[] = [
     rules: [
       { label: 'Under 5 marla', marla: [0, 5], setbacks: sb(5, 0, 0, 0) },
       { label: '5–10 marla', marla: [5, 10], setbacks: sb(5, 0, 0, 5) },
-      { label: '10–30 marla', marla: [10, 30], setbacks: sb(10, 5, 0, 7) },
-      { label: '30 marla – 2 kanal', marla: [30, 40], setbacks: sb(10, 5, 5, 7) },
+      { label: '10 marla – 1 kanal', marla: [10, 20], setbacks: sb(10, 5, 0, 7) },
+      { label: '1–2 kanal', marla: [20, 40], setbacks: sb(10, 5, 5, 7) },
       { label: '2 kanal and above', marla: [40], setbacks: sb(20, 10, 10, 10) },
     ],
     presets: LAHORE_PRESETS,
@@ -470,19 +478,21 @@ const withinOpen = (v: number, [lo, hi]: [number, number?]) => v >= lo && (hi ==
 
 /**
  * The rule for a plot of this area (sq ft) and frontage (ft). Where both size and frontage are
- * given (CDA), frontage decides first, as plot types go by both; areas are rounded to the nearest
- * whole square yard, as the tables are.
+ * given (CDA), the row fitting both wins, as plot types go by both; failing that, the size decides.
+ * Areas are rounded to the nearest whole square yard, as the tables are.
  */
 export function ruleFor(authority: Authority, areaSqFt: number, frontageFt: number): PlotRule | null {
   const sqyd = Math.round(areaSqFt / SQ_FT_PER_SQ_YD);
   const marla = areaSqFt / 225;
   const bySize = (r: PlotRule) => (r.sqyd ? within(sqyd, r.sqyd) : r.marla ? withinOpen(marla + 1e-6, r.marla) : true);
   const byFront = (r: PlotRule) => !r.frontageFt || within(Math.round(frontageFt), r.frontageFt);
+  // Size and frontage together first; then size alone (a row for a much bigger plot, picked by its
+  // frontage only, would give setbacks that swallow the plot); frontage alone only as a last resort.
   return (
     authority.rules.find((r) => r.frontageFt && byFront(r) && bySize(r)) ??
-    authority.rules.find((r) => r.frontageFt && byFront(r)) ??
     authority.rules.find((r) => !r.frontageFt && bySize(r)) ??
     authority.rules.find(bySize) ??
+    authority.rules.find((r) => r.frontageFt && byFront(r)) ??
     null
   );
 }

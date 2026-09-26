@@ -702,9 +702,10 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const flat = [...floors, ...slabs, ...blocks].flatMap((f) => f.points);
   const xs = [...solids.map((s) => s.x), ...flat.map((p) => p[0])];
   const zs = [...solids.map((s) => s.z), ...flat.map((p) => p[1])];
-  const centre = xs.length
-    ? { x: (Math.min(...xs) + Math.max(...xs)) / 2, z: (Math.min(...zs) + Math.max(...zs)) / 2 }
-    : { x: 8, z: 5 };
-  const size = xs.length ? Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs), 4) : 16;
+  // Not Math.min(...xs): a big plan has too many values to spread into one call.
+  const lo = (v: number[]) => v.reduce((m, x) => (x < m ? x : m), Infinity);
+  const hi = (v: number[]) => v.reduce((m, x) => (x > m ? x : m), -Infinity);
+  const centre = xs.length ? { x: (lo(xs) + hi(xs)) / 2, z: (lo(zs) + hi(zs)) / 2 } : { x: 8, z: 5 };
+  const size = xs.length ? Math.max(hi(xs) - lo(xs), hi(zs) - lo(zs), 4) : 16;
   return { solids, floors, slabs, blocks, panels, centre, size };
 }

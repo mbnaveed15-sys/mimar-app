@@ -5,7 +5,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'release', 'node_modules', 'playwright-report', 'test-results'] },
+  { ignores: ['dist', 'release', 'node_modules', 'playwright-report', 'test-results', '.qa'] },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended, reactHooks.configs.flat.recommended],

@@ -42,6 +42,8 @@ export interface PdfDetails {
   bylawNote?: string;
   /** Which way north points, in degrees clockwise from up the page (for the north arrow). */
   northDeg?: number;
+  /** The check page's title: the plan's name (the check covers every floor). */
+  checkTitle?: string;
   /** Plan hints (good-practice advice), printed after the plan check. */
   hints?: string[];
   /** The plan check, printed on a page of its own. */
@@ -53,6 +55,9 @@ export interface PdfDetails {
 }
 
 type Pdf = InstanceType<typeof import('jspdf').jsPDF>;
+
+/** Text for the PDF's built-in font, which lacks some characters. */
+const pdfText = (s: string) => s.replace(/⅓/g, '1/3').replace(/⅔/g, '2/3').replace(/≤/g, '<=').replace(/≥/g, '>=');
 
 /**
  * The plan check on a page of its own: a row per rule, with what's needed, what the plan has, and
@@ -76,7 +81,7 @@ function checkPage(pdf: Pdf, check: PdfDetails['check'], hints: string[], title:
     pdf.setFont('helvetica', 'normal');
     y += 6;
     for (const h of hints) {
-      const lines = pdf.splitTextToSize(h, w - 2 * MARGIN - 5);
+      const lines = pdf.splitTextToSize(pdfText(h), w - 2 * MARGIN - 5);
       if (y + lines.length * 4 > 280) {
         pdf.addPage('a4', 'portrait');
         y = 20;
@@ -107,10 +112,11 @@ function checkRows(pdf: Pdf, check: NonNullable<PdfDetails['check']>, top: numbe
   for (const r of check.rows) {
     const cells = [
       [word[r.status]],
-      pdf.splitTextToSize(r.label, 44),
-      pdf.splitTextToSize(r.actual, 52),
-      pdf.splitTextToSize(r.required, 70 - 28 + 18),
-      pdf.splitTextToSize(r.clause, 28),
+      // Each column wraps short of the next one.
+      pdf.splitTextToSize(pdfText(r.label), cols[2] - cols[1] - 2),
+      pdf.splitTextToSize(pdfText(r.actual), cols[3] - cols[2] - 2),
+      pdf.splitTextToSize(pdfText(r.required), cols[4] - cols[3] - 2),
+      pdf.splitTextToSize(pdfText(r.clause), w - MARGIN - cols[4]),
     ];
     if (r.status === 'fail') pdf.setTextColor(180, 30, 30);
     cells.forEach((c, i) => pdf.text(c, cols[i], y));
@@ -167,6 +173,10 @@ export async function exportPdf(content: PlanImageContent, area: Bounds, details
   const padded = padBounds(area, (PAPER_PADDING * scale) / MM_PER_UNIT);
   const drawW = planW / scale + 2 * PAPER_PADDING;
   const drawH = planH / scale + 2 * PAPER_PADDING;
+  if (drawW > spaceW + 1 || drawH > spaceH + 1)
+    throw new Error(
+      `The plan is too big to fit on ${details.paper} even at 1:${scale}. Check for items drawn far away.`,
+    );
 
   const px = (mm: number) => Math.max(1, Math.round((mm / 25.4) * DPI));
   // Text and thin lines sized for paper: 1 "pixel" of the on-screen design is 0.2 mm on paper.
@@ -205,7 +215,8 @@ export async function exportPdf(content: PlanImageContent, area: Bounds, details
   pdf.text(`Drawn with Mimar ${details.version}`, right, tbY + (details.bylawNote ? 14 : 9), { align: 'right' });
   pdf.setTextColor(0);
   northArrow(pdf, pageW - MARGIN - 8, MARGIN + 11, details.northDeg ?? 0);
-  if (details.check || details.hints?.length) checkPage(pdf, details.check, details.hints ?? [], details.title);
+  if (details.check || details.hints?.length)
+    checkPage(pdf, details.check, details.hints ?? [], details.checkTitle ?? details.title);
 
   const url = URL.createObjectURL(pdf.output('blob'));
   downloadUrl(url, details.filename);

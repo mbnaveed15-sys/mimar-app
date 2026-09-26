@@ -50,36 +50,65 @@ interface Graph {
 /** Split walls where they meet or cross and build a graph of corners and wall pieces. */
 export function buildWallGraph(walls: Wall[]): Graph {
   const nodes: Point[] = [];
+  // Corners closer than EPS are the same: look them up in the hashed cells around the point.
+  const cells = new Map<string, number[]>();
+  const cellKey = (x: number, y: number) => `${x},${y}`;
   const nodeIndex = (p: Point) => {
-    const found = nodes.findIndex((n) => Math.hypot(n.x - p.x, n.y - p.y) <= EPS);
-    if (found >= 0) return found;
+    const cx = Math.floor(p.x);
+    const cy = Math.floor(p.y);
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        for (const i of cells.get(cellKey(cx + dx, cy + dy)) ?? [])
+          if (Math.hypot(nodes[i].x - p.x, nodes[i].y - p.y) <= EPS) return i;
     nodes.push({ x: p.x, y: p.y });
+    const key = cellKey(cx, cy);
+    cells.set(key, [...(cells.get(key) ?? []), nodes.length - 1]);
     return nodes.length - 1;
   };
 
   const edges = new Set<string>();
-  const segs = walls.map((w) => ({ a: { x: w.x1, y: w.y1 }, b: { x: w.x2, y: w.y2 } }));
-  for (let i = 0; i < segs.length; i++) {
-    const { a, b } = segs[i];
-    const ts = new Set<number>([0, 1]);
-    for (let j = 0; j < segs.length; j++) {
-      if (i === j) continue;
-      const t = segmentIntersection(a, b, segs[j].a, segs[j].b);
-      if (t !== null) ts.add(Math.min(1, Math.max(0, t)));
-      // T-junction: another wall ends on this one.
-      for (const end of [segs[j].a, segs[j].b]) {
-        const te = paramOnSegment(a, b, end);
-        if (te !== null) ts.add(te);
+  const segs = walls.map((w) => ({
+    a: { x: w.x1, y: w.y1 },
+    b: { x: w.x2, y: w.y2 },
+    minX: Math.min(w.x1, w.x2) - EPS,
+    maxX: Math.max(w.x1, w.x2) + EPS,
+    minY: Math.min(w.y1, w.y2) - EPS,
+    maxY: Math.max(w.y1, w.y2) + EPS,
+  }));
+  // Only walls whose boxes overlap can meet: sweep along x to find them.
+  const order = segs.map((_, i) => i).sort((i, j) => segs[i].minX - segs[j].minX);
+  const cuts = segs.map(() => new Set<number>([0, 1]));
+  for (let oi = 0; oi < order.length; oi++) {
+    const i = order[oi];
+    const si = segs[i];
+    for (let oj = oi + 1; oj < order.length && segs[order[oj]].minX <= si.maxX; oj++) {
+      const j = order[oj];
+      const sj = segs[j];
+      if (sj.minY > si.maxY || sj.maxY < si.minY) continue;
+      for (const [x, y] of [
+        [si, sj],
+        [sj, si],
+      ] as const) {
+        const cuts_ = cuts[x === si ? i : j];
+        const t = segmentIntersection(x.a, x.b, y.a, y.b);
+        if (t !== null) cuts_.add(Math.min(1, Math.max(0, t)));
+        // T-junction: the other wall ends on this one.
+        for (const end of [y.a, y.b]) {
+          const te = paramOnSegment(x.a, x.b, end);
+          if (te !== null) cuts_.add(te);
+        }
       }
     }
-    const ids = [...ts]
+  }
+  segs.forEach(({ a, b }, i) => {
+    const ids = [...cuts[i]]
       .sort((x, y) => x - y)
       .map((t) => nodeIndex({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) }));
     for (let k = 0; k + 1 < ids.length; k++) {
       const [u, v] = [ids[k], ids[k + 1]];
       if (u !== v) edges.add(u < v ? `${u}-${v}` : `${v}-${u}`);
     }
-  }
+  });
 
   const adjacency: number[][] = nodes.map(() => []);
   for (const e of edges) {

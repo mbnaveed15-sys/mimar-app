@@ -130,6 +130,9 @@ export interface StairLayout {
  * where each tread and landing goes, and its footprint. Local frame: centred on 0,0, climbing
  * from the bottom (+y) towards the top (-y), like the plan symbol's UP arrow.
  */
+/** The most a stair or ramp may climb (10 m): more is damage, not a design. */
+export const MAX_RISE_MM = 10000;
+
 export function stairLayout(st: Pick<Stair, 'shape' | 'width' | 'riseMm' | 'treadMm'>): StairLayout {
   const u = (mm: number) => mm / MM_PER_UNIT;
   const W = st.width;
@@ -148,8 +151,9 @@ export function stairLayout(st: Pick<Stair, 'shape' | 'width' | 'riseMm' | 'trea
       ],
     };
   }
-  const risers = Math.max(2, Math.ceil(st.riseMm / MAX_RISER_MM - 1e-9));
-  const riserMm = st.riseMm / risers;
+  const rise = Math.min(Math.max(st.riseMm, 0), MAX_RISE_MM);
+  const risers = Math.max(2, Math.ceil(rise / MAX_RISER_MM - 1e-9));
+  const riserMm = rise / risers;
   const treads = risers - 1; // the last riser steps up onto the floor above
   const parts: StairPart[] = [];
 

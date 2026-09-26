@@ -1,3 +1,4 @@
+import { cleanText } from '../lib/text';
 import { createStore, useStore } from 'zustand';
 import {
   elementCenter,
@@ -14,7 +15,7 @@ import { DEFAULT_FILE_NAME } from '../lib/files';
 import { newId } from '../lib/ids';
 import { GRID_MAX_MM, GRID_MIN_MM, loadPrefs, savePrefs, type GridPrefs, type Prefs } from '../lib/prefs';
 import { DEFAULT_TOOLBARS, moveToolbar, type DockArea, type ToolbarId, type ToolbarLayout } from '../lib/toolbars';
-import { emptyDoc, loadPlan, savePlan } from '../lib/storage';
+import { emptyDoc, loadFileInfo, loadPlan, saveFileInfo, savePlan, STORAGE_KEY, type FileInfo } from '../lib/storage';
 import { MM_PER_UNIT } from '../lib/scale';
 import { DEFAULT_AREA, fitView, zoomAt, type Size } from '../lib/view';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
@@ -397,7 +398,12 @@ export interface PlannerState {
 
 const gridFor = (grid: GridPrefs, units: Units) => grid.spacingMm[units] / MM_PER_UNIT;
 
-export function createPlannerStore(initial: PlanDoc, initialWarning?: string, prefs: Prefs = loadPrefs()) {
+export function createPlannerStore(
+  initial: PlanDoc,
+  initialWarning?: string,
+  prefs: Prefs = loadPrefs(),
+  file: FileInfo | null = null,
+) {
   return createStore<PlannerState>()((set, get) => {
     /** Id of the active material, falling back to the first one if it was removed. */
     const activeMat = () => {
@@ -528,9 +534,10 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       view: { x: 0, y: 0, zoom: 1 },
       viewport: { width: 0, height: 0 },
 
-      fileName: DEFAULT_FILE_NAME,
-      filePath: undefined,
-      savedDoc: initial,
+      fileName: file?.name ?? DEFAULT_FILE_NAME,
+      filePath: file?.path,
+      // Changes not yet saved to the file before a reload are still unsaved after it.
+      savedDoc: file?.dirty ? { ...initial } : initial,
 
       commit: (recipe) => {
         const { doc, past, batchBase } = get();
@@ -609,6 +616,15 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
         set({ selectedIds: next, selectedId: has ? (next[0] ?? null) : id });
       },
       setSelection: (ids, additive = false) => {
+        // Items all on another floor (picked from the plan check, say): go to that floor, so the
+        // selection is seen before anything is done to it.
+        const floors = new Set(
+          ids
+            .map((id) => itemById(get().doc, id))
+            .filter(Boolean)
+            .map((it) => levelOf(it!)),
+        );
+        if (floors.size === 1 && !floors.has(get().activeLevel)) get().setActiveLevel([...floors][0]);
         const { doc, openGroupId, selectedIds } = get();
         const picked = expandToGroups(doc, ids, openGroupId);
         const next = additive ? [...new Set([...selectedIds, ...picked])] : picked;
@@ -712,6 +728,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       renameGroup: (groupId, name) =>
         get().commit((doc) => {
           const g = doc.groups.find((x) => x.id === groupId);
+          name = cleanText(name);
           if (!g || !name.trim() || g.name === name) return doc;
           return {
             ...doc,
@@ -1126,8 +1143,8 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       },
       renameLevel: (id, name) =>
         get().commit((doc) =>
-          name.trim() && doc.levels.some((l) => l.id === id && l.name !== name)
-            ? { ...doc, levels: doc.levels.map((l) => (l.id === id ? { ...l, name: name.trim() } : l)) }
+          cleanText(name).trim() && doc.levels.some((l) => l.id === id && l.name !== name)
+            ? { ...doc, levels: doc.levels.map((l) => (l.id === id ? { ...l, name: cleanText(name).trim() } : l)) }
             : doc,
         ),
       deleteLevel: (id) => {
@@ -1416,7 +1433,7 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
       updateRoom: (room) =>
         get().commit((doc) =>
           doc.rooms.some((r) => r.id === room.id)
-            ? { ...doc, rooms: doc.rooms.map((r) => (r.id === room.id ? room : r)) }
+            ? { ...doc, rooms: doc.rooms.map((r) => (r.id === room.id ? { ...room, name: cleanText(room.name) } : r)) }
             : doc,
         ),
       roomAt: (p) => {
@@ -1508,12 +1525,41 @@ export function createPlannerStore(initial: PlanDoc, initialWarning?: string, pr
 }
 
 const loaded = loadPlan();
-export const plannerStore = createPlannerStore(loaded.doc, loaded.warning);
+export const plannerStore = createPlannerStore(loaded.doc, loaded.warning, undefined, loadFileInfo());
 
+let autosaveWarned = false;
 plannerStore.subscribe((state, prev) => {
-  if (state.doc !== prev.doc) savePlan(state.doc);
+  if (state.doc !== prev.doc) {
+    const ok = savePlan(state.doc);
+    if (!ok && !autosaveWarned)
+      state.setWarning(
+        "Autosave failed: the browser's storage is full. Save the plan to a file (Ctrl+S) so nothing is lost.",
+      );
+    autosaveWarned = !ok;
+  }
+  if (
+    state.doc !== prev.doc ||
+    state.savedDoc !== prev.savedDoc ||
+    state.fileName !== prev.fileName ||
+    state.filePath !== prev.filePath
+  )
+    saveFileInfo({ name: state.fileName, path: state.filePath, dirty: state.doc !== state.savedDoc });
   if (state.theme !== prev.theme) applyTheme(state.theme);
 });
+
+// Another window of Mimar saving the same autosave: say so once, as the two would overwrite each other.
+if (typeof window !== 'undefined') {
+  let told = false;
+  window.addEventListener('storage', (e) => {
+    if (e.key !== STORAGE_KEY || told) return;
+    told = true;
+    plannerStore
+      .getState()
+      .setWarning(
+        'Mimar is open in another window too. Both save to the same place, so the last change wins: close one of them, or save this plan to a file.',
+      );
+  });
+}
 // Before the first paint, so the app never flashes in the wrong colours.
 applyTheme(plannerStore.getState().theme);
 

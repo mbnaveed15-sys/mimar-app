@@ -537,7 +537,7 @@ export function Inspector() {
               ))}
             </ul>
             <div className="flex justify-between gap-2 border-t border-line pt-1 font-medium tabular-nums">
-              <span>Covered area</span>
+              <span>Room area</span>
               <span>
                 {formatArea(coveredArea, units)} · {formatMarla(coveredArea, marlaSqFt)}
               </span>

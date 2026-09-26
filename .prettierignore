@@ -8,3 +8,4 @@ branding
 public
 *.md
 *.txt
+.qa

@@ -3,11 +3,12 @@
  * plan in, rows out. It is indicative only; the authority's own check is what counts.
  */
 import { elementOutline, pointInPolygon, pointToSegmentDistance } from '../geometry';
-import { plotRule, plotSetbacks, type Authority, type PlotRule } from './bylaws';
+import { plotRule, plotSetbacks, roomRuleFor, type Authority, type PlotRule } from './bylaws';
 import { MM_PER_UNIT } from './scale';
 import { buildableArea } from './site';
 import { formatLength, MM_PER_FOOT } from './units';
-import { polygonArea, roomAreaSqMm, wallFaces } from '../rooms';
+import { boxOf, cellFor, GridIndex } from './spatial';
+import { labelPoint, polygonArea, roomAreaSqMm, wallFaces } from '../rooms';
 import { levelBaseM, SLAB_MM } from '../three/model';
 import {
   levelOf,
@@ -16,6 +17,7 @@ import {
   type PlanElement,
   type Plot,
   type Point,
+  type Room,
   type Units,
   type Wall,
 } from '../types';
@@ -64,13 +66,50 @@ function inside(p: Point, poly: Point[]): boolean {
   return poly.some((a, i) => pointToSegmentDistance(p, a, poly[(i + 1) % poly.length]) <= TOLERANCE);
 }
 
-/** The ground plan area of what's built on a floor: its rooms plus its walls (about). */
-function builtAreaSqFt(doc: PlanDoc, levelId: string): number {
-  const rooms = doc.rooms.filter((r) => levelOf(r) === levelId).reduce((s, r) => s + roomAreaSqMm(r), 0);
-  const walls = doc.elements
-    .filter((el): el is Wall => el.type === 'wall' && BUILT_KINDS(el) && levelOf(el) === levelId)
-    .reduce((s, w) => s + Math.hypot(w.x2 - w.x1, w.y2 - w.y1) * thicknessOf(w) * MM_PER_UNIT * MM_PER_UNIT, 0);
-  return (rooms + walls) / SQ_MM_PER_SQ_FT;
+/** Rooms open to the sky, which don't count as covered area. */
+export const OPEN_AIR = /lawn|garden|court|yard|drive|patio|terrace/i;
+
+/**
+ * The covered area of a floor (sq ft), to the outer faces of its walls: the areas its walls enclose
+ * (to their centre lines), plus the outer half of outside walls, plus rooms drawn without walls
+ * round them. Areas and rooms open to the sky (lawns, courtyards, driveways) are left out.
+ */
+export function builtAreaSqFt(doc: PlanDoc, levelId: string): number {
+  const walls = doc.elements.filter(
+    (el): el is Wall => el.type === 'wall' && BUILT_KINDS(el) && !el.hidden && levelOf(el) === levelId,
+  );
+  const rooms = doc.rooms.filter((r) => !r.hidden && levelOf(r) === levelId);
+  const bySize = [...rooms].sort((a, b) => polygonArea(a.points) - polygonArea(b.points));
+  const roomIndex = new GridIndex<Room>(cellFor(bySize.map((r) => boxOf(r.points))));
+  for (const r of bySize) roomIndex.add(r, boxOf(r.points));
+  const roomAt = (p: Point) => roomIndex.at(p).find((r) => pointInPolygon(p, r.points)) ?? null;
+  const covered = wallFaces(walls).filter((f) => !OPEN_AIR.test(roomAt(labelPoint(f))?.name ?? ''));
+  const faceIndex = new GridIndex<Point[]>(cellFor(covered.map(boxOf)));
+  for (const f of covered) faceIndex.add(f, boxOf(f));
+  const inCovered = (p: Point) => faceIndex.at(p).some((f) => pointInPolygon(p, f));
+  let units2 = covered.reduce((sum, f) => sum + polygonArea(f), 0);
+  // Walls: the half outside the enclosed areas counts too (both halves of a free-standing wall),
+  // piece by piece, as a long wall can run past several areas.
+  for (const w of walls) {
+    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+    if (!L) continue;
+    const d = thicknessOf(w) / 2 + 1;
+    const n = { x: (-(w.y2 - w.y1) / L) * d, y: ((w.x2 - w.x1) / L) * d };
+    const steps = Math.min(64, Math.max(1, Math.ceil(L / 30)));
+    for (let i = 0; i < steps; i++) {
+      const t = (i + 0.5) / steps;
+      const mid = { x: w.x1 + (w.x2 - w.x1) * t, y: w.y1 + (w.y2 - w.y1) * t };
+      const open = [
+        { x: mid.x + n.x, y: mid.y + n.y },
+        { x: mid.x - n.x, y: mid.y - n.y },
+      ].filter((p) => !inCovered(p)).length;
+      units2 += ((L / steps) * thicknessOf(w) * open) / 2;
+    }
+  }
+  // Rooms not enclosed by walls (a porch drawn on its own, say).
+  for (const r of rooms)
+    if (!OPEN_AIR.test(r.name) && !inCovered(labelPoint(r.points))) units2 += polygonArea(r.points);
+  return (units2 * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
 }
 
 /** Rooms named as a mumty (stair tower), and floor names that mean the roof. */
@@ -268,7 +307,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
     let checked = 0;
     for (const r of doc.rooms) {
       if (r.hidden) continue;
-      const rr = authority.rooms.rules.find((x) => x.names.test(r.name));
+      const rr = roomRuleFor(authority.rooms.rules, r.name);
       if (!rr) continue;
       checked++;
       const area = roomAreaSqMm(r) / SQ_MM_PER_SQ_FT;
@@ -303,15 +342,8 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       const plotSqFt = plotAreaSqFt(plot);
       const buildableSqFt = rule ? polygonSqFt(buildableArea({ ...plot, setbacks: plotSetbacks(rule) })) : plotSqFt;
       const max = area.maxSqFt({ plotSqFt, buildableSqFt });
-      // The area its walls enclose, out to their outer faces (about), or its rooms if they are bigger.
-      const enclosed =
-        wallFaces(mumtyWalls).reduce((sum, f) => sum + polygonSqFt(f), 0) +
-        mumtyWalls.reduce((sum, w) => sum + (Math.hypot(w.x2 - w.x1, w.y2 - w.y1) * thicknessOf(w)) / 2, 0) *
-          ((MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT);
-      const has = Math.max(
-        enclosed,
-        [...mumtys].reduce((sum, id) => sum + builtAreaSqFt(doc, id), 0),
-      );
+      // Its covered area, out to the outer faces of its walls.
+      const has = [...mumtys].reduce((sum, id) => sum + builtAreaSqFt(doc, id), 0);
       rows.push({
         id: 'mumty-area',
         label: 'Mumty area',

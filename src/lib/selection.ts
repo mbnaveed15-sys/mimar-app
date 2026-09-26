@@ -1,3 +1,4 @@
+import { boxOf } from './spatial';
 import { elementOutline, rotateElement, rotatePoint, translateElement } from '../geometry';
 import type { Bounds, ComponentDef, Group, Id, PlanDoc, PlanElement, Point, Room, Wall } from '../types';
 import { WINDOW_SILL_MM } from '../three/model';
@@ -37,13 +38,7 @@ function pointsOf(item: Item): Point[] {
 }
 
 function boundsOf(points: Point[]): Bounds | null {
-  if (!points.length) return null;
-  return {
-    minX: Math.min(...points.map((p) => p.x)),
-    minY: Math.min(...points.map((p) => p.y)),
-    maxX: Math.max(...points.map((p) => p.x)),
-    maxY: Math.max(...points.map((p) => p.y)),
-  };
+  return points.length ? boxOf(points) : null;
 }
 
 /** The box around the given items, or null if there are none. */
@@ -332,8 +327,17 @@ export function syncComponent(doc: PlanDoc, groupId: Id): PlanDoc {
   const g = doc.groups.find((x) => x.id === groupId);
   const def = g?.componentId ? doc.components.find((c) => c.id === g.componentId) : undefined;
   if (!g || !def) return doc;
-  // New items added while editing get their own keys.
-  const keyOf = (it: Item) => it.defKey ?? it.id;
+  // New items added while editing get their own keys, and so does a piece split from an item
+  // (Break, Fillet, a copy): it carries the original's key, which only the first may keep.
+  const used = new Set<Id>();
+  const keys = new Map<Id, Id>();
+  for (const it of [...doc.elements, ...doc.rooms]) {
+    if (it.groupId !== g.id) continue;
+    const key = it.defKey && !used.has(it.defKey) ? it.defKey : it.id;
+    used.add(key);
+    keys.set(it.id, key);
+  }
+  const keyOf = (it: Item) => keys.get(it.id) ?? it.defKey ?? it.id;
   const members = new Set(groupMembers(doc, g.id));
   const localIds = new Map<Id, Id>();
   for (const el of doc.elements) if (members.has(el.id)) localIds.set(el.id, keyOf(el));

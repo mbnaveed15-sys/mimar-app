@@ -4,7 +4,9 @@
  * in, hints out. Rooms are recognised by their names.
  */
 import { pointInPolygon } from '../geometry';
+import { WET_ROOM } from './bylaws';
 import { mumtyLevelIds, PORCH_ROOM } from './planCheck';
+import { boxOf, cellFor, GridIndex } from './spatial';
 import { MM_PER_UNIT } from './scale';
 import { formatArea, formatLength, MM_PER_FOOT } from './units';
 import { polygonArea, roomAreaSqMm, wallFaces } from '../rooms';
@@ -32,26 +34,34 @@ export interface Hint {
 }
 
 /** Spaces open to the sky or the garden: they count as outside. */
-const OUTDOOR = /porch|lawn|garden|court|terrace|veranda|verandah|balcony|patio|drive|yard|open/i;
-const BEDROOM = /bed|guest/i;
+const OUTDOOR = /porch|lawn|garden|court|terrace|veranda|verandah|balcony|patio|drive|yard/i;
+/** A name that means this kind of room, unless it is a bath or WC ("Guest bath", "Master bath"). */
+const dry = (re: RegExp) => ({ test: (name: string) => re.test(name) && !WET_ROOM.test(name) });
+const BEDROOM = dry(/bed|guest|master/i);
 /** Rooms that shouldn't be reached only through a bedroom. */
-const MAIN_ROOM = /bed|guest|kitchen|lounge|living|drawing|dining|study|family/i;
+const MAIN_ROOM = dry(/bed|guest|kitchen|lounge|living|drawing|dining|study|family/i);
 /** Rooms that want daylight and fresh air from an outside wall. */
-const DAYLIGHT = /bed|guest|drawing|lounge|living|dining|kitchen|study|family/i;
+const DAYLIGHT = dry(/bed|guest|drawing|lounge|living|dining|kitchen|study|family/i);
 const KITCHEN = /kitchen/i;
 const SITTING = /dining|lounge|living|family/i;
 const PRAYER = /prayer|namaz|musall/i;
-const WET = /bath|toilet|\bw\.?c\b|washroom|powder|kitchen/i;
+const WET = { test: (name: string) => WET_ROOM.test(name) || KITCHEN.test(name) };
 
 /** Good-practice sizes by room name: the first that matches applies. */
-export const GOOD_SIZES: { names: RegExp; label: string; sqft: number; widthFt: number; lengthFt?: number }[] = [
-  { names: /master/i, label: 'a master bedroom', sqft: 150, widthFt: 11 },
+export const GOOD_SIZES: {
+  names: { test: (name: string) => boolean };
+  label: string;
+  sqft: number;
+  widthFt: number;
+  lengthFt?: number;
+}[] = [
+  { names: /bath|toilet|washroom|shower|ensuite|en-suite/i, label: 'a bathroom', sqft: 35, widthFt: 5 },
+  { names: dry(/master/i), label: 'a master bedroom', sqft: 150, widthFt: 11 },
   { names: BEDROOM, label: 'a bedroom', sqft: 120, widthFt: 10 },
   { names: /drawing/i, label: 'a drawing room', sqft: 150, widthFt: 11 },
   { names: /lounge|living|family|\btv\b/i, label: 'a lounge', sqft: 150, widthFt: 11 },
   { names: /dining/i, label: 'a dining room', sqft: 100, widthFt: 9 },
   { names: KITCHEN, label: 'a kitchen', sqft: 70, widthFt: 7 },
-  { names: /bath|toilet|washroom/i, label: 'a bathroom', sqft: 35, widthFt: 5 },
   { names: PORCH_ROOM, label: 'a car porch (one car)', sqft: 162, widthFt: 9, lengthFt: 18 },
 ];
 
@@ -60,6 +70,8 @@ const SQ_MM_PER_SQ_FT = 92903.04;
 const WINDOW_MM = 1219.2;
 /** How far past a wall's face to look for the space on each side (plan units). */
 const REACH = 3;
+/** Most points tested along one wall for an outside face. */
+const MAX_SAMPLES = 64;
 
 /** A room's box: its shorter and longer side, in plan units. */
 function boxSides(pts: Point[]): [number, number] {
@@ -117,17 +129,19 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
         (el.type === 'door' || el.type === 'window') && !el.hidden && !el.gate && levelOf(el) === level.id,
     );
     // The smallest room a point is in; outdoor rooms and unnamed space count as outside ("out").
-    const roomAt = (p: Point): Room | null => {
-      let best: Room | null = null;
-      for (const r of rooms)
-        if (pointInPolygon(p, r.points) && (!best || polygonArea(r.points) < polygonArea(best.points))) best = r;
-      return best;
-    };
+    const bySize = [...rooms].sort((a, b) => polygonArea(a.points) - polygonArea(b.points));
+    const boxes = bySize.map((r) => boxOf(r.points));
+    const roomIndex = new GridIndex<Room>(cellFor(boxes));
+    bySize.forEach((r, i) => roomIndex.add(r, boxes[i]));
+    const roomAt = (p: Point): Room | null => roomIndex.at(p).find((r) => pointInPolygon(p, r.points)) ?? null;
     const nodeAt = (p: Point): Id => {
       const r = roomAt(p);
       return r && !OUTDOOR.test(r.name) ? r.id : 'out';
     };
-    const name = (id: Id) => rooms.find((r) => r.id === id)?.name ?? '';
+    const names = new Map(rooms.map((r) => [r.id, r.name] as const));
+    const name = (id: Id) => names.get(id) ?? '';
+    // On an upper floor, say which.
+    const on = (text: string) => (index > 0 ? `${level.name}: ${text}` : text);
 
     // Doors join the spaces on either side.
     const links: { door: Id; a: Id; b: Id }[] = [];
@@ -139,12 +153,17 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
       const b = nodeAt(q);
       if (a !== b) links.push({ door: o.id, a, b });
     }
-    const neighbours = (id: Id) => links.flatMap((l) => (l.a === id ? [l.b] : l.b === id ? [l.a] : []));
+    const adjacent = new Map<Id, Id[]>();
+    for (const l of links) {
+      adjacent.set(l.a, [...(adjacent.get(l.a) ?? []), l.b]);
+      adjacent.set(l.b, [...(adjacent.get(l.b) ?? []), l.a]);
+    }
+    const neighbours = (id: Id) => adjacent.get(id) ?? [];
     const walk = (starts: Id[], avoid: (id: Id) => boolean) => {
       const seen = new Set<Id>(starts);
       const queue = [...starts];
-      while (queue.length) {
-        const id = queue.shift()!;
+      for (let head = 0; head < queue.length; head++) {
+        const id = queue[head];
         for (const n of neighbours(id))
           if (!seen.has(n)) {
             seen.add(n);
@@ -183,7 +202,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
     const doored = new Set(links.flatMap((l) => [l.a, l.b]));
     for (const r of indoor)
       if (!doored.has(r.id))
-        hints.push({ id: `no-door-${r.id}`, kind: 'reach', text: `${r.name} has no door.`, ids: [r.id] });
+        hints.push({ id: `no-door-${r.id}`, kind: 'reach', text: on(`${r.name} has no door.`), ids: [r.id] });
     if (starts.length) {
       const reached = walk(starts, () => false);
       for (const r of indoor) {
@@ -192,7 +211,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
           hints.push({
             id: `unreached-${r.id}`,
             kind: 'reach',
-            text: `${r.name} can't be reached from ${from}.`,
+            text: on(`${r.name} can't be reached from ${from}.`),
             ids: [r.id],
           });
           continue;
@@ -205,7 +224,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
         hints.push({
           id: `through-${r.id}`,
           kind: 'reach',
-          text: `${r.name} is only reached through ${via ? name(via) : 'a bedroom'}.`,
+          text: on(`${r.name} is only reached through ${via ? name(via) : 'a bedroom'}.`),
           ids: via ? [r.id, via] : [r.id],
         });
       }
@@ -218,7 +237,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
         hints.push({
           id: `prayer-${l.door}`,
           kind: 'layout',
-          text: `${name(p)} opens onto ${name(other)}.`,
+          text: on(`${name(p)} opens onto ${name(other)}.`),
           ids: [p, other, l.door],
         });
     }
@@ -234,7 +253,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
         hints.push({
           id: `kitchen-${k.id}`,
           kind: 'layout',
-          text: `${k.name} isn't next to the dining room or lounge.`,
+          text: on(`${k.name} isn't next to the dining room or lounge.`),
           ids: [k.id],
         });
       }
@@ -242,55 +261,67 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
     // Daylight: an outside wall, a window in it, and window area of a tenth of the floor.
     if (!mumtys.has(level.id)) {
       const faces = wallFaces(walls);
+      const faceBoxes = faces.map(boxOf);
+      const faceIndex = new GridIndex<Point[]>(cellFor(faceBoxes));
+      faces.forEach((f, i) => faceIndex.add(f, faceBoxes[i]));
       const outside = (p: Point) => {
         const r = roomAt(p);
         if (r) return OUTDOOR.test(r.name);
-        return !faces.some((f) => pointInPolygon(p, f));
+        return !faceIndex.at(p).some((f) => pointInPolygon(p, f));
       };
+      // Rooms with an outside wall, and the glass opening each room onto the outside: found once for all.
+      const outer = new Set<Id>();
+      for (const w of walls) {
+        const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+        const steps = Math.min(MAX_SAMPLES, Math.max(2, Math.ceil(L / 30)));
+        for (let i = 1; i < steps; i++) {
+          const t = i / steps;
+          const [p, q] = sidesAt(w, { x: w.x1 + (w.x2 - w.x1) * t, y: w.y1 + (w.y2 - w.y1) * t });
+          const rp = roomAt(p);
+          const rq = roomAt(q);
+          if (rp && outside(q)) outer.add(rp.id);
+          if (rq && outside(p)) outer.add(rq.id);
+        }
+      }
+      const glass = new Map<Id, number>();
+      for (const o of openings) {
+        const w = wallById.get(o.wallId);
+        if (o.type !== 'window' || !w || (o.flat && !o.open)) continue;
+        const [p, q] = sidesAt(w, o);
+        const sqMm = o.width * MM_PER_UNIT * (o.heightMm ?? WINDOW_MM) * (o.shape === 'circle' ? Math.PI / 4 : 1);
+        for (const [inner, other] of [
+          [p, q],
+          [q, p],
+        ]) {
+          const r = roomAt(inner);
+          if (r && outside(other)) glass.set(r.id, (glass.get(r.id) ?? 0) + sqMm);
+        }
+      }
       for (const r of indoor.filter((x) => DAYLIGHT.test(x.name))) {
-        let outerWall = false;
-        for (const w of walls) {
-          const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
-          const steps = Math.max(2, Math.ceil(L / 30));
-          for (let i = 1; i < steps && !outerWall; i++) {
-            const t = i / steps;
-            const [p, q] = sidesAt(w, { x: w.x1 + (w.x2 - w.x1) * t, y: w.y1 + (w.y2 - w.y1) * t });
-            outerWall =
-              (pointInPolygon(p, r.points) && roomAt(p)?.id === r.id && outside(q)) ||
-              (pointInPolygon(q, r.points) && roomAt(q)?.id === r.id && outside(p));
-          }
-          if (outerWall) break;
-        }
-        let glassSqMm = 0;
-        for (const o of openings) {
-          const w = wallById.get(o.wallId);
-          if (o.type !== 'window' || !w || (o.flat && !o.open)) continue;
-          const [p, q] = sidesAt(w, o);
-          const opens = (roomAt(p)?.id === r.id && outside(q)) || (roomAt(q)?.id === r.id && outside(p));
-          if (!opens) continue;
-          const h = o.heightMm ?? WINDOW_MM;
-          glassSqMm += o.width * MM_PER_UNIT * h * (o.shape === 'circle' ? Math.PI / 4 : 1);
-        }
+        const outerWall = outer.has(r.id);
+        const glassSqMm = glass.get(r.id) ?? 0;
         const floor = roomAreaSqMm(r);
         if (!outerWall && !glassSqMm)
           hints.push({
             id: `inner-${r.id}`,
             kind: 'daylight',
-            text: `${r.name} has no outside wall, so no window or fresh air.`,
+            text: on(`${r.name} has no outside wall, so no window or fresh air.`),
             ids: [r.id],
           });
         else if (!glassSqMm)
           hints.push({
             id: `no-window-${r.id}`,
             kind: 'daylight',
-            text: `${r.name} has an outside wall but no window.`,
+            text: on(`${r.name} has an outside wall but no window.`),
             ids: [r.id],
           });
         else if (glassSqMm < floor / 10 - 1)
           hints.push({
             id: `small-window-${r.id}`,
             kind: 'daylight',
-            text: `${r.name}'s windows are about ${area(glassSqMm)}, less than a tenth of its floor (${area(floor)}).`,
+            text: on(
+              `${r.name}'s windows are about ${area(glassSqMm)}, less than a tenth of its floor (${area(floor)}).`,
+            ),
             ids: [r.id],
           });
       }
@@ -310,7 +341,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
       hints.push({
         id: `size-${r.id}`,
         kind: 'size',
-        text: `${r.name} is small for ${g.label} (${want}): about ${area(floor)}, ${len(short)} wide.`,
+        text: on(`${r.name} is small for ${g.label} (${want}): about ${area(floor)}, ${len(short)} wide.`),
         ids: [r.id],
       });
     }

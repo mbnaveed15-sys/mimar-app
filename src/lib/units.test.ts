@@ -63,4 +63,12 @@ describe('areas', () => {
     expect(formatMarla(sqft(1361.25), 272.25)).toBe('5.00 marla');
     expect(formatMarla(sqft(4500), 225)).toBe('1.00 kanal');
   });
+
+  describe('length limits', () => {
+    it('refuses lengths over 1 km, a slip of the keyboard', () => {
+      expect(parseLength('3000', 'imperial')).toBeCloseTo(914400);
+      expect(parseLength('99999999999', 'imperial')).toBeNull();
+      expect(parseLength('2000 m', 'metric')).toBeNull();
+    });
+  });
 });

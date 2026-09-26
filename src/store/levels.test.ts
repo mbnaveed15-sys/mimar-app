@@ -64,4 +64,25 @@ describe('floors', () => {
     expect(doc.elements.map((e) => e.type)).toEqual(['column', 'beam', 'slab']);
     expect(doc.elements[0]).toMatchObject({ shape: 'round', levelId: 'f1' });
   });
+
+  it('selecting items on another floor (from the plan check) goes to that floor first', () => {
+    const store = setup();
+    const s = () => store.getState();
+    s().addLevel(); // now on the first floor
+    s().addWall({ x: 0, y: 0 }, { x: 100, y: 0 });
+    const upstairs = s().doc.elements[0].id;
+    s().setActiveLevel('ground');
+    s().setSelection([upstairs]);
+    expect(s().activeLevel).not.toBe('ground');
+    expect(s().selectedIds).toEqual([upstairs]);
+  });
+
+  it('a plan with unsaved changes before a reload still has them after it', () => {
+    const doc = emptyDoc();
+    const dirty = createPlannerStore(doc, undefined, DEFAULT_PREFS, { name: 'House', dirty: true });
+    expect(dirty.getState().fileName).toBe('House');
+    expect(dirty.getState().doc).not.toBe(dirty.getState().savedDoc);
+    const clean = createPlannerStore(doc, undefined, DEFAULT_PREFS, { name: 'House', dirty: false });
+    expect(clean.getState().doc).toBe(clean.getState().savedDoc);
+  });
 });

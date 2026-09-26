@@ -1,9 +1,8 @@
 import { levelOf } from '../types';
 import { planBounds } from '../geometry';
-import { roomAreaSqMm } from '../rooms';
 import { plannerStore } from '../store/plannerStore';
 import { exportPdf } from './exportPdf';
-import { planCheck } from './planCheck';
+import { builtAreaSqFt, planCheck } from './planCheck';
 import { planHints } from './planHints';
 import { downloadUrl, exportPng } from './exportPng';
 import { planToDxf } from './exportDxf';
@@ -11,7 +10,7 @@ import { modelMeshes, toDae, toGlb, toObj } from './export3d';
 import { zip } from './zip';
 import { buildModel } from '../three/model';
 import { baseName } from './files';
-import { formatArea, formatMarla, UNIT_LABELS } from './units';
+import { formatArea, formatMarla, SQ_MM_PER_SQ_FT, UNIT_LABELS } from './units';
 import { DEFAULT_AREA } from './view';
 
 function exportArea() {
@@ -55,10 +54,8 @@ export function exportPlanPdf() {
   const skipSizes = new Set(check?.rows.find((r) => r.id === 'rooms')?.ids ?? []);
   const hints = showHints && pdfHints ? planHints(doc, { units, skipSizes }).map((h) => h.text) : [];
   const name = exportName();
-  const covered = plannerStore
-    .getState()
-    .levelRooms()
-    .reduce((sum, r) => sum + roomAreaSqMm(r), 0);
+  // The same covered area as the plan check: to the walls' outer faces, without open-air rooms.
+  const covered = builtAreaSqFt(doc, plannerStore.getState().activeLevel) * SQ_MM_PER_SQ_FT;
   exportPdf(exportContent(), exportArea(), {
     title: name,
     paper,
@@ -67,6 +64,7 @@ export function exportPlanPdf() {
     version: __APP_VERSION__,
     filename: `${name}.pdf`,
     northDeg: doc.northDeg ?? 0,
+    checkTitle: baseName(plannerStore.getState().fileName),
     hints,
     bylawNote: check
       ? `Bylaws: ${check.authority.name}${check.authority.status === 'provisional' ? ' (provisional)' : ''}${check.rule ? `, ${check.rule.label}` : ''}`

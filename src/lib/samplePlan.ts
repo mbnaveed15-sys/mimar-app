@@ -1,6 +1,6 @@
 import type { FurnitureKind } from '../furniture/catalog';
 import { createPlannerStore } from '../store/plannerStore';
-import type { PlanDoc, Point } from '../types';
+import type { Opening, PlanDoc, Point } from '../types';
 import { DEFAULT_PREFS } from './prefs';
 import { emptyDoc } from './storage';
 
@@ -58,6 +58,7 @@ export function buildSamplePlan(): PlanDoc {
     [12.5, 30],
     [12.5, 36],
     [8, 27],
+    [15, 21], // lounge to kitchen
   ];
   for (const [x, y] of doors) s().placeOpening('door', ft(x, y));
   const windows: [number, number][] = [
@@ -68,6 +69,12 @@ export function buildSamplePlan(): PlanDoc {
     [1.5, 33],
   ];
   for (const [x, y] of windows) s().placeOpening('window', ft(x, y));
+  // A wide window for the lounge, the biggest room: a tenth of its floor or more.
+  const lounge = s().doc.elements.find(
+    (el): el is Opening =>
+      el.type === 'window' && Math.abs(el.x - ft(1.5, 21).x) < 1 && Math.abs(el.y - ft(1.5, 21).y) < 1,
+  );
+  if (lounge) s().updateElement({ ...lounge, width: 6 * FT });
   // A gate in the boundary wall on the road side.
   s().setSite({ gate: true });
   s().placeOpening('door', ft(12.5, 44.6));

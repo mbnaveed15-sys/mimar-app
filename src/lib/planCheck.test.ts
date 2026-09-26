@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { authorityById, plotMeasures, plotRule, plotSetbacks, ruleFor } from './bylaws';
-import { planCheck } from './planCheck';
+import { builtAreaSqFt, planCheck } from './planCheck';
 import { emptyDoc } from './storage';
 import { plotRect } from './site';
 import type { PlanDoc, PlanElement, Plot, Room } from '../types';
@@ -176,5 +176,41 @@ describe('plan check', () => {
       ctx,
     )!;
     expect(two.rows.find((r) => r.id === 'car-porch')?.status).toBe('check');
+  });
+
+  it('measures covered area to the outer faces of the walls, counting each wall once and no lawns', () => {
+    // A 20' × 30' house (wall centre lines) with a middle wall; 9" walls. Its outer faces are 20.75' × 30.75'.
+    const house = [
+      wall('t', 0, 0, 20, 0),
+      wall('r', 20, 0, 20, 30),
+      wall('b', 20, 30, 0, 30),
+      wall('l', 0, 30, 0, 0),
+      wall('m', 0, 15, 20, 15),
+    ];
+    const rooms = [
+      room('a', 'Bedroom', 0, 0, 20, 15),
+      room('b', 'Lounge', 0, 15, 20, 15),
+      room('g', 'Lawn', 0, 40, 20, 10),
+    ];
+    const t = 23 / 30.48; // wall thickness in feet
+    // Within a square foot: the four outside corner squares are left out.
+    expect(Math.abs(builtAreaSqFt(docOf(house, rooms), 'ground') - (20 + t) * (30 + t))).toBeLessThan(1);
+    // A courtyard enclosed by walls isn't covered (its walls are): about its 19' × 14' of open floor less.
+    const full = builtAreaSqFt(docOf(house, rooms), 'ground');
+    const court = builtAreaSqFt(
+      docOf(house, [room('a', 'Bedroom', 0, 0, 20, 15), room('c', 'Courtyard', 0, 15, 20, 15)]),
+      'ground',
+    );
+    expect(full - court).toBeCloseTo((20 - t) * (15 - t), -1);
+  });
+
+  it('takes baths named after bedrooms as baths, and picks bylaw rows by size when frontage alone would mislead', () => {
+    const plot = plotOf(50, 90, 'cda');
+    const check = planCheck(docOf([plot], [room('gb', 'Guest bath', 10, 20, 5, 8)]), ctx)!;
+    expect(check.rows.find((r) => r.id === 'rooms')?.status).toBe('ok'); // 40 sq ft: fine for a bathroom
+    // A 40×80 plot with the road on its long side is still type A by its size (356 sq yd), not type D.
+    expect(ruleFor(cda, 40 * 80, 80)?.label).toMatch(/Type A, 300–450/);
+    // LDA: a 1 kanal plot is in the 1–2 kanal band.
+    expect(ruleFor(authorityById('lda')!, 50 * 90, 50)?.label).toBe('1–2 kanal');
   });
 });

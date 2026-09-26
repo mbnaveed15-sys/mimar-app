@@ -46,7 +46,7 @@ test('rooms show their area in sq ft and marla, and the covered area adds up', a
   await expect(page.locator('[data-type="room-label"] text').first()).toHaveText('Drawing room');
 
   await page.mouse.click(...(await at(page, 20, 10)));
-  await expect(page.getByTestId('area-summary')).toContainText('Covered area600 sq ft · 2.67 marla');
+  await expect(page.getByTestId('area-summary')).toContainText('Room area600 sq ft · 2.67 marla');
 
   await (await openSection(page, 'Settings'), page.getByLabel('Marla size')).selectOption('272.25');
   await expect(page.getByTestId('area-summary')).toContainText('2.20 marla');
