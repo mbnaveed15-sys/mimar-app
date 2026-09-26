@@ -26,6 +26,12 @@ side's own material isn't shown in 2D, the PDF or DXF.
 
 ## Known rough edges
 
+- 3D on very big plans is slow to open and orbit (1,984 walls: about 6 s to open, 1 s per orbit step on the test
+  machine's software graphics; real graphics cards do much better). Merging meshes would fix it; typical houses
+  (under 300 walls) are fine.
+- The welcome's sample house shows three size hints (master bedroom, drawing room, bath slightly small); they are
+  advice, and the sample shows how hints look.
+
 - The welcome tour's highlight positions are measured every 400 ms; on very small windows the card may cover the
   highlighted part.
 - Moving up and down (blue axis) only works in 3D; in 2D use the "Height above floor" field or Alt+↑/↓.

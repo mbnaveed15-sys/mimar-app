@@ -10,6 +10,7 @@ import { levelOf, type Opening, type PlanDoc, type Point, type Room } from '../t
 import { thicknessOf, wallsOf } from '../walls';
 import { MM_PER_UNIT } from './scale';
 import { builtAreaSqFt } from './planCheck';
+import { boxOf, cellFor, GridIndex } from './spatial';
 import { openingProfileMm } from './shapes';
 
 const MM_PER_FT = 304.8;
@@ -122,14 +123,20 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
     const rooms = doc.rooms.filter((r) => levelOf(r) === level.id);
     const walls = wallsOf(els);
     const openings = els.filter((el): el is Opening => el.type === 'door' || el.type === 'window');
-    const inRoom = (p: Point) => rooms.some((r) => pointInPolygon(p, r.points));
+    // Rooms and doors looked up by place and by wall, so big plans measure quickly.
+    const roomIndex = new GridIndex<Room>(cellFor(rooms.map((r) => boxOf(r.points))));
+    for (const r of rooms) roomIndex.add(r, boxOf(r.points));
+    const inRoom = (p: Point) => roomIndex.at(p).some((r) => pointInPolygon(p, r.points));
+    const onWall = new Map<string, Opening[]>();
+    for (const o of openings) onWall.set(o.wallId, [...(onWall.get(o.wallId) ?? []), o]);
+    const wallById = new Map(walls.map((w) => [w.id, w]));
 
     for (const wall of walls) {
       const L = wallLength(wall) * FT;
       if (!L) continue;
       const t = thicknessOf(wall) * FT;
       const H = mmFt(wall.heightMm ?? wallHeightMm);
-      const own = openings.filter((o) => o.wallId === wall.id);
+      const own = onWall.get(wall.id) ?? [];
       const holes = own.filter((o) => !o.flat).reduce((s, o) => s + openingSqft(o, H), 0);
       // Niches take brickwork out; projections add it.
       const shaped = own
@@ -157,7 +164,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
 
     for (const o of openings) {
       if (o.flat) continue;
-      const host = walls.find((w) => w.id === o.wallId);
+      const host = wallById.get(o.wallId);
       if (o.type === 'door') q.doors += 1;
       else {
         q.windows += 1;

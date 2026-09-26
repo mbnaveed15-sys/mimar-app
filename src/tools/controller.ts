@@ -704,13 +704,14 @@ export function pasteToPlace(store: Store) {
   let s = store.getState();
   if (!s.clipboard) return;
   if (s.draft) cancel(store);
+  const ids = s.paste();
+  if (!ids.length) return;
+  s = store.getState();
+  // Move keeps the selection: the pasted items.
   s.setTool('move');
   s = store.getState();
-  s.paste();
-  s = store.getState();
-  const ids = s.selectedIds;
   const box = selectionBounds(s.doc, ids);
-  if (!ids.length || !box) return;
+  if (!box) return;
   const base = { x: box.minX, y: box.maxY };
   s.beginBatch();
   s.setDraft({ type: 'move', ids, base, to: base, copy: false, pasted: true });
@@ -797,7 +798,9 @@ export function toolHint(s: PlannerState): string {
     case 'zoom':
       return 'Drag up to zoom in, down to zoom out. Shift+Z fits the plan.';
     case 'orbit':
-      return 'Drag to turn around the building; hold Shift to pan. Scroll zooms. Middle-drag orbits with any tool.';
+      return s.split && !s.view3d
+        ? 'Orbit works on the 3D side: move the pointer over it and drag to turn around the building.'
+        : 'Drag to turn around the building; hold Shift to pan. Scroll zooms. Middle-drag orbits with any tool.';
     case 'line':
       return d?.type === 'line'
         ? 'Click the next point (or type a length). Lines chain until Esc; select them and use "Turn into walls" to build.'

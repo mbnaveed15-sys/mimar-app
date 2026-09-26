@@ -18,12 +18,12 @@ function Modal({
   wide?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useFocusTrap(ref);
+  const isTop = useFocusTrap(ref);
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && isTop() && onClose();
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
-  }, [onClose]);
+  }, [onClose, isTop]);
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-start justify-center bg-black/30 pt-[12vh]"
@@ -196,12 +196,12 @@ export function DiscardDialog({
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useFocusTrap(ref);
+  const isTop = useFocusTrap(ref);
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onCancel();
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && isTop() && onCancel();
     window.addEventListener('keydown', esc);
     return () => window.removeEventListener('keydown', esc);
-  }, [onCancel]);
+  }, [onCancel, isTop]);
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/30" onPointerDown={onCancel}>
       <div

@@ -69,6 +69,14 @@ describe('join, fillet and chamfer', () => {
     expect(joinWalls(j, 'a', 'c', 1)).toBeNull();
   });
 
+  it('keeps a door swinging the same way when it was on a wall drawn the other way round', () => {
+    // b runs right to left; its door swings to the plan's +y side (flipSide in b's own frame).
+    const door: Opening = { id: 'd', type: 'door', wallId: 'b', x: 70, y: 0, angle: 180, width: 20, flipSide: true };
+    const j = plan(wall('a', 0, 0, 40, 0), wall('b', 90, 0, 50, 0), door);
+    const moved = byId(joinWalls(j, 'a', 'b', 1)!, 'd') as Opening;
+    expect(moved).toMatchObject({ wallId: 'a', angle: 0, flipSide: false, flipHinge: true });
+  });
+
   it('fillets two walls into a corner, keeping the clicked parts', () => {
     const f = plan(wall('a', 0, 0, 60, 0), wall('b', 40, -30, 40, 30));
     const out = filletWalls(f, 'a', { x: 10, y: 0 }, 'b', { x: 40, y: 20 })!;

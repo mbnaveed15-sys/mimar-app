@@ -50,8 +50,11 @@ costStore.subscribe((s) => {
 
 export const useCost = <T>(pick: (s: CostSettings) => T) => useStore(costStore, pick);
 
+/** Keep typed values in the range storage accepts (so a reload never throws them away). */
+const clampRate = (v: number) => (Number.isFinite(v) ? Math.min(1e8, Math.max(0, v)) : 0);
+
 export const setRate = (key: string, value: number) =>
-  costStore.setState((s) => ({ rates: withRate(s.rates, key, Math.max(0, value)) }));
+  costStore.setState((s) => ({ rates: withRate(s.rates, key, clampRate(value)) }));
 export const setRatio = (key: keyof Ratios, value: number) =>
-  costStore.setState((s) => ({ ratios: { ...s.ratios, [key]: Math.max(0, value) } }));
+  costStore.setState((s) => ({ ratios: { ...s.ratios, [key]: Math.min(999, clampRate(value)) } }));
 export const resetRates = () => costStore.setState({ rates: STARTER_RATES, ratios: STARTER_RATIOS });
