@@ -46,6 +46,15 @@ export interface PdfDetails {
   checkTitle?: string;
   /** Plan hints (good-practice advice), printed after the plan check. */
   hints?: string[];
+  /** The bill of quantities and cost estimate, on a page of its own. */
+  cost?: {
+    heading: string;
+    rows: { label: string; qty: string; rate: string; amount: string }[];
+    total: string;
+    materials: string[];
+    quick: string;
+    footer: string;
+  };
   /** The plan check, printed on a page of its own. */
   check?: {
     heading: string;
@@ -135,6 +144,62 @@ function checkRows(pdf: Pdf, check: NonNullable<PdfDetails['check']>, top: numbe
   return y + footer.length * 4;
 }
 
+/** The bill of quantities: an item per row with its quantity, rate and amount; the materials; the quick check. */
+function costPage(pdf: Pdf, cost: NonNullable<PdfDetails['cost']>, title: string) {
+  pdf.addPage('a4', 'portrait');
+  const w = 210;
+  let y = 20;
+  const room = (need: number) => {
+    if (y + need <= 280) return;
+    pdf.addPage('a4', 'portrait');
+    y = 20;
+  };
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(14);
+  pdf.text(`Quantities and cost · ${title}`, MARGIN, y);
+  y += 7;
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(9);
+  pdf.text(pdf.splitTextToSize(pdfText(cost.heading), w - 2 * MARGIN), MARGIN, y);
+  y += 9;
+  const right = [MARGIN + 118, MARGIN + 146, w - MARGIN];
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Item', MARGIN, y);
+  ['Quantity', 'Rate (Rs)', 'Amount (Rs)'].forEach((h, i) => pdf.text(h, right[i], y, { align: 'right' }));
+  pdf.setFont('helvetica', 'normal');
+  y += 2;
+  pdf.line(MARGIN, y, w - MARGIN, y);
+  y += 5;
+  for (const r of cost.rows) {
+    const label = pdf.splitTextToSize(pdfText(r.label), right[0] - MARGIN - 24);
+    room(label.length * 4 + 2);
+    pdf.text(label, MARGIN, y);
+    [r.qty, r.rate, r.amount].forEach((v, i) => pdf.text(pdfText(v), right[i], y, { align: 'right' }));
+    y += label.length * 4 + 2;
+  }
+  pdf.line(MARGIN, y - 1, w - MARGIN, y - 1);
+  y += 4;
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Total', MARGIN, y);
+  pdf.text(pdfText(cost.total), right[2], y, { align: 'right' });
+  y += 10;
+  room(8 + cost.materials.length * 5);
+  pdf.text('Materials', MARGIN, y);
+  pdf.setFont('helvetica', 'normal');
+  y += 6;
+  for (const m of cost.materials) {
+    pdf.text(pdfText(m), MARGIN, y);
+    y += 5;
+  }
+  y += 4;
+  room(20);
+  pdf.text(pdf.splitTextToSize(pdfText(cost.quick), w - 2 * MARGIN), MARGIN, y);
+  y += 10;
+  pdf.setTextColor(110);
+  pdf.text(pdf.splitTextToSize(pdfText(cost.footer), w - 2 * MARGIN), MARGIN, y);
+  pdf.setTextColor(0);
+}
+
 /** A north arrow centred at (cx, cy), pointing `deg` clockwise from up the page. */
 function northArrow(pdf: Pdf, cx: number, cy: number, deg: number) {
   const r = 6;
@@ -217,6 +282,7 @@ export async function exportPdf(content: PlanImageContent, area: Bounds, details
   northArrow(pdf, pageW - MARGIN - 8, MARGIN + 11, details.northDeg ?? 0);
   if (details.check || details.hints?.length)
     checkPage(pdf, details.check, details.hints ?? [], details.checkTitle ?? details.title);
+  if (details.cost) costPage(pdf, details.cost, details.checkTitle ?? details.title);
 
   const url = URL.createObjectURL(pdf.output('blob'));
   downloadUrl(url, details.filename);

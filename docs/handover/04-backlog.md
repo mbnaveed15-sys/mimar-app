@@ -11,12 +11,14 @@ From the 1.23 QA pass (six testers; full reports in the git-ignored `.qa/<tester
    X,Y readout; arcs and circles for layout lines; grips for lines, beams, rooms, slabs and columns; shared
    properties for a multi-selection; Mirror of a group keeping it a group; Paste then place. 2D pan on very large
    plans (~5,000 walls) is limited by SVG layout.
-2. **Bill of quantities / cost estimate** from real wall and slab quantities; the Auto Planner's area × rate as a
-   first step (`05-auto-planner-review.md`).
-3. **Generative layouts** (later): room program → a few variants, placed as ordinary walls and rooms.
+2. **Generative layouts** (later): room program → a few variants, placed as ordinary walls and rooms.
 
 Done: bylaws, plot presets and the plan check (1.22); plan hints, the mumty, car porches and the north arrow (1.23);
-AutoCAD-style 2D (1.24); SketchUp-style 3D (1.25); interface polish (1.26); split view (1.27).
+AutoCAD-style 2D (1.24); SketchUp-style 3D (1.25); interface polish (1.26); split view (1.27); quantities and cost (1.28).
+
+Left from the cost estimate for later: rates for other cities; contingencies and the contractor's margin as a
+percentage; woodwork, kitchens and wardrobes; footings drawn rather than assumed; metric units in the table (it
+uses cft and sqft, as Pakistani estimates do).
 
 Left from the 3D review for later: section cuts and X-ray (the owner chose to skip them in 1.25); 3D first open and
 orbiting on big plans are still slow (one mesh and edge set per part: merging or instancing them is the fix); a wall

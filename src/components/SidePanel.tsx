@@ -16,6 +16,7 @@ import { ThemePicker } from './ThemePicker';
 import { UpdatePanel } from './UpdatePanel';
 import type { SectionId, useOpenSections } from './useOpenSections';
 import { WallThicknessPicker } from './WallThicknessPicker';
+import { CostPanel } from './CostPanel';
 
 function Section({
   id,
@@ -108,6 +109,7 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
         <Inspector />
       </div>
       {section('check', 'Plan check', <PlanCheckPanel />)}
+      {section('cost', 'Quantities & cost', open.includes('cost') ? <CostPanel /> : null)}
       {section('materials', 'Materials', <MaterialsPanel />)}
       {section('components', 'Components', <ComponentsPanel />)}
       {section('layers', 'Layers', <LayersPanel />)}
