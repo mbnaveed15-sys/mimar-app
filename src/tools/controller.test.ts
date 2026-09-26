@@ -158,9 +158,10 @@ describe('SketchUp-style tools', () => {
     store.getState().setTool('rotate');
     press(store, { x: 0, y: 0 }); // the wall end
     expect(applyMeasure(store, '90')).toBe(true);
+    // Counter-clockwise, as in AutoCAD: from pointing right to pointing up the screen (y is down).
     const w = walls(store)[0];
     expect(w.x2).toBeCloseTo(0);
-    expect(w.y2).toBeCloseTo(10 * FT);
+    expect(w.y2).toBeCloseTo(-10 * FT);
   });
 
   it('explains what to type when the value does not fit', () => {
@@ -235,5 +236,43 @@ describe('SketchUp-style tools', () => {
     } finally {
       setPicker(null);
     }
+  });
+
+  it('draws a wall to @x,y and to length<angle (y up, counter-clockwise), as in AutoCAD', () => {
+    const store = setup();
+    store.getState().setTool('wall');
+    click(store, 0, 0);
+    expect(applyMeasure(store, `@3',4'`)).toBe(true);
+    expect(walls(store)[0].x2).toBeCloseTo(3 * FT);
+    expect(walls(store)[0].y2).toBeCloseTo(-4 * FT);
+    expect(applyMeasure(store, `10'<0`)).toBe(true);
+    expect(walls(store)[1].x2).toBeCloseTo(13 * FT);
+    expect(walls(store)[1].y2).toBeCloseTo(-4 * FT);
+  });
+
+  it('Ctrl+Z in a chain of walls takes back the last one and carries on from where it started', () => {
+    const store = setup();
+    store.getState().setTool('wall');
+    click(store, 0, 0);
+    click(store, 10 * FT, 0);
+    click(store, 10 * FT, 10 * FT);
+    expect(walls(store)).toHaveLength(2);
+    store.getState().undo();
+    expect(walls(store)).toHaveLength(1);
+    const d = store.getState().draft;
+    expect(d?.type === 'wall' && d.chain).toBe(true);
+    expect(d?.type === 'wall' && [d.x1, d.y1]).toEqual([10 * FT, 0]);
+  });
+
+  it('Move keeps the selection when the base point is on another item', () => {
+    const store = setup();
+    store.getState().addWall({ x: 0, y: 0 }, { x: 10 * FT, y: 0 });
+    store.getState().addFurniture({ x: 5 * FT, y: 5 * FT });
+    const bed = store.getState().doc.elements.find((e) => e.type === 'furniture')!;
+    store.getState().select(bed.id);
+    store.getState().setTool('move');
+    press(store, { x: 0, y: 0 }); // on the wall's end
+    const d = store.getState().draft;
+    expect(d?.type === 'move' && d.ids).toEqual([bed.id]);
   });
 });

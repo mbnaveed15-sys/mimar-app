@@ -49,7 +49,7 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
   const matches = useMemo(() => {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
     return commands.filter((c) => {
-      const text = `${c.label} ${menuName(c.menu)}`.toLowerCase();
+      const text = `${c.label} ${menuName(c.menu)} ${(c.aliases ?? []).join(' ')}`.toLowerCase();
       return words.every((w) => text.includes(w)) && (!c.enabled || c.enabled(state));
     });
   }, [commands, query, state]);
@@ -115,7 +115,10 @@ const DRAWING_KEYS: [string, string][] = [
   ['Hold Shift', 'Keep the current direction while you move the mouse'],
   ['Ctrl while moving', 'Copy instead of move; then type 3x or /3 for more copies'],
   ['Esc', 'Cancel the current step; press again to drop the selection'],
-  ['Enter', 'Finish (stop a chain of walls, close a mask)'],
+  ['@x,y  or  length<angle', 'A point from the last one, as in AutoCAD (y up; 0° right, counter-clockwise)'],
+  ['Enter or right-click', 'Finish (stop a chain of walls, close a mask)'],
+  ['Enter on the Select tool', 'Go back to the last tool (repeat the command)'],
+  ['Ctrl+Z in a chain of walls', 'Take back the last wall and carry on drawing'],
   ['Drag left → right', 'Select what is fully inside the box'],
   ['Drag right → left', 'Select anything the box touches'],
   ['Shift+click', 'Add to or take out of the selection'],
@@ -145,7 +148,14 @@ export function ShortcutsDialog({ commands, onClose }: { commands: Command[]; on
               {list.map((c) => (
                 <div key={c.id} className="flex justify-between gap-3 py-0.5">
                   <span>{c.label}</span>
-                  <kbd className="m-kbd">{showKeys(c.keys![0])}</kbd>
+                  <span className="flex gap-1">
+                    <kbd className="m-kbd">{showKeys(c.keys![0])}</kbd>
+                    {c.aliases?.map((a) => (
+                      <kbd key={a} className="m-kbd" title="AutoCAD alias: type the letters quickly">
+                        {a}
+                      </kbd>
+                    ))}
+                  </span>
                 </div>
               ))}
             </section>

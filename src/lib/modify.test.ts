@@ -115,4 +115,36 @@ describe('offset, mirror, scale and stretch', () => {
     expect(byId(s, 'a')).toMatchObject({ x1: 0, x2: 70 });
     expect(byId(s, 'b')).toMatchObject({ x1: 70, x2: 70 });
   });
+
+  it('treats layout lines as cutting edges and trims, extends and offsets them too (AutoCAD construction lines)', () => {
+    const line = (id: string, x1: number, y1: number, x2: number, y2: number): PlanDoc['elements'][number] => ({
+      id,
+      type: 'line',
+      x1,
+      y1,
+      x2,
+      y2,
+    });
+    // A wall crossed only by a layout line: trimming keeps the far piece (it used to delete the whole wall).
+    const d1 = plan(wall('w', 0, 0, 100, 0), line('l', 40, -20, 40, 20));
+    const out = trimAt(d1, 'w', { x: 20, y: 0 }, 0.5);
+    expect(walls(out)).toHaveLength(1);
+    expect(walls(out)[0]).toMatchObject({ x1: 40, x2: 100 });
+    // A line trimmed by a wall, and extended to one.
+    const d2 = plan(line('l', 0, 0, 100, 0), wall('w', 40, -20, 40, 20), wall('far', 150, -20, 150, 20));
+    expect(trimAt(d2, 'l', { x: 80, y: 0 }, 0.5).elements.find((e) => e.id === 'l')).toMatchObject({ x2: 40 });
+    expect(extendWall(d2, 'l', { x: 99, y: 0 })!.elements.find((e) => e.id === 'l')).toMatchObject({ x2: 150 });
+    // Offset keeps it a line.
+    expect(offsetWall(d2.elements[0] as Wall, 10, { x: 50, y: 10 }).type).toBe('line');
+    // A wall doesn't join a line.
+    expect(joinWalls(plan(wall('a', 0, 0, 10, 0), line('b', 10, 0, 20, 0)), 'a', 'b', 0.5)).toBeNull();
+  });
+
+  it('stretches only the items it is allowed to (the floor shown, nothing hidden or locked)', () => {
+    const d = plan(wall('a', 0, 0, 100, 0), wall('b', 0, 50, 100, 50));
+    const box = { minX: 90, minY: -10, maxX: 110, maxY: 60 };
+    const out = stretchItems(d, box, 20, 0, (id) => id === 'a');
+    expect(byId(out, 'a')).toMatchObject({ x2: 120 });
+    expect(byId(out, 'b')).toMatchObject({ x2: 100 });
+  });
 });

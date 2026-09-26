@@ -109,16 +109,27 @@ describe('planner store', () => {
 });
 
 describe('editing and files', () => {
-  it('keeps doors in place on a wall when the wall moves or changes length', () => {
+  it('keeps doors their distance from the wall end that stays put when a wall moves or changes length', () => {
     const store = setup();
     const s = () => store.getState();
     s().addWall({ x: 0, y: 0 }, { x: 200, y: 0 });
     s().placeOpening('door', { x: 50, y: 0 });
     const wall = s().doc.elements[0];
     if (wall.type !== 'wall') throw new Error('expected wall');
-    s().updateElement({ ...wall, y1: 100, y2: 100, x2: 400 });
-    const door = s().doc.elements[1];
-    expect(door).toMatchObject({ x: 100, y: 100, angle: 0 });
+    // Lengthened from its end (a grip, or the Length field): the door stays 50 from the start.
+    s().updateElement({ ...wall, x2: 400 });
+    expect(s().doc.elements[1]).toMatchObject({ x: 50, y: 0 });
+    // Moved from its start, the end staying put: the door keeps its distance from the end (350).
+    const longer = s().doc.elements[0];
+    if (longer.type !== 'wall') throw new Error('expected wall');
+    s().updateElement({ ...longer, x1: -100 });
+    expect((s().doc.elements[1] as { x: number }).x).toBeCloseTo(50);
+    // Moved as a whole: the same distance from the start.
+    const moved = s().doc.elements[0];
+    if (moved.type !== 'wall') throw new Error('expected wall');
+    s().updateElement({ ...moved, y1: 100, y2: 100 });
+    expect(s().doc.elements[1]).toMatchObject({ y: 100, angle: 0 });
+    expect((s().doc.elements[1] as { x: number }).x).toBeCloseTo(50);
   });
 
   it('nudges and rotates the selection, one undo step each', () => {

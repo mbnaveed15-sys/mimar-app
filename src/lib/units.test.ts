@@ -36,7 +36,7 @@ describe('parseLength', () => {
     ['3.5 m', 3500],
     ['350cm', 3500],
     ['3500 mm', 3500],
-    ['3.5', 3500],
+    ['3500', 3500], // a bare number is millimetres, as in AutoCAD
   ])('reads metric %s', (text, mm) => {
     expect(parseLength(text, 'metric')).toBeCloseTo(mm);
   });

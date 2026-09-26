@@ -14,9 +14,33 @@ describe('snapping (inference)', () => {
     expect(infer({ x: 73, y: 3 }, { ...opts, grid: null })).toEqual({ point: { x: 73, y: 0 }, kind: 'on-wall' });
   });
 
-  it('snaps to a grid point even where a wall lies over it', () => {
-    const offGrid: Wall = { id: 'o', type: 'wall', x1: 0, y1: 2, x2: 100, y2: 2 };
-    expect(infer({ x: 61, y: 1 }, { ...opts, walls: [offGrid] })).toEqual({ point: { x: 60, y: 0 }, kind: 'grid' });
+  it('along a wall, lands on the wall at the grid step (the grid point itself when the wall is on it)', () => {
+    const offGrid: Wall = { id: 'o', type: 'wall', x1: 0, y1: 2, x2: 100, y2: 2, thickness: 4 };
+    expect(infer({ x: 61, y: 1 }, { ...opts, walls: [offGrid] })).toEqual({ point: { x: 60, y: 2 }, kind: 'on-wall' });
+    const onGrid: Wall = { ...offGrid, y1: 0, y2: 0 };
+    expect(infer({ x: 61, y: 1 }, { ...opts, walls: [onGrid] }).point).toEqual({ x: 60, y: 0 });
+  });
+
+  it('keeps a line level from an off-grid point, rather than jumping to a grid point', () => {
+    const from = { x: 33, y: 83 };
+    expect(infer({ x: 71, y: 81 }, { ...opts, walls: [], from })).toEqual({ point: { x: 73, y: 83 }, kind: 'axis-x' });
+  });
+
+  it('snaps to wall faces and their corners, perpendicular to a wall, and the nearest point wins', () => {
+    const thick: Wall = { id: 't', type: 'wall', x1: 0, y1: 0, x2: 100, y2: 0, thickness: 20 };
+    const o = { walls: [thick], tolerance: 5, grid: null };
+    expect(infer({ x: 40, y: 12 }, o)).toEqual({ point: { x: 40, y: 10 }, kind: 'on-face' });
+    expect(infer({ x: 99, y: -8 }, o)).toEqual({ point: { x: 100, y: -10 }, kind: 'corner' });
+    // From a point below the wall, the foot of the perpendicular.
+    expect(infer({ x: 31, y: 2 }, { ...o, from: { x: 30, y: 50 } })).toEqual({
+      point: { x: 30, y: 0 },
+      kind: 'perpendicular',
+    });
+    // A midpoint 4 away loses to a crossing 1 away.
+    const line = { id: 'l', x1: 46, y1: -40, x2: 46, y2: 60 };
+    expect(infer({ x: 46, y: 1 }, { ...o, walls: [{ ...thick, thickness: 1 }], lines: [line] }).kind).toBe(
+      'intersection',
+    );
   });
 
   it('snaps to the building line ahead of a grid point, at the grid step along it', () => {

@@ -10,9 +10,39 @@ describe('Measurements box', () => {
     });
     expect(parseMeasure('3.8m', 'imperial', 'length')).toEqual({ kind: 'length', mm: 3800 });
     expect(parseMeasure('12.5', 'imperial', 'length')).toEqual({ kind: 'length', mm: 12.5 * MM_PER_FOOT });
-    expect(parseMeasure('-2', 'metric', 'length')).toEqual({ kind: 'length', mm: -2000 });
+    // A bare metric number is millimetres, as in AutoCAD.
+    expect(parseMeasure('-2000', 'metric', 'length')).toEqual({ kind: 'length', mm: -2000 });
     expect(parseMeasure('abc', 'metric', 'length')).toBeNull();
-    expect(parseMeasure('0', 'metric', 'length')).toBeNull();
+    // Zero is read (a square fillet); tools that can't use it say so.
+    expect(parseMeasure('0', 'metric', 'length')).toEqual({ kind: 'length', mm: 0 });
+    // Fractions of an inch.
+    expect(parseMeasure(`12'6-1/2"`, 'imperial', 'length')).toEqual({
+      kind: 'length',
+      mm: 12 * MM_PER_FOOT + 6.5 * MM_PER_INCH,
+    });
+    expect(parseMeasure(`6 1/2"`, 'imperial', 'length')).toEqual({ kind: 'length', mm: 6.5 * MM_PER_INCH });
+  });
+
+  it('reads AutoCAD points: @x,y and length<angle (0° to the right, counter-clockwise)', () => {
+    expect(parseMeasure(`@3',4'`, 'imperial', 'length')).toEqual({
+      kind: 'vector',
+      dx: 3 * MM_PER_FOOT,
+      dy: 4 * MM_PER_FOOT,
+    });
+    const polar = parseMeasure(`10'<90`, 'imperial', 'length')!;
+    expect(polar.kind).toBe('vector');
+    if (polar.kind === 'vector') {
+      expect(polar.dx).toBeCloseTo(0);
+      expect(polar.dy).toBeCloseTo(10 * MM_PER_FOOT);
+    }
+    expect(parseMeasure('@2000<45', 'metric', 'move')?.kind).toBe('vector');
+    expect(parseMeasure(`@12',10'`, 'imperial', 'pair')).toEqual({
+      kind: 'pair',
+      a: 12 * MM_PER_FOOT,
+      b: 10 * MM_PER_FOOT,
+    });
+    expect(isMeasureKey('@', '')).toBe(true);
+    expect(isMeasureKey('<', '10')).toBe(true);
   });
 
   it('reads a rectangle size as width, depth', () => {
@@ -30,7 +60,7 @@ describe('Measurements box', () => {
     expect(parseMeasure('3x', 'imperial', 'move')).toEqual({ kind: 'copies', n: 3, spread: false });
     expect(parseMeasure('*4', 'imperial', 'move')).toEqual({ kind: 'copies', n: 4, spread: false });
     expect(parseMeasure('/3', 'imperial', 'move')).toEqual({ kind: 'copies', n: 3, spread: true });
-    expect(parseMeasure('5', 'metric', 'move')).toEqual({ kind: 'length', mm: 5000 });
+    expect(parseMeasure('5 m', 'metric', 'move')).toEqual({ kind: 'length', mm: 5000 });
   });
 
   it('lets letters switch tools until typing has started', () => {

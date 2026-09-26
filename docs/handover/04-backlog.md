@@ -7,13 +7,10 @@ In the order agreed with the owner. Confirm the plan with the owner before start
 From the 1.23 QA pass (six testers; full reports in the git-ignored `.qa/<tester>/REPORT.md`, combined in
 `.qa/SUMMARY.md`). 1.23.1 fixed the blockers and wrong results; plan each of these with the owner first.
 
-1. **1.24 AutoCAD-style 2D:** axis before grid when drawing from an off-grid point; the on-wall/on-line snap reach
-   (dead `tolerance*2` in `inference.ts`); `@x,y` and `length<angle` entry (the Measurements box drops `@`/`<`);
-   metric bare numbers as mm; Move/Rotate keep the selection when the base point is on another item; Stretch/Scale
-   snap to their own preview (tilt) and touch other floors; Fillet radius 0; Rotate counter-clockwise; modify tools
-   on layout lines (Trim deletes a wall crossed only by a line); doors keep their distance when a wall's length
-   changes; right-click = Enter; undo one segment in a chain; repeat last command; AutoCAD aliases; 2D redraw speed
-   (memoised drawing, no per-render `wallFaces`/`isJoined`).
+1. **Still open from the 2D review (after 1.24):** a persistent dimension tool; zoom window and zoom previous; a cursor
+   X,Y readout; arcs and circles for layout lines; grips for lines, beams, rooms, slabs and columns; shared
+   properties for a multi-selection; Mirror of a group keeping it a group; Paste then place. 2D pan on very large
+   plans (~5,000 walls) is limited by SVG layout.
 2. **1.25 SketchUp-style 3D:** zoom extents and +/- in 3D; snap marker at the hit point; Select drag box-selects;
    3D tape; material/texture cache and one reused renderer (shader recompiles per edit; a WebGL context leaks per
    open); Push/Pull double-click repeat and height inference; paint per face; standard and parallel views; orbit

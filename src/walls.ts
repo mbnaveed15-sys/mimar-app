@@ -1,3 +1,4 @@
+import { boxOf, cellFor, GridIndex } from './lib/spatial';
 import { pointInPolygon, pointToSegmentDistance } from './geometry';
 import { MM_PER_UNIT } from './lib/scale';
 import type { PlanElement, Point, Units, Wall } from './types';
@@ -24,11 +25,30 @@ export const thicknessOf = (w: Wall) => w.thickness ?? DEFAULT_WALL_THICKNESS;
 
 const JOIN_EPS = 0.5;
 
+// A spatial index per list of walls, so finding the walls at a point doesn't scan them all.
+const joinIndex = new WeakMap<Wall[], GridIndex<Wall>>();
+function indexFor(walls: Wall[]): GridIndex<Wall> {
+  let index = joinIndex.get(walls);
+  if (!index) {
+    const boxes = walls.map((w) => {
+      const b = boxOf([
+        { x: w.x1, y: w.y1 },
+        { x: w.x2, y: w.y2 },
+      ]);
+      return { minX: b.minX - JOIN_EPS, minY: b.minY - JOIN_EPS, maxX: b.maxX + JOIN_EPS, maxY: b.maxY + JOIN_EPS };
+    });
+    index = new GridIndex<Wall>(cellFor(boxes));
+    walls.forEach((w, i) => index!.add(w, boxes[i]));
+    joinIndex.set(walls, index);
+  }
+  return index;
+}
+
 /** True when another wall ends at, or runs through, this point. */
 function isJoined(p: Point, self: Wall, walls: Wall[]): boolean {
-  return walls.some(
-    (w) => w.id !== self.id && pointToSegmentDistance(p, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }) <= JOIN_EPS,
-  );
+  return indexFor(walls)
+    .at(p)
+    .some((w) => w.id !== self.id && pointToSegmentDistance(p, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }) <= JOIN_EPS);
 }
 
 /** How far each end of the wall reaches past its end point (half the thickness where it meets another wall). */

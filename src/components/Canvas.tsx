@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useMemo, type RefObject } from 'react';
 import { elementOutline, fromFurnitureLocal } from '../geometry';
 import { PLAN_FONT } from '../lib/planImage';
 import { panBy } from '../lib/view';
@@ -32,10 +32,16 @@ interface Props {
   onContextMenu?: (target: ContextTarget) => void;
 }
 
+const NONE: string[] = [];
+
 export function Canvas({ svgRef, onContextMenu }: Props) {
   const doc = useLevelDoc()!;
   // The floor below, drawn faintly so the walls above can be traced over it.
   const below = useLevelDoc(-1);
+  const belowWalls = useMemo(
+    () => (below ? { ...below, rooms: [], elements: below.elements.filter((el) => el.type !== 'furniture') } : null),
+    [below],
+  );
   const draft = usePlanner((s) => s.draft);
   const inference = usePlanner((s) => s.inference);
   const axisLock = usePlanner((s) => s.axisLock);
@@ -180,8 +186,8 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
       {below && (
         <g opacity={0.22} pointerEvents="none" data-testid="level-below">
           <PlanDrawing
-            doc={{ ...below, rooms: [], elements: below.elements.filter((el) => el.type !== 'furniture') }}
-            selectedIds={[]}
+            doc={belowWalls!}
+            selectedIds={NONE}
             units={units}
             marlaSqFt={marlaSqFt}
             showDimensions={false}

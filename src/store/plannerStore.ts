@@ -564,7 +564,18 @@ export function createPlannerStore(
         const { past, doc, future } = get();
         if (!past.length) return;
         const prev = past[past.length - 1];
-        set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], draft: null });
+        // In a chain of walls or lines, undo takes back the last piece and carries on drawing from
+        // where it started (AutoCAD's LINE › Undo); otherwise the step being drawn is dropped.
+        const d = get().draft;
+        let draft: PlannerState['draft'] = null;
+        if ((d?.type === 'wall' || d?.type === 'line') && d.chain) {
+          const kept = new Set(prev.elements.map((el) => el.id));
+          const piece = doc.elements.find(
+            (el) => !kept.has(el.id) && el.type === d.type && Math.hypot(el.x2 - d.x1, el.y2 - d.y1) < 1e-6,
+          ) as { x1: number; y1: number } | undefined;
+          if (piece) draft = { ...d, x1: piece.x1, y1: piece.y1 };
+        }
+        set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], draft });
         refreshSelection();
       },
       redo: () => {

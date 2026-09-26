@@ -1,3 +1,4 @@
+import { aliasesFor } from './lib/aliases';
 import { exportModel, exportPlanDxf, exportPlanPdf, exportPlanPng } from './lib/exportActions';
 import { plannerStore, type PlannerState } from './store/plannerStore';
 import { THEMES } from './theme/themes';
@@ -32,6 +33,8 @@ export interface Command {
   kind?: 'check' | 'radio';
   /** Hidden from menus (still in search), e.g. Pro tools in Simple mode. */
   hidden?: (s: PlannerState) => boolean;
+  /** AutoCAD aliases that also find it in search, e.g. TR for Trim. */
+  aliases?: string[];
 }
 
 /** What the commands need from the app shell. */
@@ -72,6 +75,7 @@ function toolCommand(tool: Tool, menu: MenuId, group: number): Command {
     menu,
     group,
     keys: [info.key],
+    aliases: aliasesFor(tool),
     run: () => {
       const s = st();
       if (!SIMPLE_TOOLS.includes(tool) && s.mode === 'simple') s.setMode('pro');
