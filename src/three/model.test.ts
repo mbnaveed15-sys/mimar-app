@@ -67,6 +67,13 @@ describe('3D model', () => {
     expect(buildModel(docWith(bed), { ...opts, showFurniture: false }).solids).toHaveLength(0);
   });
 
+  it('gives each side of a wall its own material, side A facing its left normal', () => {
+    const model = buildModel(docWith({ ...wall, material: 'mat_brick', materialA: 'mat_wood' }), opts);
+    expect(model.solids[0].color).toBe('#B7410E');
+    expect(model.solids[0].sides?.plus).toMatchObject({ color: '#C29B6C', finish: { pattern: 'wood' } });
+    expect(model.solids[0].sides?.minus).toBeUndefined();
+  });
+
   it('uses painted colours and turns rooms into floors', () => {
     const doc: PlanDoc = {
       ...docWith({ ...wall, material: 'mat_brick' }),

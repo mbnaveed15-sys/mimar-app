@@ -1,5 +1,5 @@
 import { ShapeUtils, Vector2 } from 'three';
-import type { Model3D, Panel, Slab3D, Solid } from '../three/model';
+import type { Finish, Model3D, Panel, Sides, Slab3D, Solid } from '../three/model';
 
 /** One mesh of triangles, all in one material, in metres with y up. */
 export interface ExportMesh {
@@ -68,8 +68,12 @@ function face(mesh: ExportMesh, corners: V3[], normal: V3) {
   for (let i = 1; i < corners.length - 1; i++) mesh.indices.push(start, start + i, start + i + 1);
 }
 
+/** Which mesh each face goes in: a wall's side A (+z, 1), side B (-z, -1), or the rest (0). */
+type MeshFor = (side: 1 | -1 | 0) => ExportMesh;
+
 /** The six faces of a box solid, turned and placed as in the 3D view. */
-function addBox(mesh: ExportMesh, s: Solid) {
+function addBox(meshFor: MeshFor, s: Solid) {
+  const mesh = meshFor(0);
   const cos = Math.cos(s.rotY);
   const sin = Math.sin(s.rotY);
   // Three.js turns by rotY about y: x' = x cos + z sin, z' = -x sin + z cos.
@@ -81,8 +85,8 @@ function addBox(mesh: ExportMesh, s: Solid) {
   face(mesh, [c(-1, 0, -1), c(1, 0, -1), c(1, 0, 1), c(-1, 0, 1)], [0, -1, 0]);
   face(mesh, [c(1, 0, -1), c(1, 1, -1), c(1, 1, 1), c(1, 0, 1)], turn(1, 0));
   face(mesh, [c(-1, 0, -1), c(-1, 0, 1), c(-1, 1, 1), c(-1, 1, -1)], turn(-1, 0));
-  face(mesh, [c(-1, 0, 1), c(1, 0, 1), c(1, 1, 1), c(-1, 1, 1)], turn(0, 1));
-  face(mesh, [c(-1, 0, -1), c(-1, 1, -1), c(1, 1, -1), c(1, 0, -1)], turn(0, -1));
+  face(meshFor(1), [c(-1, 0, 1), c(1, 0, 1), c(1, 1, 1), c(-1, 1, 1)], turn(0, 1));
+  face(meshFor(-1), [c(-1, 0, -1), c(-1, 1, -1), c(1, 1, -1), c(1, 0, -1)], turn(0, -1));
 }
 
 type Ring = [number, number][];
@@ -108,18 +112,21 @@ function addExtrusion(
   holes: Ring[],
   at: (a: number, b: number, t: number) => V3,
   dir: (a: number, b: number, t: number) => V3,
+  /** The mesh for each cap (t = 0, t = 1), when they differ from the rest. */
+  capMesh: (t: 0 | 1) => ExportMesh = () => mesh,
 ) {
   const tris = ShapeUtils.triangulateShape(
     outer.map(([a, b]) => new Vector2(a, b)),
     holes.map((h) => h.map(([a, b]) => new Vector2(a, b))),
   );
   const all = [...outer, ...holes.flat()];
-  for (const t of [0, 1]) {
-    const start = mesh.positions.length / 3;
+  for (const t of [0, 1] as const) {
+    const cap = capMesh(t);
+    const start = cap.positions.length / 3;
     const n = dir(0, 0, t ? 1 : -1);
     for (const [a, b] of all) {
-      mesh.positions.push(...at(a, b, t));
-      mesh.normals.push(...n);
+      cap.positions.push(...at(a, b, t));
+      cap.normals.push(...n);
     }
     for (const [i, j, k] of tris) {
       // Keep each cap's triangles facing out: check against the cap's normal.
@@ -128,7 +135,7 @@ function addExtrusion(
       const v = [r[0] - p[0], r[1] - p[1], r[2] - p[2]];
       const cross = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
       const out = cross[0] * n[0] + cross[1] * n[1] + cross[2] * n[2] >= 0;
-      mesh.indices.push(...(out ? [start + i, start + j, start + k] : [start + i, start + k, start + j]));
+      cap.indices.push(...(out ? [start + i, start + j, start + k] : [start + i, start + k, start + j]));
     }
   }
   // Sides face away from the solid: out of the outline, and into each hole.
@@ -181,31 +188,38 @@ function addPrism(mesh: ExportMesh, s: Slab3D) {
 }
 
 /** An upright panel: its outline (less holes) turned and placed like a box, pushed through its depth. */
-function addPanel(mesh: ExportMesh, p: Panel) {
+function addPanel(meshFor: MeshFor, p: Panel) {
   const cos = Math.cos(p.rotY);
   const sin = Math.sin(p.rotY);
   // Three.js turns by rotY about y: x' = x cos + z sin, z' = -x sin + z cos.
   const place = (x: number, y: number, z: number): V3 => [p.x + x * cos + z * sin, p.y0 + y, p.z - x * sin + z * cos];
   addExtrusion(
-    mesh,
+    meshFor(0),
     p.outline,
     p.holes ?? [],
     (u, v, t) => place(u, v, (t - 0.5) * p.depth),
     (u, v, t) => [u * cos + t * sin, v, -u * sin + t * cos],
+    (t) => meshFor(t ? 1 : -1),
   );
 }
 
 /** Every part of the 3D model as meshes grouped by what they are and their material. Flat shapes are left out. */
 export function modelMeshes(model: Model3D): ExportMesh[] {
   const set = new MeshSet();
-  for (const s of model.solids) addBox(set.mesh(s.role, s.color, s.opacity ?? 1, s.finish?.name), s);
+  /** Each face's mesh: a wall side's own material where it has one, else the part's. */
+  const meshFor =
+    (part: { role: string; color: string; opacity?: number; finish?: Finish; sides?: Sides }): MeshFor =>
+    (side) => {
+      const look = side === 1 ? part.sides?.plus : side === -1 ? part.sides?.minus : undefined;
+      const { color, finish } = look ?? part;
+      return set.mesh(part.role, color, part.opacity ?? 1, finish?.name);
+    };
+  for (const s of model.solids) addBox(meshFor(s), s);
   for (const f of model.floors)
     if (f.points.length >= 3) addFlat(set.mesh('floor', f.color, 1, f.finish?.name), f.points, f.y + FLOOR_LIFT);
   for (const s of [...model.slabs, ...model.blocks])
     if (s.points.length >= 3 && s.role !== 'shape') addPrism(set.mesh(s.role ?? 'slab', s.color, 1, s.finish?.name), s);
-  for (const p of model.panels)
-    if (p.outline.length >= 3 && p.role !== 'shape')
-      addPanel(set.mesh(p.role, p.color, p.opacity ?? 1, p.finish?.name), p);
+  for (const p of model.panels) if (p.outline.length >= 3 && p.role !== 'shape') addPanel(meshFor(p), p);
   return set.list().filter((m) => m.indices.length > 0);
 }
 

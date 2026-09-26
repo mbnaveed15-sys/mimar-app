@@ -54,7 +54,8 @@ test('builds, selects, paints and orbits in the 3D view', async ({ page }) => {
   await clickAt(page, 0.35, 0.4);
   await page.keyboard.press('Space');
   await clickAt(page, 0.35, 0.4);
-  await expect(page.getByText('Material: Brick')).toBeVisible();
+  // In 3D, Paint paints only the face clicked: here the wall's inside.
+  await expect(page.getByTestId('wall-sides')).toContainText(/Side facing Room 1: Brick/);
 
   // Right-click for the item's menu.
   await page.mouse.click(...(await spot(page, 0.35, 0.4)), { button: 'right' });

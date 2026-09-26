@@ -2,6 +2,7 @@ import { SNAP_LABELS, type Inference } from '../lib/inference';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT } from '../store/plannerStore';
 import { PLAN } from '../theme/plan';
+import { protractor } from '../lib/protractor';
 import { draftOutline } from '../lib/shapes';
 import type { Draft, Point, Units } from '../types';
 
@@ -285,8 +286,20 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
       )}
 
       {d?.type === 'rotate' && (
-        <g style={{ stroke: PLAN.selection }} fill="none" strokeWidth={1.5 * k}>
-          <circle cx={d.center.x} cy={d.center.y} r={30 * k} strokeDasharray={`${3 * k} ${3 * k}`} />
+        <g style={{ stroke: PLAN.selection }} fill="none" strokeWidth={1.5 * k} data-testid="protractor">
+          {(() => {
+            const { ring, ticks, arc } = protractor(d.center, 40 * k, d.start, d.angle);
+            const pts = (ps: Point[]) => ps.map((p) => `${p.x},${p.y}`).join(' ');
+            return (
+              <>
+                <polygon points={pts(ring)} strokeWidth={k} />
+                {ticks.map(([a, b], i) => (
+                  <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={k} />
+                ))}
+                {arc.length > 1 && <polyline points={pts([d.center, ...arc, d.center])} strokeWidth={1.5 * k} />}
+              </>
+            );
+          })()}
           <circle cx={d.center.x} cy={d.center.y} r={3 * k} style={{ fill: PLAN.selection }} />
           {d.start && <line x1={d.center.x} y1={d.center.y} x2={d.start.x} y2={d.start.y} />}
           {d.start && (

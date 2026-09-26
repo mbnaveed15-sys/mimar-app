@@ -46,6 +46,51 @@ function itemName(el: PlanElement): string {
   return el.type;
 }
 
+/**
+ * A wall's two sides, each named by the room it faces, with its own material (SketchUp style: say
+ * plaster inside, brick outside). In 3D, the Paint tool paints the side clicked.
+ */
+function WallSides({ wall, materialName }: { wall: Wall; materialName: (id?: string) => string | undefined }) {
+  const applyMaterial = usePlanner((s) => s.applyMaterial);
+  const clearWallSide = usePlanner((s) => s.clearWallSide);
+  const roomAt = usePlanner((s) => s.roomAt);
+  const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) || 1;
+  const off = thicknessOf(wall) / 2 + 5;
+  const mid = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
+  const facing = (sign: 1 | -1) =>
+    roomAt({
+      x: mid.x + (sign * -(wall.y2 - wall.y1) * off) / len,
+      y: mid.y + (sign * (wall.x2 - wall.x1) * off) / len,
+    });
+  return (
+    <div className="flex flex-col gap-1" data-testid="wall-sides">
+      {([1, -1] as const).map((sign) => {
+        const own = sign === 1 ? wall.materialA : wall.materialB;
+        const room = facing(sign);
+        return (
+          <div key={sign} className="flex flex-wrap items-center gap-1">
+            <span className="grow">
+              {room ? `Side facing ${room.name || 'room'}` : 'Outside side'}: {own ? materialName(own) : `as wall`}
+            </span>
+            <button className="m-btn" onClick={() => applyMaterial(wall.id, sign)}>
+              Apply
+            </button>
+            {own && (
+              <button
+                className="m-btn"
+                onClick={() => clearWallSide(wall.id, sign)}
+                aria-label="Use the wall’s material"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Properties of the selected wall, opening, item or room, and a summary of the plan. */
 export function Inspector() {
   const doc = useLevelDoc()!;
@@ -467,6 +512,7 @@ export function Inspector() {
               />
             )}
             <div>Material: {materialName(el.material) ?? '—'}</div>
+            {el.type === 'wall' && <WallSides wall={el} materialName={materialName} />}
             <div className="flex flex-wrap gap-2">
               <button onClick={() => applyMaterial(el.id)} className={btn}>
                 Apply selected material
