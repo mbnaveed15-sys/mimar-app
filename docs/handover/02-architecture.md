@@ -32,6 +32,13 @@ autosaves to local storage on every change.
 
 - `src/components/usePlanInput.ts`: mouse/pen/touch handling for **both** the 2D canvas and the 3D view
   (selection, moving, box select, drag-erase, handles). It takes a `toPlan(screen point)` function, so 3D reuses it.
+- `src/components/useKeyboardShortcuts.ts`: `isTyping` decides which keys a focused control keeps (text fields
+  and drop-downs keep all; checkboxes, sliders and menu names only Space, Enter, Tab and the arrows); `ANYWHERE`
+  lists the Ctrl keys that work even from a field. `src/components/useFocus.ts`: `useFocusTrap` (dialogs, the
+  welcome and tour) and `useMenuKeys` (pop-up menus).
+- Paste: `pasteToPlace` in `src/tools/controller.ts` pastes, then starts a Move draft with `pasted: true`;
+  `finishMove` joins the paste and the move into one undo step (`mergeLastSteps`), and `cancel` takes the paste
+  back (`discardLastStep`).
 - `src/components/useTouch.ts`: one finger acts like the mouse; two fingers pan/pinch; three fingers orbit (3D);
   long-press opens the menu.
 - `src/tools/controller.ts`: tools that take clicks and typed measurements (wall, line, rectangle, tape, move,

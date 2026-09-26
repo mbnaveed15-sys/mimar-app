@@ -70,6 +70,14 @@ export default function PlannerApp() {
   );
   useKeyboardShortcuts(commands);
 
+  /** Save, then (only if it was saved, not cancelled) do what was asked. */
+  async function saveThen(next: () => void) {
+    setPending(null);
+    setPendingReplace(null);
+    await save();
+    if (!isDirty()) next();
+  }
+
   function focusProperties() {
     requestAnimationFrame(() => {
       const field = document.querySelector<HTMLElement>('aside[aria-label="Properties"] input');
@@ -131,6 +139,7 @@ export default function PlannerApp() {
         <DiscardDialog
           action="open"
           onCancel={() => setPendingReplace(null)}
+          onSave={() => void saveThen(() => pendingReplace())}
           onConfirm={() => {
             pendingReplace();
             setPendingReplace(null);
@@ -141,6 +150,7 @@ export default function PlannerApp() {
         <DiscardDialog
           action={pending}
           onCancel={() => setPending(null)}
+          onSave={() => void saveThen(() => (pending === 'new' ? newPlan() : void open()))}
           onConfirm={() => {
             if (pending === 'new') newPlan();
             else void open();

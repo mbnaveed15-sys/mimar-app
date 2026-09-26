@@ -63,8 +63,16 @@ function PlanHints() {
 function BylawRows() {
   const check = usePlanCheck();
   const setSelection = usePlanner((s) => s.setSelection);
+  const plot = usePlanner((s) => s.doc.elements.find((el) => el.type === 'plot'));
   if (!check)
-    return (
+    return plot ? (
+      <div className="text-xs text-muted">
+        <button className="underline" onClick={() => setSelection([plot.id])}>
+          Select the plot
+        </button>{' '}
+        and pick its bylaws (CDA, DHA and more) to check the plan against them as you draw.
+      </div>
+    ) : (
       <div className="text-xs text-muted">
         Draw a plot (Shift+P) and pick its bylaws (CDA, DHA and more) to check the plan against them as you draw.
       </div>

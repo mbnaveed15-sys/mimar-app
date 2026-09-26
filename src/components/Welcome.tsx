@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { buildSamplePlan } from '../lib/samplePlan';
 import { markSeen } from '../lib/welcome';
 import { plannerStore } from '../store/plannerStore';
 import { Mark } from './Mark';
+import { useFocusTrap } from './useFocus';
 
 interface Step {
   /** What to point at (a CSS selector); the step is centred when it isn't on screen. */
@@ -79,12 +80,21 @@ export function Welcome({
   const [step, setStep] = useState<number | null>(null);
   const hasPlan = plannerStore.getState().doc.elements.length > 0;
   const rect = useTargetRect(step === null ? null : STEPS[step].target);
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, step === null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
         finish();
+      }
+      // In the tour, the arrow keys go back and forward.
+      if (step !== null && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (e.key === 'ArrowLeft') setStep(Math.max(0, step - 1));
+        else if (step < STEPS.length - 1) setStep(step + 1);
       }
     };
     window.addEventListener('keydown', onKey, true);
@@ -107,7 +117,9 @@ export function Welcome({
     return (
       <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
         <div
+          ref={ref}
           role="dialog"
+          aria-modal="true"
           aria-label="Welcome to Mimar"
           className="w-full max-w-md rounded-xl border border-line bg-raised p-6 text-ink shadow-popover"
         >
@@ -172,7 +184,9 @@ export function Welcome({
         <div className="absolute inset-0 bg-black/45" />
       )}
       <div
+        ref={ref}
         role="dialog"
+        aria-modal="true"
         aria-label={s.title}
         className="absolute rounded-lg border border-line bg-raised p-4 text-ink shadow-popover"
         style={{ left, top, width: card }}

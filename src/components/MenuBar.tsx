@@ -88,7 +88,10 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
     const esc = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopImmediatePropagation();
+        // Focus stays on the menu's name (only if it was in the menu), rather than getting lost.
+        const inMenu = barRef.current?.contains(document.activeElement);
         setOpen(null);
+        if (inMenu) barRef.current?.querySelector<HTMLElement>(`[data-menu="${open}"]`)?.focus();
       }
     };
     window.addEventListener('pointerdown', close);
@@ -100,6 +103,11 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
   }, [open]);
 
   function onMenuKey(e: KeyboardEvent, id: MenuId) {
+    if (e.key === 'ArrowDown' && !open) {
+      e.preventDefault();
+      setOpen(id);
+      return;
+    }
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     e.preventDefault();
     const i = MENUS.findIndex((m) => m.id === id);
@@ -110,13 +118,13 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
 
   return (
     <header className="flex h-10 flex-none items-center gap-2 border-b border-line bg-surface px-2">
-      <div className="flex items-center gap-2 pr-1">
+      <div className="flex flex-none items-center gap-2 pr-1">
         <Mark size={24} />
         <span className="text-[17px] font-[650] tracking-[-0.2px]" style={{ fontStretch: '88%' }}>
           Mimar
         </span>
       </div>
-      <div ref={barRef} role="menubar" aria-label="Main menu" className="flex">
+      <div ref={barRef} role="menubar" aria-label="Main menu" className="flex flex-none">
         {MENUS.map((m) => (
           <div key={m.id} className="relative" onKeyDown={(e) => onMenuKey(e, m.id)}>
             <button
@@ -125,7 +133,7 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
               aria-expanded={open === m.id}
               onClick={() => setOpen(open === m.id ? null : m.id)}
               onPointerEnter={() => open && setOpen(m.id)}
-              className={`rounded-sm px-2.5 py-1.5 ${open === m.id ? 'bg-sunken' : 'hover:bg-sunken'}`}
+              className={`rounded-sm px-2 py-1.5 xl:px-2.5 ${open === m.id ? 'bg-sunken' : 'hover:bg-sunken'}`}
             >
               {m.label}
             </button>
@@ -141,27 +149,40 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
         {dirty && <span className="font-medium text-accent-ink"> • unsaved changes</span>}
       </div>
 
-      <button onClick={onSearch} className="m-btn hidden h-7 gap-2 text-muted md:inline-flex" title="Search actions">
+      {/* On narrower screens (down to 1024 px) the buttons keep their icons and drop their words. */}
+      <button
+        onClick={onSearch}
+        className="m-btn hidden h-7 flex-none gap-2 whitespace-nowrap text-muted md:inline-flex"
+        title={`Search actions (${showKeys('Ctrl+K')})`}
+        aria-label="Search"
+      >
         <Icon name="search" size={16} />
-        Search
-        <kbd className="m-kbd">{showKeys('Ctrl+K')}</kbd>
+        <span className="hidden xl:inline">Search</span>
+        <kbd className="m-kbd hidden xl:inline">{showKeys('Ctrl+K')}</kbd>
       </button>
       <LevelSwitcher />
-      <div role="radiogroup" aria-label="Mode" className="m-seg text-xs">
+      <div role="radiogroup" aria-label="Mode" className="m-seg flex-none text-xs whitespace-nowrap">
         {(['simple', 'pro'] as const).map((m) => (
           <button key={m} role="radio" aria-checked={mode === m} onClick={() => setMode(m)}>
             {m === 'simple' ? 'Simple' : 'Pro'}
           </button>
         ))}
       </div>
-      <div role="radiogroup" aria-label="View" className="m-seg text-xs">
+      <div role="radiogroup" aria-label="View" className="m-seg flex-none text-xs whitespace-nowrap">
         {[
           { on: false, label: '2D plan', icon: 'view-2d' as const },
           { on: true, label: '3D view', icon: 'view-3d' as const },
         ].map((v) => (
-          <button key={v.label} role="radio" aria-checked={view3d === v.on} onClick={() => setView3d(v.on)}>
+          <button
+            key={v.label}
+            role="radio"
+            aria-checked={view3d === v.on}
+            aria-label={v.label}
+            title={v.label}
+            onClick={() => setView3d(v.on)}
+          >
             <Icon name={v.icon} size={16} />
-            {v.label}
+            <span className="hidden xl:inline">{v.label}</span>
           </button>
         ))}
       </div>

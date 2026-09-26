@@ -3,6 +3,7 @@ import { aliasesFor } from './lib/aliases';
 import { exportModel, exportPlanDxf, exportPlanPdf, exportPlanPng } from './lib/exportActions';
 import { plannerStore, type PlannerState } from './store/plannerStore';
 import { THEMES } from './theme/themes';
+import { pasteToPlace } from './tools/controller';
 import { DRAW_TOOLS, TOOL_INFO } from './tools/toolInfo';
 import { MODIFY_TOOLS, SIMPLE_TOOLS, TOOLS, type Tool } from './types';
 
@@ -153,7 +154,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       menu: 'edit',
       group: 1,
       keys: ['Ctrl+V'],
-      run: () => st().paste(),
+      run: () => pasteToPlace(plannerStore),
       enabled: (s) => s.clipboard !== null,
     },
     {

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MENUS, showKeys, type Command } from '../commands';
 import { plannerStore, usePlanner } from '../store/plannerStore';
+import { pasteToPlace } from '../tools/controller';
 import { Icon } from './Icon';
+import { useFocusTrap, useMenuKeys } from './useFocus';
 
 /** A centred dialog over a dimmed app; Esc or a click outside closes it. */
 function Modal({
@@ -15,6 +17,8 @@ function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref);
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', esc);
@@ -26,6 +30,7 @@ function Modal({
       onPointerDown={onClose}
     >
       <div
+        ref={ref}
         role="dialog"
         aria-modal="true"
         aria-label={label}
@@ -175,31 +180,53 @@ export function ShortcutsDialog({ commands, onClose }: { commands: Command[]; on
   );
 }
 
-/** Asks before unsaved changes are thrown away. */
+/**
+ * Asks before unsaved changes are thrown away: Save (the default, Enter) saves and then carries on,
+ * Discard carries on without saving, and Cancel (or Esc) stays put.
+ */
 export function DiscardDialog({
   action,
+  onSave,
   onConfirm,
   onCancel,
 }: {
   action: 'new' | 'open';
+  onSave: () => void;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onCancel();
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onCancel]);
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/30">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/30" onPointerDown={onCancel}>
       <div
+        ref={ref}
         role="alertdialog"
+        aria-modal="true"
         aria-label="Unsaved changes"
-        className="w-[92vw] max-w-sm rounded-lg border border-line bg-raised p-4 shadow-popover"
+        aria-describedby="discard-text"
+        onPointerDown={(e) => e.stopPropagation()}
+        className="w-[92vw] max-w-md rounded-lg border border-line bg-raised p-4 shadow-popover"
       >
-        <p className="font-semibold">This plan has unsaved changes that will be lost.</p>
-        <p className="mt-1 text-xs text-muted">Save it first with Ctrl+S if you want to keep them.</p>
+        <p className="font-semibold">Save the changes to this plan first?</p>
+        <p id="discard-text" className="mt-1 text-xs text-muted">
+          {action === 'new' ? 'Starting a new plan' : 'Opening another plan'} replaces this one. Unsaved changes are
+          lost unless you save them.
+        </p>
         <div className="mt-4 flex justify-end gap-2">
-          <button autoFocus onClick={onCancel} className="m-btn">
+          <button onClick={onCancel} className="m-btn">
             Cancel
           </button>
           <button onClick={onConfirm} className="m-btn m-btn-danger">
-            {action === 'new' ? 'Discard and start new' : 'Discard and open'}
+            Don’t save
+          </button>
+          <button autoFocus onClick={onSave} className="m-btn m-btn-primary">
+            Save
           </button>
         </div>
       </div>
@@ -228,8 +255,8 @@ export function ContextMenu({
   const el = s.doc.elements.find((e) => e.id === at.id);
   const room = s.doc.rooms.find((r) => r.id === at.id);
 
+  useMenuKeys(ref);
   useEffect(() => {
-    ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && onClose();
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('pointerdown', close);
@@ -275,7 +302,7 @@ export function ContextMenu({
       danger: true,
     });
   } else {
-    items.push({ label: 'Paste', run: () => s.paste() });
+    if (s.clipboard) items.push({ label: 'Paste', run: () => pasteToPlace(plannerStore) });
     items.push({ label: 'Select all', run: () => s.selectAll() });
     items.push({ label: 'Zoom extents', run: () => s.fitToPlan() });
   }

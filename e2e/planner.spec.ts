@@ -46,6 +46,9 @@ test('opens a plan saved by Mimar 1.x', async ({ page }) => {
 
 test('exports a PNG', async ({ page }) => {
   await page.goto('/');
+  // An empty plan has nothing to export, so draw a wall first.
+  await tool(page, 'wall');
+  await drag(page, [100, 100], [500, 100]);
   const download = page.waitForEvent('download');
   await menu(page, 'File', 'Export PNG');
   expect((await download).suggestedFilename()).toBe('Untitled.png');
