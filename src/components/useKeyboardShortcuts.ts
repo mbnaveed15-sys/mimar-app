@@ -27,12 +27,40 @@ plannerStore.subscribe((state, prev) => {
   if (state.tool !== prev.tool && state.tool !== 'select') lastTool = state.tool;
 });
 
-/** Keys typed into a field, or used to move around a menu or dialog, are not shortcuts. */
-const isTyping = (target: EventTarget | null) =>
-  target instanceof HTMLElement &&
-  (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
-    target.isContentEditable ||
-    !!target.closest('[role="menu"], [role="menubar"], [role="dialog"], [role="alertdialog"]'));
+/** Inputs that take typed text: every key belongs to them. */
+const TEXT_INPUTS = new Set(['text', 'number', 'search', 'email', 'password', 'url', 'tel']);
+/** Keys a checkbox, radio button, slider or colour picker uses itself; other keys stay shortcuts. */
+const CONTROL_KEYS = new Set([
+  ' ',
+  'Enter',
+  'Tab',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'ArrowDown',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+]);
+
+/**
+ * Keys typed into a field, or used to move around a menu or dialog, are not shortcuts. A ticked
+ * checkbox or a moved slider keeps only the keys it uses, so tool keys still work after touching one.
+ */
+const isTyping = (target: EventTarget | null, key: string) => {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.closest('[role="menu"], [role="dialog"], [role="alertdialog"]')) return true;
+  // On a menu's name, the arrows and Enter work the menus; tool keys still work.
+  if (target.closest('[role="menubar"]')) return CONTROL_KEYS.has(key);
+  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target.isContentEditable)
+    return true;
+  if (target instanceof HTMLInputElement) return TEXT_INPUTS.has(target.type) || CONTROL_KEYS.has(key);
+  return false;
+};
+
+/** Keys that work even while typing in a field: saving, opening, starting afresh, printing, search. */
+const ANYWHERE = ['Ctrl+S', 'Ctrl+Shift+S', 'Ctrl+O', 'Ctrl+N', 'Ctrl+P', 'Ctrl+K'];
 
 const ARROWS: Record<string, [number, number]> = {
   ArrowLeft: [-1, 0],
@@ -49,7 +77,19 @@ const ARROWS: Record<string, [number, number]> = {
 export function useKeyboardShortcuts(commands: Command[]) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (isTyping(e.target)) return;
+      if (isTyping(e.target, e.key)) {
+        // In a dialog (the search box, say) only saving reaches the app.
+        const inDialog = e.target instanceof HTMLElement && !!e.target.closest('[role="dialog"], [role="alertdialog"]');
+        const keys = inDialog ? ['Ctrl+S', 'Ctrl+Shift+S'] : ANYWHERE;
+        if (!keys.some((k) => matchesKeys(e, k))) return;
+        const cmd = commands.find((c) => c.keys?.some((k) => matchesKeys(e, k)));
+        if (!cmd) return;
+        e.preventDefault();
+        // Finish the edit in the field first (fields take their value when they lose focus).
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        if (!cmd.enabled || cmd.enabled(plannerStore.getState())) cmd.run();
+        return;
+      }
       const s = plannerStore.getState();
       const mod = e.ctrlKey || e.metaKey || e.altKey;
       const kind = MEASURE_TOOLS[s.tool];
@@ -159,11 +199,18 @@ export function useKeyboardShortcuts(commands: Command[]) {
     function onKeyUp(e: KeyboardEvent) {
       if (e.key === 'Shift') plannerStore.getState().setShiftLock(null);
     }
+    /** A drop-down keeps every key while it has focus (letters pick options): let go once a choice is made. */
+    function onChange(e: Event) {
+      const t = e.target;
+      if (t instanceof HTMLSelectElement && !t.closest('[role="dialog"], [role="alertdialog"]')) t.blur();
+    }
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('change', onChange);
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('change', onChange);
     };
   }, [commands]);
 }

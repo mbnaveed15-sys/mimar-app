@@ -104,9 +104,38 @@ test('asks before discarding unsaved changes, even after a reload', async ({ pag
   await expect(page.getByRole('alertdialog')).toBeVisible();
   await page.getByRole('button', { name: 'Cancel' }).click();
   expect(await page.locator('[data-type="wall"]').count()).toBe(1);
+  // Esc stays put too.
   await menu(page, 'File', 'New');
-  await page.getByRole('button', { name: 'Discard and start new' }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  expect(await page.locator('[data-type="wall"]').count()).toBe(1);
+  // Save (the default, so Enter) saves the plan, then starts the new one.
+  await menu(page, 'File', 'New');
+  const download = page.waitForEvent('download');
+  await page.keyboard.press('Enter');
+  expect((await download).suggestedFilename()).toBe('Untitled.mimar');
+  await expect(page.locator('[data-type="wall"]')).toHaveCount(0);
+  // Don't save throws the changes away.
+  await tool(page, 'wall');
+  await drag(page, [304.8, 304.8], [609.6, 304.8]);
+  await menu(page, 'File', 'New');
+  await page.getByRole('button', { name: 'Don’t save' }).click();
   expect(await page.locator('[data-type="wall"]').count()).toBe(0);
+});
+
+test('tool keys still work after ticking a box in the side panel, and Ctrl+S saves from a field', async ({ page }) => {
+  const rail = page.getByRole('navigation', { name: 'Tools' });
+  const pressed = (name: string) => rail.getByRole('button', { name, exact: true });
+  const box = page.locator('aside input[type="checkbox"]').first();
+  await box.click();
+  await page.keyboard.press('l');
+  await expect(pressed('Wall')).toHaveAttribute('aria-pressed', 'true');
+  await tool(page, 'wall');
+  await drag(page, [304.8, 304.8], [609.6, 304.8]);
+  await page.locator('aside input[type="text"], aside input:not([type])').first().focus();
+  const download = page.waitForEvent('download');
+  await page.keyboard.press('Control+s');
+  expect((await download).suggestedFilename()).toBe('Untitled.mimar');
 });
 
 test('opening a file that is not a plan shows a clear message', async ({ page }) => {

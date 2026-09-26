@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import { createStore, useStore } from 'zustand';
 import { usePlanner } from '../store/plannerStore';
 import { TOOL_INFO } from '../tools/toolInfo';
@@ -14,6 +21,7 @@ import {
 } from '../lib/toolbars';
 import { SIMPLE_TOOLS, type Tool } from '../types';
 import { Icon } from './Icon';
+import { useMenuKeys } from './useFocus';
 
 /** A tool bar being dragged by its grip: where the pointer is, and where the bar would go. */
 interface Drag {
@@ -29,7 +37,10 @@ interface Drag {
   } | null;
 }
 
-const dragStore = createStore<{ drag: Drag | null; menu: { id: ToolbarId; x: number; y: number } | null }>(() => ({
+const dragStore = createStore<{
+  drag: Drag | null;
+  menu: { id: ToolbarId; x: number; y: number; keys?: boolean } | null;
+}>(() => ({
   drag: null,
   menu: null,
 }));
@@ -104,6 +115,13 @@ function Grip({ id, vertical }: { id: ToolbarId; vertical: boolean }) {
       onContextMenu={(e) => {
         e.preventDefault();
         dragStore.setState({ menu: { id, x: e.clientX, y: e.clientY } });
+      }}
+      onKeyDown={(e) => {
+        // From the keyboard, Enter or Space opens the menu of places to dock the bar.
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        const r = e.currentTarget.getBoundingClientRect();
+        dragStore.setState({ menu: { id, x: r.right, y: r.bottom, keys: true } });
       }}
       className={`flex flex-none cursor-grab touch-none items-center justify-center rounded-sm text-muted hover:bg-sunken hover:text-ink ${
         vertical ? 'h-3 w-9' : 'h-9 w-3'
@@ -283,6 +301,43 @@ function UndoRedo() {
   );
 }
 
+/** A grip's menu: keyboard-friendly, and it hands focus back to the grip when it closes. */
+function GripMenu({
+  x,
+  y,
+  gripId,
+  keys,
+  children,
+}: {
+  x: number;
+  y: number;
+  gripId: ToolbarId;
+  /** Opened from the keyboard: focus goes back to the grip afterwards. */
+  keys?: boolean;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useMenuKeys(ref);
+  useEffect(
+    () => () => {
+      if (keys) document.querySelector<HTMLElement>(`[data-grip="${gripId}"]`)?.focus();
+    },
+    [gripId, keys],
+  );
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      aria-label="Tool bar"
+      className="absolute flex min-w-40 flex-col rounded-md border border-line bg-raised py-1 text-xs shadow-popover"
+      style={{ left: Math.min(x, window.innerWidth - 170), top: Math.min(y, window.innerHeight - 200) }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {children}
+    </div>
+  );
+}
+
 /** While a bar is dragged: its name by the pointer, and a line where it would land. Also the grip's menu. */
 export function ToolDockOverlay() {
   const drag = useStore(dragStore, (s) => s.drag);
@@ -327,19 +382,13 @@ export function ToolDockOverlay() {
       )}
       {menu && (
         <div className="fixed inset-0 z-50" onPointerDown={close} onContextMenu={(e) => (e.preventDefault(), close())}>
-          <div
-            role="menu"
-            aria-label="Tool bar"
-            className="absolute flex min-w-40 flex-col rounded-md border border-line bg-raised py-1 text-xs shadow-popover"
-            style={{ left: menu.x, top: menu.y }}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
+          <GripMenu x={menu.x} y={menu.y} gripId={menu.id} keys={menu.keys}>
             {DOCK_AREAS.map((a) => (
               <button
                 key={a}
                 role="menuitem"
                 disabled={a === where}
-                className="px-3 py-1.5 text-left hover:bg-sunken disabled:text-muted"
+                className="px-3 py-1.5 text-left hover:bg-sunken focus:bg-sunken focus:outline-none disabled:text-muted"
                 onClick={() => {
                   dockToolbar(menu.id, a);
                   close();
@@ -351,7 +400,7 @@ export function ToolDockOverlay() {
             <div className="my-1 border-t border-line" />
             <button
               role="menuitem"
-              className="px-3 py-1.5 text-left hover:bg-sunken"
+              className="px-3 py-1.5 text-left hover:bg-sunken focus:bg-sunken focus:outline-none"
               onClick={() => {
                 resetToolbars();
                 close();
@@ -359,7 +408,7 @@ export function ToolDockOverlay() {
             >
               Reset tool bars
             </button>
-          </div>
+          </GripMenu>
         </div>
       )}
     </>

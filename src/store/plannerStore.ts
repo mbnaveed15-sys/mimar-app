@@ -258,6 +258,10 @@ export interface PlannerState {
   /** Throw away everything since beginBatch (Esc during a move or rotate). */
   cancelBatch: () => void;
   undo: () => void;
+  /** Throw away the last undo step without keeping it for redo (a paste taken back with Esc). */
+  discardLastStep: () => void;
+  /** Join the last two undo steps into one (a paste and where it was placed). */
+  mergeLastSteps: () => void;
   redo: () => void;
 
   setTool: (tool: Tool) => void;
@@ -564,6 +568,14 @@ export function createPlannerStore(
       cancelBatch: () => {
         const { batchBase } = get();
         if (batchBase) set({ doc: batchBase, batchBase: null });
+      },
+      discardLastStep: () => {
+        const { past } = get();
+        if (past.length) set({ doc: past[past.length - 1], past: past.slice(0, -1), future: [] });
+      },
+      mergeLastSteps: () => {
+        const { past } = get();
+        if (past.length) set({ past: past.slice(0, -1) });
       },
       undo: () => {
         get().endBatch();

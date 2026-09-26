@@ -6,6 +6,7 @@ import {
   nearestWall,
   nearestWallEnd,
   placeOnWall,
+  pointInPolygon,
   pointToSegmentDistance,
   snap,
   toFurnitureLocal,
@@ -448,14 +449,20 @@ export function usePlanInput(
     }
   }
 
-  /** A click on empty space picks the room there; a box picks what it covers or crosses. */
+  /**
+   * A click on empty space picks the room there or, outside every room, the plot it is on (its
+   * edge is often under a boundary wall); a box picks what it covers or crosses.
+   */
   function finishBox(drag: Extract<Drag, { kind: 'box' }>, end: Point) {
     const s = plannerStore.getState();
     const d = s.draft;
     if (d?.type !== 'marquee') {
-      const room = s.roomAt(drag.start);
-      if (drag.additive && room) s.toggleSelect(room.id);
-      else s.select(room?.id ?? null);
+      const plot = [...s.pickableElements()]
+        .reverse()
+        .find((el) => el.type === 'plot' && pointInPolygon(drag.start, el.points));
+      const picked = s.roomAt(drag.start) ?? plot;
+      if (drag.additive && picked) s.toggleSelect(picked.id);
+      else s.select(picked?.id ?? null);
       return;
     }
     s.setDraft(null);

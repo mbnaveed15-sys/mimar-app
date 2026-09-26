@@ -367,7 +367,7 @@ export function toggleHeightLock(store: Store): boolean {
 export function toggleCopy(store: Store) {
   const s = store.getState();
   const d = s.draft;
-  if (d?.type !== 'move') return;
+  if (d?.type !== 'move' || d.pasted) return;
   if (
     d.ids.every((id) =>
       s.batchBase?.elements.find((el) => el.id === id && (el.type === 'door' || el.type === 'window')),
@@ -402,7 +402,10 @@ function finishMove(store: Store) {
     selection = copyIds;
   }
   if (s.axisLock === 'z') s.setAxisLock(null);
+  const steps = store.getState().past.length;
   s.endBatch();
+  // A paste and where it was put down are one step to undo.
+  if (d.pasted && store.getState().past.length > steps) s.mergeLastSteps();
   s.setDraft(null);
   s.setSelection(selection);
   s.setLastCopy(lastCopy);
@@ -693,6 +696,27 @@ export function applyMeasure(store: Store, text: string): boolean {
   return false;
 }
 
+/**
+ * Paste, AutoCAD style: the copies hang on the pointer by their bottom-left corner (snapping like
+ * Move) until a click puts them down; Esc takes the paste back.
+ */
+export function pasteToPlace(store: Store) {
+  let s = store.getState();
+  if (!s.clipboard) return;
+  if (s.draft) cancel(store);
+  s.setTool('move');
+  s = store.getState();
+  s.paste();
+  s = store.getState();
+  const ids = s.selectedIds;
+  const box = selectionBounds(s.doc, ids);
+  if (!ids.length || !box) return;
+  const base = { x: box.minX, y: box.maxY };
+  s.beginBatch();
+  s.setDraft({ type: 'move', ids, base, to: base, copy: false, pasted: true });
+  s.setWarning(null);
+}
+
 /** Esc: cancel the current step. Returns false when there was nothing to cancel. */
 export function cancel(store: Store): boolean {
   const s = store.getState();
@@ -707,6 +731,8 @@ export function cancel(store: Store): boolean {
   const d = s.draft;
   if (!d) return false;
   if (['move', 'rotate', 'mirror', 'stretch', 'scale', 'push'].includes(d.type)) s.cancelBatch();
+  // Esc while placing a paste takes the paste back too.
+  if (d.type === 'move' && d.pasted) s.discardLastStep();
   if (d.type === 'brush') s.endBatch();
   s.setDraft(null);
   return true;
@@ -795,6 +821,8 @@ export function toolHint(s: PlannerState): string {
     case 'move':
       if (d?.type === 'move' && s.axisLock === 'z')
         return 'Move the pointer up or down to raise or lower, or type a height. Arrow up/down again to move across.';
+      if (d?.type === 'move' && d.pasted)
+        return 'Pasted: click where it goes (it hangs by its bottom-left corner and snaps), or type a distance. Esc takes the paste back.';
       if (d?.type === 'move')
         return d.copy
           ? 'Copying: click where the copy goes, or type a distance. Then type 3x or /3 for more copies.'

@@ -22,9 +22,9 @@ export function LevelSwitcher() {
 
   const item = 'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent-soft';
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative flex-none">
       <button
-        className="m-btn h-7 text-xs"
+        className="m-btn h-7 max-w-40 text-xs whitespace-nowrap"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Floor: ${current.name}`}
@@ -35,7 +35,7 @@ export function LevelSwitcher() {
         }}
       >
         <Icon name="levels" size={16} />
-        {current.name}
+        <span className="truncate">{current.name}</span>
       </button>
       {open && (
         <div

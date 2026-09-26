@@ -37,8 +37,23 @@ function exportName() {
   return doc.levels.length > 1 && level ? `${baseName(fileName)} – ${level.name}` : baseName(fileName);
 }
 
+/** Say so, rather than make a blank drawing, when the floor being viewed has nothing on it. */
+function emptyFloor(): boolean {
+  const { doc } = exportContent();
+  const s = plannerStore.getState();
+  if (doc.elements.length || doc.rooms.length || s.doc.masks.length) return false;
+  const others = s.doc.levels.length > 1 && s.doc.elements.length > 0;
+  s.setWarning(
+    others
+      ? 'This floor is empty, so there is nothing to export. Switch to a floor with something on it (Page Up / Page Down).'
+      : 'The plan is empty, so there is nothing to export yet. Draw some walls or rooms first.',
+  );
+  return true;
+}
+
 /** Download the plan as a PNG, with the grid if it is shown. */
 export function exportPlanPng() {
+  if (emptyFloor()) return;
   const { gridPx, grid, setWarning } = plannerStore.getState();
   const shownGrid = grid.show ? { step: gridPx, look: grid } : null;
   exportPng(exportContent(), exportArea(), shownGrid, `${exportName()}.png`).catch((e) =>
@@ -48,6 +63,7 @@ export function exportPlanPng() {
 
 /** Download a print-ready PDF at a true scale. */
 export function exportPlanPdf() {
+  if (emptyFloor()) return;
   const { paper, units, marlaSqFt, setWarning, pdfCheck, doc, wallHeightMm } = plannerStore.getState();
   const { showHints, pdfHints } = plannerStore.getState();
   const check = planCheck(doc, { wallHeightMm, units });
@@ -90,6 +106,7 @@ function saveBlob(data: BlobPart, type: string, filename: string) {
 
 /** Download the floor being viewed as an AutoCAD DXF, in millimetres. */
 export function exportPlanDxf() {
+  if (emptyFloor()) return;
   const s = plannerStore.getState();
   const { doc } = exportContent();
   try {

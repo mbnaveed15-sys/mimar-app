@@ -428,6 +428,8 @@ export type Draft =
       dz?: number;
       screenY?: number;
       zFrom?: { y: number; dz: number };
+      /** Just pasted: placing it finishes the paste (one undo step), Esc takes the paste back. */
+      pasted?: boolean;
     }
   | { type: 'rotate'; ids: Id[]; center: Point; start?: Point; angle: number }
   /** Offset: a parallel copy of a wall follows the pointer. */

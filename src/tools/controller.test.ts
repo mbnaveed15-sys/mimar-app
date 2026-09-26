@@ -10,6 +10,7 @@ import {
   cancel,
   hover,
   measureReadout,
+  pasteToPlace,
   press,
   release,
   toggleAxisLock,
@@ -274,5 +275,38 @@ describe('SketchUp-style tools', () => {
     press(store, { x: 0, y: 0 }); // on the wall's end
     const d = store.getState().draft;
     expect(d?.type === 'move' && d.ids).toEqual([bed.id]);
+  });
+});
+
+describe('paste, AutoCAD style', () => {
+  it('hangs the copies on the pointer until a click puts them down, as one undo step', () => {
+    const store = setup();
+    store.getState().addWall({ x: 0, y: 0 }, { x: 10 * FT, y: 0 });
+    store.getState().select(walls(store)[0].id);
+    store.getState().copySelected();
+    pasteToPlace(store);
+    expect(store.getState().tool).toBe('move');
+    expect(store.getState().draft).toMatchObject({ type: 'move', pasted: true });
+    hover(store, { x: 20 * FT, y: 20 * FT });
+    click(store, 20 * FT, 20 * FT);
+    expect(store.getState().draft).toBeNull();
+    const copy = walls(store)[1];
+    expect([copy.x1, copy.y1]).toEqual([20 * FT, 20 * FT]);
+    store.getState().undo();
+    expect(walls(store)).toHaveLength(1);
+  });
+
+  it('Esc takes the paste back', () => {
+    const store = setup();
+    store.getState().addWall({ x: 0, y: 0 }, { x: 10 * FT, y: 0 });
+    store.getState().select(walls(store)[0].id);
+    store.getState().copySelected();
+    const history = store.getState().past.length;
+    pasteToPlace(store);
+    hover(store, { x: 20 * FT, y: 20 * FT });
+    expect(walls(store)).toHaveLength(2);
+    cancel(store);
+    expect(walls(store)).toHaveLength(1);
+    expect(store.getState().past.length).toBe(history);
   });
 });
