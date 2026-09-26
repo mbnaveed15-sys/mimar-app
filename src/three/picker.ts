@@ -24,6 +24,11 @@ export interface Picker3D {
    * that line nearest the line of sight through the screen position.
    */
   alongLine(clientX: number, clientY: number, origin: Vec3, dir: Vec3): number | null;
+  /**
+   * Where the other items start and stop along one axis of the scene (0 = x, 1 = up, 2 = z), in
+   * metres: their tops and bottoms, or their sides, for Push/Pull to snap to.
+   */
+  extentsAlong?(axis: 0 | 1 | 2, exceptId: Id): number[];
 }
 
 let current: Picker3D | null = null;

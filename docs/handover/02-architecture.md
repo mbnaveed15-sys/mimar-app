@@ -77,7 +77,14 @@ autosaves to local storage on every change.
 - 3D: `src/three/model.ts` turns the plan into boxes, floors, slabs (with voids), blocks and upright panels
   (the wall round a round/arched/polygon opening, its glass, and flat wall shapes) (pure, tested);
   `Plan3DView.tsx` renders with three.js, raycasts for picking/drawing, shows previews (`draft3d.ts`),
-  and uses `cameraRig.ts` for the camera.
+  and uses `cameraRig.ts` for the camera (orbit, pan, dolly, pivot about a point, extents, standard views, and a
+  parallel camera kept framed like the perspective one; `rig.active` is the one to render and pick with).
+  `viewControls.ts` lets menu commands reach the 3D camera (zoom, extents, standard view, parallel); a view asked
+  for before 3D opens is kept until it does. Materials are cached for the session by look (`MATERIALS`, with their
+  faded/lit/red variants), one `WebGLRenderer` is reused across opens, and anything in `KEPT` is never disposed.
+  A wall's two sides (`materialA` on its left normal (-dy, dx), `materialB` the other) become `sides` on its
+  solids and panels: box faces +z/−z and the panel caps (split by `splitCaps`) take their own material, in the view
+  and in `export3d.ts`.
 - Materials: `src/lib/materials.ts` (library), `patterns.ts` (procedural textures for 3D and swatches).
 
 ## Exports

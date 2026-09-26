@@ -47,6 +47,19 @@ describe('3D export', () => {
     expect(volume(slab)).toBeCloseTo(4 * 3 * 0.15, 4);
   });
 
+  it('exports a wall side with its own material as its own mesh, still closed', () => {
+    const sided: PlanDoc = {
+      ...emptyDoc(),
+      plinthMm: 0,
+      elements: [{ id: 'w', type: 'wall', x1: 0, y1: 0, x2: 500, y2: 0, thickness: 23, materialA: 'mat_wood' }],
+    };
+    const out = modelMeshes(buildModel(sided, { wallHeightMm: DEFAULT_WALL_HEIGHT_MM, showFurniture: true }));
+    const wood = out.find((m) => m.material.name === 'Wood')!;
+    expect(wood.indices).toHaveLength(6); // one face
+    expect(wood.normals.slice(0, 3)).toEqual([0, 0, 1]); // side A of a wall along x faces +z (plan +y)
+    expect(out.reduce((v, m) => v + volume(m), 0)).toBeCloseTo(5 * 0.23 * 3.048, 3);
+  });
+
   it('writes a valid binary glTF', () => {
     const glb = toGlb(meshes);
     const view = new DataView(glb.buffer);

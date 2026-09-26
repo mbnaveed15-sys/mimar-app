@@ -5,7 +5,8 @@ import { usePlanInput } from '../components/usePlanInput';
 import { useTouch } from '../components/useTouch';
 import { downloadUrl } from '../lib/exportPng';
 import { baseName } from '../lib/files';
-import type { SnapKind } from '../lib/inference';
+import { SNAP_LABELS, type SnapKind } from '../lib/inference';
+import { protractor } from '../lib/protractor';
 import { formatLength } from '../lib/units';
 import { plannerStore, usePlanner, type PlannerState } from '../store/plannerStore';
 import { themeColor } from '../theme/themes';
@@ -15,8 +16,10 @@ import { CameraRig } from './cameraRig';
 import { draftElements, draftLines } from './draft3d';
 import { withoutHidden } from '../lib/layers';
 import { shapeDraftScene } from '../tools/shapeTools';
-import { getPicker, setPicker, type FaceHit, type Picker3D } from './picker';
-import { buildModel, levelBaseM, M_PER_UNIT, type Finish, type Model3D } from './model';
+import { getPicker, getPointer, setPicker, type FaceHit, type Picker3D } from './picker';
+import type { StandardView } from './cameraRig';
+import { isParallel, requestView, setViewControls, toggleParallel } from './viewControls';
+import { buildModel, levelBaseM, M_PER_UNIT, type Finish, type Model3D, type Sides } from './model';
 
 function hasWebGL(): boolean {
   try {
@@ -27,17 +30,64 @@ function hasWebGL(): boolean {
   }
 }
 
+/**
+ * Free a group's geometry. Materials of the building are shared and kept (see MATERIALS), so an
+ * edit doesn't make the graphics card compile its shaders again; others are freed with the group.
+ */
 function disposeGroup(group: THREE.Object3D) {
   group.traverse((obj) => {
     if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
       obj.geometry.dispose();
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       mats.forEach((m) => {
+        if (KEPT.has(m)) return;
         if (m instanceof THREE.MeshStandardMaterial) m.map?.dispose();
         m.dispose();
       });
     }
   });
+}
+
+/** The building's materials by look, kept for the whole session and shared by every rebuild. */
+const MATERIALS = new Map<string, THREE.Material>();
+/** Materials that live on across rebuilds (the shared ones and their faded or lit variants). */
+const KEPT = new WeakSet<THREE.Material>();
+const keep = <T extends THREE.Material>(m: T): T => {
+  KEPT.add(m);
+  return m;
+};
+const EDGE_MATERIAL = keep(new THREE.LineBasicMaterial({ color: '#57534e', transparent: true, opacity: 0.35 }));
+/** Each mesh's box in the scene, worked out once (the model's meshes don't move once built). */
+const BOXES = new WeakMap<THREE.Object3D, THREE.Box3>();
+function boxOf(obj: THREE.Object3D): THREE.Box3 {
+  let box = BOXES.get(obj);
+  if (!box) {
+    box = new THREE.Box3().setFromObject(obj);
+    BOXES.set(obj, box);
+  }
+  return box;
+}
+
+/** Faded, lit and red variants of each shared material, made once. */
+const EXTRAS = new Map<string, Map<THREE.Material, THREE.Material>>();
+
+/**
+ * One renderer for the session: the 3D view reuses it each time it opens instead of making a new
+ * one (and a new graphics context) every time.
+ */
+let sharedRenderer: THREE.WebGLRenderer | null = null;
+function rendererFor(): THREE.WebGLRenderer {
+  if (!sharedRenderer) {
+    sharedRenderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    sharedRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    sharedRenderer.shadowMap.enabled = true;
+    sharedRenderer.shadowMap.type = THREE.PCFShadowMap;
+    // Checking every shader for errors is slow; only worth it while developing.
+    sharedRenderer.debug.checkShaderErrors = import.meta.env.DEV;
+    sharedRenderer.domElement.dataset.testid = 'plan-3d-canvas';
+    sharedRenderer.domElement.className = 'block h-full w-full';
+  }
+  return sharedRenderer;
 }
 
 const TEXTURE_PX = 256;
@@ -72,35 +122,73 @@ function metricUVs(geometry: THREE.BufferGeometry) {
   uv.needsUpdate = true;
 }
 
+/**
+ * An upright panel's two caps as their own groups, so each side can have its own material: the
+ * front cap (+z, side A) takes material 2 and the back (-z, side B) material 3; the edges keep 1.
+ */
+function splitCaps(geometry: THREE.BufferGeometry) {
+  const caps = geometry.groups.find((g) => g.materialIndex === 0);
+  if (!caps) return;
+  const pos = geometry.getAttribute('position');
+  const end = caps.start + caps.count;
+  const back: number[] = [];
+  const front: number[] = [];
+  for (let i = caps.start; i < end; i += 3) (pos.getZ(i) < 0 ? back : front).push(i);
+  // three.js lays the back cap's triangles first, then the front's; keep that order.
+  const split = caps.start + back.length * 3;
+  if (back.some((i, k) => i !== caps.start + k * 3)) return;
+  geometry.groups = geometry.groups.filter((g) => g !== caps);
+  geometry.addGroup(caps.start, split - caps.start, 3);
+  geometry.addGroup(split, end - split, 2);
+}
+
 const ROUGHNESS: Partial<Record<Pattern, number>> = { marble: 0.35, granite: 0.4, metal: 0.4, glass: 0.1, tiles: 0.5 };
 
 function buildMeshes(model: Model3D): THREE.Group {
   const group = new THREE.Group();
-  const materials = new Map<string, THREE.Material>();
+  const materials = MATERIALS;
   const material = (color: string, opacity = 1, finish?: Finish) => {
     const key = `${color}/${opacity}/${finish?.pattern}/${finish?.spanM}`;
     let mat = materials.get(key);
     if (!mat) {
       const map = finish ? patternTexture(color, finish) : null;
-      mat = new THREE.MeshStandardMaterial({
-        color: map ? '#ffffff' : color,
-        map,
-        roughness: (finish && ROUGHNESS[finish.pattern]) ?? 0.85,
-        metalness: finish?.pattern === 'metal' ? 0.5 : 0,
-        transparent: opacity < 1,
-        opacity,
-        side: THREE.DoubleSide,
-      });
+      mat = keep(
+        new THREE.MeshStandardMaterial({
+          color: map ? '#ffffff' : color,
+          map,
+          roughness: (finish && ROUGHNESS[finish.pattern]) ?? 0.85,
+          metalness: finish?.pattern === 'metal' ? 0.5 : 0,
+          transparent: opacity < 1,
+          opacity,
+          side: THREE.DoubleSide,
+        }),
+      );
       materials.set(key, mat);
     }
     return mat;
   };
-  const edgeMaterial = new THREE.LineBasicMaterial({ color: '#57534e', transparent: true, opacity: 0.35 });
+  const edgeMaterial = EDGE_MATERIAL;
+  /** A wall piece's materials: its own look, and each big face's (side A on +z, side B on -z). */
+  const sideLooks = (s: { color: string; opacity?: number; finish?: Finish; sides?: Sides }) => {
+    const main = material(s.color, s.opacity, s.finish);
+    const { plus, minus } = s.sides ?? {};
+    return {
+      main,
+      plus: plus ? material(plus.color, s.opacity, plus.finish) : main,
+      minus: minus ? material(minus.color, s.opacity, minus.finish) : main,
+      patterned: !!(s.finish || plus?.finish || minus?.finish),
+    };
+  };
 
   for (const s of model.solids) {
     const geometry = new THREE.BoxGeometry(Math.max(s.w, 0.001), Math.max(s.h, 0.001), Math.max(s.d, 0.001));
-    if (s.finish) metricUVs(geometry);
-    const mesh = new THREE.Mesh(geometry, material(s.color, s.opacity, s.finish));
+    const looks = sideLooks(s);
+    if (looks.patterned) metricUVs(geometry);
+    // A box's faces come in the order +x, -x, +y, -y, +z, -z.
+    const mesh = new THREE.Mesh(
+      geometry,
+      s.sides ? [looks.main, looks.main, looks.main, looks.main, looks.plus, looks.minus] : looks.main,
+    );
     mesh.position.set(s.x, s.y0 + s.h / 2, s.z);
     mesh.rotation.y = s.rotY;
     mesh.castShadow = s.role !== 'glass';
@@ -171,8 +259,10 @@ function buildMeshes(model: Model3D): THREE.Group {
       curveSegments: 1,
     });
     geometry.translate(0, 0, -panel.depth / 2);
-    if (panel.finish) metricUVs(geometry);
-    const mesh = new THREE.Mesh(geometry, material(panel.color, panel.opacity ?? 1, panel.finish));
+    const looks = sideLooks(panel);
+    if (looks.patterned) metricUVs(geometry);
+    if (panel.sides) splitCaps(geometry);
+    const mesh = new THREE.Mesh(geometry, panel.sides ? [looks.main, looks.main, looks.plus, looks.minus] : looks.main);
     mesh.position.set(panel.x, panel.y0, panel.z);
     mesh.rotation.y = panel.rotY;
     mesh.castShadow = panel.role === 'wall';
@@ -199,7 +289,9 @@ interface Stage {
   raycaster: THREE.Raycaster;
   last: Model3D | null;
   fitted: boolean;
-  /** Materials made for faded floors and highlighted items (by look, then base material), freed with the model. */
+  /** A standard view asked for before the building was first built. */
+  pendingView: StandardView | null;
+  /** Materials made for faded floors and highlighted items (by look, then base material), kept for the session. */
   extras: Map<string, Map<THREE.Material, THREE.Material>>;
   render: () => void;
 }
@@ -257,7 +349,7 @@ function styleMeshes(stage: Stage, s: PlannerState) {
   ) => {
     let m = looks.get(base);
     if (!m) {
-      const copy = (base as THREE.MeshStandardMaterial).clone();
+      const copy = keep((base as THREE.MeshStandardMaterial).clone());
       make(copy);
       looks.set(base, copy);
       m = copy;
@@ -271,21 +363,24 @@ function styleMeshes(stage: Stage, s: PlannerState) {
       return;
     }
     if (!(obj instanceof THREE.Mesh)) return;
-    const base: THREE.Material = (obj.userData.base ??= obj.material);
+    const base: THREE.Material | THREE.Material[] = (obj.userData.base ??= obj.material);
+    // A wall with a material per side has a list of them: each gets the look.
+    const each = (looks: Map<THREE.Material, THREE.Material>, make: (m: THREE.MeshStandardMaterial) => void) =>
+      Array.isArray(base) ? base.map((b) => variant(looks, b, make)) : variant(looks, base, make);
     obj.userData.pickable = !!obj.userData.id && !above;
     if (above)
-      obj.material = variant(faded, base, (m) => {
+      obj.material = each(faded, (m) => {
         m.transparent = true;
         m.opacity = 0.12;
         m.depthWrite = false;
       });
     else if (obj.userData.id && erasing.has(obj.userData.id))
-      obj.material = variant(red, base, (m) => {
+      obj.material = each(red, (m) => {
         m.emissive = new THREE.Color('#dc2626');
         m.emissiveIntensity = 0.6;
       });
     else if (obj.userData.id && selected.has(obj.userData.id))
-      obj.material = variant(lit, base, (m) => {
+      obj.material = each(lit, (m) => {
         m.emissive = new THREE.Color('#2563eb');
         m.emissiveIntensity = 0.45;
       });
@@ -349,13 +444,17 @@ const GHOST = new THREE.MeshStandardMaterial({
   depthWrite: false,
 });
 
-/** Redraw what is being drawn, the snap marker and guide lines. */
-function drawOverlay(stage: Stage, s: PlannerState, pxMetres: number) {
+/**
+ * Redraw what is being drawn, the snap marker and guide lines. `hitY` is the height (metres) of what
+ * the pointer is on, so the marker shows there (a wall's top corner, say) rather than on the floor.
+ */
+function drawOverlay(stage: Stage, s: PlannerState, pxMetres: number, hitY: number | null) {
   stage.scene.remove(stage.overlay);
   stage.overlay.traverse((obj) => {
     if (obj instanceof THREE.Mesh || obj instanceof THREE.Line) {
       obj.geometry.dispose();
-      if (obj.material !== GHOST) (obj.material as THREE.Material).dispose();
+      const m = obj.material as THREE.Material;
+      if (m !== GHOST && !KEPT.has(m)) m.dispose();
     }
   });
   const overlay = new THREE.Group();
@@ -370,7 +469,7 @@ function drawOverlay(stage: Stage, s: PlannerState, pxMetres: number) {
     );
     ghost.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
-        (obj.material as THREE.Material).dispose();
+        // The ghost's own materials are the shared ones: swap them for the ghost look, don't free them.
         obj.material = GHOST;
         obj.castShadow = false;
       }
@@ -379,16 +478,40 @@ function drawOverlay(stage: Stage, s: PlannerState, pxMetres: number) {
   }
   const lines = draftLines(s);
   if (lines.length) {
-    const pts = lines.flatMap(([a, b]) => [
-      new THREE.Vector3(a.x * M_PER_UNIT, base + 0.02, a.y * M_PER_UNIT),
-      new THREE.Vector3(b.x * M_PER_UNIT, base + 0.02, b.y * M_PER_UNIT),
+    const pts = lines.flatMap(([a, b, z]) => [
+      new THREE.Vector3(a.x * M_PER_UNIT, base + (z ? z[0] / 1000 : 0) + 0.02, a.y * M_PER_UNIT),
+      new THREE.Vector3(b.x * M_PER_UNIT, base + (z ? z[1] / 1000 : 0) + 0.02, b.y * M_PER_UNIT),
     ]);
     const geometry = new THREE.BufferGeometry().setFromPoints(pts);
-    overlay.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: '#2563eb' })));
+    // A tape off the floor is drawn over what is in front of it, so it shows where it runs.
+    const lifted = lines.some(([, , z]) => z && (z[0] > 0 || z[1] > 0));
+    const segs = new THREE.LineSegments(
+      geometry,
+      new THREE.LineBasicMaterial({ color: '#2563eb', depthTest: !lifted }),
+    );
+    segs.renderOrder = lifted ? 10 : 0;
+    overlay.add(segs);
+  }
+  const d = s.draft;
+  if (d?.type === 'rotate') {
+    // The protractor, about 60 pixels across whatever the zoom, flat on the floor.
+    const { ring, ticks, arc } = protractor(d.center, (pxMetres * 60) / M_PER_UNIT, d.start, d.angle);
+    const at = (p: Point) => new THREE.Vector3(p.x * M_PER_UNIT, base + 0.02, p.y * M_PER_UNIT);
+    const segs: Point[] = [
+      ...ring.flatMap((p, i) => [p, ring[(i + 1) % ring.length]]),
+      ...ticks.flat(),
+      ...arc.flatMap((p, i) => (i ? [arc[i - 1], p] : [d.center, p])),
+      ...(arc.length ? [arc[arc.length - 1], d.center] : []),
+    ];
+    const lines = new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(segs.map(at)),
+      new THREE.LineBasicMaterial({ color: '#2563eb', depthTest: false }),
+    );
+    lines.renderOrder = 10;
+    overlay.add(lines);
   }
   const outline = shapeDraftScene(s);
   if (outline.length >= 2) {
-    const d = s.draft;
     const closed = d?.type === 'shape' && d.kind !== 'polygon';
     const pts = outline.map(([x, y, z]) => new THREE.Vector3(x, y, z));
     const geometry = new THREE.BufferGeometry().setFromPoints(closed ? [...pts, pts[0]] : pts);
@@ -403,8 +526,20 @@ function drawOverlay(stage: Stage, s: PlannerState, pxMetres: number) {
       new THREE.MeshBasicMaterial({ color: SNAP_COLORS[inf.kind], depthTest: false }),
     );
     marker.renderOrder = 10;
-    marker.position.set(inf.point.x * M_PER_UNIT, base + 0.01, inf.point.y * M_PER_UNIT);
+    const y = hitY !== null && hitY > base + 0.05 ? hitY : base + 0.01;
+    const [x, z] = [inf.point.x * M_PER_UNIT, inf.point.y * M_PER_UNIT];
+    marker.position.set(x, y, z);
     overlay.add(marker);
+    if (y > base + 0.05) {
+      // A dashed line down to the floor being drawn on, where the point lands.
+      const drop = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x, y, z), new THREE.Vector3(x, base, z)]),
+        new THREE.LineDashedMaterial({ color: SNAP_COLORS[inf.kind], dashSize: 0.1, gapSize: 0.07, depthTest: false }),
+      );
+      drop.computeLineDistances();
+      drop.renderOrder = 10;
+      overlay.add(drop);
+    }
   }
   stage.overlay = overlay;
   stage.scene.add(overlay);
@@ -476,17 +611,28 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
   const camRef = useRef<{ mode: 'orbit' | 'pan' | 'dolly'; x: number; y: number; id: number } | null>(null);
   /** The selection box being dragged, in screen pixels. */
   const [box, setBox] = useState<Bounds | null>(null);
+  const [parallel, setParallel] = useState(isParallel);
+  /** The snap's name next to the pointer (Endpoint, Midpoint…), as in SketchUp. */
+  const labelRef = useRef<HTMLDivElement>(null);
+  const showSnapLabel = (s: PlannerState) => {
+    const el = labelRef.current;
+    const host = hostRef.current;
+    if (!el || !host) return;
+    const text = s.inference ? SNAP_LABELS[s.inference.kind] : '';
+    el.textContent = text;
+    el.style.display = text ? 'block' : 'none';
+    if (!text) return;
+    const r = host.getBoundingClientRect();
+    const p = getPointer();
+    el.style.left = `${p.x - r.left + 14}px`;
+    el.style.top = `${p.y - r.top + 14}px`;
+  };
 
   // Create the renderer, camera and lights once.
   useEffect(() => {
     const host = hostRef.current;
     if (!supported || !host) return;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
-    renderer.domElement.dataset.testid = 'plan-3d-canvas';
-    renderer.domElement.className = 'block h-full w-full';
+    const renderer = rendererFor();
     host.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -534,10 +680,39 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       raycaster: new THREE.Raycaster(),
       last: null,
       fitted: false,
-      extras: new Map(),
-      render: () => renderer.render(scene, camera),
+      pendingView: null,
+      extras: EXTRAS,
+      render: () => renderer.render(scene, rig.active),
     };
     stageRef.current = stage;
+
+    // Zooming, standard views and the projection, for the View menu and the keys.
+    const redraw = () => {
+      pickRef.current = null;
+      drawOverlay(stage, plannerStore.getState(), (plannerStore.getState().pxUnits() || 1) * M_PER_UNIT, null);
+      stage.render();
+    };
+    setViewControls({
+      zoom(factor) {
+        rig.dolly(factor);
+        redraw();
+      },
+      extents() {
+        if (stage.last) rig.extents(stage.last.centre, stage.last.size);
+        redraw();
+      },
+      view(name) {
+        if (!stage.last) stage.pendingView = name;
+        else rig.view(name, stage.last.centre, stage.last.size);
+        redraw();
+      },
+      setParallel(on) {
+        rig.parallel = on;
+        setParallel(on); // the button in the corner follows the menu
+        redraw();
+      },
+      parallel: () => rig.parallel,
+    });
 
     const resize = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
@@ -545,6 +720,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      rig.apply(); // the parallel camera follows the new shape
       stage.render();
     });
     resize.observe(host);
@@ -570,7 +746,9 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         s.tool !== prev.tool ||
         s.activeLevel !== prev.activeLevel
       ) {
-        drawOverlay(stage, s, (s.pxUnits() || 1) * M_PER_UNIT);
+        const under = pickRef.current?.pick;
+        drawOverlay(stage, s, (s.pxUnits() || 1) * M_PER_UNIT, under?.id ? under.world.y : null);
+        showSnapLabel(s);
         stage.render();
       }
       const erasing = (x: PlannerState) => (x.draft?.type === 'erase' ? x.draft : null);
@@ -586,11 +764,12 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
 
     return () => {
       unsubscribe();
+      setViewControls(null);
       host.removeEventListener('wheel', onWheel);
       resize.disconnect();
       disposeGroup(scene);
-      stage.extras.forEach((looks) => looks.forEach((m) => m.dispose()));
-      renderer.dispose();
+      // The renderer and the shared materials stay for the next time the 3D view opens.
+      renderer.renderLists.dispose();
       renderer.domElement.remove();
       stageRef.current = null;
       plannerStore.getState().setPx3d(null);
@@ -607,8 +786,6 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     clearHighlight(stage);
     stage.scene.remove(stage.model);
     disposeGroup(stage.model);
-    stage.extras.forEach((looks) => looks.forEach((m) => m.dispose()));
-    stage.extras = new Map();
     stage.model = buildMeshes(model);
     stage.model.add(layoutLines(shown, wallHeightMm));
     stage.scene.add(stage.model);
@@ -627,13 +804,15 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     cam.updateProjectionMatrix();
 
     if (!stage.fitted) {
-      stage.rig.fit(model.centre, model.size, !model.solids.length);
+      if (stage.pendingView) stage.rig.view(stage.pendingView, model.centre, model.size);
+      else stage.rig.fit(model.centre, model.size, !model.solids.length);
+      stage.pendingView = null;
       stage.fitted = true;
     }
     const state = plannerStore.getState();
     styleMeshes(stage, state);
     drawGrid(stage, state);
-    drawOverlay(stage, state, state.pxUnits() * M_PER_UNIT);
+    drawOverlay(stage, state, state.pxUnits() * M_PER_UNIT, null);
     host.dataset.solids = String(model.solids.length);
     host.dataset.floors = String(model.floors.length);
     host.dataset.slabs = String(model.slabs.length);
@@ -665,7 +844,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       if (!rect.width || !rect.height) return null;
       stage.raycaster.setFromCamera(
         new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1),
-        stage.camera,
+        stage.rig.active,
       );
       return stage;
     };
@@ -724,6 +903,18 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         if (denom < 1e-4) return null; // looking straight along the line
         return (w0.dot(n) - b * w0.dot(d)) / denom;
       },
+      extentsAlong(axis, exceptId) {
+        const stage = stageRef.current;
+        if (!stage) return [];
+        const out: number[] = [0]; // the ground
+        const key = (['x', 'y', 'z'] as const)[axis];
+        for (const obj of stage.model.children) {
+          if (!(obj instanceof THREE.Mesh) || !obj.userData.pickable || obj.userData.id === exceptId) continue;
+          const box = boxOf(obj);
+          out.push(box.min[key], box.max[key]);
+        }
+        return out;
+      },
     };
     setPicker(picker);
     return () => {
@@ -744,7 +935,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1,
     );
-    stage.raycaster.setFromCamera(ndc, stage.camera);
+    stage.raycaster.setFromCamera(ndc, stage.rig.active);
     const s = plannerStore.getState();
     const base = levelBaseM(s.doc, s.activeLevel, s.wallHeightMm);
     const hit = stage.raycaster
@@ -767,7 +958,9 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     const far = Math.max(200, stage.rig.distance * 8);
     if (!world || stage.camera.position.distanceTo(world) > far) return last?.pick ?? null;
     const distance = stage.camera.position.distanceTo(world);
-    const metresPerPx = (2 * distance * Math.tan(THREE.MathUtils.degToRad(stage.camera.fov) / 2)) / rect.height;
+    const metresPerPx = stage.rig.parallel
+      ? stage.rig.metresPerPixel(rect.height)
+      : (2 * distance * Math.tan(THREE.MathUtils.degToRad(stage.camera.fov) / 2)) / rect.height;
     s.setPx3d(metresPerPx / M_PER_UNIT);
     const pick = { plan: { x: world.x / M_PER_UNIT, y: world.z / M_PER_UNIT }, world, id };
     pickRef.current = { x: clientX, y: clientY, pick };
@@ -780,7 +973,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     if (!stage) return { x: NaN, y: NaN };
     const s = plannerStore.getState();
     const v = new THREE.Vector3(p.x * M_PER_UNIT, levelBaseM(s.doc, s.activeLevel, s.wallHeightMm), p.y * M_PER_UNIT);
-    v.project(stage.camera);
+    v.project(stage.rig.active);
     if (v.z > 1) return { x: NaN, y: NaN };
     const r = stage.renderer.domElement.getBoundingClientRect();
     return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
@@ -830,6 +1023,10 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     const mode = cameraMode(e);
     if (mode) {
       e.preventDefault(); // no auto-scroll on middle click
+      // SketchUp turns round the point under the pointer.
+      const stage = stageRef.current;
+      const under = mode === 'orbit' ? pickAt(e.clientX, e.clientY) : null;
+      if (stage && under) stage.rig.pivotAbout(under.world);
       e.currentTarget.setPointerCapture(e.pointerId);
       camRef.current = { mode, x: e.clientX, y: e.clientY, id: e.pointerId };
       return;
@@ -910,10 +1107,39 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         onAuxClick={(e) => e.preventDefault()}
       />
       {box && <SelectionBox box={box} host={hostRef.current} />}
+      <div
+        ref={labelRef}
+        data-testid="snap-label-3d"
+        className="pointer-events-none absolute hidden rounded-sm bg-raised/90 px-1 text-[11px] text-ink shadow-popover"
+      />
       <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
         <div className="flex gap-2">
           <button onClick={resetView} className={btn}>
             Reset view
+          </button>
+          <select
+            aria-label="Standard view"
+            className={btn}
+            value=""
+            onChange={(e) => {
+              if (e.target.value) requestView(e.target.value as StandardView);
+            }}
+          >
+            <option value="">Views…</option>
+            <option value="top">Top</option>
+            <option value="front">Front</option>
+            <option value="back">Back</option>
+            <option value="left">Left</option>
+            <option value="right">Right</option>
+            <option value="iso">Iso</option>
+          </select>
+          <button
+            onClick={toggleParallel}
+            className={btn}
+            aria-pressed={parallel}
+            title="Parallel projection: no perspective, as for elevations"
+          >
+            {parallel ? 'Parallel' : 'Perspective'}
           </button>
           <button onClick={saveImage} className={btn}>
             Save image

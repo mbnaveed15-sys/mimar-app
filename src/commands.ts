@@ -1,3 +1,4 @@
+import { getViewControls, isParallel, requestView, toggleParallel } from './three/viewControls';
 import { aliasesFor } from './lib/aliases';
 import { exportModel, exportPlanDxf, exportPlanPdf, exportPlanPng } from './lib/exportActions';
 import { plannerStore, type PlannerState } from './store/plannerStore';
@@ -369,15 +370,61 @@ export function buildCommands(ctx: CommandContext): Command[] {
       enabled: (s) => s.doc.levels.findIndex((l) => l.id === s.activeLevel) > 0,
     },
     { id: 'view.addLevel', label: 'Add floor above', menu: 'view', group: 0, run: () => st().addLevel() },
-    { id: 'view.zoomIn', label: 'Zoom in', menu: 'view', group: 1, keys: ['+', '='], run: () => st().zoomBy(1.25) },
-    { id: 'view.zoomOut', label: 'Zoom out', menu: 'view', group: 1, keys: ['-'], run: () => st().zoomBy(1 / 1.25) },
+    // In 3D these move the camera; in the plan, the 2D view.
+    {
+      id: 'view.zoomIn',
+      label: 'Zoom in',
+      menu: 'view',
+      group: 1,
+      keys: ['+', '='],
+      run: () => (st().view3d && getViewControls() ? getViewControls()!.zoom(1 / 1.25) : st().zoomBy(1.25)),
+    },
+    {
+      id: 'view.zoomOut',
+      label: 'Zoom out',
+      menu: 'view',
+      group: 1,
+      keys: ['-'],
+      run: () => (st().view3d && getViewControls() ? getViewControls()!.zoom(1.25) : st().zoomBy(1 / 1.25)),
+    },
     {
       id: 'view.extents',
       label: 'Zoom extents',
       menu: 'view',
       group: 1,
       keys: ['Shift+Z', '0'],
-      run: () => st().fitToPlan(),
+      run: () => (st().view3d && getViewControls() ? getViewControls()!.extents() : st().fitToPlan()),
+    },
+    ...(
+      [
+        ['top', 'Top view'],
+        ['front', 'Front view'],
+        ['back', 'Back view'],
+        ['left', 'Left view'],
+        ['right', 'Right view'],
+        ['iso', 'Iso view'],
+      ] as const
+    ).map(([name, label]): Command => ({
+      id: `view.std.${name}`,
+      label,
+      menu: 'view',
+      group: 1.5,
+      run: () => {
+        if (!st().view3d) st().setView3d(true);
+        requestView(name);
+      },
+    })),
+    {
+      id: 'view.parallel',
+      label: 'Parallel projection',
+      menu: 'view',
+      group: 1.5,
+      run: () => {
+        if (!st().view3d) st().setView3d(true);
+        toggleParallel();
+      },
+      kind: 'check',
+      checked: () => isParallel(),
     },
     {
       id: 'view.grid',

@@ -126,6 +126,8 @@ function normaliseElement(raw: unknown): PlanElement | null {
         thickness: thickness > 0 ? thickness : undefined,
         kind: raw.kind === 'boundary' || raw.kind === 'parapet' ? (raw.kind as 'boundary' | 'parapet') : undefined,
         heightMm: num('heightMm') > 0 ? num('heightMm') : undefined,
+        materialA: idOf(raw.materialA),
+        materialB: idOf(raw.materialB),
       };
       return [el.x1, el.y1, el.x2, el.y2].every(Number.isFinite) ? el : null;
     }

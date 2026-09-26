@@ -40,6 +40,18 @@ export interface Finish {
   name?: string;
 }
 
+/** How a surface looks. */
+export interface Look {
+  color: string;
+  finish?: Finish;
+}
+
+/** A wall piece's own looks for its two big faces: `plus` on its own +z side (a wall's side A), `minus` the other. */
+export interface Sides {
+  plus?: Look;
+  minus?: Look;
+}
+
 export interface Solid {
   x: number;
   z: number;
@@ -51,6 +63,7 @@ export interface Solid {
   color: string;
   opacity?: number;
   finish?: Finish;
+  sides?: Sides;
   /** The plan item it was made from, and its floor, for picking in 3D. */
   id?: string;
   level?: string;
@@ -74,6 +87,7 @@ export interface Panel {
   color: string;
   opacity?: number;
   finish?: Finish;
+  sides?: Sides;
   id?: string;
   level?: string;
   role: 'wall' | 'glass' | 'shape';
@@ -596,7 +610,14 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       const own = openings.filter((o) => o.wallId === wall.id);
       const color = colorOf(wall.material);
       const finish = finishOf(wall.material);
-      const paint = <T extends Solid | Panel>(s: T): T => (color && s.role === 'wall' ? { ...s, color, finish } : s);
+      const look = (id?: string): Look | undefined => {
+        const c = colorOf(id);
+        return c ? { color: c, finish: finishOf(id) } : undefined;
+      };
+      const [a, b] = [look(wall.materialA), look(wall.materialB)];
+      const sides: Sides | undefined = a || b ? { plus: a, minus: b } : undefined;
+      const paint = <T extends Solid | Panel>(s: T): T =>
+        s.role === 'wall' && (color || sides) ? { ...s, ...(color && { color, finish }), ...(sides && { sides }) } : s;
       const height = wall.heightMm ?? options.wallHeightMm;
       // A boundary wall stands on the natural ground, not on the plinth.
       const onGround = wall.kind === 'boundary' && i === 0;

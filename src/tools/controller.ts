@@ -13,6 +13,8 @@ import {
 } from '../lib/selection';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
+import { levelBaseM, M_PER_UNIT } from '../three/model';
+import { getPicker, getPointer } from '../three/picker';
 import type { Id, PlanDoc, Plot, Point, SketchLine, Tool, Wall } from '../types';
 import { MODIFY_TOOLS } from '../types';
 import { wallsOf } from '../walls';
@@ -225,7 +227,9 @@ export function hover(store: Store, raw: Point, shift = false, screenY?: number)
       s.setDraft({ ...d, x2: p.x, y2: p.y });
       break;
     case 'tape':
-      if (!d.done) s.setDraft({ ...d, b: p });
+      if (d.done) break;
+      if (s.axisLock === 'z') s.setDraft({ ...d, b: d.a, zb: tapeRise(s, d) });
+      else s.setDraft({ ...d, b: p, zb: pointerHeightMm(s) });
       break;
     case 'move':
       moveTo(store, p, raw, screenY);
@@ -274,6 +278,30 @@ function loneOpening(s: PlannerState, d: MoveDraft) {
 }
 
 /** Heights step by an inch (or 10 mm) as the pointer moves. */
+/** Height (mm above the floor being drawn) of the item face under the pointer in 3D; 0 on the floor. */
+function pointerHeightMm(s: PlannerState): number {
+  const picker = getPicker();
+  if (!picker?.is3d) return 0;
+  const { x, y } = getPointer();
+  const hit = picker.faceAt(x, y);
+  if (!hit) return 0;
+  const mm = (hit.point[1] - levelBaseM(s.doc, s.activeLevel, s.wallHeightMm)) * 1000;
+  return mm > 50 ? Math.round(mm) : 0;
+}
+
+type TapeDraft = Extract<PlannerState['draft'], { type: 'tape' }>;
+
+/** Locked to the blue axis: the height the pointer points at, straight above (or below) the tape's start. */
+function tapeRise(s: PlannerState, d: TapeDraft): number {
+  const picker = getPicker();
+  const za = d.za ?? 0;
+  if (!picker?.is3d) return d.zb ?? za;
+  const base = levelBaseM(s.doc, s.activeLevel, s.wallHeightMm);
+  const { x, y } = getPointer();
+  const t = picker.alongLine(x, y, [d.a.x * M_PER_UNIT, base + za / 1000, d.a.y * M_PER_UNIT], [0, 1, 0]);
+  return t === null ? (d.zb ?? za) : snapHeight(s, za + t * 1000);
+}
+
 function snapHeight(s: PlannerState, mm: number): number {
   const step = s.units === 'imperial' ? 25.4 : 10;
   return Math.round(mm / step) * step;
@@ -319,6 +347,11 @@ function showMove(store: Store, d: MoveDraft) {
 export function toggleHeightLock(store: Store): boolean {
   const s = store.getState();
   const d = s.draft;
+  if (d?.type === 'tape' && !d.done && s.view3d) {
+    // The tape measures straight up (or down) from its first point.
+    s.setAxisLock(s.axisLock === 'z' ? null : 'z');
+    return true;
+  }
   if (d?.type !== 'move' || !s.view3d) return false;
   if (s.axisLock === 'z') {
     s.setAxisLock(null);
@@ -376,7 +409,7 @@ function finishMove(store: Store) {
 }
 
 /** Pointer pressed on the plan with a measuring tool. Returns true if the tool used it. */
-export function press(store: Store, raw: Point, opts: { ctrl?: boolean } = {}): boolean {
+export function press(store: Store, raw: Point, opts: { ctrl?: boolean; clicks?: number } = {}): boolean {
   const s = store.getState();
   const d = s.draft;
   const from = anchorOf(s);
@@ -392,7 +425,7 @@ export function press(store: Store, raw: Point, opts: { ctrl?: boolean } = {}): 
     return true;
   }
   if (SHAPE_TOOLS.includes(s.tool)) {
-    shapePress(store, inf);
+    shapePress(store, inf, opts.clicks);
     return true;
   }
 
@@ -422,8 +455,14 @@ export function press(store: Store, raw: Point, opts: { ctrl?: boolean } = {}): 
       }
       return true;
     case 'tape':
-      if (d?.type !== 'tape' || d.done) s.setDraft({ type: 'tape', a: p, b: p });
-      else s.setDraft({ ...d, b: p, done: true });
+      if (d?.type !== 'tape' || d.done) {
+        const za = pointerHeightMm(s);
+        s.setDraft({ type: 'tape', a: p, b: p, za, zb: za });
+      } else {
+        if (s.axisLock === 'z') s.setDraft({ ...d, b: d.a, zb: tapeRise(s, d), done: true });
+        else s.setDraft({ ...d, b: p, zb: pointerHeightMm(s), done: true });
+        if (s.axisLock === 'z') s.setAxisLock(null);
+      }
       return true;
     case 'move': {
       if (d?.type === 'move') {
@@ -681,6 +720,15 @@ export function toggleAxisLock(store: Store, axis: 'x' | 'y'): boolean {
   return true;
 }
 
+/** The tape's length; in 3D, the straight distance between its ends and how much higher one is. */
+export function tapeText(s: PlannerState, d: TapeDraft): string {
+  const flat = Math.hypot(d.b.x - d.a.x, d.b.y - d.a.y) * MM_PER_UNIT;
+  const rise = (d.zb ?? 0) - (d.za ?? 0);
+  if (Math.abs(rise) < 1) return formatLength(flat, s.units);
+  const text = formatLength(Math.hypot(flat, rise), s.units);
+  return `${text} (height ${rise > 0 ? '+' : '−'}${formatLength(Math.abs(rise), s.units)})`;
+}
+
 /** What the Measurements box shows: its label and the live value. */
 export function measureReadout(s: PlannerState): { label: string; value: string } {
   const d = s.draft;
@@ -699,7 +747,7 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
             : '',
       };
     case 'tape':
-      return { label: 'Distance', value: d?.type === 'tape' ? len(sub(d.b, d.a)) : '' };
+      return { label: 'Distance', value: d?.type === 'tape' ? tapeText(s, d) : '' };
     case 'move':
       if (d?.type === 'move' && s.axisLock === 'z') return { label: 'Height', value: formatLength(d.dz ?? 0, s.units) };
       return { label: 'Distance', value: d?.type === 'move' ? len(sub(d.to, d.base)) : '' };
@@ -764,10 +812,14 @@ export function toolHint(s: PlannerState): string {
       return 'Click the item to rotate (it turns about the point you click), or select it first.';
     case 'tape':
       return d?.type === 'tape' && !d.done
-        ? 'Click the second point. The distance shows in the Measurements box.'
+        ? s.view3d
+          ? 'Click the second point (on the floor or on an item). Up arrow measures straight up. The distance shows in the Measurements box.'
+          : 'Click the second point. The distance shows in the Measurements box.'
         : 'Click two points to measure between them.';
     case 'paint':
-      return 'Click a wall, room or item to give it the chosen material.';
+      return s.view3d
+        ? 'Click a wall, room or item to give it the chosen material. On a wall, only the side (or top) you click is painted.'
+        : 'Click a wall, room or item to give it the chosen material.';
     case 'brush':
       return 'Drag over items to paint them with the chosen material.';
     case 'mask':

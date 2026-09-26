@@ -68,7 +68,14 @@ export interface Wall extends Grouped {
   kind?: 'boundary' | 'parapet';
   /** Height in millimetres, when it differs from the usual wall height (e.g. a boundary wall). */
   heightMm?: number;
+  /** Its material: both sides, the top and the ends (unless a side has its own). */
   material?: Id;
+  /**
+   * A side's own material, SketchUp style (say plaster inside and brick outside). Side A is the one
+   * the wall's left normal (-dy, dx) points to, side B the other.
+   */
+  materialA?: Id;
+  materialB?: Id;
 }
 
 export interface Opening extends Grouped {
@@ -399,7 +406,15 @@ export type Draft =
   | { type: 'line'; x1: number; y1: number; x2: number; y2: number; chain?: boolean }
   | { type: 'slab'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'plot'; x1: number; y1: number; x2: number; y2: number }
-  | { type: 'tape'; a: Point; b: Point; done?: boolean }
+  | {
+      type: 'tape';
+      a: Point;
+      b: Point;
+      /** In 3D: heights (mm above the floor being drawn) of the two ends. */
+      za?: number;
+      zb?: number;
+      done?: boolean;
+    }
   /**
    * Move from base to `to`, and up by dz (mm) when locked to the blue axis in 3D. screenY is the
    * pointer's last height on screen; zFrom is where it was (and dz then) when the lock began.

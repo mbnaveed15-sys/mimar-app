@@ -6,16 +6,18 @@ import {
   nearestWall,
   nearestWallEnd,
   placeOnWall,
+  pointToSegmentDistance,
   snap,
   toFurnitureLocal,
   translateElement,
 } from '../geometry';
 import { trimAt } from '../lib/modify';
+import { faceOf } from '../lib/pushPull';
 import { itemsInBox, moveItems } from '../lib/selection';
 import { panBy } from '../lib/view';
-import { MM_PER_UNIT, plannerStore } from '../store/plannerStore';
+import { MM_PER_UNIT, plannerStore, type PlannerState } from '../store/plannerStore';
 import { DRAG_PX, hover, MEASURE_TOOLS, press, release } from '../tools/controller';
-import { setPointer } from '../three/picker';
+import { getPicker, setPointer } from '../three/picker';
 import { hasPoints, type Bounds, type Furniture, type PlanElement, type Point, type Wall } from '../types';
 
 type Drag =
@@ -25,7 +27,8 @@ type Drag =
   /** Dragging several selected items (or a group) together. */
   | { kind: 'moveMany'; start: Point; ids: string[] }
   /** Pressed on empty space: becomes a selection box once the pointer moves. */
-  | { kind: 'box'; start: Point; additive: boolean; client: Point; moved?: boolean }
+  /** `picked`: the press already selected an item (3D), so a click without a drag does nothing more. */
+  | { kind: 'box'; start: Point; additive: boolean; client: Point; moved?: boolean; picked?: boolean }
   /** Eraser pressed: a click erases what is there when let go; a drag erases all it passes over. */
   | { kind: 'erase'; last: Point; click: () => void }
   | { kind: 'wall-start' | 'wall-end'; orig: Wall }
@@ -63,6 +66,37 @@ const boundsOf = (a: Point, b: Point): Bounds => ({
   maxY: Math.max(a.y, b.y),
 });
 
+/**
+ * An item with the doors and windows in it; with `all`, every wall joined to it, end to end or
+ * where one meets another, with theirs (SketchUp's triple-click).
+ */
+export function connectedTo(s: PlannerState, id: string, all: boolean): string[] {
+  const items = s.pickableElements();
+  const walls = items.filter((el): el is Wall => el.type === 'wall');
+  const seen = new Set([id]);
+  const queue = [id];
+  const touches = (a: Wall, b: Wall) =>
+    [
+      { x: a.x1, y: a.y1 },
+      { x: a.x2, y: a.y2 },
+    ].some((p) => pointToSegmentDistance(p, { x: b.x1, y: b.y1 }, { x: b.x2, y: b.y2 }) < 1) ||
+    [
+      { x: b.x1, y: b.y1 },
+      { x: b.x2, y: b.y2 },
+    ].some((p) => pointToSegmentDistance(p, { x: a.x1, y: a.y1 }, { x: a.x2, y: a.y2 }) < 1);
+  for (let head = 0; all && head < queue.length; head++) {
+    const w = walls.find((x) => x.id === queue[head]);
+    if (!w) continue;
+    for (const o of walls)
+      if (!seen.has(o.id) && touches(w, o)) {
+        seen.add(o.id);
+        queue.push(o.id);
+      }
+  }
+  for (const el of items) if ('wallId' in el && seen.has(el.wallId)) seen.add(el.id);
+  return [...seen];
+}
+
 /** What was right-clicked: screen position and the item there, if any. */
 export interface ContextTarget {
   x: number;
@@ -75,6 +109,9 @@ export interface ContextTarget {
  * handles. `toPlan` turns a screen position into a plan point, so the same input works on the 2D
  * plan and in the 3D view.
  */
+/** Presses closer together than this (ms) count as a double or triple click. */
+const MULTI_CLICK_MS = 500;
+
 export function usePlanInput(
   toPlan: (e: { clientX: number; clientY: number }) => Point,
   onContextMenu?: (target: ContextTarget) => void,
@@ -93,6 +130,14 @@ export function usePlanInput(
     const picked = id ? s.pickableElements().find((el) => el.id === id) : undefined;
     return picked ?? findElementNear(s.pickableElements(), raw, s.hitTolerance());
   }
+  /** In 3D, the face of wall `id` under the pointer: a side (1 or -1), or 0 for its top or an end. */
+  function wallFaceAt(s: PlannerState, e: { clientX: number; clientY: number }, id: string) {
+    const wall = s.pickableElements().find((el) => el.id === id && el.type === 'wall');
+    const hit = wall && getPicker()?.faceAt(e.clientX, e.clientY);
+    if (!wall || !hit || hit.id !== id) return undefined;
+    const face = faceOf(wall, hit.normal, hit.point);
+    return face?.part === 'side' ? face.sign : 0;
+  }
   /** Item or room under the pointer (3D can pick a floor straight away). */
   function idAt(e: { clientX: number; clientY: number }, raw: Point): string | null {
     const s = plannerStore.getState();
@@ -108,6 +153,16 @@ export function usePlanInput(
   const dragRef = useRef<Drag | null>(null);
   /** Where the current press started on screen, to tell a click from a drag. */
   const pressRef = useRef<{ x: number; y: number } | null>(null);
+  /** The last left press, to count double and triple clicks (browsers report none on pointer-down). */
+  const clickRef = useRef({ t: -Infinity, x: 0, y: 0, n: 0 });
+
+  /** 1 for a single click, 2 for the second of a double-click, 3 for a triple. */
+  function clickCount(e: PointerEvent<Element>) {
+    const c = clickRef.current;
+    const again = e.timeStamp - c.t < MULTI_CLICK_MS && Math.hypot(e.clientX - c.x, e.clientY - c.y) <= DRAG_PX;
+    clickRef.current = { t: e.timeStamp, x: e.clientX, y: e.clientY, n: again ? c.n + 1 : 1 };
+    return clickRef.current.n;
+  }
 
   function startDrag(e: PointerEvent<Element>, drag: Drag) {
     capture(e);
@@ -133,6 +188,7 @@ export function usePlanInput(
       return;
     }
     if (e.button !== 0) return;
+    const clicks = clickCount(e);
     if (s.tool === 'zoom') {
       const r = e.currentTarget.getBoundingClientRect();
       startDrag(e, { kind: 'zoom', lastY: e.clientY, at: { x: e.clientX - r.left, y: e.clientY - r.top } });
@@ -153,7 +209,7 @@ export function usePlanInput(
     if (s.tool in MEASURE_TOOLS) {
       capture(e);
       s.setMeasureText('');
-      press(plannerStore, raw, { ctrl: e.ctrlKey || e.metaKey });
+      press(plannerStore, raw, { ctrl: e.ctrlKey || e.metaKey, clicks });
       return;
     }
 
@@ -163,6 +219,21 @@ export function usePlanInput(
         if (!hit) {
           // Empty space (or inside a room): a click picks the room, a drag draws a selection box.
           startDrag(e, { kind: 'box', start: raw, additive: e.shiftKey, client: { x: e.clientX, y: e.clientY } });
+          return;
+        }
+        if (screenBox) {
+          // In 3D (as in SketchUp) a click selects and a drag always draws a box; Move (M) moves.
+          // A double-click takes a wall with its doors and windows, a triple-click all it joins.
+          if (clicks >= 2 && !e.shiftKey) s.setSelection(connectedTo(s, hit.id, clicks >= 3));
+          else if (e.shiftKey) s.toggleSelect(hit.id);
+          else s.select(hit.id);
+          startDrag(e, {
+            kind: 'box',
+            start: raw,
+            additive: e.shiftKey,
+            client: { x: e.clientX, y: e.clientY },
+            picked: true,
+          });
           return;
         }
         if (e.shiftKey) {
@@ -188,7 +259,7 @@ export function usePlanInput(
       case 'paint':
         if (pickId) {
           const id = idAt(e, raw);
-          if (id) s.applyMaterial(id);
+          if (id) s.applyMaterial(id, wallFaceAt(s, e, id));
         } else s.paintAt(raw);
         break;
       case 'brush':
@@ -359,6 +430,7 @@ export function usePlanInput(
           s.setSelection(itemsInBox(pool, box, crossing, screenBox.project), drag.additive);
           return;
         }
+        if (drag.picked) return;
         finishBox(drag, toPlan(e));
         return;
       }

@@ -302,7 +302,13 @@ export interface PlannerState {
   addWall: (a: Point, b: Point) => void;
   placeOpening: (type: 'door' | 'window', p: Point) => void;
   addFurniture: (p: Point) => void;
-  applyMaterial: (id: Id) => void;
+  /**
+   * Give an item the chosen material. For a wall, `side` paints just one side (1 is side A, -1
+   * side B) or, with 0, just the top and ends; without it the whole wall, both sides included.
+   */
+  applyMaterial: (id: Id, side?: 1 | -1 | 0) => void;
+  /** Take a wall side's own material off, so it shows the wall's material again. */
+  clearWallSide: (id: Id, side: 1 | -1) => void;
   paintAt: (p: Point) => void;
   brushAt: (p: Point) => void;
   eraseAt: (p: Point) => void;
@@ -868,16 +874,38 @@ export function createPlannerStore(
         // Show the new item so it is visible even if the furniture layer was hidden.
         if (!get().showFurniture) get().setLayer('showFurniture', true);
       },
-      applyMaterial: (id) => {
+      applyMaterial: (id, side) => {
         const mat = activeMat();
         const room = get().doc.rooms.find((r) => r.id === id);
         if (room) {
           if (room.material !== mat) get().updateRoom({ ...room, material: mat });
           return;
         }
+        const wall = get().doc.elements.find((el): el is Wall => el.id === id && el.type === 'wall');
+        if (wall) {
+          const next: Wall =
+            side === 1
+              ? { ...wall, materialA: mat }
+              : side === -1
+                ? { ...wall, materialB: mat }
+                : side === 0
+                  ? { ...wall, material: mat }
+                  : { ...wall, material: mat, materialA: undefined, materialB: undefined };
+          const same = (['material', 'materialA', 'materialB'] as const).every((k) => next[k] === wall[k]);
+          if (!same) updateElements((els) => els.map((el) => (el.id === id ? next : el)));
+          return;
+        }
         updateElements((els) =>
           els.some((el) => el.id === id && el.material !== mat)
             ? els.map((el) => (el.id === id ? { ...el, material: mat } : el))
+            : els,
+        );
+      },
+      clearWallSide: (id, side) => {
+        const key = side === 1 ? 'materialA' : 'materialB';
+        updateElements((els) =>
+          els.some((el) => el.id === id && el.type === 'wall' && el[key])
+            ? els.map((el) => (el.id === id && el.type === 'wall' ? { ...el, [key]: undefined } : el))
             : els,
         );
       },

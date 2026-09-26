@@ -9,9 +9,9 @@ import { faceOf, pushPull } from '../lib/pushPull';
 import { draftOutline, isRealOutline } from '../lib/shapes';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
-import { getPicker, getPointer } from '../three/picker';
+import { getPicker, getPointer, type Picker3D } from '../three/picker';
 import { levelBaseM, M_PER_UNIT } from '../three/model';
-import type { Id, Point, ShapeSurface, Tool, Vec3, Wall } from '../types';
+import type { Id, PlanDoc, Point, ShapeSurface, Tool, Vec3, Wall } from '../types';
 import { thicknessOf } from '../walls';
 
 interface Store {
@@ -141,6 +141,17 @@ function pushTo(store: Store, d: PushDraft, mm: number, dragged = d.dragged) {
   s.setDraft({ ...d, dist: mm, dragged });
 }
 
+/**
+ * The last push, SketchUp style: a double-click on a face pushes it the same distance again, and a
+ * distance typed straight after a push changes it.
+ */
+let lastPush: { id: Id; face: PushDraft['face']; origin: Vec3; normal: Vec3; dist: number; doc: PlanDoc } | null = null;
+
+/** Forget the last push (a new plan, or tests). */
+export function resetLastPush() {
+  lastPush = null;
+}
+
 function finishPush(store: Store) {
   const s = store.getState();
   const d = s.draft;
@@ -149,23 +160,52 @@ function finishPush(store: Store) {
   const result = base ? pushPull(base, d.id, d.face, d.dist, { wallHeightMm: s.wallHeightMm }).result : 'none';
   s.endBatch();
   s.setDraft(null);
+  const { id, face, origin, normal, dist } = d;
+  if (dist !== 0) lastPush = { id, face, origin, normal, dist, doc: store.getState().doc };
   if (result === 'none' && d.dist < 0)
     s.setWarning('Push the shape at least half-way down into the slab to make a void.');
   else s.setWarning(null);
 }
 
-/** How far the pointer has taken the face, in mm (inches or 10 mm steps). */
+/** Pixels within which a push snaps to the top, bottom or side of another item. */
+const PUSH_SNAP_PX = 8;
+
+/**
+ * How far the pointer has taken the face, in mm (inches or 10 mm steps). Near the level of
+ * another item's top, bottom or side, the face snaps to it.
+ */
 function pushDistance(s: PlannerState, d: PushDraft): number | null {
   const picker = getPicker();
   if (!picker) return null;
   const { x, y } = getPointer();
   const t = picker.alongLine(x, y, d.origin, d.normal);
   if (t === null) return null;
+  const snapped = snapPush(picker, d, t, x, y);
+  if (snapped !== null) return Math.round(snapped * 1000);
   const step = s.units === 'imperial' ? 25.4 : 10;
   return Math.round((t * 1000) / step) * step;
 }
 
-export function shapePress(store: Store, inf: Inference) {
+/** The push (metres) that lines the face up with another item, if the pointer is near one; else null. */
+function snapPush(picker: Picker3D, d: PushDraft, t: number, x: number, y: number): number | null {
+  // Only square to the scene's axes: a face pushed straight up or down, or along x or z.
+  const axis = ([0, 1, 2] as const).find((i) => Math.abs(d.normal[i]) > 0.999);
+  if (axis === undefined || !picker.extentsAlong) return null;
+  // How far a few pixels move the face, here.
+  const t2 = picker.alongLine(x, y + PUSH_SNAP_PX, d.origin, d.normal);
+  const tol = t2 === null ? 0 : Math.abs(t2 - t);
+  if (tol <= 0) return null;
+  const sign = Math.sign(d.normal[axis]);
+  let best: number | null = null;
+  for (const level of picker.extentsAlong(axis, d.id)) {
+    const at = (level - d.origin[axis]) * sign;
+    if (Math.abs(at) < 1e-3) continue;
+    if (Math.abs(at - t) <= tol && (best === null || Math.abs(at - t) < Math.abs(best - t))) best = at;
+  }
+  return best;
+}
+
+export function shapePress(store: Store, inf: Inference, clicks = 1) {
   const s = store.getState();
   const d = s.draft;
   if (s.tool === 'shape') {
@@ -185,8 +225,12 @@ export function shapePress(store: Store, inf: Inference) {
     return;
   }
 
-  // Push/Pull: a second click finishes a push started with a click.
-  if (d?.type === 'push') return finishPush(store);
+  // Push/Pull: a second click finishes a push started with a click; a double-click pushes the
+  // face as far as the last push went.
+  if (d?.type === 'push') {
+    if (clicks >= 2 && lastPush && Math.abs(d.dist) < 1) pushTo(store, d, lastPush.dist);
+    return finishPush(store);
+  }
   const picker = getPicker();
   if (!picker) {
     s.setWarning('Push/Pull works in the 3D view: switch with Ctrl+2 (or 3D view at the top).');
@@ -260,6 +304,16 @@ export function shapeMeasure(store: Store, m: Measure): string | null {
     finishPush(store);
     return null;
   }
+  if (d?.type !== 'shape' && s.tool === 'pushpull' && lastPush && lastPush.doc === s.doc && m.kind === 'length') {
+    // Typed straight after a push: take it back and push that far instead.
+    const { id, face, origin, normal, dist } = lastPush;
+    s.undo();
+    s.beginBatch();
+    const again: PushDraft = { type: 'push', id, face, origin, normal, dist };
+    pushTo(store, again, m.mm < 0 ? m.mm : Math.sign(dist) * m.mm);
+    finishPush(store);
+    return null;
+  }
   if (d?.type !== 'shape')
     return s.tool === 'pushpull' ? 'Click a face first, then type a distance.' : 'Click where the shape starts first.';
   const [a] = d.points;
@@ -313,7 +367,7 @@ export function shapeHint(s: PlannerState): string {
       ? 'Push in for a niche (all the way to cut an opening), or pull out for a chajja or ledge. Or type a depth.'
       : 'Move to push or pull, then click (or type a distance and press Enter).';
   return s.view3d
-    ? 'Click a face to push or pull it: a wall’s top or side, a slab, column, beam, block or shape.'
+    ? 'Click a face to push or pull it: a wall’s top or side, a slab, column, beam, block or shape. Double-click repeats the last push; type straight after a push to change it.'
     : 'Click a wall’s side or end, or the edge of a slab, block, column or beam, to push or pull it. Heights are in 3D (Ctrl+2).';
 }
 

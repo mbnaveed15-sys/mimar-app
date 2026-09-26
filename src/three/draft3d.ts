@@ -102,8 +102,13 @@ export function draftElements(s: PlannerState): PlanElement[] {
   return [];
 }
 
-/** Guide lines on the floor for drafts that are lines rather than things (tape, boxes, mirror lines). */
-export function draftLines(s: PlannerState): [Point, Point][] {
+export type DraftLine = [Point, Point, [number, number]?];
+
+/**
+ * Guide lines on the floor for drafts that are lines rather than things (tape, boxes, mirror lines).
+ * A third entry gives the ends' heights (mm above the floor) when they are off it.
+ */
+export function draftLines(s: PlannerState): DraftLine[] {
   const d = s.draft;
   if (!d) return [];
   const box = (x1: number, y1: number, x2: number, y2: number): [Point, Point][] => {
@@ -117,7 +122,7 @@ export function draftLines(s: PlannerState): [Point, Point][] {
   };
   switch (d.type) {
     case 'tape':
-      return [[d.a, d.b]];
+      return [[d.a, d.b, [d.za ?? 0, d.zb ?? 0]]];
     case 'line':
       return [
         [
