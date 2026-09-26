@@ -31,6 +31,12 @@ test('quantities and cost: measured, priced at rates you can change, exported to
   await rate.fill('600');
   await rate.press('Enter');
   await expect(total).not.toHaveText(before!);
+  // A blank or absurd rate keeps the one before.
+  for (const junk of ['', 'abc', '1e99']) {
+    await rate.fill(junk);
+    await rate.press('Enter');
+    await expect(rate).toHaveValue('600');
+  }
   await page.reload();
   await ready(page);
   await expect(page.getByLabel(/^Rate for Brickwork in 1:6 \(walls and plinth\)/)).toHaveValue('600');

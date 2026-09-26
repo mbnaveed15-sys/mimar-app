@@ -1,4 +1,7 @@
-import { useEffect, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, type RefObject } from 'react';
+
+/** Open dialogs, innermost last: only the one on top keeps Tab and answers Esc. */
+const openTraps: object[] = [];
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -7,16 +10,27 @@ const shown = (el: HTMLElement) => el.getClientRects().length > 0;
 
 /**
  * Keep Tab inside a dialog while it is open, and give focus back to where it was when it closes.
- * `key` re-runs it when the dialog's content is swapped (the welcome becoming the tour).
+ * `key` re-runs it when the dialog's content is swapped (the welcome becoming the tour). Returns
+ * whether this dialog is the one on top (a dialog opened over another takes the keys).
  */
-export function useFocusTrap(ref: RefObject<HTMLElement | null>, key?: unknown) {
+export function useFocusTrap(ref: RefObject<HTMLElement | null>, key?: unknown): () => boolean {
+  const token = useRef({});
+  useEffect(() => {
+    const me = token.current;
+    openTraps.push(me);
+    return () => {
+      const i = openTraps.lastIndexOf(me);
+      if (i >= 0) openTraps.splice(i, 1);
+    };
+  }, []);
+  const isTop = useCallback(() => openTraps[openTraps.length - 1] === token.current, []);
   useEffect(() => {
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const box = ref.current;
     if (box && !box.contains(document.activeElement)) box.querySelector<HTMLElement>(FOCUSABLE)?.focus();
     const onKey = (e: KeyboardEvent) => {
       const root = ref.current;
-      if (e.key !== 'Tab' || !root) return;
+      if (e.key !== 'Tab' || !root || !isTop()) return;
       const items = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(shown);
       if (!items.length) return;
       const [first, last] = [items[0], items[items.length - 1]];
@@ -34,7 +48,8 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, key?: unknown) 
       document.removeEventListener('keydown', onKey, true);
       if (before && before.isConnected && before !== document.body) before.focus();
     };
-  }, [ref, key]);
+  }, [ref, key, isTop]);
+  return isTop;
 }
 
 /** A pop-up menu: the first item takes focus, and the arrow keys, Home and End move between items. */

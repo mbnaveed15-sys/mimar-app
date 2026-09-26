@@ -187,12 +187,25 @@ export function joinWalls(doc: PlanDoc, idA: Id, idB: Id, tol: number): PlanDoc 
   if (!parallel || off(start(b)) > tol || off(end(b)) > tol) return null;
   const ts = [0, L, dot(sub(start(b), start(a)), u), dot(sub(end(b), start(a)), u)];
   const merged = withEnds(a, add(start(a), mul(u, Math.min(...ts))), add(start(a), mul(u, Math.max(...ts))));
+  // A wall drawn the other way round: its doors keep their swing and hinge, and its shapes their face.
+  const reversed = dot(sub(end(b), start(b)), u) < 0;
+  const turned = (o: Opening): Opening =>
+    reversed && o.wallId === b.id
+      ? {
+          ...o,
+          flipSide: !o.flipSide,
+          flipHinge: !o.flipHinge,
+          ...(o.face && { face: o.face === 1 ? -1 : 1 }),
+          // A drawn outline runs along the wall from its centre: mirror it end for end.
+          ...(o.profile && { profile: o.profile.map((p) => ({ x: -p.x, y: p.y })) }),
+        }
+      : o;
   const elements = doc.elements
     .filter((el) => el.id !== b.id)
     .map((el) => {
       if (el.id === a.id) return merged;
       if (isOpening(el) && (el.wallId === a.id || el.wallId === b.id))
-        return refit({ ...el, wallId: a.id }, merged) ?? el;
+        return refit({ ...turned(el), wallId: a.id }, merged) ?? el;
       return el;
     });
   return { ...doc, elements };

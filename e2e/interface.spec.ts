@@ -120,3 +120,34 @@ test('the welcome keeps Tab inside it, and the tour takes the arrow keys', async
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('tour')).toHaveCount(0);
 });
+
+test('a dialog over the welcome takes the keys: Esc closes it, not the welcome', async ({ page }) => {
+  await tool(page, 'wall');
+  await drag(page, P(2, 2), P(12, 2));
+  await menu(page, 'Help', 'Getting started');
+  await page.getByRole('button', { name: /sample 5-marla/ }).click();
+  const discard = page.getByRole('alertdialog');
+  await expect(discard).toBeVisible();
+  for (let i = 0; i < 5; i++) {
+    await page.keyboard.press('Tab');
+    expect(await discard.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+  }
+  await page.keyboard.press('Escape');
+  await expect(discard).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Welcome to Mimar' })).toBeVisible();
+});
+
+test('a length that is too long or too short says so', async ({ page }) => {
+  await tool(page, 'wall');
+  await drag(page, P(2, 2), P(12, 2));
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Space');
+  await page.mouse.click(...(await at(page, ...P(7, 2))));
+  const length = page.getByLabel('Length', { exact: true });
+  await length.fill('99999999');
+  await length.press('Enter');
+  await expect(page.getByText(/too long: at most/)).toBeVisible();
+  await length.fill('0');
+  await length.press('Enter');
+  await expect(page.getByText(/^At least/)).toBeVisible();
+});

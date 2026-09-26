@@ -45,6 +45,12 @@ const PLAIN_RE = new RegExp(String.raw`^${NUM}$`);
  * current units: feet, or millimetres (as in AutoCAD).
  */
 export function parseLength(text: string, units: Units): number | null {
+  const mm = readLength(text, units);
+  return mm !== null && Math.abs(mm) <= MAX_LENGTH_MM ? mm : null;
+}
+
+/** A typed length in mm with no limit on its size (null when it isn't a length at all). */
+export function readLength(text: string, units: Units): number | null {
   const s = text
     .trim()
     .toLowerCase()
@@ -71,7 +77,7 @@ export function parseLength(text: string, units: Units): number | null {
       mm = Number(fi[1]) * MM_PER_FOOT + (fi[2] !== undefined ? Number(fi[2]) * MM_PER_INCH : 0);
     }
   }
-  return mm !== null && Number.isFinite(mm) && Math.abs(mm) <= MAX_LENGTH_MM ? mm : null;
+  return mm !== null && Number.isFinite(mm) ? mm : null;
 }
 
 /** The longest length that can be typed: 1 km. Longer is a slip of the keyboard. */

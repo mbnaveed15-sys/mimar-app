@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatLength, LENGTH_HINT, parseLength } from '../lib/units';
+import { formatLength, LENGTH_HINT, MAX_LENGTH_MM, readLength } from '../lib/units';
 import type { Units } from '../types';
 
 interface Props {
@@ -21,12 +21,14 @@ export function LengthField({ id, label, mm, units, onCommit, min = 10 }: Props)
     // A minus sign is read only where the field takes lengths below zero (e.g. a sunken floor).
     const text = input.value.trim();
     const negative = min < 0 && text.startsWith('-');
-    const parsed = parseLength(negative ? text.slice(1) : text, units);
+    const parsed = readLength(negative ? text.slice(1) : text, units);
     const value = parsed !== null && negative ? -parsed : parsed;
-    if (value === null || value < min) {
-      setError(`Enter a length, ${LENGTH_HINT[units]}.`);
-      return;
-    }
+    // Say what is wrong: not a length, too long, or too short.
+    if (value === null) return setError(`Enter a length, ${LENGTH_HINT[units]}.`);
+    if (Math.abs(value) > MAX_LENGTH_MM)
+      return setError(`That's too long: at most ${formatLength(MAX_LENGTH_MM, units)}.`);
+    if (value < min)
+      return setError(min > 0 ? `At least ${formatLength(min, units)}.` : `No lower than ${formatLength(min, units)}.`);
     setError(null);
     onCommit(value);
     input.value = formatLength(value, units);

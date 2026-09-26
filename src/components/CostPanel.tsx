@@ -6,13 +6,17 @@ import { costStore, resetRates, setRate, setRatio, useCost } from '../store/cost
 import { usePlanner } from '../store/plannerStore';
 
 const UNIT_TEXT = { cft: 'cft', sqft: 'sqft', kg: 'kg', no: 'no.' } as const;
+/** The largest rate or assumption that can be typed. */
+const MAX_RATE = 1e8;
 
 /** A rate typed in place: it takes the new value when you leave the field or press Enter. */
 function RateField({ value, label, onCommit }: { value: number; label: string; onCommit: (v: number) => void }) {
   const [text, setText] = useState<string | null>(null);
   const commit = () => {
-    const v = Number((text ?? '').replace(/,/g, ''));
-    if (text !== null && Number.isFinite(v) && v >= 0) onCommit(v);
+    // Blank or not a sensible amount: keep the rate as it was.
+    const typed = (text ?? '').replace(/,/g, '').trim();
+    const v = Number(typed);
+    if (text !== null && typed !== '' && Number.isFinite(v) && v >= 0 && v <= MAX_RATE) onCommit(v);
     setText(null);
   };
   return (

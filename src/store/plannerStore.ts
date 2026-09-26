@@ -306,7 +306,8 @@ export interface PlannerState {
   /** Four walls around the box from a to b, and the room inside, as one undo step. */
   addRectangle: (a: Point, b: Point) => void;
   copySelected: () => void;
-  paste: () => void;
+  /** Paste the copied items (a grid step on from the last paste); returns the new items' ids. */
+  paste: () => Id[];
   duplicateSelected: () => void;
 
   addWall: (a: Point, b: Point) => void;
@@ -490,6 +491,15 @@ export function createPlannerStore(
         openGroupId: open && doc.groups.some((g) => g.id === open) ? open : null,
       });
     };
+    /**
+     * Drop what is being drawn or moved, putting the plan back as it was before it; a paste still
+     * being placed is taken back too (as Esc does).
+     */
+    const abandonDraft = () => {
+      const d = get().draft;
+      get().cancelBatch();
+      if (d?.type === 'move' && d.pasted) get().discardLastStep();
+    };
     const updateElements = (fn: (els: PlanElement[]) => PlanElement[]) =>
       get().commit((doc) => {
         const elements = fn(doc.elements);
@@ -616,7 +626,7 @@ export function createPlannerStore(
       },
 
       setTool: (tool) => {
-        get().cancelBatch();
+        abandonDraft();
         // Tools that work on the selection keep it.
         const keep = ['select', 'move', 'rotate', 'mirror', 'scale'].includes(tool);
         set((s) => ({
@@ -807,10 +817,14 @@ export function createPlannerStore(
       },
       paste: () => {
         const clip = get().clipboard;
-        if (!clip) return;
+        if (!clip) return [];
         // Each paste lands one grid step down and to the right of the last.
         const step = get().gridPx;
         const { doc: source, ids } = copyItems(clip.doc, clip.ids, step, step);
+        if (!ids.length) {
+          get().setWarning('Doors and windows are copied with their wall: select the wall too, then copy.');
+          return [];
+        }
         const fresh = new Set(ids);
         const known = new Set(clip.doc.groups.map((g) => g.id));
         const newGroups = source.groups.filter((g) => !known.has(g.id));
@@ -831,6 +845,7 @@ export function createPlannerStore(
         }));
         set({ clipboard: { doc: source, ids } });
         get().setSelection(ids);
+        return ids;
       },
       duplicateSelected: () => {
         const ids = get().selectedIds;
@@ -1190,7 +1205,7 @@ export function createPlannerStore(
       },
       setActiveLevel: (id) => {
         if (!get().doc.levels.some((l) => l.id === id) || id === get().activeLevel) return;
-        get().cancelBatch();
+        abandonDraft();
         if (get().openGroupId) get().closeGroup();
         set({ activeLevel: id, selectedId: null, selectedIds: [], draft: null, inference: null, lastCopy: null });
       },
@@ -1465,14 +1480,14 @@ export function createPlannerStore(
         get().setGrid({ colors });
       },
       setView3d: (view3d) => {
-        get().cancelBatch();
+        abandonDraft();
         set({ view3d, split: false, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
         setActivePicker(view3d);
         if (!view3d && get().tool === 'orbit') get().setTool('select');
       },
       setSplit: (split) => {
         if (split === get().split) return;
-        get().cancelBatch();
+        abandonDraft();
         set({ split, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
       },
       setActivePane: (is3d) => {

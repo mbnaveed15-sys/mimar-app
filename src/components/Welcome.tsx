@@ -81,10 +81,12 @@ export function Welcome({
   const hasPlan = plannerStore.getState().doc.elements.length > 0;
   const rect = useTargetRect(step === null ? null : STEPS[step].target);
   const ref = useRef<HTMLDivElement>(null);
-  useFocusTrap(ref, step === null);
+  const isTop = useFocusTrap(ref, step === null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // A dialog opened over the welcome (unsaved changes) takes the keys.
+      if (!isTop()) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         finish();

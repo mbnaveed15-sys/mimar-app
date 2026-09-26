@@ -296,6 +296,34 @@ describe('paste, AutoCAD style', () => {
     expect(walls(store)).toHaveLength(1);
   });
 
+  it('a door copied without its wall pastes nothing, says why, and leaves the original alone', () => {
+    const store = setup();
+    store.getState().addWall({ x: 0, y: 0 }, { x: 10 * FT, y: 0 });
+    store.getState().placeOpening('door', { x: 5 * FT, y: 0 });
+    const door = store.getState().doc.elements.find((e) => e.type === 'door')!;
+    store.getState().select(door.id);
+    store.getState().copySelected();
+    const before = store.getState().doc;
+    pasteToPlace(store);
+    expect(store.getState().doc).toBe(before);
+    expect(store.getState().draft).toBeNull();
+    expect(store.getState().warnings.join(' ')).toContain('copied with their wall');
+  });
+
+  it('switching tool or view while placing a paste takes it back', () => {
+    const store = setup();
+    store.getState().addWall({ x: 0, y: 0 }, { x: 10 * FT, y: 0 });
+    store.getState().select(walls(store)[0].id);
+    store.getState().copySelected();
+    pasteToPlace(store);
+    hover(store, { x: 20 * FT, y: 20 * FT });
+    store.getState().setTool('wall');
+    expect(walls(store)).toHaveLength(1);
+    pasteToPlace(store);
+    store.getState().setView3d(true);
+    expect(walls(store)).toHaveLength(1);
+  });
+
   it('Esc takes the paste back', () => {
     const store = setup();
     store.getState().addWall({ x: 0, y: 0 }, { x: 10 * FT, y: 0 });
