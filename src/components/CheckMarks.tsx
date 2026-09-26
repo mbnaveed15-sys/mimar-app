@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { elementOutline } from '../geometry';
 import { PLAN } from '../theme/plan';
 import type { PlanElement, Point, Room } from '../types';
@@ -23,7 +24,15 @@ function outline(el: PlanElement): Point[] {
  * dashed amber where it needs checking (a porch or open stair in a setback may be allowed), and
  * dotted amber for rooms a plan hint is about.
  */
-export function CheckMarks({ elements, rooms, k }: { elements: PlanElement[]; rooms: Room[]; k: number }) {
+export const CheckMarks = memo(function CheckMarks({
+  elements,
+  rooms,
+  k,
+}: {
+  elements: PlanElement[];
+  rooms: Room[];
+  k: number;
+}) {
   const check = usePlanCheck();
   const hints = usePlanHints();
   const marks = [
@@ -40,11 +49,13 @@ export function CheckMarks({ elements, rooms, k }: { elements: PlanElement[]; ro
     return true;
   });
   if (!shown.length) return null;
+  const byId = new Map(elements.map((e) => [e.id, e] as const));
+  const roomById = new Map(rooms.map((r) => [r.id, r] as const));
   return (
     <g pointerEvents="none" data-testid="check-marks">
       {shown.map(({ id, look }) => {
-        const el = elements.find((e) => e.id === id);
-        const room = el ? undefined : rooms.find((r) => r.id === id);
+        const el = byId.get(id);
+        const room = el ? undefined : roomById.get(id);
         const pts = el ? outline(el) : room?.points;
         if (!pts) return null;
         const fail = look === 'fail';
@@ -63,4 +74,4 @@ export function CheckMarks({ elements, rooms, k }: { elements: PlanElement[]; ro
       })}
     </g>
   );
-}
+});

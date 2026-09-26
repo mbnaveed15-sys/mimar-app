@@ -13,7 +13,8 @@ import {
   type PlanElement,
   type Point,
   type Room,
-  type Wall,
+  type SketchLine,
+  type Wall as WallItem,
 } from '../types';
 import { newId } from './ids';
 
@@ -28,7 +29,12 @@ const start = (w: Wall): Point => ({ x: w.x1, y: w.y1 });
 const end = (w: Wall): Point => ({ x: w.x2, y: w.y2 });
 const at = (w: Wall, t: number): Point => ({ x: w.x1 + t * (w.x2 - w.x1), y: w.y1 + t * (w.y2 - w.y1) });
 const withEnds = (w: Wall, a: Point, b: Point): Wall => ({ ...w, x1: a.x, y1: a.y, x2: b.x, y2: b.y });
-const wallsOf = (doc: PlanDoc) => doc.elements.filter((el): el is Wall => el.type === 'wall');
+/**
+ * The straight items the AutoCAD-style tools work on: walls and layout lines alike (only walls
+ * carry doors and windows). Lines cut and bound walls in Trim and Extend, and walls cut lines.
+ */
+type Wall = WallItem | SketchLine;
+const wallsOf = (doc: PlanDoc) => doc.elements.filter((el): el is Wall => el.type === 'wall' || el.type === 'line');
 const isOpening = (el: PlanElement): el is Opening => el.type === 'door' || el.type === 'window';
 
 /** Where segment a1–a2 meets segment b1–b2: t along a, u along b (each 0–1), or null. */
@@ -171,7 +177,8 @@ function replaceWall(doc: PlanDoc, old: Wall, next: Wall): PlanDoc {
 export function joinWalls(doc: PlanDoc, idA: Id, idB: Id, tol: number): PlanDoc | null {
   const a = wallsOf(doc).find((w) => w.id === idA);
   const b = wallsOf(doc).find((w) => w.id === idB);
-  if (!a || !b || a.id === b.id) return null;
+  // A wall joins a wall, a line a line.
+  if (!a || !b || a.id === b.id || a.type !== b.type) return null;
   const dir = sub(end(a), start(a));
   const L = len(dir);
   const u = mul(dir, 1 / L);
@@ -408,13 +415,21 @@ const inBox = (p: Point, b: Bounds) => p.x >= b.minX && p.x <= b.maxX && p.y >= 
 
 /**
  * Stretch: move everything inside the box by dx, dy. Walls with one end in the box stretch; walls
- * and items fully inside move; doors and windows inside the box move along their wall.
+ * and items fully inside move; doors and windows inside the box move along their wall. Only items
+ * `can` allows are touched (those on the floor shown, neither hidden nor locked).
  */
-export function stretchItems(doc: PlanDoc, box: Bounds, dx: number, dy: number): PlanDoc {
+export function stretchItems(
+  doc: PlanDoc,
+  box: Bounds,
+  dx: number,
+  dy: number,
+  can: (id: Id) => boolean = () => true,
+): PlanDoc {
   if (!dx && !dy) return doc;
   const move = (p: Point) => (inBox(p, box) ? { x: p.x + dx, y: p.y + dy } : p);
   const walls = new Map<Id, Wall>();
   const elements = doc.elements.map((el) => {
+    if (!can(el.id)) return el;
     if (el.type === 'wall') {
       const w = withEnds(el, move(start(el)), move(end(el)));
       walls.set(w.id, w);
@@ -433,11 +448,11 @@ export function stretchItems(doc: PlanDoc, box: Bounds, dx: number, dy: number):
   return {
     ...doc,
     elements: elements.flatMap((el): PlanElement[] => {
-      if (!isOpening(el)) return [el];
+      if (!isOpening(el) || !can(el.id)) return [el];
       const wall = walls.get(el.wallId);
       if (!wall) return [el];
       return [{ ...el, ...placeOnWall(wall, move(el), el.width) }];
     }),
-    rooms: doc.rooms.map((r) => ({ ...r, points: r.points.map(move) })),
+    rooms: doc.rooms.map((r) => (can(r.id) ? { ...r, points: r.points.map(move) } : r)),
   };
 }

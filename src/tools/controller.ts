@@ -91,7 +91,7 @@ function buildingGuides(s: PlannerState): Segment[] {
   } else if (s.tool === 'column') {
     const { columnShape, columnW, columnH } = s.structure;
     half = (d) => (columnShape === 'round' ? columnW / 2 : (Math.abs(d.y) * columnW + Math.abs(d.x) * columnH) / 2);
-  } else if (s.tool === 'line' || s.tool === 'room' || s.tool === 'slab') half = () => 0;
+  } else if (s.tool === 'line' || s.tool === 'room' || s.tool === 'slab' || s.tool === 'tape') half = () => 0;
   if (!half) return [];
   const edge = half;
   return plots.flatMap((plot) => {
@@ -103,12 +103,29 @@ function buildingGuides(s: PlannerState): Segment[] {
   });
 }
 
+/** The next Move makes a copy (the Copy alias, CO). */
+let copyNext = false;
+export const armCopyNext = (on: boolean) => {
+  copyNext = on;
+};
+function takeCopyNext() {
+  const on = copyNext;
+  copyNext = false;
+  return on;
+}
+
 /** Snap a point for the active tool, drawing from `from` when there is one. */
 export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreIds?: Set<Id>): Inference {
   const lock = from ? (s.axisLock === 'x' || s.axisLock === 'y' ? axisDirection(s.axisLock) : s.shiftLock) : null;
+  // While Stretch, Scale, Rotate or Mirror shows its result, snap to the plan as it was before (as
+  // AutoCAD does), not to the moving preview.
+  const shown = s.visibleElements();
+  const previewing = !!s.batchBase && ['stretch', 'scale', 'rotate', 'mirror'].includes(s.draft?.type ?? '');
+  const ids = previewing ? new Set(shown.map((el) => el.id)) : null;
+  const elements = previewing && ids ? s.batchBase!.elements.filter((el) => ids.has(el.id)) : shown;
   return infer(raw, {
-    walls: wallsOf(s.visibleElements()),
-    lines: s.visibleElements().filter((el): el is SketchLine => el.type === 'line'),
+    walls: wallsOf(elements),
+    lines: elements.filter((el): el is SketchLine => el.type === 'line'),
     guides: buildingGuides(s),
     tolerance: 10 * s.reach() * s.pxUnits(),
     from,
@@ -160,7 +177,8 @@ export function currentDirection(s: PlannerState): Point | null {
 function targetFor(store: Store, raw: Point, allowOpenings: boolean): Id[] | null {
   const s = store.getState();
   const hit = findElementNear(s.pickableElements(), raw, s.hitTolerance());
-  if (hit && !s.selectedIds.includes(hit.id)) s.select(hit.id);
+  // The selection stays as it is (as in AutoCAD); the item under the click counts only when nothing is selected.
+  if (hit && !s.selectedIds.length) s.select(hit.id);
   const { selectedIds: ids } = store.getState();
   if (!ids.length) return null;
   if (!allowOpenings && ids.every((id) => isOpening(s, id))) return null;
@@ -422,7 +440,7 @@ export function press(store: Store, raw: Point, opts: { ctrl?: boolean } = {}): 
       s.setLastCopy(null);
       s.beginBatch();
       s.setDraft({ type: 'move', ids: store.getState().selectedIds, base: p, to: p, copy: false });
-      if (opts.ctrl) toggleCopy(store);
+      if (!!opts.ctrl !== takeCopyNext()) toggleCopy(store);
       return true;
     }
     case 'rotate': {
@@ -529,6 +547,7 @@ export function applyMeasure(store: Store, text: string): boolean {
     };
     return fail(hints[kind]);
   }
+  if (m.kind === 'length' && m.mm === 0 && s.tool !== 'fillet') return fail('Type a length above zero.');
   if (MODIFY_TOOLS.includes(s.tool) || STRUCTURE_TOOLS.includes(s.tool) || SHAPE_TOOLS.includes(s.tool)) {
     const error = MODIFY_TOOLS.includes(s.tool)
       ? modifyMeasure(store, m)
@@ -547,18 +566,27 @@ export function applyMeasure(store: Store, text: string): boolean {
     return { x: from.x + u.x * units(mm), y: from.y + u.y * units(mm) };
   };
   const lockDir = s.axisLock === 'x' || s.axisLock === 'y' ? axisDirection(s.axisLock) : s.shiftLock;
+  // A typed length goes along the rubber band; @x,y and len<angle give the point itself (y up, as in AutoCAD).
+  const endFrom = (from: Point) =>
+    m.kind === 'vector'
+      ? { x: from.x + units(m.dx), y: from.y - units(m.dy) }
+      : m.kind === 'length'
+        ? along(from, lockDir ?? currentDirection(s), m.mm)
+        : null;
 
   s.setWarning(null);
   switch (s.tool) {
     case 'line': {
-      if (d?.type !== 'line' || m.kind !== 'length') return fail('Click where the line starts, then type its length.');
-      const end = along({ x: d.x1, y: d.y1 }, lockDir ?? currentDirection(s), m.mm);
+      const end = d?.type === 'line' ? endFrom({ x: d.x1, y: d.y1 }) : null;
+      if (d?.type !== 'line' || !end)
+        return fail(`Click where the line starts, then type its length (or @x,y, or length<angle).`);
       finishLineAt(store, end);
       return true;
     }
     case 'wall': {
-      if (d?.type !== 'wall' || m.kind !== 'length') return fail('Click where the wall starts, then type its length.');
-      const end = along({ x: d.x1, y: d.y1 }, lockDir ?? currentDirection(s), m.mm);
+      const end = d?.type === 'wall' ? endFrom({ x: d.x1, y: d.y1 }) : null;
+      if (d?.type !== 'wall' || !end)
+        return fail(`Click where the wall starts, then type its length (or @x,y, or length<angle).`);
       if (!d.chain) s.setDraft({ ...d, chain: true });
       finishWallAt(store, end, 10 * s.reach() * s.pxUnits());
       return true;
@@ -597,8 +625,9 @@ export function applyMeasure(store: Store, text: string): boolean {
         s.setSelection(made);
         return true;
       }
-      if (d?.type !== 'move' || m.kind !== 'length') return fail('Click the point to move from, then type a distance.');
-      if (s.axisLock === 'z') {
+      if (d?.type !== 'move' || (m.kind !== 'length' && m.kind !== 'vector'))
+        return fail('Click the point to move from, then type a distance (or @x,y, or length<angle).');
+      if (s.axisLock === 'z' && m.kind === 'length') {
         // A typed height goes the way the pointer went: up, unless it went down.
         const next = { ...d, dz: (d.dz ?? 0) < 0 ? -m.mm : m.mm };
         s.setDraft(next);
@@ -606,7 +635,7 @@ export function applyMeasure(store: Store, text: string): boolean {
         finishMove(store);
         return true;
       }
-      const to = along(d.base, lockDir ?? currentDirection(s), m.mm);
+      const to = endFrom(d.base)!;
       moveTo(store, to, to);
       finishMove(store);
       return true;
@@ -615,7 +644,8 @@ export function applyMeasure(store: Store, text: string): boolean {
       if (d?.type !== 'rotate' || m.kind !== 'angle')
         return fail('Click the centre to rotate about, then type an angle.');
       const { ids, center } = d;
-      s.commitFromBase((base) => rotateItems(base, ids, center, m.deg));
+      // A positive angle turns counter-clockwise, as in AutoCAD and SketchUp (the plan's y points down).
+      s.commitFromBase((base) => rotateItems(base, ids, center, -m.deg));
       s.endBatch();
       s.setDraft(null);
       return true;
@@ -674,7 +704,8 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
       if (d?.type === 'move' && s.axisLock === 'z') return { label: 'Height', value: formatLength(d.dz ?? 0, s.units) };
       return { label: 'Distance', value: d?.type === 'move' ? len(sub(d.to, d.base)) : '' };
     case 'rotate':
-      return { label: 'Angle', value: d?.type === 'rotate' ? `${Math.round(d.angle)}°` : '' };
+      // Counter-clockwise positive, as typed.
+      return { label: 'Angle', value: d?.type === 'rotate' ? `${Math.round(-d.angle) || 0}°` : '' };
     default:
       if (SHAPE_TOOLS.includes(s.tool)) return shapeReadout(s);
       return STRUCTURE_TOOLS.includes(s.tool) ? structureReadout(s) : modifyReadout(s);

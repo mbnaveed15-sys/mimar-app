@@ -41,10 +41,17 @@ const PLAIN_RE = new RegExp(String.raw`^${NUM}$`);
 /**
  * Parse a length typed by the user into millimetres, or null if it can't be read.
  * Accepts metric (3.5 m, 350 cm, 3500 mm) and imperial (12' 6", 12ft 6in, 12'6, 6", 12.5')
- * in either unit system. A bare number uses the current units: feet, or metres.
+ * in either unit system, with fractions of an inch (6 1/2", 12'6-1/2"). A bare number uses the
+ * current units: feet, or millimetres (as in AutoCAD).
  */
 export function parseLength(text: string, units: Units): number | null {
-  const s = text.trim().toLowerCase().replace(/\s+/g, ' ');
+  const s = text
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    // Fractions: "6 1/2" or "6-1/2" is 6.5, and a lone "1/2" is 0.5.
+    .replace(/(\d+)[ -](\d+)\/(\d+)/g, (_, a, b, c) => String(Number(a) + Number(b) / Number(c)))
+    .replace(/(^|[^\d.])(\d+)\/(\d+)/g, (_, p, b, c) => p + String(Number(b) / Number(c)));
   if (!s) return null;
   let mm: number | null = null;
 
@@ -52,7 +59,7 @@ export function parseLength(text: string, units: Units): number | null {
   const metric = METRIC_RE.exec(s);
   const inchesOnly = INCHES_ONLY_RE.exec(s);
   if (plain) {
-    mm = Number(plain[1]) * (units === 'imperial' ? MM_PER_FOOT : 1000);
+    mm = Number(plain[1]) * (units === 'imperial' ? MM_PER_FOOT : 1);
   } else if (metric) {
     const factor = { mm: 1, cm: 10, m: 1000 }[metric[2] as 'mm' | 'cm' | 'm'];
     mm = Number(metric[1]) * factor;

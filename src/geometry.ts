@@ -148,7 +148,7 @@ export function nearestWall(elements: PlanElement[], p: Point, maxDistance: numb
  * clamped so it stays within the wall. The width is capped at the wall length.
  */
 export function placeOnWall(
-  wall: Wall,
+  wall: Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>,
   p: Point,
   width: number,
 ): { x: number; y: number; angle: number; width: number } {
@@ -181,16 +181,25 @@ export function fromFurnitureLocal(f: Placed, local: Point): Point {
 }
 
 /** Position of p along the wall: 0 at the start, 1 at the end. */
-export function wallParam(wall: Wall, p: Point): number {
+export function wallParam(wall: Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>, p: Point): number {
   const C = wall.x2 - wall.x1;
   const D = wall.y2 - wall.y1;
   const lenSq = C * C + D * D;
   return lenSq === 0 ? 0 : ((p.x - wall.x1) * C + (p.y - wall.y1) * D) / lenSq;
 }
 
-/** Keep an opening at the same relative position after its wall moved or changed length. */
+/**
+ * Keep an opening in place after its wall moved or changed length: the same distance from the end
+ * that stayed put (the start, when both moved), so lengthening a wall doesn't slide its doors.
+ */
 export function reattachOpening(opening: Opening, oldWall: Wall, newWall: Wall): Opening {
-  const t = wallParam(oldWall, opening);
+  const oldLen = wallLength(oldWall);
+  const newLen = wallLength(newWall) || 1;
+  const along = wallParam(oldWall, opening) * oldLen;
+  const same = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by) < 1e-6;
+  const startKept = same(oldWall.x1, oldWall.y1, newWall.x1, newWall.y1);
+  const endKept = same(oldWall.x2, oldWall.y2, newWall.x2, newWall.y2);
+  const t = Math.max(0, Math.min(1, !startKept && endKept ? 1 - (oldLen - along) / newLen : along / newLen));
   const p = { x: newWall.x1 + t * (newWall.x2 - newWall.x1), y: newWall.y1 + t * (newWall.y2 - newWall.y1) };
   return { ...opening, ...placeOnWall(newWall, p, opening.width) };
 }

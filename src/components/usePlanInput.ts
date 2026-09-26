@@ -1,3 +1,4 @@
+import { finishStep } from '../tools/finish';
 import { useRef, type MouseEvent, type PointerEvent } from 'react';
 import {
   findElementNear,
@@ -433,7 +434,11 @@ export function usePlanInput(
   function onRightClick(e: MouseEvent<Element>) {
     e.preventDefault();
     const s = plannerStore.getState();
-    if (s.draft) return;
+    // While drawing, a right-click is Enter (AutoCAD): it finishes the step.
+    if (s.draft) {
+      finishStep(plannerStore);
+      return;
+    }
     const raw = toPlan(e);
     const id = idAt(e, raw);
     if (!id || !s.selectedIds.includes(id)) s.select(id);

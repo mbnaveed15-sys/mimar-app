@@ -59,9 +59,13 @@ autosaves to local storage on every change.
   characters from names. `rooms.ts buildWallGraph` sweeps along x and hashes corners (no longer O(n²)).
 - Autosave keeps the file name, path and unsaved flag under `mimar.file` (`saveFileInfo`/`loadFileInfo`), so File ›
   New still asks after a reload.
-- Snapping (`src/lib/inference.ts`): wall and line ends, midpoints, crossings, then the building-line guides
-  (`buildingGuides` in `src/tools/controller.ts`, from `buildingGuide` in `site.ts`, set in by the tool's half size),
-  then grid points, axes, and points along walls and lines.
+- Snapping (`src/lib/inference.ts`): 1) points, nearest wins (ends, wall-face corners, midpoints, crossings incl.
+  faces, perpendicular, axis∩wall); 2) the building-line guides (`buildingGuides` in `src/tools/controller.ts`, from
+  `buildingGuide` in `site.ts`, set in by the tool's half size); 3) the red/green axis from the last point; 4) along
+  walls, wall faces and lines at the grid step; 5) the grid. During Stretch/Scale/Rotate/Mirror previews it snaps to
+  `batchBase`. Typed points: `parseMeasure` → `{ kind: 'vector' }` (`@x,y`, `len<angle`). AutoCAD aliases:
+  `src/lib/aliases.ts`, read in `useKeyboardShortcuts.ts`; `src/tools/finish.ts` is Enter/right-click. The modify
+  library (`src/lib/modify.ts`) treats walls and layout lines alike (`type Wall = WallItem | SketchLine` there).
 - Tool bars: `src/lib/toolbars.ts` (the bars, the saved layout in prefs, `moveToolbar`, `packColumns` which
   wraps bars into columns) and `src/components/ToolDocks.tsx` (the four docks, grips, drag and drop, grip menu).
 - `src/commands.ts`: every menu item, shortcut and Ctrl+K palette entry in one registry.

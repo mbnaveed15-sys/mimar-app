@@ -1,4 +1,4 @@
-import { nearestWall, wallParam } from '../geometry';
+import { pointToSegmentDistance, wallParam } from '../geometry';
 import type { Inference } from '../lib/inference';
 import type { Measure } from '../lib/measure';
 import {
@@ -16,7 +16,10 @@ import {
 } from '../lib/modify';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
-import type { Id, PlanDoc, Point, Wall } from '../types';
+import type { Id, PlanDoc, Point, SketchLine, Wall as WallItem } from '../types';
+
+/** Walls and layout lines alike. */
+type Wall = WallItem | SketchLine;
 
 /** The bits of a zustand store these tools need. */
 interface Store {
@@ -27,12 +30,23 @@ const sub = (a: Point, b: Point) => ({ x: a.x - b.x, y: a.y - b.y });
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 const tolOf = (s: PlannerState) => 10 * s.pxUnits();
 
+/** The wall or layout line nearest the pointer: the AutoCAD-style tools work on both. */
 function wallAt(s: PlannerState, raw: Point): Wall | null {
-  return nearestWall(s.pickableElements(), raw, s.hitTolerance() * 1.5);
+  let best: Wall | null = null;
+  let bestD = s.hitTolerance() * 1.5;
+  for (const el of s.pickableElements()) {
+    if (el.type !== 'wall' && el.type !== 'line') continue;
+    const d = pointToSegmentDistance(raw, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 });
+    if (d < bestD) {
+      best = el;
+      bestD = d;
+    }
+  }
+  return best;
 }
 
 function wallById(s: PlannerState, id: Id): Wall | undefined {
-  return s.doc.elements.find((e): e is Wall => e.type === 'wall' && e.id === id);
+  return s.doc.elements.find((e): e is Wall => (e.type === 'wall' || e.type === 'line') && e.id === id);
 }
 
 /** The selection, or whatever was clicked (which becomes the selection). */
@@ -59,6 +73,12 @@ function offsetDraft(s: PlannerState, wall: Wall, side: Point, d?: number) {
   if (d === undefined && s.grid.snap) distance = Math.max(s.gridPx, Math.round(distance / s.gridPx) * s.gridPx);
   const w = offsetWall(wall, distance, side);
   return { type: 'offset' as const, wallId: wall.id, side, dist: distance, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 };
+}
+
+/** Stretch only reaches what can be picked: the floor shown, nothing hidden or locked. */
+function stretchable(s: PlannerState): (id: Id) => boolean {
+  const ids = new Set([...s.pickableElements(), ...s.pickableRooms()].map((it) => it.id));
+  return (id) => ids.has(id);
 }
 
 /** Commit a change that cuts walls, and say so if doors or windows went with the cut. */
@@ -126,20 +146,20 @@ export function modifyPress(store: Store, raw: Point, inf: Inference, opts: { ct
         return;
       }
       const wall = wallAt(s, raw);
-      if (!wall) return s.setWarning('Click the wall to offset, then click the side and distance.');
+      if (!wall) return s.setWarning('Click the wall or line to offset, then click the side and distance.');
       s.setWarning(null);
       s.setDraft(offsetDraft(s, wall, raw));
       return;
     }
     case 'trim': {
       const wall = wallAt(s, raw);
-      if (!wall) return s.setWarning('Click the piece of a wall to cut away.');
+      if (!wall) return s.setWarning('Click the piece of a wall or line to cut away.');
       commitCounted(store, (doc) => trimAt(doc, wall.id, raw, tol));
       return s.setWarning(null);
     }
     case 'extend': {
       const wall = wallAt(s, raw);
-      if (!wall) return s.setWarning('Click near the end of the wall to lengthen.');
+      if (!wall) return s.setWarning('Click near the end of the wall or line to lengthen.');
       const next = extendWall(s.doc, wall.id, raw);
       if (!next) return s.setWarning('There is no wall for this one to meet in that direction.');
       s.commit(() => next);
@@ -151,7 +171,8 @@ export function modifyPress(store: Store, raw: Point, inf: Inference, opts: { ct
     case 'chamfer': {
       if (d?.type === 'pick') return finishPair(store, raw, d);
       const wall = wallAt(s, raw);
-      if (!wall) return s.setWarning(s.tool === 'breakWall' ? 'Click the wall to break.' : 'Click the first wall.');
+      if (!wall)
+        return s.setWarning(s.tool === 'breakWall' ? 'Click the wall or line to break.' : 'Click the first wall.');
       s.setWarning(null);
       // Remember where on the wall it was clicked (projected onto its centre line).
       const t = Math.max(0, Math.min(1, wallParam(wall, raw)));
@@ -227,7 +248,7 @@ export function modifyHover(store: Store, raw: Point, inf: Inference, shift: boo
       s.setDraft({ ...d, to: p });
       const box = boxOf(d);
       const base = d.base;
-      s.commitFromBase((b) => stretchItems(b, box, p.x - base.x, p.y - base.y));
+      s.commitFromBase((b) => stretchItems(b, box, p.x - base.x, p.y - base.y, stretchable(s)));
     }
   } else if (d?.type === 'scale' && d.ref) {
     let factor = dist(p, d.base) / dist(d.ref, d.base);
@@ -272,7 +293,8 @@ export function modifyMeasure(store: Store, m: Measure): string | null {
   const units = (mm: number) => mm / MM_PER_UNIT;
   switch (s.tool) {
     case 'offset': {
-      if (d?.type !== 'offset' || m.kind !== 'length') return 'Click the wall to offset, then type the distance.';
+      if (d?.type !== 'offset' || m.kind !== 'length')
+        return 'Click the wall or line to offset, then type the distance.';
       const wall = wallById(s, d.wallId);
       if (wall) s.addElements([offsetWall(wall, Math.abs(units(m.mm)), d.side)]);
       s.setDraft(null);
@@ -308,7 +330,7 @@ export function modifyMeasure(store: Store, m: Measure): string | null {
       const L = Math.hypot(dir.x, dir.y) || 1;
       const k = units(m.mm) / L;
       const box = boxOf(d);
-      s.commitFromBase((b) => stretchItems(b, box, dir.x * k || units(m.mm), dir.y * k));
+      s.commitFromBase((b) => stretchItems(b, box, dir.x * k || units(m.mm), dir.y * k, stretchable(s)));
       s.endBatch();
       s.setDraft(null);
       return null;
@@ -361,19 +383,19 @@ export function modifyHint(s: PlannerState): string {
     case 'offset':
       return d?.type === 'offset'
         ? 'Click to place the parallel wall, or type its distance and press Enter.'
-        : 'Click the wall to offset (make a parallel copy of).';
+        : 'Click the wall or line to offset (make a parallel copy of).';
     case 'mirror':
       return d?.type === 'mirror'
         ? `Click the second point of the mirror line. ${d.flip ? 'Flipping the originals (Ctrl to copy instead).' : 'Making a mirrored copy (Ctrl to flip the originals instead).'}`
         : 'Select what to mirror, then click the first point of the mirror line.';
     case 'trim':
-      return 'Click the piece of a wall to cut away, up to the walls crossing it. (Shift+click with the Eraser does the same.)';
+      return 'Click the piece of a wall or line to cut away, up to the walls and lines crossing it. (Shift+click with the Eraser does the same.)';
     case 'extend':
-      return 'Click near the end of a wall to lengthen it to the next wall.';
+      return 'Click near the end of a wall or line to lengthen it to the next wall or line.';
     case 'breakWall':
       return d?.type === 'pick'
         ? 'Click again on the wall where the gap ends, press Enter to just split it, or type the gap width.'
-        : 'Click the wall where it should break.';
+        : 'Click the wall or line where it should break.';
     case 'join':
       return d?.type === 'pick'
         ? 'Click the second wall, in line with the first.'

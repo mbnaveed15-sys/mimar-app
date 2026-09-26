@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { elementOutline, planBounds } from '../geometry';
 import { formatLength } from '../lib/units';
 import { PLAN } from '../theme/plan';
@@ -28,10 +29,14 @@ export interface PlanDrawingProps {
   k: number;
 }
 
-/** The plan itself: rooms, walls, doors, windows, furniture and dimensions. Used on screen and for exports. */
-export function PlanDrawing(props: PlanDrawingProps) {
+/**
+ * The plan itself: rooms, walls, doors, windows, furniture and dimensions. Used on screen and for
+ * exports. Memoised: moving the pointer or panning doesn't redraw it, only a change to what it shows.
+ */
+export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
   const { doc, selectedIds, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, k } = props;
   const walls = wallsOf(doc.elements);
+  const wallById = new Map(walls.map((w) => [w.id, w] as const));
   const selected = new Set(selectedIds);
   const colorOf = (id?: string) => doc.materials.find((m) => m.id === id)?.color;
   const faces = showDimensions ? wallFaces(walls) : [];
@@ -77,7 +82,7 @@ export function PlanDrawing(props: PlanDrawingProps) {
             return null;
           case 'door':
           case 'window': {
-            const host = walls.find((w) => w.id === el.wallId);
+            const host = wallById.get(el.wallId);
             return (
               <OpeningShape
                 key={el.id}
@@ -160,4 +165,4 @@ export function PlanDrawing(props: PlanDrawingProps) {
         })}
     </>
   );
-}
+});

@@ -13,8 +13,19 @@ import {
   toggleCopy,
   toggleHeightLock,
 } from '../tools/controller';
-import { modifyEnter } from '../tools/modifyTools';
-import { shapeEnter } from '../tools/shapeTools';
+import { aliasStep, ALIAS_GAP_MS } from '../lib/aliases';
+import { finishStep } from '../tools/finish';
+import { armCopyNext } from '../tools/controller';
+import { SIMPLE_TOOLS, type Tool } from '../types';
+
+// AutoCAD aliases typed as quick letter sequences, and the last tool for Enter to go back to.
+let aliasBuffer = '';
+let aliasAt = 0;
+let lastTool: Tool | null = null;
+plannerStore.subscribe((state, prev) => {
+  if (state.tool !== prev.tool && prev.tool !== 'select') lastTool = prev.tool;
+  if (state.tool !== prev.tool && state.tool !== 'select') lastTool = state.tool;
+});
 
 /** Keys typed into a field, or used to move around a menu or dialog, are not shortcuts. */
 const isTyping = (target: EventTarget | null) =>
@@ -70,10 +81,9 @@ export function useKeyboardShortcuts(commands: Command[]) {
         return;
       }
       if (e.key === 'Enter') {
-        if (modifyEnter(plannerStore) || shapeEnter(plannerStore)) return;
-        const d = s.draft;
-        if (d?.type === 'mask') s.finishMask();
-        else if (d?.type === 'wall' || d?.type === 'line' || d?.type === 'tape') s.setDraft(null);
+        if (finishStep(plannerStore)) return;
+        // Nothing to finish, back on the Select tool: repeat the last tool, as AutoCAD repeats a command.
+        if (!s.draft && s.tool === 'select' && lastTool) s.setTool(lastTool);
         return;
       }
       const upDown = e.key === 'ArrowUp' || e.key === 'ArrowDown';
@@ -118,6 +128,25 @@ export function useKeyboardShortcuts(commands: Command[]) {
         s.setDraft(d);
         s.commitFromBase((base) => mirrorItems(base, d.ids, d.a, d.b, d.flip).doc);
         return;
+      }
+
+      // AutoCAD aliases: CO, TR, EX… typed quickly pick that tool (the first letter picked its own).
+      if (!mod && !e.shiftKey && /^[a-z]$/i.test(e.key)) {
+        const now = performance.now();
+        const step = aliasStep(now - aliasAt < ALIAS_GAP_MS ? aliasBuffer : '', e.key);
+        aliasBuffer = step.buffer;
+        aliasAt = now;
+        if (step.hit === 'wait') {
+          e.preventDefault();
+          return;
+        }
+        if (step.hit) {
+          e.preventDefault();
+          if (!SIMPLE_TOOLS.includes(step.hit.tool) && s.mode === 'simple') s.setMode('pro');
+          s.setTool(step.hit.tool);
+          armCopyNext(!!step.hit.copy);
+          return;
+        }
       }
 
       for (const cmd of commands) {
