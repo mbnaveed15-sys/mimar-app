@@ -16,7 +16,7 @@ import {
 } from '../lib/modify';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
-import type { Id, Point, Wall } from '../types';
+import type { Id, PlanDoc, Point, Wall } from '../types';
 
 /** The bits of a zustand store these tools need. */
 interface Store {
@@ -61,6 +61,21 @@ function offsetDraft(s: PlannerState, wall: Wall, side: Point, d?: number) {
   return { type: 'offset' as const, wallId: wall.id, side, dist: distance, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 };
 }
 
+/** Commit a change that cuts walls, and say so if doors or windows went with the cut. */
+function commitCounted(store: Store, recipe: (doc: PlanDoc) => PlanDoc) {
+  const openings = () =>
+    store.getState().doc.elements.filter((el) => el.type === 'door' || el.type === 'window').length;
+  const before = openings();
+  store.getState().commit(recipe);
+  const lost = before - openings();
+  if (lost > 0)
+    store
+      .getState()
+      .setWarning(
+        `The cut went through ${lost === 1 ? 'a door or window' : `${lost} doors or windows`}, so ${lost === 1 ? 'it was' : 'they were'} removed. Undo (Ctrl+Z) to bring ${lost === 1 ? 'it' : 'them'} back.`,
+      );
+}
+
 /** The second wall of Join, Fillet, Chamfer, or the second point of Break. */
 function finishPair(store: Store, raw: Point, first: { wallId: Id; point: Point }) {
   const s = store.getState();
@@ -72,9 +87,9 @@ function finishPair(store: Store, raw: Point, first: { wallId: Id; point: Point 
     if (b?.id !== a.id) return s.setWarning('Click the same wall again where the gap should end.');
     const t1 = wallParam(a, first.point);
     const t2 = dist(raw, first.point) <= tol ? t1 : wallParam(a, raw);
-    s.commit((doc) => breakWall(doc, a.id, t1, t2));
     s.setDraft(null);
-    return s.setWarning(null);
+    s.setWarning(null);
+    return commitCounted(store, (doc) => breakWall(doc, a.id, t1, t2));
   }
   if (!b || b.id === a.id) return s.setWarning('Click a second wall.');
   let next = null;
@@ -119,7 +134,7 @@ export function modifyPress(store: Store, raw: Point, inf: Inference, opts: { ct
     case 'trim': {
       const wall = wallAt(s, raw);
       if (!wall) return s.setWarning('Click the piece of a wall to cut away.');
-      s.commit((doc) => trimAt(doc, wall.id, raw, tol));
+      commitCounted(store, (doc) => trimAt(doc, wall.id, raw, tol));
       return s.setWarning(null);
     }
     case 'extend': {
@@ -243,8 +258,8 @@ export function modifyEnter(store: Store): boolean {
   const d = s.draft;
   if (s.tool === 'breakWall' && d?.type === 'pick') {
     const wall = wallById(s, d.wallId);
-    if (wall) s.commit((doc) => breakWall(doc, wall.id, wallParam(wall, d.point)));
     s.setDraft(null);
+    if (wall) commitCounted(store, (doc) => breakWall(doc, wall.id, wallParam(wall, d.point)));
     return true;
   }
   return false;
@@ -282,8 +297,8 @@ export function modifyMeasure(store: Store, m: Measure): string | null {
       // The gap runs towards the pointer.
       const toward = s.inference ? wallParam(wall, s.inference.point) : 1;
       const t2 = t1 + (toward >= t1 ? 1 : -1) * (units(Math.abs(m.mm)) / L);
-      s.commit((doc) => breakWall(doc, wall.id, t1, t2));
       s.setDraft(null);
+      commitCounted(store, (doc) => breakWall(doc, wall.id, t1, t2));
       return null;
     }
     case 'stretch': {

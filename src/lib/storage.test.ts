@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { CURRENT_VERSION, STORAGE_KEY, emptyDoc, loadPlan, normaliseDoc, savePlan } from './storage';
+import {
+  CURRENT_VERSION,
+  STORAGE_KEY,
+  emptyDoc,
+  loadFileInfo,
+  loadPlan,
+  normaliseDoc,
+  saveFileInfo,
+  savePlan,
+} from './storage';
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const data = new Map(Object.entries(initial));
@@ -169,5 +178,65 @@ describe('storage', () => {
     expect(normaliseDoc({ ...emptyDoc(), northDeg: -45 }).northDeg).toBe(315);
     expect(normaliseDoc({ ...emptyDoc(), northDeg: 360 })).not.toHaveProperty('northDeg');
     expect(normaliseDoc({ ...emptyDoc(), northDeg: 'up' })).not.toHaveProperty('northDeg');
+  });
+
+  it('drops damaged values that would hang or crash the app, and cleans names', () => {
+    const doc = normaliseDoc({
+      ...emptyDoc(),
+      elements: [
+        { id: 'far', type: 'wall', x1: 0, y1: 0, x2: 1e15, y2: 0 },
+        { id: 'ok', type: 'wall', x1: 0, y1: 0, x2: 100, y2: 0 },
+        {
+          id: 'st',
+          type: 'stair',
+          x: 0,
+          y: 0,
+          shape: 'straight',
+          width: 90,
+          riseMm: 1e9,
+          riserMm: 170,
+          treadMm: 280,
+          w: 90,
+          h: 300,
+        },
+        { id: 'd0', type: 'door', wallId: 'ok', x: 50, y: 0, angle: 0, width: -90 },
+      ],
+      rooms: [
+        {
+          id: 'r',
+          name: 'Bed\u0007room\nOne',
+          points: [
+            { x: 0, y: 0 },
+            { x: 10, y: 0 },
+            { x: 10, y: 10 },
+          ],
+        },
+      ],
+    });
+    expect(doc.elements.map((e) => e.id)).toEqual(['ok']);
+    expect(doc.rooms[0].name).toBe('Bedroom One');
+  });
+
+  it('keeps the file name and whether it has unsaved changes across a reload', () => {
+    const store = new Map<string, string>();
+    const kv = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    };
+    expect(loadFileInfo(kv)).toBeNull();
+    saveFileInfo({ name: 'House', dirty: true }, kv);
+    expect(loadFileInfo(kv)).toEqual({ name: 'House', dirty: true });
+  });
+
+  it('says when the plan could not be autosaved (storage full)', () => {
+    const full = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('QuotaExceededError');
+      },
+      removeItem: () => {},
+    };
+    expect(savePlan(emptyDoc(), full)).toBe(false);
   });
 });

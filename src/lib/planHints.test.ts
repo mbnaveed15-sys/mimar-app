@@ -158,4 +158,23 @@ describe('plan hints', () => {
     const withStair = texts(docOf([...up, stair], upRooms, levels));
     expect(withStair.some((x) => /stair|reached/.test(x))).toBe(false);
   });
+
+  it('treats "Guest bath" and "Master bath" as baths, and names the floor for upper-floor hints', () => {
+    const els: PlanElement[] = [...HOUSE, wall('bw', 30, 30, 40, 30), opening('bd', 'door', 'right', 30, 35)];
+    const t = texts(docOf(els, [...ROOMS, room('gb', 'Guest bath', 30, 30, 10, 10)]));
+    expect(t.some((x) => /^Guest bath/.test(x) && !/small for a bathroom/.test(x))).toBe(false);
+    const levels = [
+      { id: 'ground', name: 'Ground floor' },
+      { id: 'first', name: 'First floor' },
+    ];
+    const up = texts(docOf([wall('u', 0, 0, 10, 0, 'first')], [room('x', 'Bedroom 9', 0, 0, 12, 12, 'first')], levels));
+    expect(up).toContain('First floor: Bedroom 9 has no door.');
+  });
+
+  it('stays quick with absurdly long walls', () => {
+    const huge = [wall('h', 0, 0, 3e6, 0), ...HOUSE];
+    const start = performance.now();
+    hints(docOf(huge, ROOMS));
+    expect(performance.now() - start).toBeLessThan(2000);
+  });
 });

@@ -64,8 +64,11 @@ export function parseLength(text: string, units: Units): number | null {
       mm = Number(fi[1]) * MM_PER_FOOT + (fi[2] !== undefined ? Number(fi[2]) * MM_PER_INCH : 0);
     }
   }
-  return mm !== null && Number.isFinite(mm) ? mm : null;
+  return mm !== null && Number.isFinite(mm) && Math.abs(mm) <= MAX_LENGTH_MM ? mm : null;
 }
+
+/** The longest length that can be typed: 1 km. Longer is a slip of the keyboard. */
+export const MAX_LENGTH_MM = 1_000_000;
 
 export const SQ_MM_PER_SQ_FT = 92903.04;
 export const MARLA_OPTIONS: { sqft: MarlaSqFt; label: string }[] = [

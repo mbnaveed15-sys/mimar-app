@@ -53,6 +53,12 @@ autosaves to local storage on every change.
   `src/components/PlanCheckPanel.tsx` (bylaw rows, then Hints), `CheckMarks.tsx` (red, dashed and dotted marks, on
   items and rooms) and `PlotBylaws.tsx` (authority, presets, the plot's setbacks). Figures and sources:
   `docs/handover/06-bylaws.md`. The plan's `northDeg` (degrees clockwise from up) drives the PDF's north arrow.
+- `src/lib/spatial.ts`: `GridIndex` (buckets for point lookups) and `boxOf`, used by the hints and the covered
+  area so they scale to thousands of rooms. `src/store/usePlanCheck.ts` keeps one shared result per change and uses
+  the plan from before a drag (`batchBase`) until it is let go. `src/lib/text.ts` `cleanText` strips control
+  characters from names. `rooms.ts buildWallGraph` sweeps along x and hashes corners (no longer O(n²)).
+- Autosave keeps the file name, path and unsaved flag under `mimar.file` (`saveFileInfo`/`loadFileInfo`), so File ›
+  New still asks after a reload.
 - Snapping (`src/lib/inference.ts`): wall and line ends, midpoints, crossings, then the building-line guides
   (`buildingGuides` in `src/tools/controller.ts`, from `buildingGuide` in `site.ts`, set in by the tool's half size),
   then grid points, axes, and points along walls and lines.

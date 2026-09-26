@@ -94,9 +94,12 @@ test('save a plan to a file, start a new one, and open it again', async ({ page 
   await expect(page.getByTestId('file-name')).toHaveText('House');
 });
 
-test('asks before discarding unsaved changes', async ({ page }) => {
+test('asks before discarding unsaved changes, even after a reload', async ({ page }) => {
   await tool(page, 'wall');
   await drag(page, [304.8, 304.8], [609.6, 304.8]);
+  // The changes are still unsaved after the page is reloaded (or the app restarted).
+  await page.reload();
+  await expect(page.getByTestId('file-name')).toContainText('unsaved');
   await menu(page, 'File', 'New');
   await expect(page.getByRole('alertdialog')).toBeVisible();
   await page.getByRole('button', { name: 'Cancel' }).click();

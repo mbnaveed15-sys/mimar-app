@@ -58,4 +58,10 @@ describe('DXF export', () => {
     expect(dxfText('27 m² · 1.2 marla')).toBe('27 m2 - 1.2 marla');
     expect(dxfText('کمرہ')).toBe('\\U+06A9\\U+0645\\U+0631\\U+06C1');
   });
+
+  it('exports a big floor (thousands of walls) without running out of stack', () => {
+    const walls: Wall[] = Array.from({ length: 3000 }, (_, i) => ({ ...wall, id: `w${i}`, y1: i * 30, y2: i * 30 }));
+    const doc: PlanDoc = { ...emptyDoc(), elements: walls };
+    expect(() => planToDxf(doc, opts)).not.toThrow();
+  });
 });

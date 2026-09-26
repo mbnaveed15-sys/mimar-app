@@ -133,4 +133,19 @@ describe('raising items', () => {
     expect(out.elements[2]).toEqual(doc().elements[2]);
     expect((raiseItems(doc(), ['n'], -2000).elements[1] as Opening).sillMm).toBe(0);
   });
+
+  it('a wall split inside a component copy gets its own key, so the copies keep one id each', () => {
+    const plan: PlanDoc = { ...emptyDoc(), elements: [wall('a', 0, 0, 100, 0), wall('b', 100, 0, 100, 100)] };
+    const made = makeComponent(plan, ['a', 'b'], 'Corner');
+    const placed = placeComponent(made.doc, made.doc.components[0].id, { x: 500, y: 500 })!;
+    // Split wall "a" in the first copy: the new piece carries a's key, as Break does.
+    const a = placed.doc.elements.find((e) => e.id === 'a')!;
+    const piece = { ...a, id: 'a2' };
+    let d = { ...placed.doc, elements: [...placed.doc.elements, piece] };
+    d = syncComponent(d, made.groupId);
+    const keys = d.components[0].elements.map((e) => e.id);
+    expect(new Set(keys).size).toBe(keys.length);
+    const ids = d.elements.map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
 });

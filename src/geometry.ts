@@ -1,3 +1,4 @@
+import { boxOf } from './lib/spatial';
 import {
   hasPoints,
   type Block,
@@ -275,13 +276,7 @@ function elementPoints(el: PlanElement): Point[] {
 /** Smallest box around everything in the plan, or null if it is empty. */
 export function planBounds(elements: PlanElement[], masks: Mask[]): Bounds | null {
   const pts = [...elements.flatMap(elementPoints), ...masks.flatMap((m) => m.points)];
-  if (!pts.length) return null;
-  return {
-    minX: Math.min(...pts.map((p) => p.x)),
-    minY: Math.min(...pts.map((p) => p.y)),
-    maxX: Math.max(...pts.map((p) => p.x)),
-    maxY: Math.max(...pts.map((p) => p.y)),
-  };
+  return pts.length ? boxOf(pts) : null;
 }
 
 /** Nearest wall end point within maxDistance of p, for snapping walls together. */

@@ -1,3 +1,5 @@
+import { cleanText } from './text';
+import { MAX_RISE_MM } from './site';
 import {
   GROUND_LEVEL,
   type ComponentDef,
@@ -72,6 +74,11 @@ const flagsOf = (raw: Record<string, unknown>) => ({
   ...(raw.locked === true ? { locked: true } : {}),
 });
 
+/** Plan coordinates and sizes beyond this (100 km, in plan units) are damage, not a drawing. */
+const MAX_UNITS = 10_000_000;
+const sane = (v: number) => Number.isFinite(v) && Math.abs(v) <= MAX_UNITS;
+const nameOf = (v: unknown, fallback: string) => (typeof v === 'string' ? cleanText(v) : fallback);
+
 const inRange = (v: unknown, lo: number, hi: number): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 /** Height above the floor and window sill, kept only when set and sensible. */
@@ -105,7 +112,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
     ...heightsOf(raw),
   };
   if (!base.id) return null;
-  const num = (k: string) => (typeof raw[k] === 'number' ? (raw[k] as number) : NaN);
+  const num = (k: string) => (typeof raw[k] === 'number' && sane(raw[k] as number) ? (raw[k] as number) : NaN);
   switch (raw.type) {
     case 'wall': {
       const thickness = num('thickness');
@@ -137,7 +144,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
         gate: raw.gate === true || undefined,
         ...(raw.type === 'window' ? windowShapeOf(raw) : {}),
       };
-      return el.wallId && [el.x, el.y, el.angle, el.width].every(Number.isFinite) ? el : null;
+      return el.wallId && [el.x, el.y, el.angle, el.width].every(Number.isFinite) && el.width > 0 ? el : null;
     }
     case 'furniture': {
       const el = {
@@ -149,9 +156,9 @@ function normaliseElement(raw: unknown): PlanElement | null {
         h: num('h'),
         rotation: typeof raw.rotation === 'number' && Number.isFinite(raw.rotation) ? raw.rotation : undefined,
         kind: isFurnitureKind(raw.kind) ? raw.kind : undefined,
-        label: typeof raw.label === 'string' ? raw.label : undefined,
+        label: typeof raw.label === 'string' ? cleanText(raw.label) : undefined,
       };
-      return [el.x, el.y, el.w, el.h].every(Number.isFinite) ? el : null;
+      return [el.x, el.y, el.w, el.h].every(Number.isFinite) && el.w > 0 && el.h > 0 ? el : null;
     }
     case 'column': {
       const el = {
@@ -243,9 +250,10 @@ function normaliseElement(raw: unknown): PlanElement | null {
         w: num('w'),
         h: num('h'),
       };
-      const ok = [el.x, el.y, el.width, el.riseMm, el.riserMm, el.treadMm, el.w, el.h].every(
-        (v) => Number.isFinite(v) && v >= 0,
-      );
+      const ok =
+        [el.x, el.y, el.width, el.riseMm, el.riserMm, el.treadMm, el.w, el.h].every(
+          (v) => Number.isFinite(v) && v >= 0,
+        ) && el.riseMm <= MAX_RISE_MM;
       return ok && el.width > 0 ? el : null;
     }
     default:
@@ -271,14 +279,16 @@ function windowShapeOf(raw: Record<string, unknown>) {
 
 function readPoints(raw: unknown): Point[] {
   return (Array.isArray(raw) ? raw : [])
-    .filter((p): p is Point => isObject(p) && typeof p.x === 'number' && typeof p.y === 'number')
+    .filter(
+      (p): p is Point => isObject(p) && typeof p.x === 'number' && typeof p.y === 'number' && sane(p.x) && sane(p.y),
+    )
     .map(({ x, y }) => ({ x, y }));
 }
 
 function normaliseLevels(raw: unknown): Level[] {
   const levels = (Array.isArray(raw) ? raw : [])
     .filter((l): l is Record<string, unknown> => isObject(l) && l.id !== undefined)
-    .map((l) => ({ id: String(l.id), name: typeof l.name === 'string' ? l.name : 'Floor' }));
+    .map((l) => ({ id: String(l.id), name: nameOf(l.name, 'Floor') }));
   // The ground floor always exists and comes first.
   const ground = levels.find((l) => l.id === GROUND_LEVEL) ?? defaultLevels()[0];
   return [ground, ...levels.filter((l) => l.id !== GROUND_LEVEL)];
@@ -286,13 +296,11 @@ function normaliseLevels(raw: unknown): Level[] {
 
 function normaliseMask(raw: unknown, index: number): Mask | null {
   if (!isObject(raw) || !Array.isArray(raw.points)) return null;
-  const points = raw.points.filter(
-    (p): p is { x: number; y: number } => isObject(p) && typeof p.x === 'number' && typeof p.y === 'number',
-  );
+  const points = readPoints(raw.points);
   if (points.length < 3) return null;
   return {
     id: idOf(raw.id) ?? `mask-${index}`,
-    name: typeof raw.name === 'string' ? raw.name : `Mask-${index + 1}`,
+    name: nameOf(raw.name, `Mask-${index + 1}`),
     points: points.map(({ x, y }) => ({ x, y })),
     material: idOf(raw.material),
   };
@@ -304,7 +312,7 @@ function normaliseRoom(raw: unknown, index: number): Room | null {
   const obj = raw as Record<string, unknown>;
   return {
     id: idOf(obj.id) ?? `room-${index}`,
-    name: typeof obj.name === 'string' ? obj.name : `Room ${index + 1}`,
+    name: nameOf(obj.name, `Room ${index + 1}`),
     points: mask.points,
     material: mask.material,
     groupId: idOf(obj.groupId),
@@ -319,7 +327,7 @@ function normaliseGroup(raw: unknown): Group | null {
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
   return {
     id: String(raw.id),
-    name: typeof raw.name === 'string' ? raw.name : 'Group',
+    name: nameOf(raw.name, 'Group'),
     componentId: idOf(raw.componentId),
     x: num(raw.x),
     y: num(raw.y),
@@ -332,7 +340,7 @@ function normaliseComponent(raw: unknown): ComponentDef | null {
   const list = (v: unknown) => (Array.isArray(v) ? v : []);
   return {
     id: String(raw.id),
-    name: typeof raw.name === 'string' ? raw.name : 'Component',
+    name: nameOf(raw.name, 'Component'),
     elements: list(raw.elements)
       .map(normaliseElement)
       .filter((e): e is PlanElement => e !== null),
@@ -346,7 +354,7 @@ function normaliseMaterial(raw: unknown): Material | null {
   if (!isObject(raw) || raw.id === undefined) return null;
   return {
     id: String(raw.id),
-    name: typeof raw.name === 'string' ? raw.name : 'Material',
+    name: nameOf(raw.name, 'Material'),
     color: typeof raw.color === 'string' ? raw.color : '#ffffff',
     texture: typeof raw.texture === 'string' ? raw.texture : '',
     type: typeof raw.type === 'string' ? raw.type : undefined,
@@ -449,11 +457,45 @@ export function loadPlan(storage: KeyValueStore | null = browserStorage()): Load
   return { doc: emptyDoc() };
 }
 
-export function savePlan(doc: PlanDoc, storage: KeyValueStore | null = browserStorage()): void {
-  if (!storage) return;
+/** Autosave the plan; false when it couldn't be stored (storage full or blocked). */
+export function savePlan(doc: PlanDoc, storage: KeyValueStore | null = browserStorage()): boolean {
+  if (!storage) return true;
   try {
     storage.setItem(STORAGE_KEY, JSON.stringify({ version: CURRENT_VERSION, doc }));
+    return true;
   } catch {
-    // Quota exceeded or storage blocked: keep working in memory.
+    // Quota exceeded or storage blocked: keep working in memory, and say so.
+    return false;
+  }
+}
+
+const FILE_KEY = 'mimar.file';
+
+/** The autosaved plan's file name and place, and whether it has changes not saved to that file. */
+export interface FileInfo {
+  name: string;
+  path?: string;
+  dirty: boolean;
+}
+
+export function saveFileInfo(info: FileInfo, storage: KeyValueStore | null = browserStorage()) {
+  try {
+    storage?.setItem(FILE_KEY, JSON.stringify(info));
+  } catch {
+    // best-effort
+  }
+}
+
+export function loadFileInfo(storage: KeyValueStore | null = browserStorage()): FileInfo | null {
+  try {
+    const raw = JSON.parse(storage?.getItem(FILE_KEY) ?? 'null') as unknown;
+    if (!isObject(raw) || typeof raw.name !== 'string' || !raw.name.trim()) return null;
+    return {
+      name: cleanText(raw.name),
+      ...(typeof raw.path === 'string' && raw.path ? { path: raw.path } : {}),
+      dirty: raw.dirty === true,
+    };
+  } catch {
+    return null;
   }
 }

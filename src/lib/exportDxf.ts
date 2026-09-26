@@ -214,7 +214,8 @@ class Dxf {
     p(0, 'ENDSEC');
     p(0, 'SECTION');
     p(2, 'ENTITIES');
-    out.push(...this.lines);
+    // One at a time: spreading a big drawing's lines into push() overflows the call stack.
+    for (const line of this.lines) out.push(line);
     p(0, 'ENDSEC');
     p(0, 'EOF');
     return out.join('\r\n') + '\r\n';
