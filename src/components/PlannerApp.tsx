@@ -7,6 +7,7 @@ import { CommandPalette, ContextMenu, DiscardDialog, ShortcutsDialog, type Conte
 import { Icon } from './Icon';
 import { MenuBar } from './MenuBar';
 import { SidePanel } from './SidePanel';
+import { SplitView } from './SplitView';
 import { StatusBar } from './StatusBar';
 import { ToolDock, ToolDockOverlay } from './ToolDocks';
 import { isDirty, useFileActions } from './useFileActions';
@@ -25,6 +26,7 @@ type Dialog = 'search' | 'shortcuts' | 'welcome' | null;
 export default function PlannerApp() {
   const svgRef = useRef<SVGSVGElement>(null);
   const view3d = usePlanner((s) => s.view3d);
+  const split = usePlanner((s) => s.split);
   const warnings = usePlanner((s) => s.warnings);
   const setWarning = usePlanner((s) => s.setWarning);
   const fileName = usePlanner((s) => s.fileName);
@@ -78,6 +80,18 @@ export default function PlannerApp() {
     if (!isDirty()) next();
   }
 
+  const plan2d = (
+    <>
+      <Canvas svgRef={svgRef} onContextMenu={setMenuAt} />
+      <ViewControls />
+    </>
+  );
+  const model3d = (
+    <Suspense fallback={<div className="flex h-full items-center justify-center text-muted">Loading 3D…</div>}>
+      <Plan3DView onContextMenu={setMenuAt} />
+    </Suspense>
+  );
+
   function focusProperties() {
     requestAnimationFrame(() => {
       const field = document.querySelector<HTMLElement>('aside[aria-label="Properties"] input');
@@ -92,16 +106,7 @@ export default function PlannerApp() {
       <div className="flex min-h-0 flex-1">
         <ToolDock area="left" />
         <main className="relative min-w-0 flex-1 overflow-hidden bg-canvas">
-          {view3d ? (
-            <Suspense fallback={<div className="flex h-full items-center justify-center text-muted">Loading 3D…</div>}>
-              <Plan3DView onContextMenu={setMenuAt} />
-            </Suspense>
-          ) : (
-            <>
-              <Canvas svgRef={svgRef} onContextMenu={setMenuAt} />
-              <ViewControls />
-            </>
-          )}
+          {split ? <SplitView plan={plan2d} model={model3d} /> : view3d ? model3d : plan2d}
           {warnings.length > 0 && (
             <div className="pointer-events-none absolute inset-x-0 top-3 flex flex-col items-center gap-2">
               {warnings.map((w) => (

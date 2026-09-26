@@ -3,7 +3,7 @@ import { DEFAULT_PREFS } from '../lib/prefs';
 import { emptyDoc } from '../lib/storage';
 import { MM_PER_FOOT } from '../lib/units';
 import { createPlannerStore } from '../store/plannerStore';
-import { setPicker } from '../three/picker';
+import { resetPickers, setPicker } from '../three/picker';
 import type { Block, Furniture, Wall } from '../types';
 import {
   applyMeasure,
@@ -235,7 +235,7 @@ describe('SketchUp-style tools', () => {
       cancel(store);
       expect(walls(store)[0].heightMm).toBeCloseTo(3048 + 304.8);
     } finally {
-      setPicker(null);
+      resetPickers();
     }
   });
 

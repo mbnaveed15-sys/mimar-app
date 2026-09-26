@@ -340,7 +340,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       keys: ['Ctrl+1'],
       run: () => st().setView3d(false),
       kind: 'radio',
-      checked: (s) => !s.view3d,
+      checked: (s) => !s.split && !s.view3d,
     },
     {
       id: 'view.3d',
@@ -350,7 +350,17 @@ export function buildCommands(ctx: CommandContext): Command[] {
       keys: ['Ctrl+2'],
       run: () => st().setView3d(true),
       kind: 'radio',
-      checked: (s) => s.view3d,
+      checked: (s) => !s.split && s.view3d,
+    },
+    {
+      id: 'view.split',
+      label: 'Split view (2D and 3D)',
+      menu: 'view',
+      group: 0,
+      keys: ['Ctrl+3'],
+      run: () => st().setSplit(true),
+      kind: 'radio',
+      checked: (s) => s.split,
     },
     {
       id: 'view.levelUp',
@@ -411,7 +421,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       menu: 'view',
       group: 1.5,
       run: () => {
-        if (!st().view3d) st().setView3d(true);
+        if (!st().view3d && !st().split) st().setView3d(true);
         requestView(name);
       },
     })),
@@ -421,7 +431,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       menu: 'view',
       group: 1.5,
       run: () => {
-        if (!st().view3d) st().setView3d(true);
+        if (!st().view3d && !st().split) st().setView3d(true);
         toggleParallel();
       },
       kind: 'check',
