@@ -44,6 +44,7 @@ import { plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
 import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from '../lib/layers';
 import { SLAB_MM } from '../three/model';
+import { setActivePicker } from '../three/picker';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
 import type {
@@ -220,8 +221,13 @@ export interface PlannerState {
   marlaSqFt: MarlaSqFt;
   paper: PaperSize;
   wallHeightMm: number;
-  /** True while the 3D view is shown instead of the 2D plan. */
+  /**
+   * The view in use is the 3D one: the 3D view shown instead of the 2D plan or, in split view, the
+   * pointer over the 3D side.
+   */
   view3d: boolean;
+  /** Split view: the 2D plan and the 3D view side by side, both editable. */
+  split: boolean;
   /** Text typed into the Measurements box, not yet applied. */
   measureText: string;
   /** What the pointer snapped to, shown as a coloured marker. */
@@ -365,6 +371,10 @@ export interface PlannerState {
   setPaper: (paper: PaperSize) => void;
   setWallHeightMm: (mm: number) => void;
   setView3d: (on: boolean) => void;
+  /** Show the 2D plan and the 3D view side by side (or go back to the one in use). */
+  setSplit: (on: boolean) => void;
+  /** In split view, the side the pointer is over is the one in use; what is being drawn carries on. */
+  setActivePane: (is3d: boolean) => void;
   setTheme: (theme: ThemeId) => void;
   /** Change some grid settings; spacing is for the current units. */
   setGrid: (patch: Partial<Omit<GridPrefs, 'spacingMm'>> & { spacingMm?: number }) => void;
@@ -520,6 +530,7 @@ export function createPlannerStore(
       paper: prefs.paper,
       wallHeightMm: prefs.wallHeightMm,
       view3d: false,
+      split: false,
       measureText: '',
       inference: null,
       axisLock: null,
@@ -622,7 +633,7 @@ export function createPlannerStore(
           hoverEdge: null,
         }));
         // Orbit only turns the 3D view, so it opens it.
-        if (tool === 'orbit' && !get().view3d) get().setView3d(true);
+        if (tool === 'orbit' && !get().view3d && !get().split) get().setView3d(true);
       },
       selectMaterial: (id) => set({ selectedMat: id }),
       select: (id) => {
@@ -1455,8 +1466,20 @@ export function createPlannerStore(
       },
       setView3d: (view3d) => {
         get().cancelBatch();
-        set({ view3d, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
+        set({ view3d, split: false, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
+        setActivePicker(view3d);
         if (!view3d && get().tool === 'orbit') get().setTool('select');
+      },
+      setSplit: (split) => {
+        if (split === get().split) return;
+        get().cancelBatch();
+        set({ split, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
+      },
+      setActivePane: (is3d) => {
+        if (!get().split || get().view3d === is3d) return;
+        setActivePicker(is3d);
+        // A lock on the blue axis only means something in 3D.
+        set({ view3d: is3d, inference: null, ...(get().axisLock === 'z' && { axisLock: null }) });
       },
 
       addRoomAt: (p) => {

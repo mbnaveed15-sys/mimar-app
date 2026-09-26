@@ -31,16 +31,34 @@ export interface Picker3D {
   extentsAlong?(axis: 0 | 1 | 2, exceptId: Id): number[];
 }
 
-let current: Picker3D | null = null;
+/** Each view on screen registers its picker; in split view both do, and the one in use answers. */
+const pickers = new Map<boolean, Picker3D>();
+let active3d = false;
 let pointer = { x: 0, y: 0 };
 
-/** Set by the 3D view while it is showing. */
-export function setPicker(p: Picker3D | null) {
-  current = p;
+/** Set by a view while it is showing. */
+export function setPicker(p: Picker3D) {
+  pickers.set(p.is3d, p);
+}
+
+/** Taken away by a view when it closes (only if it is still the one registered). */
+export function clearPicker(p: Picker3D) {
+  if (pickers.get(p.is3d) === p) pickers.delete(p.is3d);
+}
+
+/** Which view is in use: the 3D one, or the 2D plan (in split view, the one under the pointer). */
+export function setActivePicker(is3d: boolean) {
+  active3d = is3d;
 }
 
 export function getPicker(): Picker3D | null {
-  return current;
+  return pickers.get(active3d) ?? (pickers.size === 1 ? [...pickers.values()][0] : null);
+}
+
+/** Tests: forget every registered picker. */
+export function resetPickers() {
+  pickers.clear();
+  active3d = false;
 }
 
 /** The last pointer position on screen, kept by the plan input for tools that need it. */

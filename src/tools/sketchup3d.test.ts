@@ -6,7 +6,7 @@ import { emptyDoc } from '../lib/storage';
 import { MM_PER_FOOT } from '../lib/units';
 import { createPlannerStore } from '../store/plannerStore';
 import { levelBaseM } from '../three/model';
-import { setPicker, type FaceHit, type Picker3D } from '../three/picker';
+import { resetPickers, setPicker, type FaceHit, type Picker3D } from '../three/picker';
 import type { Wall } from '../types';
 import { applyMeasure, hover, measureReadout, press, release, toggleHeightLock } from './controller';
 import { resetLastPush } from './shapeTools';
@@ -35,7 +35,7 @@ function fakePicker(over: Partial<Picker3D> = {}): Picker3D {
 }
 
 afterEach(() => {
-  setPicker(null);
+  resetPickers();
   resetLastPush();
 });
 

@@ -12,11 +12,12 @@ import { plannerStore, usePlanner, type PlannerState } from '../store/plannerSto
 import { themeColor } from '../theme/themes';
 import { drawPattern } from '../lib/patterns';
 import type { Bounds, Pattern, PlanDoc, Point } from '../types';
+import { setCameraEye } from './cameraEye';
 import { CameraRig } from './cameraRig';
 import { draftElements, draftLines } from './draft3d';
 import { withoutHidden } from '../lib/layers';
 import { shapeDraftScene } from '../tools/shapeTools';
-import { getPicker, getPointer, setPicker, type FaceHit, type Picker3D } from './picker';
+import { clearPicker, getPointer, setPicker, type FaceHit, type Picker3D } from './picker';
 import type { StandardView } from './cameraRig';
 import { isParallel, requestView, setViewControls, toggleParallel } from './viewControls';
 import { buildModel, levelBaseM, M_PER_UNIT, type Finish, type Model3D, type Sides } from './model';
@@ -289,6 +290,8 @@ interface Stage {
   raycaster: THREE.Raycaster;
   last: Model3D | null;
   fitted: boolean;
+  /** Framed while the plan was empty: in split view, framed again when the first thing is drawn on the plan. */
+  fittedEmpty: boolean;
   /** A standard view asked for before the building was first built. */
   pendingView: StandardView | null;
   /** Materials made for faded floors and highlighted items (by look, then base material), kept for the session. */
@@ -444,6 +447,46 @@ const GHOST = new THREE.MeshStandardMaterial({
   depthWrite: false,
 });
 
+/** How often (ms) the 3D view catches up while something is dragged on the plan in split view. */
+const SPLIT_THROTTLE_MS = 300;
+/** A rebuild slower than this (ms) waits for the drag to end instead, so the plan stays smooth. */
+const SLOW_BUILD_MS = 60;
+/** How long the last rebuild of the building took (ms). */
+let lastBuildMs = 0;
+
+/**
+ * The plan to build in 3D. In split view, while something is being dragged on the plan, it follows
+ * at most every 300 ms, or (on a big house, where a rebuild is slow) waits until the drag ends.
+ */
+function useShownDoc(): PlanDoc {
+  const [doc, setDoc] = useState(() => plannerStore.getState().doc);
+  useEffect(() => {
+    let timer: number | null = null;
+    const unsubscribe = plannerStore.subscribe((s, prev) => {
+      if (s.doc === prev.doc && s.batchBase === prev.batchBase) return;
+      const busy = s.split && !s.view3d && s.batchBase !== null;
+      if (!busy) {
+        if (timer !== null) window.clearTimeout(timer);
+        timer = null;
+        setDoc(s.doc);
+      } else if (timer === null && lastBuildMs <= SLOW_BUILD_MS) {
+        timer = window.setTimeout(() => {
+          timer = null;
+          setDoc(plannerStore.getState().doc);
+        }, SPLIT_THROTTLE_MS);
+      }
+    });
+    return () => {
+      unsubscribe();
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, []);
+  return doc;
+}
+
+/** Metres per screen pixel in the 3D view (also while the pointer is on the plan, in split view). */
+const metresPerPx = (s: PlannerState) => (s.px3d || s.pxUnits() || 1) * M_PER_UNIT;
+
 /**
  * Redraw what is being drawn, the snap marker and guide lines. `hitY` is the height (metres) of what
  * the pointer is on, so the marker shows there (a wall's top corner, say) rather than on the floor.
@@ -596,7 +639,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
   const hostRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Stage | null>(null);
   const [supported] = useState(hasWebGL);
-  const doc = usePlanner((s) => s.doc);
+  const doc = useShownDoc();
   const showFurniture = usePlanner((s) => s.showFurniture);
   const wallHeightMm = usePlanner((s) => s.wallHeightMm);
   const setWallHeightMm = usePlanner((s) => s.setWallHeightMm);
@@ -618,7 +661,8 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     const el = labelRef.current;
     const host = hostRef.current;
     if (!el || !host) return;
-    const text = s.inference ? SNAP_LABELS[s.inference.kind] : '';
+    // In split view, only while the pointer is over the 3D side (the plan shows its own label).
+    const text = s.inference && s.view3d ? SNAP_LABELS[s.inference.kind] : '';
     el.textContent = text;
     el.style.display = text ? 'block' : 'none';
     if (!text) return;
@@ -680,16 +724,26 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       raycaster: new THREE.Raycaster(),
       last: null,
       fitted: false,
+      fittedEmpty: false,
       pendingView: null,
       extras: EXTRAS,
-      render: () => renderer.render(scene, rig.active),
+      render: () => {
+        renderer.render(scene, rig.active);
+        // The camera on the plan, for the 2D side of split view.
+        const across = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * camera.aspect);
+        setCameraEye({
+          at: { x: camera.position.x / M_PER_UNIT, y: camera.position.z / M_PER_UNIT },
+          target: { x: rig.target.x / M_PER_UNIT, y: rig.target.z / M_PER_UNIT },
+          fovDeg: rig.parallel ? 0 : THREE.MathUtils.radToDeg(across),
+        });
+      },
     };
     stageRef.current = stage;
 
     // Zooming, standard views and the projection, for the View menu and the keys.
     const redraw = () => {
       pickRef.current = null;
-      drawOverlay(stage, plannerStore.getState(), (plannerStore.getState().pxUnits() || 1) * M_PER_UNIT, null);
+      drawOverlay(stage, plannerStore.getState(), metresPerPx(plannerStore.getState()), null);
       stage.render();
     };
     setViewControls({
@@ -746,8 +800,8 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         s.tool !== prev.tool ||
         s.activeLevel !== prev.activeLevel
       ) {
-        const under = pickRef.current?.pick;
-        drawOverlay(stage, s, (s.pxUnits() || 1) * M_PER_UNIT, under?.id ? under.world.y : null);
+        const under = s.view3d ? pickRef.current?.pick : undefined;
+        drawOverlay(stage, s, metresPerPx(s), under?.id ? under.world.y : null);
         showSnapLabel(s);
         stage.render();
       }
@@ -773,6 +827,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       renderer.domElement.remove();
       stageRef.current = null;
       plannerStore.getState().setPx3d(null);
+      setCameraEye(null);
     };
   }, [supported]);
 
@@ -781,6 +836,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     const stage = stageRef.current;
     const host = hostRef.current;
     if (!stage || !host) return;
+    const started = performance.now();
     const shown = withoutHidden(doc, { layers: doc.layers, showFurniture });
     const model = buildModel(shown, { wallHeightMm, showFurniture });
     clearHighlight(stage);
@@ -803,16 +859,21 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     cam.far = s * 6 + 20;
     cam.updateProjectionMatrix();
 
+    const state = plannerStore.getState();
     if (!stage.fitted) {
       if (stage.pendingView) stage.rig.view(stage.pendingView, model.centre, model.size);
       else stage.rig.fit(model.centre, model.size, !model.solids.length);
       stage.pendingView = null;
       stage.fitted = true;
+      stage.fittedEmpty = !model.solids.length;
+    } else if (stage.fittedEmpty && model.solids.length && state.split && !state.view3d) {
+      // Drawn on the plan beside an empty 3D view: bring it into view.
+      stage.rig.fit(model.centre, model.size);
+      stage.fittedEmpty = false;
     }
-    const state = plannerStore.getState();
     styleMeshes(stage, state);
     drawGrid(stage, state);
-    drawOverlay(stage, state, state.pxUnits() * M_PER_UNIT, null);
+    drawOverlay(stage, state, metresPerPx(state), null);
     host.dataset.solids = String(model.solids.length);
     host.dataset.floors = String(model.floors.length);
     host.dataset.slabs = String(model.slabs.length);
@@ -822,6 +883,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     );
     host.dataset.panels = String(model.panels.filter((p) => p.role === 'wall').length);
     stage.render();
+    lastBuildMs = performance.now() - started;
   }, [doc, wallHeightMm, showFurniture]);
 
   // Follow the theme: canvas colour for the sky, room floor colour for the ground.
@@ -919,7 +981,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     setPicker(picker);
     return () => {
       if (stageRef.current) clearHighlight(stageRef.current);
-      if (getPicker() === picker) setPicker(null);
+      clearPicker(picker);
     };
   }, [supported]);
 

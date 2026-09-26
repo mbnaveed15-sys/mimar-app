@@ -92,6 +92,12 @@ autosaves to local storage on every change.
   A wall's two sides (`materialA` on its left normal (-dy, dx), `materialB` the other) become `sides` on its
   solids and panels: box faces +z/−z and the panel caps (split by `splitCaps`) take their own material, in the view
   and in `export3d.ts`.
+- Split view: `store.split` is the layout; `store.view3d` means "the view in use" (in split view, the side under
+  the pointer, set by `setActivePane` from `src/components/SplitView.tsx`, which keeps any draft going). Each view
+  registers its picker (`src/three/picker.ts`: `setPicker`/`clearPicker`, one per side; `getPicker` answers for
+  the side in use). The 3D view publishes its camera to `src/three/cameraEye.ts`, which the plan draws
+  (`CameraEyeMark` in `Canvas.tsx`). `useShownDoc` in `Plan3DView.tsx` holds back 3D rebuilds while a drag runs on
+  the plan side.
 - Materials: `src/lib/materials.ts` (library), `patterns.ts` (procedural textures for 3D and swatches).
 
 ## Exports

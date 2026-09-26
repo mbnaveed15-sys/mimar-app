@@ -79,6 +79,8 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
   const setMode = usePlanner((s) => s.setMode);
   const view3d = usePlanner((s) => s.view3d);
   const setView3d = usePlanner((s) => s.setView3d);
+  const split = usePlanner((s) => s.split);
+  const setSplit = usePlanner((s) => s.setSplit);
 
   useEffect(() => {
     if (!open) return;
@@ -170,16 +172,17 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
       </div>
       <div role="radiogroup" aria-label="View" className="m-seg flex-none text-xs whitespace-nowrap">
         {[
-          { on: false, label: '2D plan', icon: 'view-2d' as const },
-          { on: true, label: '3D view', icon: 'view-3d' as const },
+          { id: '2d', label: '2D plan', icon: 'view-2d' as const, keys: 'Ctrl+1' },
+          { id: 'split', label: 'Split', icon: 'view-split' as const, keys: 'Ctrl+3' },
+          { id: '3d', label: '3D view', icon: 'view-3d' as const, keys: 'Ctrl+2' },
         ].map((v) => (
           <button
-            key={v.label}
+            key={v.id}
             role="radio"
-            aria-checked={view3d === v.on}
+            aria-checked={split ? v.id === 'split' : v.id === (view3d ? '3d' : '2d')}
             aria-label={v.label}
-            title={v.label}
-            onClick={() => setView3d(v.on)}
+            title={`${v.label} (${showKeys(v.keys)})`}
+            onClick={() => (v.id === 'split' ? setSplit(true) : setView3d(v.id === '3d'))}
           >
             <Icon name={v.icon} size={16} />
             <span className="hidden xl:inline">{v.label}</span>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, type RefObject } from 'react';
+import { useStore } from 'zustand';
 import { elementOutline, fromFurnitureLocal } from '../geometry';
 import { PLAN_FONT } from '../lib/planImage';
 import { panBy } from '../lib/view';
@@ -11,7 +12,8 @@ import { wallPolygon, wallsOf } from '../walls';
 import { DrawingOverlay } from './DrawingOverlay';
 import { CheckMarks } from './CheckMarks';
 import { faceAt2D } from '../lib/faces2d';
-import { getPicker, setPicker, type Picker3D } from '../three/picker';
+import { clearPicker, setPicker, type Picker3D } from '../three/picker';
+import { cameraEye } from '../three/cameraEye';
 import { M_PER_UNIT } from '../three/model';
 import { PlanDrawing } from './PlanDrawing';
 import { PlanGrid } from './PlanGrid';
@@ -93,7 +95,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     setPicker(picker);
     return () => {
       plannerStore.getState().setHoverEdge(null);
-      if (getPicker() === picker) setPicker(null);
+      clearPicker(picker);
     };
   }, [svgRef]);
 
@@ -272,6 +274,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         k={k}
         hoverEdge={hoverEdge}
       />
+      <CameraEyeMark k={k} />
     </svg>
   );
 }
@@ -338,6 +341,48 @@ function EraseMarks({ elements, ids, k }: { elements: PlanElement[]; ids: string
             />
           );
         })}
+    </g>
+  );
+}
+
+/**
+ * In split view, where the 3D camera stands on the plan and what it sees: a dot, a wedge as wide as
+ * its view (a strip for a parallel view), and the point it turns about.
+ */
+function CameraEyeMark({ k }: { k: number }) {
+  const split = usePlanner((s) => s.split);
+  const eye = useStore(cameraEye, (s) => s.eye);
+  if (!split || !eye) return null;
+  const { at, target, fovDeg } = eye;
+  const heading = Math.atan2(target.y - at.y, target.x - at.x);
+  const reach = 70 * k;
+  const ray = (turn: number, len = reach) => ({
+    x: at.x + Math.cos(heading + turn) * len,
+    y: at.y + Math.sin(heading + turn) * len,
+  });
+  const half = (fovDeg * Math.PI) / 360;
+  const [a, b] = fovDeg > 0 ? [ray(-half), ray(half)] : [ray(-Math.PI / 2, 12 * k), ray(Math.PI / 2, 12 * k)];
+  const wedge =
+    fovDeg > 0
+      ? `M${at.x},${at.y} L${a.x},${a.y} L${b.x},${b.y} Z`
+      : `M${a.x},${a.y} L${b.x},${b.y} L${b.x + Math.cos(heading) * reach},${b.y + Math.sin(heading) * reach} L${a.x + Math.cos(heading) * reach},${a.y + Math.sin(heading) * reach} Z`;
+  return (
+    <g data-testid="camera-eye" pointerEvents="none" style={{ color: PLAN.selection }}>
+      <path d={wedge} fill="currentColor" fillOpacity={0.12} stroke="currentColor" strokeWidth={1.2 * k} />
+      <line
+        x1={at.x}
+        y1={at.y}
+        x2={target.x}
+        y2={target.y}
+        stroke="currentColor"
+        strokeWidth={k}
+        strokeDasharray={`${4 * k} ${4 * k}`}
+        strokeOpacity={0.6}
+      />
+      <circle cx={target.x} cy={target.y} r={3 * k} fill="currentColor" fillOpacity={0.6} />
+      <circle cx={at.x} cy={at.y} r={6 * k} fill="currentColor" stroke={PLAN.paper} strokeWidth={1.5 * k}>
+        <title>3D camera</title>
+      </circle>
     </g>
   );
 }
