@@ -1,4 +1,5 @@
 import { fromFurnitureLocal } from '../../geometry';
+import { outlinePoints, plotSides, sideOutward } from '../../lib/plot';
 import { buildableArea, stairLayout } from '../../lib/site';
 import { PLAN } from '../../theme/plan';
 import type { Plot, Point, Stair } from '../../types';
@@ -7,27 +8,26 @@ const LAWN = '#86A95F';
 
 const pts = (list: Point[]) => list.map((p) => `${p.x},${p.y}`).join(' ');
 
-/** The plot line (chain-dotted), the buildable area inside the setbacks (dashed), and the road side. */
+/**
+ * The plot line (chain-dotted, with any cut corner), the buildable area inside the setbacks
+ * (dashed), ROAD beside each road side, and, when selected, each side's number (as in the Sides list).
+ */
 export function PlotShape({ plot, selected, k }: { plot: Plot; selected: boolean; k: number }) {
   const n = plot.points.length;
-  const a = plot.points[plot.front % n];
-  const b = plot.points[(plot.front + 1) % n];
-  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  // Label the road just outside the front edge.
-  const e = { x: b.x - a.x, y: b.y - a.y };
-  const l = Math.hypot(e.x, e.y) || 1;
-  const cx = plot.points.reduce((s, p) => s + p.x, 0) / n;
-  const cy = plot.points.reduce((s, p) => s + p.y, 0) / n;
-  let nx = e.y / l;
-  let ny = -e.x / l;
-  if (nx * (mid.x - cx) + ny * (mid.y - cy) < 0) [nx, ny] = [-nx, -ny];
-  // Past the dimension line that runs along the outside of the boundary wall.
-  const road = { x: mid.x + nx * 64 * k, y: mid.y + ny * 64 * k };
+  const sides = plotSides(plot);
+  const outline = outlinePoints(plot);
+  // A mark just outside (or inside) the middle of side i, `off` screen pixels from it.
+  const beside = (i: number, off: number) => {
+    const a = plot.points[i];
+    const b = plot.points[(i + 1) % n];
+    const o = sideOutward(plot, i);
+    return { x: (a.x + b.x) / 2 + o.x * off * k, y: (a.y + b.y) / 2 + o.y * off * k };
+  };
   return (
     <g data-type="plot" data-id={plot.id}>
       {/* A soft grass tint, so the plot reads on top of the grid. */}
       <polygon
-        points={pts(plot.points)}
+        points={pts(outline)}
         style={{ fill: LAWN, stroke: selected ? PLAN.selection : PLAN.ink }}
         fillOpacity={selected ? 0.3 : 0.2}
         strokeWidth={(selected ? 3 : 2) * k}
@@ -42,17 +42,53 @@ export function PlotShape({ plot, selected, k }: { plot: Plot; selected: boolean
         strokeDasharray={`${6 * k} ${4 * k}`}
         pointerEvents="none"
       />
-      <text
-        x={road.x}
-        y={road.y}
-        fontSize={12 * k}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        style={{ fill: PLAN.inkMuted, letterSpacing: `${2 * k}px` }}
-        pointerEvents="none"
-      >
-        ROAD
-      </text>
+      {sides.map((side, i) => {
+        if (side.kind !== 'road') return null;
+        // Past the dimension line that runs along the outside of the boundary wall.
+        const road = beside(i, 64);
+        return (
+          <text
+            key={i}
+            data-testid="road-mark"
+            x={road.x}
+            y={road.y}
+            fontSize={12 * k}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{ fill: PLAN.inkMuted, letterSpacing: `${2 * k}px` }}
+            pointerEvents="none"
+          >
+            ROAD
+          </text>
+        );
+      })}
+      {selected &&
+        Array.from({ length: n }, (_, step) => {
+          const i = (plot.front + step) % n;
+          const at = beside(i, -22);
+          return (
+            <g key={i} pointerEvents="none" data-testid="side-number">
+              <circle
+                cx={at.x}
+                cy={at.y}
+                r={8 * k}
+                style={{ fill: PLAN.paper, stroke: PLAN.selection }}
+                strokeWidth={1 * k}
+              />
+              <text
+                x={at.x}
+                y={at.y}
+                fontSize={10 * k}
+                fontWeight={600}
+                textAnchor="middle"
+                dominantBaseline="central"
+                style={{ fill: PLAN.selection }}
+              >
+                {step + 1}
+              </text>
+            </g>
+          );
+        })}
     </g>
   );
 }

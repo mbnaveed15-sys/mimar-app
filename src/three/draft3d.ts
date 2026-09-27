@@ -1,3 +1,4 @@
+import { outlineProblem } from '../lib/plot';
 import { plotRect, stairLayout } from '../lib/site';
 import { MM_PER_UNIT } from '../lib/scale';
 import { SLAB_MM } from './model';
@@ -60,6 +61,16 @@ export function draftElements(s: PlannerState): PlanElement[] {
         points: rect(d.x1, d.y1, d.x2, d.y2),
         thickness: s.structure.slabThickness,
         ...at,
+      },
+    ];
+  if (d?.type === 'plotPoly' && d.points.length >= 2 && !outlineProblem([...d.points, d.cursor]))
+    return [
+      {
+        id: `${DRAFT}-plot`,
+        type: 'plot',
+        points: [...d.points, d.cursor],
+        front: 0,
+        setbacks: { ...s.site.setbacks },
       },
     ];
   if (d?.type === 'plot' && Math.abs(d.x2 - d.x1) > 1 && Math.abs(d.y2 - d.y1) > 1)

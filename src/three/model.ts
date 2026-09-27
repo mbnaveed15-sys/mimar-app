@@ -3,7 +3,8 @@ import { patternSpanMm } from '../lib/patterns';
 import { MM_PER_UNIT } from '../lib/scale';
 import { doorKindOf } from '../lib/openingKinds';
 import { openingProfileMm } from '../lib/shapes';
-import { stairLayout } from '../lib/site';
+import { buildableArea, stairLayout } from '../lib/site';
+import { outlinePoints } from '../lib/plot';
 import {
   levelOf,
   type Beam,
@@ -129,6 +130,8 @@ export interface Model3D {
   blocks: Slab3D[];
   /** Pieces of wall round shaped openings, their glass, and flat shapes on walls. */
   panels: Panel[];
+  /** Lines drawn on the ground (a plot's setback line), as closed outlines of [x, z] points. */
+  guides?: { points: [number, number][]; y: number; level?: string }[];
   /** Centre and size of the building, for positioning the camera. */
   centre: { x: number; z: number };
   size: number;
@@ -746,6 +749,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   };
   const solids: Solid[] = [];
   const floors: Floor[] = [];
+  const guides: NonNullable<Model3D['guides']> = [];
   const slabs: Slab3D[] = [];
   const blocks: Slab3D[] = [];
   const panels: Panel[] = [];
@@ -832,9 +836,13 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         const parts = stairSolids(el, colorOf(el.material)).map(withFinish(el.material, 'concrete'));
         solids.push(...(fromGround ? parts : parts.map(lift)).map(raise(el)).map(from(el.id)));
       }
+      if (el.type === 'plot' && i === 0) {
+        const line = buildableArea(el);
+        if (line.length >= 3) guides.push({ points: line.map((p) => [m(p.x), m(p.y)]), y: 0.012, level: level.id });
+      }
       if (el.type === 'plot' && i === 0)
         floors.push({
-          points: el.points.map((p) => [m(p.x), m(p.y)] as [number, number]),
+          points: outlinePoints(el).map((p) => [m(p.x), m(p.y)] as [number, number]),
           y: 0,
           color: colorOf(el.material) ?? LAWN,
           finish: finishOf(el.material, 'grass'),
@@ -892,5 +900,5 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const hi = (v: number[]) => v.reduce((m, x) => (x > m ? x : m), -Infinity);
   const centre = xs.length ? { x: (lo(xs) + hi(xs)) / 2, z: (lo(zs) + hi(zs)) / 2 } : { x: 8, z: 5 };
   const size = xs.length ? Math.max(hi(xs) - lo(xs), hi(zs) - lo(zs), 4) : 16;
-  return { solids, floors, slabs, blocks, panels, centre, size };
+  return { solids, floors, slabs, blocks, panels, guides, centre, size };
 }

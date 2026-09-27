@@ -40,6 +40,9 @@ import {
 } from '../lib/selection';
 import { boundaryWallLines, stairLayout } from '../lib/site';
 import { plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
+import { guessSideKinds, orientOutline, outlineProblem, plotSides, signedArea2 } from '../lib/plot';
+import { boundaryWallsAlong, buildPlotWalls, syncPlotWalls } from '../lib/plotWalls';
+import { formatLength } from '../lib/units';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
 import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from '../lib/layers';
 import { SLAB_MM } from '../three/model';
@@ -55,6 +58,7 @@ import type {
   ShapeKind,
   Wall,
   Plot,
+  PlotSide,
   SketchLine,
   Slab,
   Stair,
@@ -91,6 +95,8 @@ export interface SiteSpec {
   authority?: AuthorityId;
   /** A plot size picked from the presets (feet, width along the road × depth): the next click places it. */
   plotSize?: { w: number; d: number };
+  /** The Plot tool draws a rectangle, or any shape corner by corner. */
+  plotShape: 'rect' | 'any';
   boundaryWall: boolean;
   /** Type of new walls drawn with the Wall and Rectangle tools. */
   wallKind: 'normal' | 'boundary' | 'parapet';
@@ -122,6 +128,7 @@ export const KIND_HEIGHT_MM = { boundary: 2133.6, parapet: 914.4 } as const;
 
 export const DEFAULT_SITE: SiteSpec = {
   setbacks: { front: 1524, rear: 609.6, sides: 0 },
+  plotShape: 'rect',
   boundaryWall: true,
   wallKind: 'normal',
   gate: false,
@@ -143,6 +150,8 @@ function omit<T extends object, K extends keyof T>(obj: T, key: K): T {
 }
 
 const inch = (n: number) => (n * 25.4) / MM_PER_UNIT;
+/** A 9-inch boundary wall, in millimetres. */
+export const BOUNDARY_MM = 228.6;
 /** 9" × 12" columns, 9" × 18" beams and a 6" slab: common RCC sizes for Pakistani houses. */
 export const DEFAULT_STRUCTURE: StructureSpec = {
   columnShape: 'rect',
@@ -215,8 +224,26 @@ export interface PlannerState {
   /** Settings for plots, wall types, gates and stairs. */
   site: SiteSpec;
   setSite: (patch: Partial<SiteSpec>) => void;
-  /** A plot with its setbacks, and a boundary wall round it when that option is on. */
-  addPlot: (points: Point[]) => void;
+  /**
+   * A plot with its setbacks, and a boundary wall round it when that option is on, linked to its
+   * sides. `road` is the edge along the road (the bottom of a `plotRect`). Refuses (with a warning,
+   * returning false) outlines that cross themselves.
+   */
+  addPlot: (points: Point[], road?: number) => boolean;
+  /**
+   * Change a plot (corners, sides, cut corner…) as one undo step, building or taking away its linked
+   * boundary walls to match. Refuses, with a warning, outlines that cross themselves and plots with no road.
+   */
+  updatePlot: (plot: Plot) => boolean;
+  /** Move one corner of a plot (while dragging it); refused where the sides would cross. */
+  movePlotCorner: (plotId: Id, index: number, p: Point) => boolean;
+  /** A gate in the middle of a side's boundary wall (or its cut corner's). */
+  addSideGate: (plotId: Id, side: number | 'splay') => void;
+  /**
+   * Link a plot to boundary walls built from its sides: boundary walls already along its sides are
+   * replaced by linked ones of the same size, keeping their doors and gates; with none, every side gets one.
+   */
+  rebuildPlotWalls: (plotId: Id) => void;
   /** Put a plot under an authority's bylaws (or none), taking its setbacks from their table. */
   setPlotAuthority: (plotId: Id, authority: AuthorityId | undefined) => void;
   addStair: (p: Point) => void;
@@ -619,7 +646,8 @@ export function createPlannerStore(
 
       commit: (recipe) => {
         const { doc, past, batchBase } = get();
-        const next = recipe(doc);
+        // A plot's boundary walls follow it, whatever changed it.
+        const next = syncPlotWalls(doc, recipe(doc));
         if (next === doc) return;
         if (batchBase) set({ doc: next });
         else set({ doc: next, past: [...past, doc].slice(-HISTORY_LIMIT), future: [] });
@@ -647,6 +675,13 @@ export function createPlannerStore(
       },
       undo: () => {
         get().endBatch();
+        // Drawing a plot corner by corner, undo takes back the last corner.
+        const drawing = get().draft;
+        if (drawing?.type === 'plotPoly') {
+          const points = drawing.points.slice(0, -1);
+          set({ draft: points.length ? { ...drawing, points } : null });
+          return;
+        }
         const { past, doc, future } = get();
         if (!past.length) return;
         const prev = past[past.length - 1];
@@ -744,7 +779,7 @@ export function createPlannerStore(
       },
       commitFromBase: (recipe) => {
         const base = get().batchBase;
-        if (base) set({ doc: recipe(base) });
+        if (base) set({ doc: syncPlotWalls(base, recipe(base)) });
         else get().commit(recipe);
       },
       selectedGroup: () => {
@@ -1414,32 +1449,142 @@ export function createPlannerStore(
       // New settings for the tools: a picked-up door or window gives way to them.
       setSite: (patch) =>
         set((st) => ({ site: { ...st.site, ...patch }, openingStamp: st.stampQueue ? st.openingStamp : [] })),
-      addPlot: (points) => {
+      addPlot: (corners, road = 2) => {
+        const problem = outlineProblem(corners);
+        if (problem) {
+          get().setWarning(problem);
+          return false;
+        }
         const { site } = get();
-        let plot: Plot = { id: newId(), type: 'plot', points, front: 2, setbacks: { ...site.setbacks } };
+        const { points, edge } = orientOutline(corners);
+        const front = edge(road % corners.length);
+        const wall = site.boundaryWall ? { heightMm: KIND_HEIGHT_MM.boundary, thicknessMm: BOUNDARY_MM } : undefined;
+        const sideList = guessSideKinds(points, front).map((kind): PlotSide => (wall ? { kind, wall } : { kind }));
+        let plot: Plot = { id: newId(), type: 'plot', points, front, sideList, setbacks: { ...site.setbacks } };
         if (site.authority) {
           plot = { ...plot, authority: site.authority };
           const rule = plotRule(plot)?.rule;
           if (rule) plot = { ...plot, setbacks: plotSetbacks(rule) };
         }
-        get().beginBatch();
-        updateElements((els) => [...els, plot]);
-        if (site.boundaryWall) {
-          const thickness = inch(9);
-          const walls = boundaryWallLines(plot as Plot, thickness).map(([a, b]): PlanElement => ({
-            id: newId(),
-            type: 'wall',
-            x1: a.x,
-            y1: a.y,
-            x2: b.x,
-            y2: b.y,
-            thickness,
-            kind: 'boundary',
-            heightMm: KIND_HEIGHT_MM.boundary,
-          }));
-          updateElements((els) => [...els, ...walls]);
+        const added = plot;
+        get().commit((doc) => buildPlotWalls({ ...doc, elements: [...doc.elements, added] }, added.id, newId));
+        return true;
+      },
+      updatePlot: (next) => {
+        const problem = outlineProblem(next.points);
+        if (problem) {
+          get().setWarning(problem);
+          return false;
         }
-        get().endBatch();
+        let plot = next;
+        const sides = plotSides(plot);
+        if (!sides.some((side) => side.kind === 'road')) {
+          get().setWarning('A plot needs a road side. Mark another side Road first.');
+          return false;
+        }
+        if (sides[plot.front % sides.length].kind !== 'road')
+          plot = { ...plot, front: sides.findIndex((side) => side.kind === 'road') };
+        const final = plot;
+        get().commit((doc) =>
+          buildPlotWalls(
+            { ...doc, elements: doc.elements.map((el) => (el.id === final.id ? final : el)) },
+            final.id,
+            newId,
+          ),
+        );
+        return true;
+      },
+      movePlotCorner: (plotId, index, p) => {
+        const plot = get().doc.elements.find((el): el is Plot => el.type === 'plot' && el.id === plotId);
+        if (!plot) return false;
+        const points = plot.points.map((q, i) => (i === index ? p : q));
+        if (outlineProblem(points)) return false;
+        // Corners can't be dragged round past each other: the plot keeps going the same way round.
+        if (signedArea2(points) <= 0) return false;
+        get().updateElement({ ...plot, points });
+        return true;
+      },
+      addSideGate: (plotId, side) => {
+        const { doc, site } = get();
+        const plot = doc.elements.find((el): el is Plot => el.type === 'plot' && el.id === plotId);
+        const wallId = plot && (side === 'splay' ? plot.splay?.wallId : plot.sideList?.[side]?.wallId);
+        const wall = doc.elements.find(
+          (el): el is Wall => el.type === 'wall' && el.id === wallId && el.plotId === plotId,
+        );
+        if (!plot || !wall) {
+          get().setWarning('This side has no wall yet: give it a boundary wall first.');
+          return;
+        }
+        const width = site.gateWidthMm / MM_PER_UNIT;
+        const mid = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
+        const material = (doc.materials.find((m) => m.id === get().selectedMat) ?? doc.materials[0])?.id;
+        const gate: Opening = {
+          id: newId(),
+          type: 'door',
+          wallId: wall.id,
+          gate: true,
+          // A plot's walls run the same way round as the plot, so this swings the gate into the plot.
+          flipSide: true,
+          ...(material ? { material } : {}),
+          ...placeOnWall(wall, mid, width),
+          ...(wall.levelId ? { levelId: wall.levelId } : {}),
+        };
+        const fitted = refitOpening(get(), doc, gate, width);
+        if (!fitted) {
+          get().setWarning(`There's no room for a ${formatLength(site.gateWidthMm, get().units)} gate on this side.`);
+          return;
+        }
+        get().setWarning(null);
+        updateElements((els) => [...els, fitted]);
+        get().select(fitted.id);
+      },
+      rebuildPlotWalls: (plotId) => {
+        const { doc } = get();
+        const plot = doc.elements.find((el): el is Plot => el.type === 'plot' && el.id === plotId);
+        if (!plot) return;
+        const level = levelOf(plot);
+        const found = boundaryWallsAlong(
+          plot,
+          doc.elements.filter((el) => levelOf(el) === level),
+        );
+        const any = found.some((w) => w.length > 0);
+        const sideList = plotSides(plot).map((side, i): PlotSide => {
+          const old = found[i][0];
+          const wall = old
+            ? {
+                heightMm: old.heightMm ?? KIND_HEIGHT_MM.boundary,
+                thicknessMm: (old.thickness ?? inch(9)) * MM_PER_UNIT,
+              }
+            : any
+              ? undefined
+              : { heightMm: KIND_HEIGHT_MM.boundary, thicknessMm: BOUNDARY_MM };
+          const kept = { ...side };
+          delete kept.wall;
+          delete kept.wallId;
+          return wall ? { ...kept, wall } : kept;
+        });
+        const removed = new Map(found.flatMap((walls, i) => walls.map((w) => [w.id, i] as const)));
+        get().commit((d) => {
+          const without = { ...d, elements: d.elements.filter((el) => !removed.has(el.id)) };
+          const plotNow = { ...plot, sideList, ...(plot.splay ? { splay: { sizeMm: plot.splay.sizeMm } } : {}) };
+          let built = buildPlotWalls(
+            { ...without, elements: without.elements.map((el) => (el.id === plot.id ? plotNow : el)) },
+            plot.id,
+            newId,
+          );
+          // Doors and gates on the old walls move onto the new wall of their side.
+          const linked = built.elements.find((el): el is Plot => el.id === plot.id)!;
+          built = {
+            ...built,
+            elements: built.elements.map((el) => {
+              if ((el.type !== 'door' && el.type !== 'window') || !removed.has(el.wallId)) return el;
+              const id = linked.sideList?.[removed.get(el.wallId)!]?.wallId;
+              const host = built.elements.find((w): w is Wall => w.type === 'wall' && w.id === id);
+              return host ? { ...el, wallId: host.id, ...placeOnWall(host, el, el.width) } : el;
+            }),
+          };
+          return built;
+        });
       },
       setPlotAuthority: (plotId, authority) => {
         const plot = get().doc.elements.find((el): el is Plot => el.type === 'plot' && el.id === plotId);
@@ -1479,10 +1624,7 @@ export function createPlannerStore(
           get().commit((doc) => ({ ...doc, levels: [...doc.levels, added] }));
         }
         const thickness = inch(4.5);
-        const inner = boundaryWallLines(
-          { id: '', type: 'plot', points: slab.points, front: 0, setbacks: { front: 0, rear: 0, sides: 0 } },
-          thickness,
-        );
+        const inner = boundaryWallLines({ points: slab.points }, thickness);
         const roofId = roof.id;
         const walls = inner.map(([a, b]): PlanElement => ({
           id: newId(),

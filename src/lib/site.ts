@@ -1,58 +1,9 @@
 import { MM_PER_UNIT } from './scale';
+import { buildableArea, insetPolygon } from './plot';
 import type { Plot, Point, Stair } from '../types';
 
-const sub = (a: Point, b: Point) => ({ x: a.x - b.x, y: a.y - b.y });
-const area = (pts: Point[]) =>
-  Math.abs(pts.reduce((s, p, i) => s + p.x * pts[(i + 1) % pts.length].y - pts[(i + 1) % pts.length].x * p.y, 0)) / 2;
-
-/** Shift each edge i of a polygon sideways by dist[i] (sign picks the side) and re-join the corners. */
-function shiftEdges(pts: Point[], dist: number[]): Point[] {
-  const n = pts.length;
-  const line = (i: number) => {
-    const a = pts[i];
-    const b = pts[(i + 1) % n];
-    const e = sub(b, a);
-    const l = Math.hypot(e.x, e.y) || 1;
-    const shift = { x: (e.y / l) * dist[i], y: (-e.x / l) * dist[i] };
-    return { p: { x: a.x + shift.x, y: a.y + shift.y }, d: e };
-  };
-  return pts.map((_, i) => {
-    const L1 = line((i - 1 + n) % n);
-    const L2 = line(i);
-    const denom = L1.d.x * L2.d.y - L1.d.y * L2.d.x;
-    if (Math.abs(denom) < 1e-9) return L2.p;
-    const t = ((L2.p.x - L1.p.x) * L2.d.y - (L2.p.y - L1.p.y) * L2.d.x) / denom;
-    return { x: L1.p.x + L1.d.x * t, y: L1.p.y + L1.d.y * t };
-  });
-}
-
-/** Shrink a polygon inward by a distance per edge. */
-function inset(pts: Point[], dist: number[]): Point[] {
-  const a = shiftEdges(pts, dist);
-  return area(a) <= area(pts)
-    ? a
-    : shiftEdges(
-        pts,
-        dist.map((d) => -d),
-      );
-}
-
-/** Setback per edge (plan units): the front edge, the edge opposite it, and the sides. */
-function setbackPerEdge(plot: Plot): number[] {
-  const n = plot.points.length;
-  const u = (mm: number) => mm / MM_PER_UNIT;
-  return plot.points.map((_, i) => {
-    if (i === plot.front) return u(plot.setbacks.front);
-    if (n === 4 && i === (plot.front + 2) % 4) return u(plot.setbacks.rear);
-    if (n === 4 && i === (plot.front + 3) % 4) return u(plot.setbacks.side2 ?? plot.setbacks.sides);
-    return u(plot.setbacks.sides);
-  });
-}
-
 /** The area left for building once the setbacks are taken off. */
-export function buildableArea(plot: Plot): Point[] {
-  return inset(plot.points, setbackPerEdge(plot));
-}
+export { buildableArea };
 
 /**
  * The building line moved in, per edge, by how far an item's centre sits from its face: `half`
@@ -60,22 +11,22 @@ export function buildableArea(plot: Plot): Point[] {
  */
 export function buildingGuide(plot: Plot, half: (dir: Point) => number): Point[] {
   const line = buildableArea(plot);
-  return inset(
+  return insetPolygon(
     line,
     line.map((p, i) => {
       const q = line[(i + 1) % line.length];
       const l = Math.hypot(q.x - p.x, q.y - p.y) || 1;
       return half({ x: (q.x - p.x) / l, y: (q.y - p.y) / l });
     }),
-  );
+  ).points;
 }
 
-/** Centre lines of boundary walls of the given thickness, just inside the plot line. */
-export function boundaryWallLines(plot: Plot, thickness: number): [Point, Point][] {
-  const inner = inset(
+/** Centre lines of walls of the given thickness just inside an outline (a parapet round a slab). */
+export function boundaryWallLines(plot: Pick<Plot, 'points'>, thickness: number): [Point, Point][] {
+  const inner = insetPolygon(
     plot.points,
     plot.points.map(() => thickness / 2),
-  );
+  ).points;
   return inner.map((p, i) => [p, inner[(i + 1) % inner.length]]);
 }
 

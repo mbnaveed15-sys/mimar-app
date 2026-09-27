@@ -58,6 +58,8 @@ const keep = <T extends THREE.Material>(m: T): T => {
   return m;
 };
 const EDGE_MATERIAL = keep(new THREE.LineBasicMaterial({ color: '#57534e', transparent: true, opacity: 0.35 }));
+/** A plot's setback line on the ground, dashed as on the plan. */
+const GUIDE_MATERIAL = keep(new THREE.LineDashedMaterial({ color: '#44403c', dashSize: 0.3, gapSize: 0.2 }));
 /** Each mesh's box in the scene, worked out once (the model's meshes don't move once built). */
 const BOXES = new WeakMap<THREE.Object3D, THREE.Box3>();
 function boxOf(obj: THREE.Object3D): THREE.Box3 {
@@ -216,6 +218,14 @@ function buildMeshes(model: Model3D): THREE.Group {
     mesh.receiveShadow = true;
     mesh.userData = { id: floor.id, level: floor.level };
     group.add(mesh);
+  }
+
+  for (const guide of model.guides ?? []) {
+    const pts = guide.points.map(([x, z]) => new THREE.Vector3(x, guide.y, z));
+    const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), GUIDE_MATERIAL);
+    line.computeLineDistances();
+    line.userData = { level: guide.level };
+    group.add(line);
   }
 
   /** A flat outline (with any holes) as a three.js shape, in its own axes. */

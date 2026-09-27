@@ -8,7 +8,7 @@ import {
 } from '../lib/openingKinds';
 import { WINDOW_HEIGHT_MM } from '../lib/shapes';
 import { WINDOW_SILL_MM } from '../three/model';
-import { usePlanner, type SiteSpec } from '../store/plannerStore';
+import { plannerStore, usePlanner, type SiteSpec } from '../store/plannerStore';
 import { LengthField } from './LengthField';
 import { AuthoritySelect, PlotPresets } from './PlotBylaws';
 
@@ -83,6 +83,35 @@ export function SiteOptions() {
     return (
       <div className={box}>
         <div className="font-medium">New plot</div>
+        <div className="flex flex-col gap-1">
+          <span className="text-muted">Draw it as</span>
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Plot shape">
+            {(
+              [
+                ['rect', 'Rectangle'],
+                ['any', 'Any shape'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                className="m-btn px-2 py-0.5"
+                aria-pressed={site.plotShape === id && !site.plotSize}
+                onClick={() => {
+                  setSite({ plotShape: id, plotSize: undefined });
+                  plannerStore.getState().setDraft(null);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {site.plotShape === 'any' && !site.plotSize && (
+            <div className="text-muted">
+              Click each corner; start with the two ends of the road side. Click the first corner or press Enter to
+              finish.
+            </div>
+          )}
+        </div>
         <AuthoritySelect id="site-authority" value={site.authority} onChange={(authority) => setSite({ authority })} />
         <PlotPresets />
         {site.authority ? (

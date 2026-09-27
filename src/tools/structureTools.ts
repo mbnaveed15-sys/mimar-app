@@ -80,10 +80,12 @@ export function structurePress(store: Store, inf: Inference) {
     case 'plot': {
       // A preset size: one click places the plot, this corner at the back left.
       const size = s.site.plotSize;
-      if (size && d?.type !== 'plot') {
+      if (size && d?.type !== 'plot' && d?.type !== 'plotPoly') {
         const u = (feet: number) => (feet * MM_PER_FOOT) / MM_PER_UNIT;
-        return s.addPlot(plotRect(p, { x: p.x + u(size.w), y: p.y + u(size.d) }));
+        s.addPlot(plotRect(p, { x: p.x + u(size.w), y: p.y + u(size.d) }));
+        return;
       }
+      if (s.site.plotShape === 'any' || d?.type === 'plotPoly') return plotCorner(store, p, true);
       if (d?.type !== 'plot') return s.setDraft({ type: 'plot', x1: p.x, y1: p.y, x2: p.x, y2: p.y });
       if (Math.abs(p.x - d.x1) > 1 && Math.abs(p.y - d.y1) > 1) s.addPlot(plotRect({ x: d.x1, y: d.y1 }, p));
       return s.setDraft(null);
@@ -99,6 +101,68 @@ export function structureHover(store: Store, inf: Inference) {
   const d = s.draft;
   if (d?.type === 'beam' || d?.type === 'slab' || d?.type === 'plot')
     s.setDraft({ ...d, x2: inf.point.x, y2: inf.point.y });
+  if (d?.type === 'plotPoly') s.setDraft({ ...d, cursor: inf.point });
+}
+
+const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/** Whether a side from the last corner to p would cross one of the sides drawn so far. */
+function sideCrosses(points: Point[], p: Point): boolean {
+  const last = points[points.length - 1];
+  for (let i = 0; i + 2 < points.length; i++) {
+    // Sides only touching end to end (the new side closing on the first corner) don't count.
+    if (segmentsCross(points[i], points[i + 1], last, p)) return true;
+  }
+  return false;
+}
+
+function segmentsCross(a: Point, b: Point, c: Point, d: Point): boolean {
+  const cr = (o: Point, p: Point, q: Point) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+  const d1 = cr(a, b, c);
+  const d2 = cr(a, b, d);
+  const d3 = cr(c, d, a);
+  const d4 = cr(c, d, b);
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
+/**
+ * A corner of a plot drawn corner by corner. Clicking the first corner again (with three or more
+ * placed) finishes it; `snapClose` lets a click near the first corner count.
+ */
+function plotCorner(store: Store, p: Point, snapClose: boolean) {
+  const s = store.getState();
+  const d = s.draft;
+  if (d?.type !== 'plotPoly') {
+    s.setWarning(null);
+    return s.setDraft({ type: 'plotPoly', points: [p], cursor: p });
+  }
+  const first = d.points[0];
+  const tol = snapClose ? 10 * s.reach() * s.pxUnits() : 1;
+  if (d.points.length >= 3 && dist(p, first) <= tol) {
+    finishPlotPoly(store);
+    return;
+  }
+  if (dist(p, d.points[d.points.length - 1]) < 1) return;
+  if (sideCrosses(d.points, p)) {
+    s.setWarning('That side would cross another side of the plot: put the corner somewhere else.');
+    return;
+  }
+  s.setWarning(null);
+  s.setDraft({ ...d, points: [...d.points, p], cursor: p });
+}
+
+/** Enter (or clicking the first corner): close the plot being drawn corner by corner. */
+export function finishPlotPoly(store: Store): boolean {
+  const s = store.getState();
+  const d = s.draft;
+  if (d?.type !== 'plotPoly') return false;
+  if (d.points.length < 3) {
+    s.setWarning('A plot needs at least three corners.');
+    return true;
+  }
+  // The side drawn first is along the road.
+  if (s.addPlot(d.points, 0)) s.setDraft(null);
+  return true;
 }
 
 /**
@@ -108,6 +172,12 @@ export function structureHover(store: Store, inf: Inference) {
 export function structureRelease(store: Store, dragged: boolean) {
   const s = store.getState();
   const d = s.draft;
+  // Drawing corner by corner, a drag from the first corner still makes a rectangle.
+  if (s.tool === 'plot' && d?.type === 'plotPoly' && dragged && d.points.length === 1) {
+    const [a] = d.points;
+    if (Math.abs(d.cursor.x - a.x) > 1 && Math.abs(d.cursor.y - a.y) > 1) s.addPlot(plotRect(a, d.cursor));
+    return s.setDraft(null);
+  }
   if (s.tool === 'plot' && d?.type === 'plot' && dragged) {
     if (Math.abs(d.x2 - d.x1) > 1 && Math.abs(d.y2 - d.y1) > 1)
       s.addPlot(plotRect({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 }));
@@ -150,6 +220,26 @@ export function structureMeasure(store: Store, m: Measure): string | null {
     s.setDraft(null);
     return null;
   }
+  if (s.tool === 'plot' && (d?.type === 'plotPoly' || (s.site.plotShape === 'any' && !s.site.plotSize))) {
+    if (d?.type !== 'plotPoly') return 'Click the first corner of the plot, then type the length of each side.';
+    const last = d.points[d.points.length - 1];
+    let next: Point | null = null;
+    if (m.kind === 'vector') next = { x: last.x + units(m.dx), y: last.y - units(m.dy) };
+    else if (m.kind === 'length') {
+      const lock = s.axisLock === 'x' ? { x: 1, y: 0 } : s.axisLock === 'y' ? { x: 0, y: 1 } : s.shiftLock;
+      const v = lock ?? { x: d.cursor.x - last.x, y: d.cursor.y - last.y };
+      const l = Math.hypot(v.x, v.y);
+      if (l < 1e-9) return 'Point the way the side goes first, then type its length.';
+      next = { x: last.x + (v.x / l) * units(m.mm), y: last.y + (v.y / l) * units(m.mm) };
+    }
+    if (!next) return `Type the length of the side, e.g. 30', or @x,y.`;
+    const before = s.draft;
+    plotCorner(store, next, false);
+    const after = store.getState().draft;
+    // A corner that would make the sides cross isn't placed: say why.
+    if (after === before) return store.getState().warnings[0] ?? 'That corner can’t be used.';
+    return null;
+  }
   if (s.tool === 'plot') {
     if (d?.type !== 'plot') return `Click one corner of the plot, then type its width and depth, e.g. 25',45'.`;
     const [a, b] = m.kind === 'pair' ? [m.a, m.b] : m.kind === 'length' ? [m.mm, m.mm] : [0, 0];
@@ -181,6 +271,10 @@ export function structureReadout(s: PlannerState): { label: string; value: strin
     });
     return { label: 'Risers', value: `${l.risers} × ${formatLength(l.riserMm, s.units)}` };
   }
+  if (d?.type === 'plotPoly') {
+    const last = d.points[d.points.length - 1];
+    return { label: 'Length', value: len(Math.hypot(d.cursor.x - last.x, d.cursor.y - last.y)) };
+  }
   if (s.tool === 'slab' || s.tool === 'plot')
     return {
       label: 'Size',
@@ -204,6 +298,12 @@ export function structureHint(s: PlannerState): string {
         ? `Click the opposite corner, or type width, depth (e.g. 20',30').`
         : 'Click inside walls to cover that area with a slab, or drag a rectangle.';
     case 'plot':
+      if (d?.type === 'plotPoly')
+        return d.points.length < 3
+          ? 'Click the next corner, or type the side’s length. The first side you draw is along the road.'
+          : 'Click the next corner, or click the first corner (or press Enter) to finish. Ctrl+Z takes back a corner.';
+      if (s.site.plotShape === 'any' && !s.site.plotSize)
+        return 'Click the plot’s corners one by one, starting with the two ends of its road side. A drag makes a rectangle.';
       return d?.type === 'plot'
         ? `Click the opposite corner, or type width, depth (e.g. 25',45'). The bottom edge faces the road.`
         : s.site.plotSize

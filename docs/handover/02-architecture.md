@@ -61,6 +61,24 @@ autosaves to local storage on every change.
   `src/components/PlanCheckPanel.tsx` (bylaw rows, then Hints), `CheckMarks.tsx` (red, dashed and dotted marks, on
   items and rooms) and `PlotBylaws.tsx` (authority, presets, the plot's setbacks). Figures and sources:
   `docs/handover/06-bylaws.md`. The plan's `northDeg` (degrees clockwise from up) drives the PDF's north arrow.
+- Plots (1.30): `src/lib/plot.ts` (pure) has the sides (`Plot.sideList`, one `PlotSide` per edge: kind, typed
+  `setbackMm`, `wall` spec, `wallId`; missing in older plots, whose sides `plotSides` works out from `front`),
+  `sideSlots`/`sideSetbacks` (main road = front, back sides = rear, the rest side 1 going round from the road and side
+  2 coming back; a second road is provisional), the cut corner (`Plot.splay`, `roadCorner`, `plotOutline`,
+  `outlinePoints`, `plotArea`), `insetPolygon` (per-edge setbacks for any shape: mitred corners, edges squeezed out
+  are dropped, self-touching results split and the biggest part kept) behind `buildableArea`, `sideWallLines`,
+  `outlineProblem` (self-crossing) and `orientOutline` (plots go round as `plotRect` makes them; `reversedSides` after
+  a mirror, used by `mapOutline`). `src/lib/plotWalls.ts` links boundary walls both ways (`PlotSide.wallId` /
+  `splay.wallId` and `Wall.plotId`/`plotSide`): `buildPlotWalls` makes walls match the sides, `placePlotWalls` puts
+  them in place (openings reattached), and `syncPlotWalls(prev, next)` runs in every `commit`/`commitFromBase`, so
+  whatever changes a plot moves its walls; it also takes a wall's panel edits back to its side, forgets deleted walls,
+  lets a pasted plot adopt the pasted copies of its walls (new walls naming the source plot, nearest to where they
+  belong) and makes walls whose plot no longer links them ordinary. Store actions: `addPlot(points, road)`,
+  `updatePlot`, `movePlotCorner` (the corner grips, `plot-corner-i` handles in `Canvas.tsx`), `addSideGate`,
+  `rebuildPlotWalls` (`boundaryWallsAlong` finds old walls). The tool: `plotShape` in `SiteSpec`, draft `plotPoly`
+  (`structureTools.ts`: `plotCorner`, `finishPlotPoly`; `measureKindOf` in the controller makes it take lengths);
+  UI in `src/components/PlotSides.tsx`. Plan check: per-side rows are `detail: true` (shown under Setbacks, not
+  counted); 3D draws the setback line from `Model3D.guides`.
 - `src/lib/spatial.ts`: `GridIndex` (buckets for point lookups) and `boxOf`, used by the hints and the covered
   area so they scale to thousands of rooms. `src/store/usePlanCheck.ts` keeps one shared result per change and uses
   the plan from before a drag (`batchBase`) until it is let go. `src/lib/text.ts` `cleanText` strips control

@@ -173,6 +173,50 @@ describe('storage', () => {
     expect(doc.elements[1]).not.toHaveProperty('setbacks.side2');
   });
 
+  it("keeps a plot's sides and cut corner when sound, and a road as its main road", () => {
+    const pts = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
+    ];
+    const base = { type: 'plot', points: pts, setbacks: { front: 1, rear: 2, sides: 3 } };
+    const wall = { heightMm: 2134, thicknessMm: 228.6 };
+    const doc = normaliseDoc({
+      ...emptyDoc(),
+      elements: [
+        {
+          ...base,
+          id: 'a',
+          front: 0,
+          sideList: [
+            { kind: 'back' },
+            { kind: 'road', setbackMm: 900, wall, wallId: 'w1' },
+            { kind: 'lake', wall: { heightMm: -1, thicknessMm: 9 } },
+            { kind: 'open' },
+          ],
+          splay: { sizeMm: 1524, wallId: 'w9' },
+        },
+        // Sides that don't match the corners, or with no road, are dropped.
+        { ...base, id: 'b', front: 2, sideList: [{ kind: 'back' }] },
+        { ...base, id: 'c', front: 2, sideList: pts.map(() => ({ kind: 'back' })), splay: { sizeMm: 0 } },
+      ],
+    });
+    expect(doc.elements[0]).toMatchObject({
+      front: 1,
+      sideList: [
+        { kind: 'back' },
+        { kind: 'road', setbackMm: 900, wall, wallId: 'w1' },
+        { kind: 'neighbour' },
+        { kind: 'open' },
+      ],
+      splay: { sizeMm: 1524, wallId: 'w9' },
+    });
+    expect(doc.elements[1]).not.toHaveProperty('sideList');
+    expect(doc.elements[2]).not.toHaveProperty('sideList');
+    expect(doc.elements[2]).not.toHaveProperty('splay');
+  });
+
   it('keeps which way north points, as 0–359°, and leaves it out when it is up', () => {
     expect(normaliseDoc({ ...emptyDoc(), northDeg: 90 }).northDeg).toBe(90);
     expect(normaliseDoc({ ...emptyDoc(), northDeg: -45 }).northDeg).toBe(315);

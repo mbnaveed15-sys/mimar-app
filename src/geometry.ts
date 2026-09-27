@@ -1,4 +1,5 @@
 import { boxOf } from './lib/spatial';
+import { reversedSides } from './lib/plot';
 import {
   hasPoints,
   type Block,
@@ -70,9 +71,10 @@ export function centroid(points: Point[]): Point {
  */
 export function mapOutline<T extends Slab | Plot | Block>(el: T, f: (p: Point) => Point, reverse = false): T {
   const map = (pts: Point[]) => (reverse ? pts.map(f).reverse() : pts.map(f));
-  return el.type === 'slab' && el.holes
-    ? { ...el, points: map(el.points), holes: el.holes.map(map) }
-    : { ...el, points: map(el.points) };
+  if (el.type === 'slab' && el.holes) return { ...el, points: map(el.points), holes: el.holes.map(map) };
+  // A plot's road and sides stay on the same edges as its corners turn round.
+  if (el.type === 'plot' && reverse) return { ...el, points: map(el.points), ...reversedSides(el) };
+  return { ...el, points: map(el.points) };
 }
 
 export function elementCenter(el: PlanElement): Point {

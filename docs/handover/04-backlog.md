@@ -21,7 +21,16 @@ From the 1.23 QA pass (six testers; full reports in the git-ignored `.qa/<tester
 
 Done: bylaws, plot presets and the plan check (1.22); plan hints, the mumty, car porches and the north arrow (1.23);
 AutoCAD-style 2D (1.24); SketchUp-style 3D (1.25); interface polish (1.26); split view (1.27); quantities and cost (1.28);
-door and window types, plants and garden items (1.29); door and window placing with gaps, and snapping guides (1.29.1).
+door and window types, plants and garden items (1.29); door and window placing with gaps, and snapping guides (1.29.1); custom plots:
+any shape, per-side types, setbacks and walls, corner plots (1.30).
+
+Planned next: **1.31 generative layouts**, then **1.32 basements**.
+
+Left from custom plots for later: a road width for each side; curved sides; official corner-plot figures (the second
+road uses the side setback, marked provisional: ask the owner for the CDA/DHA corner-plot rules); corner grips in 3D;
+adding or removing a corner of a drawn plot (redraw it for now); the plan check measures each side's setback to the
+nearest wall by straight distance, while the drawn building line has sharp inside corners, so the two can differ
+slightly at an L-shape's inside corner.
 
 Left from the cost estimate for later: rates for other cities; contingencies and the contractor's margin as a
 percentage; woodwork, kitchens and wardrobes; footings drawn rather than assumed; metric units in the table (it

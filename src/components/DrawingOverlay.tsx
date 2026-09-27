@@ -231,6 +231,59 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
         </>
       )}
 
+      {d?.type === 'plotPoly' && (
+        <>
+          <polyline
+            data-testid="plot-draft"
+            points={[...d.points, d.cursor].map((p) => `${p.x},${p.y}`).join(' ')}
+            fill="none"
+            style={{ stroke: PLAN.draft }}
+            strokeWidth={2 * k}
+            strokeDasharray={dash}
+          />
+          {d.points.length >= 2 && (
+            // Where the plot would close.
+            <line
+              x1={d.cursor.x}
+              y1={d.cursor.y}
+              x2={d.points[0].x}
+              y2={d.points[0].y}
+              style={{ stroke: PLAN.draft }}
+              strokeWidth={1 * k}
+              strokeDasharray={`${2 * k} ${4 * k}`}
+              opacity={0.6}
+            />
+          )}
+          {d.points.map((p, i) => (
+            <circle
+              key={i}
+              cx={p.x}
+              cy={p.y}
+              r={(i === 0 && d.points.length >= 3 ? 6 : 3) * k}
+              style={{ fill: i === 0 ? PLAN.paper : PLAN.draft, stroke: PLAN.draft }}
+              strokeWidth={1.5 * k}
+            />
+          ))}
+          {[...d.points, d.cursor].slice(1).map((b, i) => {
+            const a = d.points[i];
+            return (
+              <Label key={i} p={{ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - 8 * k }} k={k} color={PLAN.draft}>
+                {len(a, b)}
+              </Label>
+            );
+          })}
+          {d.points.length >= 2 && (
+            <Label
+              p={{ x: (d.points[0].x + d.points[1].x) / 2, y: (d.points[0].y + d.points[1].y) / 2 + 12 * k }}
+              k={k}
+              color={PLAN.draft}
+            >
+              ROAD
+            </Label>
+          )}
+        </>
+      )}
+
       {hoverEdge && (
         <line
           data-testid="face-highlight"

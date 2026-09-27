@@ -103,11 +103,12 @@ export function PlotBylawsPanel({ plot }: { plot: Plot }) {
           {rule?.check && <div className="mt-1 text-danger">Check: {rule.check}</div>}
         </div>
       )}
+      <div className="text-muted">Setbacks for each kind of side (a side can have its own, below)</div>
       <div className="grid grid-cols-2 gap-2">
         {(
           [
-            ['front', 'Front'],
-            ['rear', 'Rear'],
+            ['front', 'Front (main road)'],
+            ['rear', 'Rear (back)'],
             ['sides', 'Side 1'],
             ['side2', 'Side 2'],
           ] as const

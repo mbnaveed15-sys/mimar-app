@@ -9,7 +9,7 @@ import {
   applyMeasure,
   cancel,
   currentDirection,
-  MEASURE_TOOLS,
+  measureKindOf,
   toggleAxisLock,
   toggleCopy,
   toggleHeightLock,
@@ -94,7 +94,7 @@ export function useKeyboardShortcuts(commands: Command[]) {
       }
       const s = plannerStore.getState();
       const mod = e.ctrlKey || e.metaKey || e.altKey;
-      const kind = MEASURE_TOOLS[s.tool];
+      const kind = measureKindOf(s);
       const measuring = !!kind && kind !== 'none';
 
       if (measuring && !mod) {

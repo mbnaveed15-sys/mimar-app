@@ -91,3 +91,10 @@ floor height 8'6"–16' (8.56.4); plinth 4'6" (8.56.7); room ≥ 80 sq ft (8.56.
 
 In the plan, the mumty is a floor above the ground named Roof, Mumty or Stair tower (or holding a room so named); car
 porches are ground-floor rooms named Porch or Garage.
+
+## Corner plots (1.30)
+
+No official corner-plot figures yet. A plot with two road sides uses the front setback on its main road and the
+side setback (side 1 or side 2, by position) on the second road, marked **provisional** in the Sides list and the
+plan check, which adds a "Corner plot" row to check with the authority. The cut corner (splay) is off by default;
+when ticked it starts at 5' along each road. Replace these with the authorities' figures when the owner uploads them.
