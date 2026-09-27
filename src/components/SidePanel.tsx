@@ -15,6 +15,7 @@ import { StructureOptions } from './StructureOptions';
 import { ThemePicker } from './ThemePicker';
 import { UpdatePanel } from './UpdatePanel';
 import type { SectionId, useOpenSections } from './useOpenSections';
+import { LayoutPanel } from './LayoutPanel';
 import { WallThicknessPicker } from './WallThicknessPicker';
 import { CostPanel } from './CostPanel';
 
@@ -108,6 +109,7 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
         {(!hasSelection || tool === 'shape') && <ToolOptions />}
         <Inspector />
       </div>
+      {section('layout', 'Layout from a room list', open.includes('layout') ? <LayoutPanel /> : null)}
       {section('check', 'Plan check', <PlanCheckPanel />)}
       {section('cost', 'Quantities & cost', open.includes('cost') ? <CostPanel /> : null)}
       {section('materials', 'Materials', <MaterialsPanel />)}

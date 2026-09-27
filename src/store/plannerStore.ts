@@ -43,6 +43,7 @@ import { plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
 import { guessSideKinds, orientOutline, outlineProblem, plotSides, signedArea2 } from '../lib/plot';
 import { boundaryWallsAlong, buildPlotWalls, syncPlotWalls } from '../lib/plotWalls';
 import { formatLength } from '../lib/units';
+import type { Built } from '../lib/layoutBuild';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
 import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from '../lib/layers';
 import { SLAB_MM } from '../three/model';
@@ -150,6 +151,8 @@ function omit<T extends object, K extends keyof T>(obj: T, key: K): T {
 }
 
 const inch = (n: number) => (n * 25.4) / MM_PER_UNIT;
+/** Items a plan from the room list takes the place of on its floor (with ordinary walls). */
+const REPLACED_BY_LAYOUT = new Set<string>(['stair', 'furniture', 'column', 'beam', 'slab', 'block']);
 /** A 9-inch boundary wall, in millimetres. */
 export const BOUNDARY_MM = 228.6;
 /** 9" × 12" columns, 9" × 18" beams and a 6" slab: common RCC sizes for Pakistani houses. */
@@ -244,6 +247,13 @@ export interface PlannerState {
    * replaced by linked ones of the same size, keeping their doors and gates; with none, every side gets one.
    */
   rebuildPlotWalls: (plotId: Id) => void;
+  /**
+   * What placing a plan would take away on the floor being viewed: its walls (not boundary walls or
+   * parapets) with their doors and windows, rooms, stairs, furniture, columns, beams, slabs and blocks.
+   */
+  layoutClash: () => { walls: number; rooms: number; other: number };
+  /** Put a plan built from the room list on the floor being viewed, in place of what `layoutClash` counts (one undo step). */
+  placeLayout: (built: Built) => void;
   /** Put a plot under an authority's bylaws (or none), taking its setbacks from their table. */
   setPlotAuthority: (plotId: Id, authority: AuthorityId | undefined) => void;
   addStair: (p: Point) => void;
@@ -1585,6 +1595,35 @@ export function createPlannerStore(
           };
           return built;
         });
+      },
+      layoutClash: () => {
+        const els = get().levelElements();
+        const walls = els.filter((el) => el.type === 'wall' && !el.kind).length;
+        const rooms = get().levelRooms().length;
+        const other = els.filter((el) => REPLACED_BY_LAYOUT.has(el.type)).length;
+        return { walls, rooms, other };
+      },
+      placeLayout: (built) => {
+        const level = get().activeLevel;
+        get().commit((doc) => {
+          const here = (el: { levelId?: Id }) => levelOf(el) === level;
+          const gone = new Set(
+            doc.elements
+              .filter((el) => here(el) && ((el.type === 'wall' && !el.kind) || REPLACED_BY_LAYOUT.has(el.type)))
+              .map((el) => el.id),
+          );
+          const kept = doc.elements.filter(
+            (el) => !gone.has(el.id) && !((el.type === 'door' || el.type === 'window') && gone.has(el.wallId)),
+          );
+          const added = [...built.walls, ...built.openings, ...built.stairs].map((el) => onActive(el));
+          return {
+            ...doc,
+            elements: [...kept, ...added],
+            rooms: [...doc.rooms.filter((r) => !here(r)), ...built.rooms.map((r) => onActive(r))],
+          };
+        });
+        get().select(null);
+        get().setWarning(null);
       },
       setPlotAuthority: (plotId, authority) => {
         const plot = get().doc.elements.find((el): el is Plot => el.type === 'plot' && el.id === plotId);
