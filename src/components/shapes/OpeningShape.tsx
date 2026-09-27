@@ -18,10 +18,12 @@ interface Props {
   selected: boolean;
   /** Thickness of the host wall, so the opening cuts cleanly through it. */
   wallThickness: number;
+  /** A preview of one about to be placed: not an item on the plan, so it isn't marked as one. */
+  ghost?: boolean;
 }
 
 /** Door (leaf + swing arc) or window (double line with glazing) cut into a wall. */
-export function OpeningShape({ opening, color, selected, wallThickness }: Props) {
+export function OpeningShape({ opening, color, selected, wallThickness, ghost }: Props) {
   const w = opening.width;
   const stroke = { stroke: selected ? PLAN.selection : PLAN.wallEdge };
   const t = wallThickness / 2 + 1;
@@ -55,10 +57,12 @@ export function OpeningShape({ opening, color, selected, wallThickness }: Props)
   }
   return (
     <g
-      data-type={opening.type}
-      data-id={opening.id}
+      data-type={ghost ? undefined : opening.type}
+      data-id={ghost ? undefined : opening.id}
       data-kind={opening.type === 'door' ? doorKindOf(opening) : (opening.windowKind ?? 'plain')}
-      data-testid={opening.gate ? 'gate' : opening.type === 'window' && opening.open ? 'open-hole' : undefined}
+      data-testid={
+        ghost ? undefined : opening.gate ? 'gate' : opening.type === 'window' && opening.open ? 'open-hole' : undefined
+      }
       transform={`translate(${opening.x},${opening.y}) rotate(${opening.angle}) scale(${opening.flipHinge ? -1 : 1},${opening.flipSide ? -1 : 1})`}
     >
       <rect x={-w / 2} y={-t} width={w} height={2 * t} style={{ fill: PLAN.paper }} />

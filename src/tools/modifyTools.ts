@@ -14,6 +14,7 @@ import {
   stretchItems,
   trimAt,
 } from '../lib/modify';
+import { fitterFor } from '../store/openingAt';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
 import type { Id, PlanDoc, Point, SketchLine, Wall as WallItem } from '../types';
@@ -185,7 +186,7 @@ export function modifyPress(store: Store, raw: Point, inf: Inference, opts: { ct
         if (dist(d.a, p) <= tol) return;
         let ids: Id[] = [];
         s.commitFromBase((base) => {
-          const out = mirrorItems(base, d.ids, d.a, p, d.flip);
+          const out = mirrorItems(base, d.ids, d.a, p, d.flip, fitterFor(s));
           ids = out.ids;
           return out.doc;
         });
@@ -241,7 +242,7 @@ export function modifyHover(store: Store, raw: Point, inf: Inference, shift: boo
     if (wall) s.setDraft(offsetDraft(s, wall, raw));
   } else if (d?.type === 'mirror') {
     s.setDraft({ ...d, b: p });
-    if (dist(d.a, p) > 0) s.commitFromBase((base) => mirrorItems(base, d.ids, d.a, p, d.flip).doc);
+    if (dist(d.a, p) > 0) s.commitFromBase((base) => mirrorItems(base, d.ids, d.a, p, d.flip, fitterFor(s)).doc);
   } else if (d?.type === 'stretch') {
     if (!d.boxDone) s.setDraft({ ...d, x2: raw.x, y2: raw.y });
     else if (d.base) {

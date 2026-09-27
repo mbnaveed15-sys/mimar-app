@@ -1,4 +1,6 @@
-import { findElementNear, placeOnWall } from '../geometry';
+import { findElementNear } from '../geometry';
+import { copyOpeningTo, loneOpenings, slideOpening } from '../store/openingAt';
+import { newId } from '../lib/ids';
 import { axisDirection, infer, type Inference, type Segment } from '../lib/inference';
 import { buildingGuide } from '../lib/site';
 import { parseMeasure, type MeasureKind } from '../lib/measure';
@@ -15,7 +17,7 @@ import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
 import { levelBaseM, M_PER_UNIT } from '../three/model';
 import { getPicker, getPointer } from '../three/picker';
-import type { Id, PlanDoc, Plot, Point, SketchLine, Tool, Wall } from '../types';
+import type { Id, PlanDoc, Plot, Point, SketchLine, Tool } from '../types';
 import { MODIFY_TOOLS } from '../types';
 import { wallsOf } from '../walls';
 import {
@@ -37,6 +39,7 @@ import {
   structureRelease,
 } from './structureTools';
 import { SHAPE_TOOLS, shapeHint, shapeHover, shapeMeasure, shapePress, shapeReadout, shapeRelease } from './shapeTools';
+import { OPENING_TOOLS, openingHint, openingHover, openingMeasure, openingPress, openingReadout } from './openingTool';
 
 /** The bits of a zustand store the controller needs. */
 export interface Store {
@@ -68,6 +71,8 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   stairs: 'none',
   shape: 'pair',
   pushpull: 'length',
+  door: 'length',
+  window: 'length',
 };
 
 /** Rotation snaps to this many degrees unless Shift is held. */
@@ -211,6 +216,7 @@ export function hover(store: Store, raw: Point, shift = false, screenY?: number)
     s.setInference(null);
     return shapeHover(store, null);
   }
+  if (OPENING_TOOLS.includes(s.tool)) return openingHover(store, raw);
   const from = anchorOf(s);
   const inf = inferAt(s, raw, from, movingIds(s));
   s.setInference(inf);
@@ -325,13 +331,22 @@ function movedPlan(d: MoveDraft) {
 function showMove(store: Store, d: MoveDraft) {
   const s = store.getState();
   const only = loneOpening(s, d);
+  if (only && d.copy) {
+    // A copy goes onto whichever wall the pointer is at, opening towards the pointer.
+    const id = d.copyId ?? newId();
+    s.commitFromBase((base) => {
+      const copy = copyOpeningTo(s, base, only, d.to, id);
+      return copy ? { ...base, elements: [...base.elements, copy] } : base;
+    });
+    return;
+  }
   if (only) {
     // It slides along its wall (once the pointer has moved), and a window's sill goes up and down.
     const slid = d.to.x !== d.base.x || d.to.y !== d.base.y;
     s.commitFromBase((base) => {
-      const wall = base.elements.find((el): el is Wall => el.type === 'wall' && el.id === only.wallId);
-      const at = wall && slid ? placeOnWall(wall, d.to, only.width) : {};
-      const elements = base.elements.map((el) => (el.id === only.id ? { ...el, ...at } : el));
+      const slide = slid ? slideOpening(s, base, only, d.to) : null;
+      if (slide) s.setInference(slide.snap ? { point: slide.opening, kind: slide.snap } : null);
+      const elements = base.elements.map((el) => (el.id === only.id && slide ? slide.opening : el));
       return raiseItems({ ...base, elements }, [only.id], d.dz ?? 0);
     });
     return;
@@ -368,13 +383,16 @@ export function toggleCopy(store: Store) {
   const s = store.getState();
   const d = s.draft;
   if (d?.type !== 'move' || d.pasted) return;
+  const only = loneOpening(s, d);
+  // Several doors and windows without their walls can't be copied by moving (one on its own can).
   if (
+    !only &&
     d.ids.every((id) =>
       s.batchBase?.elements.find((el) => el.id === id && (el.type === 'door' || el.type === 'window')),
     )
   )
     return;
-  const next = { ...d, copy: !d.copy };
+  const next = { ...d, copy: !d.copy, ...(only && !d.copy && { copyId: newId() }) };
   s.setDraft(next);
   showMove(store, next);
 }
@@ -388,7 +406,13 @@ function finishMove(store: Store) {
   const dy = d.to.y - d.base.y;
   let lastCopy: PlannerState['lastCopy'] = null;
   let selection = d.ids;
-  if (d.copy && (dx || dy || d.dz)) {
+  const only = loneOpening(s, d);
+  if (only && d.copy) {
+    // The copy shown is the copy made (if it could go where the pointer is).
+    const made = store.getState().doc.elements.some((el) => el.id === d.copyId);
+    if (made && d.copyId) selection = [d.copyId];
+    else s.setWarning(`The copy needs a wall to go on, with room for it.`);
+  } else if (d.copy && (dx || dy || d.dz)) {
     const { ids } = d;
     const plan = movedPlan(d);
     let copyIds: Id[] = [];
@@ -412,8 +436,16 @@ function finishMove(store: Store) {
 }
 
 /** Pointer pressed on the plan with a measuring tool. Returns true if the tool used it. */
-export function press(store: Store, raw: Point, opts: { ctrl?: boolean; clicks?: number } = {}): boolean {
+export function press(
+  store: Store,
+  raw: Point,
+  opts: { ctrl?: boolean; alt?: boolean; clicks?: number } = {},
+): boolean {
   const s = store.getState();
+  if (OPENING_TOOLS.includes(s.tool)) {
+    openingPress(store, raw, opts);
+    return true;
+  }
   const d = s.draft;
   const from = anchorOf(s);
   const inf = inferAt(s, raw, from, movingIds(s));
@@ -590,12 +622,17 @@ export function applyMeasure(store: Store, text: string): boolean {
     return fail(hints[kind]);
   }
   if (m.kind === 'length' && m.mm === 0 && s.tool !== 'fillet') return fail('Type a length above zero.');
-  if (MODIFY_TOOLS.includes(s.tool) || STRUCTURE_TOOLS.includes(s.tool) || SHAPE_TOOLS.includes(s.tool)) {
-    const error = MODIFY_TOOLS.includes(s.tool)
-      ? modifyMeasure(store, m)
-      : SHAPE_TOOLS.includes(s.tool)
-        ? shapeMeasure(store, m)
-        : structureMeasure(store, m);
+  const measureWith = MODIFY_TOOLS.includes(s.tool)
+    ? modifyMeasure
+    : SHAPE_TOOLS.includes(s.tool)
+      ? shapeMeasure
+      : STRUCTURE_TOOLS.includes(s.tool)
+        ? structureMeasure
+        : OPENING_TOOLS.includes(s.tool)
+          ? openingMeasure
+          : null;
+  if (measureWith) {
+    const error = measureWith(store, m);
     if (error) return fail(error);
     s.setWarning(null);
     return true;
@@ -704,6 +741,14 @@ export function pasteToPlace(store: Store) {
   let s = store.getState();
   if (!s.clipboard) return;
   if (s.draft) cancel(store);
+  // Doors and windows copied on their own: each click puts one down on a wall, in turn.
+  const lone = loneOpenings(s.clipboard.doc, s.clipboard.ids);
+  if (lone.length) {
+    s.setTool(lone[0].type);
+    store.getState().setOpeningStamp(lone, true);
+    s.setWarning(null);
+    return;
+  }
   const ids = s.paste();
   if (!ids.length) return;
   s = store.getState();
@@ -731,6 +776,15 @@ export function cancel(store: Store): boolean {
   }
   const d = s.draft;
   if (!d) return false;
+  if (d.type === 'opening') {
+    // Esc drops a picked-up door or window (a paste goes back to selecting); otherwise it isn't a step.
+    s.setDraft(null);
+    s.setInference(null);
+    if (!s.openingStamp.length) return false;
+    if (s.stampQueue) s.setTool('select');
+    else s.setOpeningStamp([]);
+    return true;
+  }
   if (['move', 'rotate', 'mirror', 'stretch', 'scale', 'push'].includes(d.type)) s.cancelBatch();
   // Esc while placing a paste takes the paste back too.
   if (d.type === 'move' && d.pasted) s.discardLastStep();
@@ -782,6 +836,7 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
       // Counter-clockwise positive, as typed.
       return { label: 'Angle', value: d?.type === 'rotate' ? `${Math.round(-d.angle) || 0}°` : '' };
     default:
+      if (OPENING_TOOLS.includes(s.tool)) return openingReadout(s);
       if (SHAPE_TOOLS.includes(s.tool)) return shapeReadout(s);
       return STRUCTURE_TOOLS.includes(s.tool) ? structureReadout(s) : modifyReadout(s);
   }
@@ -816,9 +871,8 @@ export function toolHint(s: PlannerState): string {
     case 'room':
       return 'Click inside walls to make a room and see its area.';
     case 'door':
-      return 'Click on a wall to place a door.';
     case 'window':
-      return 'Click on a wall to place a window.';
+      return openingHint(s);
     case 'furniture':
       return 'Choose an item on the right, then click on the plan to place it at its real size.';
     case 'move':

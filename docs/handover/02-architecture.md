@@ -51,8 +51,9 @@ autosaves to local storage on every change.
   (`src/three/picker.ts`: face under the pointer, pointer on a plane, distance along a line, and `highlight` to
   light up just that face) that these tools use. The 2D plan registers one too (`is3d: false`), built on
   `src/lib/faces2d.ts` (faces seen from above), so Push/Pull also works in 2D.
-- `src/lib/inference.ts`: snapping order: ends → midpoints → intersections → grid points → axes → along
-  walls/lines (in grid steps) → grid.
+- `src/lib/inference.ts`: snapping order: points (ends, corners, midpoints incl. wall pieces, intersections) →
+  building line → lined up with two ends (or one and the axis, or one on the wall under the pointer) → axes →
+  lined up with one end → along walls/faces/lines (grid steps from the nearer end or face corner) → grid.
 - Bylaws: `src/lib/bylaws.ts` (the authorities' tables, `ruleFor` by size and frontage, `plotRule`, `plotSetbacks`),
   `src/lib/planCheck.ts` (pure check rows, including the mumty and car porch; `mumtyLevelIds` tells mumty floors
   apart), `src/lib/planHints.ts` (pure good-practice hints: door graph per floor, outside walls and windows, sizes by
@@ -66,10 +67,15 @@ autosaves to local storage on every change.
   characters from names. `rooms.ts buildWallGraph` sweeps along x and hashes corners (no longer O(n²)).
 - Autosave keeps the file name, path and unsaved flag under `mimar.file` (`saveFileInfo`/`loadFileInfo`), so File ›
   New still asks after a reload.
-- Snapping (`src/lib/inference.ts`): 1) points, nearest wins (ends, wall-face corners, midpoints, crossings incl.
-  faces, perpendicular, axis∩wall); 2) the building-line guides (`buildingGuides` in `src/tools/controller.ts`, from
-  `buildingGuide` in `site.ts`, set in by the tool's half size); 3) the red/green axis from the last point; 4) along
-  walls, wall faces and lines at the grid step; 5) the grid. During Stretch/Scale/Rotate/Mirror previews it snaps to
+- Snapping (`src/lib/inference.ts`): 1) points, nearest wins (ends, wall-face corners, midpoints of whole walls and
+  of the pieces between the walls that meet them, crossings incl. faces, perpendicular, axis∩wall); 2) the
+  building-line guides (`buildingGuides` in `src/tools/controller.ts`, from `buildingGuide` in `site.ts`, set in by
+  the tool's half size); 3) "aligned": lined up with the ends of nearby walls/lines (within 40× the tolerance, not
+  the ends of what the pointer is on) where two guides cross, a guide meets the last point's axis, or a guide
+  crosses the wall under the pointer (`Inference.guides` holds the dotted lines, drawn in `DrawingOverlay` and the
+  3D overlay); 4) the red/green axis from the last point; 5) lined up with one end (only away from walls); 6) along
+  walls, wall faces and lines, a whole number of grid steps from the nearer end (for a face, from the corner at the
+  end of its piece: `clearAlong` in `openingPlace.ts`); 7) the grid. During Stretch/Scale/Rotate/Mirror previews it snaps to
   `batchBase`. Typed points: `parseMeasure` → `{ kind: 'vector' }` (`@x,y`, `len<angle`). AutoCAD aliases:
   `src/lib/aliases.ts`, read in `useKeyboardShortcuts.ts`; `src/tools/finish.ts` is Enter/right-click. The modify
   library (`src/lib/modify.ts`) treats walls and layout lines alike (`type Wall = WallItem | SketchLine` there).
@@ -107,6 +113,19 @@ autosaves to local storage on every change.
   drawn as a double). `src/lib/openingKinds.ts` holds the names, sizes and the plan symbol as paths in the
   opening's own frame (`openingSymbol`), used by `OpeningShape.tsx` (plan, PDF, PNG) and `exportDxf.ts`; 3D is in
   `doorLeaves` and `windowPanes` in `three/model.ts`.
+- Placing doors and windows: `src/lib/openingPlace.ts` (pure) splits a wall into pieces between the faces of the
+  walls that meet or cross it (`wallPieces`; no gap where a wall carries straight on), and places an opening in a
+  piece (`placeOnWallPiece`: snaps to the piece's centre, half centres, the gap from a corner, grid steps from the
+  corner; kept the gap from corners and other openings; `placeAtDistance` for a typed distance; `openingFits`); it
+  also turns door flips into hands and back (`doorSides`, `flipsFor`, `handOf`, `flipsTowards`: hand is seen from
+  the side it opens into). `src/store/openingAt.ts` builds the new opening from the tool's settings (`site`:
+  `doorWidthMm`, `doorHand`, `windowWidthMm`/`SillMm`/`HeightMm`, `openingMaterial`) or a picked-up/pasted one
+  (`openingStamp`, `stampQueue` = pasted ones go down one per click), and has `slideOpening`, `refitOpening`,
+  `copyOpeningTo`, `besideOpening`, `loneOpenings`, `fitterFor` (for `mirrorItems`' lone openings). The tool itself
+  is `src/tools/openingTool.ts` (hover shows `draft.type === 'opening'` with a ghost and distances; press places or,
+  with Alt, picks up; typed lengths; V flips the hinge). The gap is a preference (`openingGapMm`, 6"). Multi-edit:
+  `editOpenings` in the store and `OpeningsPanel.tsx`; `fixOpeningGaps` backs the plan hint `opening-gaps`
+  (`tightOpenings` in `planHints.ts`).
 - Plants and garden items are ordinary furniture kinds (`furniture/catalog.ts`, categories Plants and Garden);
   `isPlant` gives them a green plan fill; their 3D forms are stacked boxes in `furnitureSolids`.
 - Materials: `src/lib/materials.ts` (library), `patterns.ts` (procedural textures for 3D and swatches).

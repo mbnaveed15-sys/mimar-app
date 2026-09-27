@@ -23,8 +23,8 @@ describe('planner store', () => {
   it('undoes and redoes changes', () => {
     const store = setup();
     const s = () => store.getState();
-    s().addWall({ x: 0, y: 0 }, { x: 100, y: 0 });
-    s().placeOpening('door', { x: 50, y: 3 });
+    s().addWall({ x: 0, y: 0 }, { x: 300, y: 0 });
+    s().placeOpening('door', { x: 150, y: 3 });
     expect(s().doc.elements.map((e) => e.type)).toEqual(['wall', 'door']);
     s().undo();
     expect(s().doc.elements.map((e) => e.type)).toEqual(['wall']);
@@ -114,23 +114,23 @@ describe('editing and files', () => {
     const store = setup();
     const s = () => store.getState();
     s().addWall({ x: 0, y: 0 }, { x: 200, y: 0 });
-    s().placeOpening('door', { x: 50, y: 0 });
+    s().placeOpening('door', { x: 100, y: 0 });
     const wall = s().doc.elements[0];
     if (wall.type !== 'wall') throw new Error('expected wall');
-    // Lengthened from its end (a grip, or the Length field): the door stays 50 from the start.
+    // Lengthened from its end (a grip, or the Length field): the door stays 100 from the start.
     s().updateElement({ ...wall, x2: 400 });
-    expect(s().doc.elements[1]).toMatchObject({ x: 50, y: 0 });
-    // Moved from its start, the end staying put: the door keeps its distance from the end (350).
+    expect(s().doc.elements[1]).toMatchObject({ x: 100, y: 0 });
+    // Moved from its start, the end staying put: the door keeps its distance from the end (300).
     const longer = s().doc.elements[0];
     if (longer.type !== 'wall') throw new Error('expected wall');
     s().updateElement({ ...longer, x1: -100 });
-    expect((s().doc.elements[1] as { x: number }).x).toBeCloseTo(50);
+    expect((s().doc.elements[1] as { x: number }).x).toBeCloseTo(100);
     // Moved as a whole: the same distance from the start.
     const moved = s().doc.elements[0];
     if (moved.type !== 'wall') throw new Error('expected wall');
     s().updateElement({ ...moved, y1: 100, y2: 100 });
     expect(s().doc.elements[1]).toMatchObject({ y: 100, angle: 0 });
-    expect((s().doc.elements[1] as { x: number }).x).toBeCloseTo(50);
+    expect((s().doc.elements[1] as { x: number }).x).toBeCloseTo(100);
   });
 
   it('nudges and rotates the selection, one undo step each', () => {

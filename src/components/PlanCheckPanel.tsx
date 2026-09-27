@@ -23,6 +23,7 @@ function PlanHints() {
   const hints = usePlanHints();
   const show = usePlanner((s) => s.showHints);
   const setSelection = usePlanner((s) => s.setSelection);
+  const fixOpeningGaps = usePlanner((s) => s.fixOpeningGaps);
   const hasRooms = usePlanner((s) => s.doc.rooms.length > 0);
   if (!show) return null;
   return (
@@ -30,7 +31,7 @@ function PlanHints() {
       <div className="font-medium">
         Hints <span className="font-normal text-muted">· good practice, not bylaws</span>
       </div>
-      {!hasRooms ? (
+      {!hasRooms && !hints.length ? (
         <div className="text-muted">Name your rooms (Bedroom, Kitchen, Lounge…) to get hints on the layout.</div>
       ) : !hints.length ? (
         <div data-testid="plan-hints-none">No hints: every room is reached, lit and a good size.</div>
@@ -51,6 +52,11 @@ function PlanHints() {
                 </span>
                 <span className="min-w-0 flex-1">{h.text}</span>
               </button>
+              {h.fix === 'opening-gaps' && (
+                <button className="m-btn ml-5 mt-0.5 px-2 py-0.5" onClick={() => fixOpeningGaps(h.ids)}>
+                  Move them off the corners
+                </button>
+              )}
             </li>
           ))}
         </ul>

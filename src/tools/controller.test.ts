@@ -296,18 +296,22 @@ describe('paste, AutoCAD style', () => {
     expect(walls(store)).toHaveLength(1);
   });
 
-  it('a door copied without its wall pastes nothing, says why, and leaves the original alone', () => {
+  it('a door copied without its wall is pasted by clicking on a wall, and the original stays', () => {
     const store = setup();
-    store.getState().addWall({ x: 0, y: 0 }, { x: 10 * FT, y: 0 });
+    store.getState().addWall({ x: 0, y: 0 }, { x: 20 * FT, y: 0 });
     store.getState().placeOpening('door', { x: 5 * FT, y: 0 });
     const door = store.getState().doc.elements.find((e) => e.type === 'door')!;
     store.getState().select(door.id);
     store.getState().copySelected();
     const before = store.getState().doc;
     pasteToPlace(store);
+    // Nothing is added until a click on a wall puts it down.
     expect(store.getState().doc).toBe(before);
-    expect(store.getState().draft).toBeNull();
-    expect(store.getState().warnings.join(' ')).toContain('copied with their wall');
+    expect(store.getState().tool).toBe('door');
+    press(store, { x: 15 * FT, y: 0 });
+    const doors = store.getState().doc.elements.filter((e) => e.type === 'door');
+    expect(doors).toHaveLength(2);
+    expect(doors[0]).toEqual(door);
   });
 
   it('switching tool or view while placing a paste takes it back', () => {

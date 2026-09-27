@@ -2,7 +2,9 @@
  * AutoCAD-style editing of walls: trim, extend, break, join, fillet, chamfer and offset, plus
  * mirror, scale and stretch for any selection. Everything here is pure: plan in, plan out.
  */
-import { mapOutline, placeOnWall, wallParam } from '../geometry';
+import { mapOutline, placeOnWall, pointToSegmentDistance, wallParam } from '../geometry';
+import { doorSides, flipsFor } from './openingPlace';
+import { thicknessOf } from '../walls';
 import {
   hasPoints,
   levelOf,
@@ -323,7 +325,14 @@ function withOpenings(doc: PlanDoc, ids: Id[]): Set<Id> {
  * Mirror items across the line a–b. By default the mirrored items are copies (the originals stay);
  * with `flip` the originals are flipped in place. Returns the new plan and the mirrored items' ids.
  */
-export function mirrorItems(doc: PlanDoc, ids: Id[], a: Point, b: Point, flip: boolean): { doc: PlanDoc; ids: Id[] } {
+export function mirrorItems(
+  doc: PlanDoc,
+  ids: Id[],
+  a: Point,
+  b: Point,
+  flip: boolean,
+  fitLone?: (o: Opening, doc: PlanDoc) => Opening | null,
+): { doc: PlanDoc; ids: Id[] } {
   const set = withOpenings(doc, ids);
   const lineDeg = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
   const idMap = new Map<Id, Id>([...set].map((id) => [id, flip ? id : newId()]));
@@ -356,7 +365,12 @@ export function mirrorItems(doc: PlanDoc, ids: Id[], a: Point, b: Point, flip: b
   for (const el of doc.elements) {
     if (!set.has(el.id) || !isOpening(el)) continue;
     const wall = mirrored.get(el.wallId) as Wall | undefined;
-    if (!wall) continue;
+    if (!wall) {
+      // On its own: it goes where its mirror image falls on a wall, opening and hinged the mirror way.
+      const lone = mirrorLone(doc, el, a, b, idMap.get(el.id)!, flip, fitLone);
+      if (lone) mirrored.set(el.id, lone);
+      continue;
+    }
     const p = reflect(el, a, b);
     mirrored.set(el.id, {
       ...el,
@@ -385,6 +399,54 @@ export function mirrorItems(doc: PlanDoc, ids: Id[], a: Point, b: Point, flip: b
     doc: { ...doc, elements: [...doc.elements, ...mirrored.values()], rooms: [...doc.rooms, ...rooms] },
     ids: outIds,
   };
+}
+
+/** A direction mirrored in the line a–b. */
+function reflectDir(v: Point, a: Point, b: Point): Point {
+  const m = sub(b, a);
+  const l = len(m) || 1;
+  const u = mul(m, 1 / l);
+  return sub(mul(u, 2 * dot(v, u)), v);
+}
+
+/** A door or window mirrored without its wall: onto the wall its mirror image falls on, if any. */
+function mirrorLone(
+  doc: PlanDoc,
+  el: Opening,
+  a: Point,
+  b: Point,
+  id: Id,
+  flip: boolean,
+  fit?: (o: Opening, doc: PlanDoc) => Opening | null,
+): Opening | null {
+  const p = reflect(el, a, b);
+  const level = levelOf(el);
+  let host: Wall | null = null;
+  let best = Infinity;
+  for (const w of doc.elements) {
+    if (w.type !== 'wall' || levelOf(w) !== level) continue;
+    const d = pointToSegmentDistance(p, start(w), end(w));
+    if (d <= thicknessOf(w) / 2 + 1 && d < best) {
+      host = w;
+      best = d;
+    }
+  }
+  if (!host) return null;
+  const { swing, hinge } = doorSides(el);
+  const pos = placeOnWall(host, p, el.width);
+  const turned = flipsFor(pos.angle, reflectDir(swing, a, b), reflectDir(hinge, a, b));
+  const next: Opening = {
+    ...el,
+    id,
+    wallId: host.id,
+    x: pos.x,
+    y: pos.y,
+    angle: pos.angle,
+    flipSide: turned.flipSide || undefined,
+    flipHinge: turned.flipHinge || undefined,
+    ...(flip ? {} : { groupId: undefined, defKey: undefined }),
+  };
+  return fit ? fit(next, doc) : next;
 }
 
 /** Scale items about `base` by `factor`. Wall thickness and door and window widths stay the same. */

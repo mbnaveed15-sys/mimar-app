@@ -1,4 +1,4 @@
-import { placeOnWall, wallLength, withWallLength } from '../geometry';
+import { wallLength, withWallLength } from '../geometry';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { stairLayout } from '../lib/site';
 import { SLAB_MM, WINDOW_SILL_MM } from '../three/model';
@@ -101,6 +101,7 @@ export function Inspector() {
   const deleteElement = usePlanner((s) => s.deleteElement);
   const updateElement = usePlanner((s) => s.updateElement);
   const flipOpening = usePlanner((s) => s.flipOpening);
+  const editOpenings = usePlanner((s) => s.editOpenings);
   const updateRoom = usePlanner((s) => s.updateRoom);
   const mode = usePlanner((s) => s.mode);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
@@ -192,10 +193,7 @@ export function Inspector() {
                   label="Width"
                   mm={el.width * MM_PER_UNIT}
                   units={units}
-                  onCommit={(mm) => {
-                    const wall = doc.elements.find((w): w is Wall => w.type === 'wall' && w.id === el.wallId);
-                    if (wall) updateElement({ ...el, ...placeOnWall(wall, el, toUnits(mm)) });
-                  }}
+                  onCommit={(mm) => editOpenings([el.id], () => ({ width: toUnits(mm) }))}
                 />
                 {el.type === 'door' && !el.gate && (
                   <label className="flex flex-col gap-0.5">
