@@ -64,7 +64,7 @@ function ToolOptions() {
         <WallKindPicker />
       </>
     );
-  if (tool === 'plot' || tool === 'stairs' || tool === 'door') return <SiteOptions />;
+  if (tool === 'plot' || tool === 'stairs' || tool === 'door' || tool === 'window') return <SiteOptions />;
   if (tool === 'furniture') return <FurnitureLibrary />;
   if (tool === 'column' || tool === 'beam' || tool === 'slab') return <StructureOptions />;
   if (tool === 'shape') return <ShapeOptions />;

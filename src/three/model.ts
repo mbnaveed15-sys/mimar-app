@@ -1,6 +1,7 @@
 import { wallLength, wallParam } from '../geometry';
 import { patternSpanMm } from '../lib/patterns';
 import { MM_PER_UNIT } from '../lib/scale';
+import { doorKindOf } from '../lib/openingKinds';
 import { openingProfileMm } from '../lib/shapes';
 import { stairLayout } from '../lib/site';
 import {
@@ -141,6 +142,10 @@ export interface ModelOptions {
 const WALL_COLOR = '#eceae4';
 const GLASS_COLOR = '#9fd3f0';
 const DOOR_COLOR = '#8b5e3c';
+const SHUTTER_COLOR = '#8a9099';
+/** Window frames and mullions (aluminium). */
+const FRAME_COLOR = '#6b7078';
+const M_PER_UNIT_LOCAL = MM_PER_UNIT / 1000;
 const DEFAULT_FLOOR = '#f1f5f9';
 const CONCRETE = '#c9c6bf';
 /** Flat shapes waiting for Push/Pull. */
@@ -320,18 +325,96 @@ function wallParts(wall: Wall, walls: Wall[], openings: Opening[], heightMm: num
     if (o.type === 'window') {
       const sill = Math.min(head, mmToM(sillMm));
       solids.push(piece(s0, s1, 0, sill));
-      if (!o.open)
-        solids.push({ ...piece(s0, s1, sill, head, 'glass', 0.012), color: GLASS_COLOR, opacity: 0.35, id: o.id });
+      if (!o.open) solids.push(...windowPanes(o, s0, s1, sill, head));
     }
   }
   if (len + end > cursor) solids.push(piece(cursor, len + end, 0, top));
   return { solids, panels };
+
+  /**
+   * A window's glass by its type: sliding panes one behind the other with a meeting rail, two
+   * casement sashes either side of a mullion, or a single pane (casement, fixed, ventilator).
+   */
+  function windowPanes(o: Opening, s0: number, s1: number, sill: number, head: number): Solid[] {
+    const glass = (a: number, b: number, across = 0): Solid => ({
+      ...toScene(origin, angle, { x: (a + b) / 2, y: across }),
+      y0: sill,
+      h: head - sill,
+      w: m(b - a),
+      d: 0.012,
+      rotY,
+      color: GLASS_COLOR,
+      opacity: 0.35,
+      id: o.id,
+      role: 'glass',
+    });
+    const mullion = (at: number): Solid => ({
+      ...piece(at - 3, at + 3, sill, head, 'door', Math.min(thickness, 0.08)),
+      color: FRAME_COLOR,
+      id: o.id,
+    });
+    const mid = (s0 + s1) / 2;
+    const span = s1 - s0;
+    if (o.windowKind === 'sliding')
+      return [glass(s0, mid + span / 10, -tUnits / 6), glass(mid - span / 10, s1, tUnits / 6), mullion(mid)];
+    if (o.windowKind === 'casement2') return [glass(s0, mid), glass(mid, s1), mullion(mid)];
+    return [glass(s0, s1)];
+  }
 }
 
-/** An open door leaf (or a gate's two leaves), standing where the 2D swing lines are drawn. */
-function doorLeaves(door: Opening, heightMm: number): Solid[] {
+/**
+ * A door as it stands where its plan symbol is drawn: an open leaf (or two), sliding panels, a
+ * folding door part open, a closed rolling shutter with its box above, or nothing for a doorway.
+ * `thicknessM` is the host wall's thickness.
+ */
+function doorLeaves(door: Opening, heightMm: number, thicknessM = 0.23): Solid[] {
   const sy = door.flipSide ? -1 : 1;
-  if (door.gate) {
+  const hx = door.flipHinge ? -1 : 1;
+  const kind = doorKindOf(door);
+  const head = Math.min(mmToM(DOOR_HEAD_MM), mmToM(heightMm));
+  const rotY = (-door.angle * Math.PI) / 180;
+  /** A thin panel from a to b in the door's own frame (plan units: x along the wall, y across). */
+  const panel = (a: Point, b: Point, color = DOOR_COLOR, y0 = 0, h = head - 0.01, d = 0.04): Solid => {
+    const [pa, pb] = [a, b].map((p) => ({ x: p.x * hx, y: p.y * sy }));
+    const turn = Math.atan2(pb.y - pa.y, pb.x - pa.x);
+    return {
+      ...toScene(door, door.angle, { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }),
+      y0,
+      h,
+      w: Math.max(0.01, m(Math.hypot(pb.x - pa.x, pb.y - pa.y))),
+      d,
+      rotY: rotY - turn,
+      color,
+      role: 'door',
+    };
+  };
+  const w = door.width;
+  const half = w / 2;
+  const t = thicknessM / M_PER_UNIT_LOCAL / 2;
+  switch (kind) {
+    case 'opening':
+      return [];
+    case 'sliding':
+      return [
+        panel({ x: -half, y: -t / 3 }, { x: w / 10, y: -t / 3 }),
+        panel({ x: -w / 10, y: t / 3 }, { x: half, y: t / 3 }),
+      ];
+    case 'folding': {
+      const n = w > 120 ? 4 : 2;
+      const depth = (w / n) * 0.6;
+      const pts = Array.from({ length: n + 1 }, (_, i) => ({ x: -half + (i * w) / n, y: i % 2 ? -depth : 0 }));
+      return pts.slice(1).map((p, i) => panel(pts[i], p));
+    }
+    case 'shutter': {
+      // Closed, on the inside face, with the roll's box above the opening.
+      const box = Math.min(0.35, Math.max(0.1, mmToM(heightMm) - head));
+      return [
+        panel({ x: -half, y: -t + 1 }, { x: half, y: -t + 1 }, SHUTTER_COLOR, 0, head, 0.03),
+        panel({ x: -half, y: -t - 12 }, { x: half, y: -t - 12 }, SHUTTER_COLOR, head - box, box, 0.25),
+      ];
+    }
+  }
+  if (kind === 'double' || door.gate) {
     const half = door.width / 2;
     return [-1, 1].map((side) => ({
       ...toScene(door, door.angle, { x: (side * door.width) / 2, y: (-half / 2) * sy }),
@@ -367,6 +450,14 @@ const FABRIC = '#b9a38a';
 const WOOD = '#9b7653';
 const WHITE = '#f8fafc';
 const COUNTER = '#d6d3d1';
+const LEAF = '#5b8c3e';
+const DARK_LEAF = '#3f6b2f';
+const TRUNK = '#6b4f3a';
+const POT = '#b86b3c';
+const SOIL = '#6b5140';
+const STONE = '#c9c2b8';
+const WATER = '#8fc9e8';
+const FLOWERS = ['#e11d48', '#f59e0b', '#a855f7', '#f472b6'];
 
 /** Simple 3D shapes for each furniture item, from boxes placed by fractions of its footprint. */
 function furnitureSolids(f: Furniture, color?: string): Solid[] {
@@ -387,6 +478,18 @@ function furnitureSolids(f: Furniture, color?: string): Solid[] {
       color: keep ? c : (color ?? c),
       role: 'furniture',
     });
+  };
+  /** Leaves as a rounded mass (three stacked boxes, widest in the middle) of radius r metres about height yc. */
+  const foliage = (fx: number, fy: number, r: number, yc: number) => {
+    const size = m(Math.min(f.w, f.h));
+    for (const [share, y0, h] of [
+      [0.7, yc - r, r * 0.6],
+      [1, yc - r * 0.4, r * 0.8],
+      [0.65, yc + r * 0.4, r * 0.6],
+    ]) {
+      const fr = (r * share) / size;
+      part(fx - fr, fy - fr, 2 * fr, 2 * fr, Math.max(0, y0), h, LEAF);
+    }
   };
   // Parts passed `keep` (screens, hobs, sinks) keep their own colour when the item is painted.
 
@@ -480,6 +583,67 @@ function furnitureSolids(f: Furniture, color?: string): Solid[] {
     case 'car':
       part(0, 0, 1, 1, 0.2, 0.6, '#1e3a8a');
       part(0.1, 0.28, 0.8, 0.42, 0.8, 0.5, '#1e3a8a');
+      break;
+    case 'plant-small':
+      part(0.2, 0.2, 0.6, 0.6, 0, 0.35, POT, true);
+      foliage(0.5, 0.5, 0.2, 0.65);
+      break;
+    case 'plant-large':
+      part(0.25, 0.25, 0.5, 0.5, 0, 0.5, POT, true);
+      foliage(0.5, 0.5, 0.33, 1.15);
+      break;
+    case 'planter':
+      part(0, 0, 1, 1, 0, 0.45, POT, true);
+      part(0.04, 0.1, 0.92, 0.8, 0.45, 0.25, LEAF);
+      break;
+    case 'tree-small':
+    case 'tree-large': {
+      const big = f.kind === 'tree-large';
+      const trunk = (big ? 0.35 : 0.2) / m(Math.min(f.w, f.h));
+      part(0.5 - trunk / 2, 0.5 - trunk / 2, trunk, trunk, 0, big ? 3 : 1.7, TRUNK, true);
+      foliage(0.5, 0.5, m(Math.min(f.w, f.h)) / 2, big ? 5 : 2.6);
+      break;
+    }
+    case 'palm': {
+      const size = m(Math.min(f.w, f.h));
+      const trunk = 0.25 / size;
+      part(0.5 - trunk / 2, 0.5 - trunk / 2, trunk, trunk, 0, 4.2, TRUNK, true);
+      // Fronds: two long flat leaves crossed, and a crown.
+      part(0, 0.46, 1, 0.08, 4.1, 0.05, LEAF);
+      part(0.46, 0, 0.08, 1, 4.1, 0.05, LEAF);
+      part(0.4, 0.4, 0.2, 0.2, 4.0, 0.4, DARK_LEAF);
+      break;
+    }
+    case 'shrub':
+      foliage(0.5, 0.5, m(Math.min(f.w, f.h)) / 2, 0.5);
+      break;
+    case 'hedge':
+      part(0, 0, 1, 1, 0, 1.2, LEAF);
+      break;
+    case 'flower-bed':
+      part(0, 0, 1, 1, 0, 0.15, SOIL, true);
+      part(0.05, 0.1, 0.9, 0.8, 0.15, 0.12, LEAF);
+      [0.15, 0.4, 0.65, 0.85].forEach((fx, i) =>
+        part(fx - 0.05, i % 2 ? 0.25 : 0.55, 0.1, 0.2, 0.27, 0.08, FLOWERS[i % FLOWERS.length], true),
+      );
+      break;
+    case 'bench':
+      part(0, 0.3, 1, 0.7, 0.4, 0.06, WOOD);
+      part(0, 0, 1, 0.12, 0.46, 0.4, WOOD);
+      [0.05, 0.9].forEach((fx) => part(fx, 0.35, 0.05, 0.6, 0, 0.4, '#374151', true));
+      break;
+    case 'fountain':
+      part(0, 0, 1, 1, 0, 0.45, STONE);
+      part(0.1, 0.1, 0.8, 0.8, 0.45, 0.02, WATER, true);
+      part(0.42, 0.42, 0.16, 0.16, 0.45, 0.65, STONE);
+      part(0.3, 0.3, 0.4, 0.4, 1.1, 0.1, STONE);
+      break;
+    case 'jhoola':
+      part(0, 0.4, 0.05, 0.2, 0, 2.2, WOOD);
+      part(0.95, 0.4, 0.05, 0.2, 0, 2.2, WOOD);
+      part(0, 0.45, 1, 0.1, 2.1, 0.1, WOOD);
+      part(0.25, 0.3, 0.5, 0.4, 0.5, 0.06, WOOD);
+      part(0.25, 0.3, 0.5, 0.06, 0.56, 0.4, WOOD);
       break;
     default:
       part(0, 0, 1, 1, 0, 0.75, '#cbd5e1');
@@ -633,7 +797,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
     for (const door of openings) {
       const host = walls.find((w) => w.id === door.wallId);
       if (door.type !== 'door' || !host) continue;
-      const leaves = doorLeaves(door, host.heightMm ?? options.wallHeightMm).map(raise(host));
+      const leaves = doorLeaves(door, host.heightMm ?? options.wallHeightMm, m(thicknessOf(host))).map(raise(host));
       solids.push(...(host.kind === 'boundary' && i === 0 ? leaves : leaves.map(lift)).map(from(door.id)));
     }
     for (const el of els) {

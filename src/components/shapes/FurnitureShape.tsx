@@ -1,6 +1,10 @@
 import { FurnitureSymbol } from '../../furniture/FurnitureSymbol';
 import type { Furniture } from '../../types';
 import { PLAN } from '../../theme/plan';
+import { isPlant } from '../../furniture/catalog';
+
+/** Plants and garden greenery on the plan, unless painted. */
+const PLANT_FILL = '#cfe3c1';
 
 interface Props {
   item: Furniture;
@@ -24,7 +28,7 @@ export function FurnitureShape({ item, color, selected, k }: Props) {
           kind={item.kind}
           w={w}
           h={h}
-          fill={color ?? PLAN.furniture}
+          fill={color ?? (isPlant(item.kind) ? PLANT_FILL : PLAN.furniture)}
           stroke={PLAN.furnitureEdge}
           sw={1.2 * k}
         />

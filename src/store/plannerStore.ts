@@ -44,11 +44,13 @@ import { plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
 import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from '../lib/layers';
 import { SLAB_MM } from '../three/model';
+import { DOOR_WIDTH_MM, WINDOW_SIZE_MM } from '../lib/openingKinds';
 import { setActivePicker } from '../three/picker';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
 import type {
   Block,
+  DoorKind,
   Opening,
   ShapeKind,
   Wall,
@@ -69,6 +71,7 @@ import type {
   Tool,
   Units,
   View,
+  WindowKind,
 } from '../types';
 
 export const HISTORY_LIMIT = 100;
@@ -94,6 +97,9 @@ export interface SiteSpec {
   /** Door tool places a door or a gate. */
   gate: boolean;
   gateWidthMm: number;
+  /** The type of new doors and windows. */
+  doorKind: DoorKind;
+  windowKind: WindowKind;
   stairShape: Stair['shape'];
   stairWidthMm: number;
   treadMm: number;
@@ -110,6 +116,8 @@ export const DEFAULT_SITE: SiteSpec = {
   wallKind: 'normal',
   gate: false,
   gateWidthMm: 3048,
+  doorKind: 'single',
+  windowKind: 'sliding',
   stairShape: 'straight',
   stairWidthMm: 914.4,
   treadMm: 254,
@@ -135,7 +143,6 @@ export const DEFAULT_STRUCTURE: StructureSpec = {
 };
 export { MM_PER_UNIT };
 
-const OPENING_WIDTH_MM = { door: 900, window: 1200 } as const;
 const MIN_WALL_PX = 6;
 
 export interface PlannerState {
@@ -881,8 +888,11 @@ export function createPlannerStore(
           get().setWarning(`Click on a wall to place a ${type}.`);
           return;
         }
-        const gate = type === 'door' && get().site.gate;
-        const pos = placeOnWall(wall, p, mmToPx(gate ? get().site.gateWidthMm : OPENING_WIDTH_MM[type]));
+        const { site } = get();
+        const gate = type === 'door' && site.gate;
+        const windowSize = WINDOW_SIZE_MM[site.windowKind];
+        const widthMm = gate ? site.gateWidthMm : type === 'door' ? DOOR_WIDTH_MM[site.doorKind] : windowSize.width;
+        const pos = placeOnWall(wall, p, mmToPx(widthMm));
         updateElements((els) => [
           ...els,
           onActive<PlanElement>({
@@ -892,6 +902,12 @@ export function createPlannerStore(
             ...pos,
             material: activeMat(),
             ...(gate ? { gate: true } : {}),
+            ...(type === 'door' && !gate && site.doorKind !== 'single' && { doorKind: site.doorKind }),
+            ...(type === 'window' && {
+              windowKind: site.windowKind,
+              ...(windowSize.sillMm !== undefined && { sillMm: windowSize.sillMm }),
+              ...(windowSize.heightMm !== undefined && { heightMm: windowSize.heightMm }),
+            }),
           }),
         ]);
         get().setWarning(null);

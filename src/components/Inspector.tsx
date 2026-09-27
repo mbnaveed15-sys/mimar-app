@@ -7,7 +7,8 @@ import { WINDOW_HEIGHT_MM } from '../lib/shapes';
 import { withShapeDepth } from '../lib/pushPull';
 import { roomAreaSqMm } from '../rooms';
 import { KIND_HEIGHT_MM, MM_PER_UNIT, usePlanner } from '../store/plannerStore';
-import type { Opening, PlanElement, Stair, Wall } from '../types';
+import type { DoorKind, Opening, PlanElement, Stair, Wall, WindowKind } from '../types';
+import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
 import { thicknessOf } from '../walls';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { LengthField } from './LengthField';
@@ -196,6 +197,44 @@ export function Inspector() {
                     if (wall) updateElement({ ...el, ...placeOnWall(wall, el, toUnits(mm)) });
                   }}
                 />
+                {el.type === 'door' && !el.gate && (
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-muted">Door type</span>
+                    <select
+                      className="rounded-sm border p-1"
+                      value={doorKindOf(el)}
+                      onChange={(e) => {
+                        const kind = e.target.value as DoorKind;
+                        updateElement({ ...el, doorKind: kind === 'single' ? undefined : kind });
+                      }}
+                    >
+                      {DOOR_KINDS.map((k) => (
+                        <option key={k} value={k}>
+                          {DOOR_KIND_NAMES[k]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {el.type === 'window' && !el.shape && !el.flat && !el.open && (
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-muted">Window type</span>
+                    <select
+                      className="rounded-sm border p-1"
+                      value={el.windowKind ?? ''}
+                      onChange={(e) =>
+                        updateElement({ ...el, windowKind: (e.target.value || undefined) as WindowKind | undefined })
+                      }
+                    >
+                      {!el.windowKind && <option value="">Plain</option>}
+                      {WINDOW_KINDS.map((k) => (
+                        <option key={k} value={k}>
+                          {WINDOW_KIND_NAMES[k]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 {el.type === 'door' && (
                   <label className="flex items-center gap-2">
                     <input

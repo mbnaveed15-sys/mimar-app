@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Opening } from '../types';
 import { emptyDoc } from '../lib/storage';
 import { HISTORY_LIMIT, createPlannerStore } from './plannerStore';
 
@@ -276,5 +277,22 @@ describe('furniture library and layers', () => {
     store.getState().setLayer('showFurniture', false);
     store.getState().addFurniture({ x: 0, y: 0 });
     expect(store.getState().showFurniture).toBe(true);
+  });
+});
+
+describe('door and window types when placing', () => {
+  it("uses the chosen type, its usual width, and a ventilator's high sill", () => {
+    const store = setup();
+    const s = () => store.getState();
+    s().addWall({ x: 0, y: 0 }, { x: 1000, y: 0 });
+    s().setSite({ doorKind: 'double' });
+    s().placeOpening('door', { x: 200, y: 0 });
+    s().setSite({ windowKind: 'vent' });
+    s().placeOpening('window', { x: 600, y: 0 });
+    const [door, vent] = s().doc.elements.filter((e) => e.type === 'door' || e.type === 'window') as Opening[];
+    expect(door).toMatchObject({ doorKind: 'double', width: 150 });
+    expect(vent).toMatchObject({ windowKind: 'vent', width: 60, sillMm: 1830, heightMm: 610 });
+    // New windows are sliding unless another type is chosen.
+    expect(createPlannerStore(emptyDoc()).getState().site.windowKind).toBe('sliding');
   });
 });

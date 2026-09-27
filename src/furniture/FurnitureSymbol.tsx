@@ -42,6 +42,94 @@ export function FurnitureSymbol({ kind, w, h, fill, stroke, sw }: Props) {
   const small = Math.min(w, h);
 
   const parts: Record<FurnitureKind, () => ReactNode> = {
+    'plant-small': () => plant(0.42),
+    'plant-large': () => plant(0.45),
+    planter: () => (
+      <>
+        {r(0, 0, 1, 1, small * 0.05)}
+        {[0.2, 0.4, 0.6, 0.8].map((fx) => (
+          <g key={fx}>{canopy(fx, 0.5, Math.min(w * 0.12, h * 0.4), 6)}</g>
+        ))}
+      </>
+    ),
+    'tree-small': () => tree(9),
+    'tree-large': () => tree(13),
+    palm: () => {
+      const R = small / 2;
+      return (
+        <>
+          {Array.from({ length: 8 }, (_, i) => {
+            const a = (i / 8) * 2 * Math.PI;
+            const [x, y] = [Math.cos(a) * R, Math.sin(a) * R];
+            return (
+              <g key={i}>
+                <line x1={0} y1={0} x2={x} y2={y} {...line} />
+                <ellipse
+                  cx={x * 0.6}
+                  cy={y * 0.6}
+                  rx={R * 0.42}
+                  ry={R * 0.1}
+                  transform={`rotate(${(a * 180) / Math.PI} ${x * 0.6} ${y * 0.6})`}
+                  {...shape}
+                />
+              </g>
+            );
+          })}
+          {circle(0.5, 0.5, R * 0.1)}
+        </>
+      );
+    },
+    shrub: () => (
+      <>
+        {canopy(0.5, 0.5, small / 2, 8)}
+        {canopy(0.5, 0.5, small * 0.27, 6)}
+        {circle(0.5, 0.5, small * 0.04)}
+      </>
+    ),
+    hedge: () => {
+      const n = Math.max(2, Math.round(w / h));
+      return (
+        <>
+          {r(0, 0, 1, 1, small * 0.45)}
+          {Array.from({ length: n }, (_, i) => (
+            <g key={i}>{canopy((i + 0.5) / n, 0.5, Math.min(w / n, h) * 0.36, 6)}</g>
+          ))}
+        </>
+      );
+    },
+    'flower-bed': () => (
+      <>
+        {r(0, 0, 1, 1, small * 0.3)}
+        {[0.15, 0.35, 0.55, 0.75, 0.9].flatMap((fx, i) =>
+          [0.3, 0.7].map((fy) => <g key={`${fx}-${fy}`}>{circle(fx - (i % 2) * 0.05, fy, small * 0.08)}</g>),
+        )}
+      </>
+    ),
+    bench: () => (
+      <>
+        {r(0, 0.3, 1, 0.7, small * 0.04)}
+        {r(0, 0, 1, 0.18, small * 0.04)}
+        {ln(0.33, 0.3, 0.33, 1)}
+        {ln(0.66, 0.3, 0.66, 1)}
+      </>
+    ),
+    fountain: () => (
+      <>
+        {circle(0.5, 0.5, small * 0.5)}
+        {circle(0.5, 0.5, small * 0.4)}
+        {circle(0.5, 0.5, small * 0.12)}
+      </>
+    ),
+    jhoola: () => (
+      <>
+        {r(0, 0, 0.06, 1)}
+        {r(0.94, 0, 0.06, 1)}
+        {ln(0.03, 0.5, 0.97, 0.5)}
+        {r(0.25, 0.3, 0.5, 0.4, small * 0.04)}
+        {ln(0.25, 0.3, 0.2, 0.5)}
+        {ln(0.75, 0.3, 0.8, 0.5)}
+      </>
+    ),
     'bed-single': () => bed(1),
     'bed-double': () => bed(2),
     'bed-king': () => bed(2),
@@ -226,6 +314,44 @@ export function FurnitureSymbol({ kind, w, h, fill, stroke, sw }: Props) {
       <>
         {chairs}
         {r(tableX, chairD, tableW, 1 - 2 * chairD, small * 0.02)}
+      </>
+    );
+  }
+
+  /** A leafy outline: a circle with `n` rounded lobes, as trees and shrubs are drawn on plans. */
+  function canopy(fx: number, fy: number, radius: number, n: number) {
+    const [cx, cy] = [L + fx * w, T + fy * h];
+    const bump = radius * 0.16;
+    let d = '';
+    for (let i = 0; i < n; i++) {
+      const a0 = (i / n) * 2 * Math.PI;
+      const a1 = ((i + 1) / n) * 2 * Math.PI;
+      const [x0, y0] = [cx + Math.cos(a0) * (radius - bump), cy + Math.sin(a0) * (radius - bump)];
+      const [x1, y1] = [cx + Math.cos(a1) * (radius - bump), cy + Math.sin(a1) * (radius - bump)];
+      d += `${i ? '' : `M${x0},${y0}`} A${bump * 1.9},${bump * 1.9} 0 0 1 ${x1},${y1} `;
+    }
+    return <path d={`${d}Z`} {...shape} />;
+  }
+
+  function plant(r: number) {
+    return (
+      <>
+        {circle(0.5, 0.5, small * 0.5)}
+        {canopy(0.5, 0.5, small * r, 7)}
+      </>
+    );
+  }
+
+  function tree(n: number) {
+    const R = small / 2;
+    return (
+      <>
+        {canopy(0.5, 0.5, R, n)}
+        {[0, 1, 2, 3, 4].map((i) => {
+          const a = (i / 5) * 2 * Math.PI + 0.3;
+          return <line key={i} x1={0} y1={0} x2={Math.cos(a) * R * 0.55} y2={Math.sin(a) * R * 0.55} {...line} />;
+        })}
+        {circle(0.5, 0.5, R * 0.08)}
       </>
     );
   }

@@ -13,11 +13,14 @@ import {
   type Point,
   type Room,
   type ShapeKind,
+  type DoorKind,
+  type WindowKind,
 } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
 import { authorityById, type AuthorityId } from './bylaws';
 import { LAYERS, type LayerState } from './layers';
 import { defaultMaterials, PATTERNS } from './materials';
+import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
 
 export const STORAGE_KEY = 'mimar.plan';
 /** 4 added groups and components; 5 added levels, columns, beams and slabs. */
@@ -144,6 +147,14 @@ function normaliseElement(raw: unknown): PlanElement | null {
         flipSide: raw.flipSide === true || undefined,
         flipHinge: raw.flipHinge === true || undefined,
         gate: raw.gate === true || undefined,
+        doorKind:
+          raw.type === 'door' && DOOR_KINDS.includes(raw.doorKind as DoorKind) && raw.doorKind !== 'single'
+            ? (raw.doorKind as DoorKind)
+            : undefined,
+        windowKind:
+          raw.type === 'window' && WINDOW_KINDS.includes(raw.windowKind as WindowKind)
+            ? (raw.windowKind as WindowKind)
+            : undefined,
         ...(raw.type === 'window' ? windowShapeOf(raw) : {}),
       };
       return el.wallId && [el.x, el.y, el.angle, el.width].every(Number.isFinite) && el.width > 0 ? el : null;
