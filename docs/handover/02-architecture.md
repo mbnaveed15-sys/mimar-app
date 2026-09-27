@@ -103,6 +103,12 @@ autosaves to local storage on every change.
   `src/lib/costReport.ts` puts them together for the panel (`CostPanel.tsx`), the CSV and the PDF page
   (`costPage` in `exportPdf.ts`). Rates live in `src/store/costStore.ts` (browser storage key `mimar.cost`, not
   in the plan file).
+- Door and window types: `Opening.doorKind` / `windowKind` (missing = the old single door / plain window; a gate is
+  drawn as a double). `src/lib/openingKinds.ts` holds the names, sizes and the plan symbol as paths in the
+  opening's own frame (`openingSymbol`), used by `OpeningShape.tsx` (plan, PDF, PNG) and `exportDxf.ts`; 3D is in
+  `doorLeaves` and `windowPanes` in `three/model.ts`.
+- Plants and garden items are ordinary furniture kinds (`furniture/catalog.ts`, categories Plants and Garden);
+  `isPlant` gives them a green plan fill; their 3D forms are stacked boxes in `furnitureSolids`.
 - Materials: `src/lib/materials.ts` (library), `patterns.ts` (procedural textures for 3D and swatches).
 
 ## Exports

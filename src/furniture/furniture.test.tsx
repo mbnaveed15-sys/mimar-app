@@ -11,7 +11,16 @@ describe('furniture library', () => {
       expect(w, kind).toBeGreaterThanOrEqual(300);
       expect(d, kind).toBeLessThanOrEqual(5000);
     }
-    expect(FURNITURE_CATEGORIES).toEqual(['Bedroom', 'Drawing & lounge', 'Dining', 'Kitchen', 'Bath', 'Other']);
+    expect(FURNITURE_CATEGORIES).toEqual([
+      'Bedroom',
+      'Drawing & lounge',
+      'Dining',
+      'Kitchen',
+      'Bath',
+      'Plants',
+      'Garden',
+      'Other',
+    ]);
   });
 
   it.each(FURNITURE_KINDS)('draws a %s symbol', (kind) => {
@@ -23,7 +32,7 @@ describe('furniture library', () => {
     );
     expect(svg).toContain(`data-symbol="${kind}"`);
     expect(svg).not.toContain('NaN');
-    expect((svg.match(/<(rect|line|circle|ellipse)/g) ?? []).length).toBeGreaterThan(1);
+    expect((svg.match(/<(rect|line|circle|ellipse|path)/g) ?? []).length).toBeGreaterThan(1);
   });
 
   it('keeps the furniture type when loading, and drops unknown types', () => {

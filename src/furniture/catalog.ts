@@ -22,6 +22,18 @@ export const FURNITURE_CATALOG = {
   basin: { name: 'Basin', category: 'Bath', w: 550, d: 450 },
   shower: { name: 'Shower', category: 'Bath', w: 900, d: 900 },
   bathtub: { name: 'Bathtub', category: 'Bath', w: 750, d: 1700 },
+  'plant-small': { name: 'Potted plant (small)', category: 'Plants', w: 400, d: 400 },
+  'plant-large': { name: 'Potted plant (large)', category: 'Plants', w: 700, d: 700 },
+  planter: { name: 'Planter box', category: 'Plants', w: 1200, d: 400 },
+  'tree-small': { name: 'Tree (small)', category: 'Garden', w: 2500, d: 2500 },
+  'tree-large': { name: 'Tree (large)', category: 'Garden', w: 5000, d: 5000 },
+  palm: { name: 'Palm', category: 'Garden', w: 3000, d: 3000 },
+  shrub: { name: 'Shrub', category: 'Garden', w: 1000, d: 1000 },
+  hedge: { name: 'Hedge', category: 'Garden', w: 3000, d: 600 },
+  'flower-bed': { name: 'Flower bed', category: 'Garden', w: 2000, d: 800 },
+  bench: { name: 'Garden bench', category: 'Garden', w: 1500, d: 600 },
+  fountain: { name: 'Fountain', category: 'Garden', w: 1500, d: 1500 },
+  jhoola: { name: 'Jhoola (garden swing)', category: 'Garden', w: 2000, d: 1200 },
   stairs: { name: 'Stairs', category: 'Other', w: 1000, d: 3000 },
   car: { name: 'Car', category: 'Other', w: 1800, d: 4500 },
 } as const;
@@ -36,3 +48,18 @@ export const isFurnitureKind = (v: unknown): v is FurnitureKind =>
   typeof v === 'string' && Object.prototype.hasOwnProperty.call(FURNITURE_CATALOG, v);
 
 export const DEFAULT_FURNITURE_KIND: FurnitureKind = 'bed-double';
+
+/** Living things: drawn green on the plan unless painted. */
+export const isPlant = (kind?: FurnitureKind) =>
+  !!kind &&
+  [
+    'plant-small',
+    'plant-large',
+    'planter',
+    'tree-small',
+    'tree-large',
+    'palm',
+    'shrub',
+    'hedge',
+    'flower-bed',
+  ].includes(kind);

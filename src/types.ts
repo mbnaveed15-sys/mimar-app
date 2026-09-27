@@ -78,6 +78,11 @@ export interface Wall extends Grouped {
   materialB?: Id;
 }
 
+/** How a door opens: one leaf, two, sliding, folding, a rolling shutter, or no door (a doorway). */
+export type DoorKind = 'single' | 'double' | 'sliding' | 'folding' | 'shutter' | 'opening';
+/** How a window opens: sliding panes, one or two casement sashes, fixed glass, or a small high ventilator. */
+export type WindowKind = 'sliding' | 'casement' | 'casement2' | 'fixed' | 'vent';
+
 export interface Opening extends Grouped {
   id: Id;
   type: 'door' | 'window';
@@ -93,6 +98,10 @@ export interface Opening extends Grouped {
   flipHinge?: boolean;
   /** A gate: a wide double-leaf opening in a boundary wall, open to the sky. */
   gate?: boolean;
+  /** A door's type (a single leaf when missing). */
+  doorKind?: DoorKind;
+  /** A window's type (plain glass when missing, as windows were before there were types). */
+  windowKind?: WindowKind;
   /** Window sill height above the floor, in millimetres (3' when missing). */
   sillMm?: number;
   /** Window height in millimetres (4' when missing). */

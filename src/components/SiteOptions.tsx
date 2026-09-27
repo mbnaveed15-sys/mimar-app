@@ -1,3 +1,4 @@
+import { DOOR_KIND_NAMES, DOOR_KINDS, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
 import { usePlanner, type SiteSpec } from '../store/plannerStore';
 import { LengthField } from './LengthField';
 import { AuthoritySelect, PlotPresets } from './PlotBylaws';
@@ -40,7 +41,7 @@ export function WallKindPicker() {
   );
 }
 
-/** Options for the Plot, Stairs and Door tools. */
+/** Options for the Plot, Stairs, Door and Window tools. */
 export function SiteOptions() {
   const tool = usePlanner((s) => s.tool);
   const site = usePlanner((s) => s.site);
@@ -137,14 +138,42 @@ export function SiteOptions() {
         </div>
       </div>
     );
+  if (tool === 'window')
+    return (
+      <div className={box}>
+        <div className="font-medium">Window type</div>
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Window type">
+          {WINDOW_KINDS.map((k) => (
+            <button
+              key={k}
+              className="m-btn px-2 py-0.5"
+              aria-pressed={site.windowKind === k}
+              onClick={() => setSite({ windowKind: k })}
+            >
+              {WINDOW_KIND_NAMES[k]}
+            </button>
+          ))}
+        </div>
+        {site.windowKind === 'vent' && (
+          <div className="text-muted">Small and high (sill 6'): for baths and kitchens.</div>
+        )}
+      </div>
+    );
   if (tool === 'door')
     return (
       <div className={box}>
-        <div className="font-medium">Place a</div>
-        <div className="flex gap-1">
-          <button className="m-btn px-2 py-0.5" aria-pressed={!site.gate} onClick={() => setSite({ gate: false })}>
-            Door
-          </button>
+        <div className="font-medium">Door type</div>
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Door type">
+          {DOOR_KINDS.map((k) => (
+            <button
+              key={k}
+              className="m-btn px-2 py-0.5"
+              aria-pressed={!site.gate && site.doorKind === k}
+              onClick={() => setSite({ gate: false, doorKind: k })}
+            >
+              {DOOR_KIND_NAMES[k]}
+            </button>
+          ))}
           <button className="m-btn px-2 py-0.5" aria-pressed={site.gate} onClick={() => setSite({ gate: true })}>
             Gate
           </button>

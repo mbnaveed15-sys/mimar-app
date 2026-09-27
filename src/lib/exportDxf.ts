@@ -1,4 +1,5 @@
 import { elementOutline, fromFurnitureLocal, planBounds, wallLength, wallParam } from '../geometry';
+import { openingSymbol } from './openingKinds';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
 import type { MarlaSqFt, Opening, PlanDoc, Point, Units, Wall } from '../types';
@@ -38,7 +39,6 @@ export interface DxfOptions {
 
 /** Text height on paper-like scale: 150 mm reads well at 1:100. */
 const TEXT_MM = 150;
-const ARC_STEPS = 16;
 
 /** Keep only the part of a polygon on one side of a line (Sutherland–Hodgman, one edge). */
 function clip(poly: Point[], keep: (p: Point) => number): Point[] {
@@ -273,26 +273,12 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
     const w = o.width;
     const layer: Layer = o.type === 'door' ? 'A-DOOR' : 'A-GLAZ';
     for (const x of [-w / 2, w / 2]) dxf.line(layer, at(x, -t), at(x, t));
-    if (o.type === 'window' && o.open) continue;
-    if (o.type === 'window') {
-      dxf.line('A-GLAZ', at(-w / 2, -t / 3), at(w / 2, -t / 3));
-      dxf.line('A-GLAZ', at(-w / 2, t / 3), at(w / 2, t / 3));
-      continue;
+    // The same symbol as the plan: leaves, swings, sliding panels, frames and glass.
+    for (const path of openingSymbol(o, t)) {
+      const pts = path.points.map(([x, y]) => at(x, y));
+      if (pts.length === 2 && !path.closed) dxf.line(layer, pts[0], pts[1]);
+      else dxf.poly(layer, pts, !!path.closed);
     }
-    /** A swing arc about a hinge, from the open leaf round to the closed position. */
-    const swing = (hingeX: number, r: number, dir: 1 | -1) => {
-      const pts: Point[] = [];
-      for (let i = 0; i <= ARC_STEPS; i++) {
-        const th = (i / ARC_STEPS) * (Math.PI / 2);
-        pts.push(at(hingeX + dir * r * Math.sin(th), -r * Math.cos(th)));
-      }
-      dxf.line('A-DOOR', at(hingeX, 0), at(hingeX, -r));
-      dxf.poly('A-DOOR', pts, false);
-    };
-    if (o.gate) {
-      swing(-w / 2, w / 2, 1);
-      swing(w / 2, w / 2, -1);
-    } else swing(-w / 2, w, 1);
   }
 
   for (const el of doc.elements) {

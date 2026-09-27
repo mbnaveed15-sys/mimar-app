@@ -1,6 +1,16 @@
 import type { Opening } from '../../types';
 import { MM_PER_UNIT } from '../../lib/scale';
 import { PLAN } from '../../theme/plan';
+import { doorKindOf, openingSymbol, type SymbolStroke } from '../../lib/openingKinds';
+
+/** Line weight and dashes for each part of a door or window symbol. */
+const LOOKS: Record<SymbolStroke, { width: number; dash?: string }> = {
+  leaf: { width: 2 },
+  swing: { width: 1, dash: '4 3' },
+  frame: { width: 1.5 },
+  glass: { width: 2 },
+  hidden: { width: 1, dash: '4 3' },
+};
 
 interface Props {
   opening: Opening;
@@ -47,47 +57,20 @@ export function OpeningShape({ opening, color, selected, wallThickness }: Props)
     <g
       data-type={opening.type}
       data-id={opening.id}
+      data-kind={opening.type === 'door' ? doorKindOf(opening) : (opening.windowKind ?? 'plain')}
+      data-testid={opening.gate ? 'gate' : opening.type === 'window' && opening.open ? 'open-hole' : undefined}
       transform={`translate(${opening.x},${opening.y}) rotate(${opening.angle}) scale(${opening.flipHinge ? -1 : 1},${opening.flipSide ? -1 : 1})`}
     >
       <rect x={-w / 2} y={-t} width={w} height={2 * t} style={{ fill: PLAN.paper }} />
       <line x1={-w / 2} y1={-t} x2={-w / 2} y2={t} style={stroke} strokeWidth={2} />
       <line x1={w / 2} y1={-t} x2={w / 2} y2={t} style={stroke} strokeWidth={2} />
-      {opening.type === 'door' && opening.gate ? (
-        <g data-testid="gate">
-          {/* Two leaves, each half the width, swinging open from either jamb. */}
-          <line x1={-w / 2} y1={0} x2={-w / 2} y2={-w / 2} style={stroke} strokeWidth={2} />
-          <line x1={w / 2} y1={0} x2={w / 2} y2={-w / 2} style={stroke} strokeWidth={2} />
-          <path
-            d={`M ${-w / 2} ${-w / 2} A ${w / 2} ${w / 2} 0 0 1 0 0 A ${w / 2} ${w / 2} 0 0 1 ${w / 2} ${-w / 2}`}
-            fill="none"
-            style={stroke}
-            strokeWidth={1}
-            strokeDasharray="4 3"
-          />
-        </g>
-      ) : opening.type === 'door' ? (
-        <g>
-          <line x1={-w / 2} y1={0} x2={-w / 2} y2={-w} style={stroke} strokeWidth={2} />
-          <path
-            d={`M ${-w / 2} ${-w} A ${w} ${w} 0 0 1 ${w / 2} 0`}
-            fill="none"
-            style={stroke}
-            strokeWidth={1}
-            strokeDasharray="4 3"
-          />
-        </g>
-      ) : opening.open ? (
-        // An open hole: the gap and its jambs, with the head above shown dashed.
-        <g data-testid="open-hole">
-          <line x1={-w / 2} y1={0} x2={w / 2} y2={0} style={stroke} strokeWidth={1} strokeDasharray="4 3" />
-        </g>
-      ) : (
-        <g>
-          <line x1={-w / 2} y1={-(t - 1)} x2={w / 2} y2={-(t - 1)} style={stroke} strokeWidth={1.5} />
-          <line x1={-w / 2} y1={t - 1} x2={w / 2} y2={t - 1} style={stroke} strokeWidth={1.5} />
-          <line x1={-w / 2} y1={0} x2={w / 2} y2={0} style={{ stroke: color ?? PLAN.glass }} strokeWidth={2} />
-        </g>
-      )}
+      {openingSymbol(opening, t).map((path, i) => {
+        const points = path.points.map(([x, y]) => `${x},${y}`).join(' ');
+        const look = LOOKS[path.stroke];
+        const style = { stroke: path.stroke === 'glass' ? (color ?? PLAN.glass) : stroke.stroke };
+        const props = { points, style, fill: 'none', strokeWidth: look.width, strokeDasharray: look.dash };
+        return path.closed ? <polygon key={i} {...props} /> : <polyline key={i} {...props} />;
+      })}
     </g>
   );
 }
