@@ -79,6 +79,18 @@ autosaves to local storage on every change.
   (`structureTools.ts`: `plotCorner`, `finishPlotPoly`; `measureKindOf` in the controller makes it take lengths);
   UI in `src/components/PlotSides.tsx`. Plan check: per-side rows are `detail: true` (shown under Setbacks, not
   counted); 3D draws the setback line from `Model3D.guides`.
+- Layouts from a room list (1.31): `src/lib/layoutGen.ts` (pure) turns a `Program` (bedrooms, attached baths, optional
+  rooms, `sizes` in feet over `DEFAULT_SIZES`) into scored `Layout`s in a local frame (x along the road, y in from it,
+  plan units, sizes to wall centre lines): `candidate` puts rooms in front/middle/back strips (`BANDS`, by width
+  capacity), stacks small rooms two to a column, sizes columns (`widths`: narrowest + `WALL_ALLOW`, spare width by
+  `GROWTH`), puts each bath in its bedroom (corner or side strip), adds a passage at random; `scorePlan` makes the doors
+  (main entrance, `ENTERED_FROM` preferences, a last-resort way in with a note) and scores sizes, shapes, daylight
+  (`DAYLIGHT`) and the kitchen; `generateLayouts` runs ~1,500 seeded tries (`rng`) and keeps the best per strip order,
+  unreachable plans last. `src/lib/layoutBuild.ts`: `largestRect`, `layoutSite` (the frame and size inside the
+  building line and boundary walls, capped by coverage and by what the rooms need), `buildLayout` (walls from room
+  edges: 9" facing outside or the porch, 4½" between rooms, none inside a room or porch-to-outside; doors swinging
+  into the room entered; windows; rooms by `detectRoom`; a U stair). Store: `layoutClash`, `placeLayout` (one commit).
+  UI: `src/components/LayoutPanel.tsx` (section `layout`; the list in browser storage `mimar.roomList`).
 - `src/lib/spatial.ts`: `GridIndex` (buckets for point lookups) and `boxOf`, used by the hints and the covered
   area so they scale to thousands of rooms. `src/store/usePlanCheck.ts` keeps one shared result per change and uses
   the plan from before a drag (`batchBase`) until it is let go. `src/lib/text.ts` `cleanText` strips control

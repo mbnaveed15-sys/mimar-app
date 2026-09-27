@@ -507,6 +507,14 @@ export function buildCommands(ctx: CommandContext): Command[] {
 
     // Draw and Tools
     ...TOOLS.filter((t) => DRAW_TOOLS.includes(t)).map((t) => toolCommand(t, 'draw', t === 'mask' ? 1 : 0)),
+    {
+      id: 'draw.layout',
+      label: 'Generate layout from a room list…',
+      menu: 'draw',
+      group: 2,
+      run: () => ctx.showSection('layout'),
+      aliases: ['plan', 'rooms', 'auto'],
+    },
     ...MODIFY_TOOLS.map((t) => toolCommand(t, 'modify', ['offset', 'mirror', 'scale', 'stretch'].includes(t) ? 0 : 1)),
     ...TOOLS.filter((t) => !DRAW_TOOLS.includes(t) && !MODIFY_TOOLS.includes(t)).map((t) =>
       toolCommand(

@@ -22,9 +22,14 @@ From the 1.23 QA pass (six testers; full reports in the git-ignored `.qa/<tester
 Done: bylaws, plot presets and the plan check (1.22); plan hints, the mumty, car porches and the north arrow (1.23);
 AutoCAD-style 2D (1.24); SketchUp-style 3D (1.25); interface polish (1.26); split view (1.27); quantities and cost (1.28);
 door and window types, plants and garden items (1.29); door and window placing with gaps, and snapping guides (1.29.1); custom plots:
-any shape, per-side types, setbacks and walls, corner plots (1.30).
+any shape, per-side types, setbacks and walls, corner plots (1.30); layouts from a room list (1.31).
 
-Planned next: **1.31 generative layouts**, then **1.32 basements**.
+Planned next: **1.32 basements**.
+
+Left from layouts for later: first-floor plans from the same list (over the ground floor's stair); L-shaped and
+irregular plots used fully (plans go in the largest rectangle); furniture placed in the rooms; a lawn or courtyard
+kept inside the house; more room kinds (study, TV lounge upstairs, garage); plans are scored by rules, so check
+the notes and the plan hints after placing one.
 
 Left from custom plots for later: a road width for each side; curved sides; official corner-plot figures (the second
 road uses the side setback, marked provisional: ask the owner for the CDA/DHA corner-plot rules); corner grips in 3D;
