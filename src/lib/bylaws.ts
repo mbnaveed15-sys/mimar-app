@@ -6,6 +6,7 @@
  */
 import { MM_PER_FOOT, MM_PER_INCH } from './units';
 import { MM_PER_UNIT } from './scale';
+import { frontage, plotArea } from './plot';
 import type { Plot } from '../types';
 
 const ft = (feet: number, inches = 0) => feet * MM_PER_FOOT + inches * MM_PER_INCH;
@@ -499,18 +500,10 @@ export function ruleFor(authority: Authority, areaSqFt: number, frontageFt: numb
 
 const SQ_MM_PER_SQ_FT = 92903.04;
 
-/** A plot's area (sq ft) and its frontage along the road (ft). */
+/** A plot's area (sq ft, less any cut corner) and its frontage along the main road (ft). */
 export function plotMeasures(plot: Plot): { areaSqFt: number; frontageFt: number } {
-  const pts = plot.points;
-  let twice = 0;
-  pts.forEach((p, i) => {
-    const q = pts[(i + 1) % pts.length];
-    twice += p.x * q.y - q.x * p.y;
-  });
-  const areaSqFt = ((Math.abs(twice) / 2) * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
-  const a = pts[plot.front % pts.length];
-  const b = pts[(plot.front + 1) % pts.length];
-  const frontageFt = (Math.hypot(b.x - a.x, b.y - a.y) * MM_PER_UNIT) / MM_PER_FOOT;
+  const areaSqFt = (plotArea(plot) * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
+  const frontageFt = (frontage(plot) * MM_PER_UNIT) / MM_PER_FOOT;
   return { areaSqFt, frontageFt };
 }
 

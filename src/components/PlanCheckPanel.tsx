@@ -84,7 +84,7 @@ function BylawRows() {
       </div>
     );
   const { authority, rule, rows } = check;
-  const failing = rows.filter((r) => r.status === 'fail').length;
+  const failing = rows.filter((r) => r.status === 'fail' && !r.detail).length;
   return (
     <div className="flex flex-col gap-1.5 text-xs" data-testid="plan-check">
       <div>
@@ -99,7 +99,7 @@ function BylawRows() {
       </div>
       <ul className="flex flex-col gap-1">
         {rows.map((r) => (
-          <li key={r.id}>
+          <li key={r.id} className={r.detail ? 'pl-4' : undefined}>
             <button
               className="flex w-full gap-1.5 rounded-sm p-1 text-left hover:bg-sunken disabled:hover:bg-transparent"
               disabled={!r.ids?.length}

@@ -148,6 +148,7 @@ export function anchorOf(s: PlannerState): Point | null {
   if (!d) return null;
   if (MODIFY_TOOLS.includes(s.tool)) return modifyAnchor(s);
   if (d.type === 'beam' || d.type === 'slab' || d.type === 'plot') return { x: d.x1, y: d.y1 };
+  if (d.type === 'plotPoly') return d.points[d.points.length - 1];
   switch (d.type) {
     case 'wall':
     case 'line':
@@ -174,7 +175,14 @@ export function currentDirection(s: PlannerState): Point | null {
     return sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 });
   if (d.type === 'tape') return sub(d.b, d.a);
   if (d.type === 'move') return sub(d.to, d.base);
+  if (d.type === 'plotPoly') return sub(d.cursor, d.points[d.points.length - 1]);
   return null;
+}
+
+/** What the active tool takes typed: a plot drawn corner by corner takes lengths, as walls do. */
+export function measureKindOf(s: PlannerState): MeasureKind | undefined {
+  if (s.tool === 'plot' && s.site.plotShape === 'any' && !s.site.plotSize) return 'length';
+  return MEASURE_TOOLS[s.tool];
 }
 
 /**
@@ -603,7 +611,7 @@ export function release(store: Store, dragged: boolean) {
 /** Apply what was typed in the Measurements box. Returns false (and warns) if it can't be used. */
 export function applyMeasure(store: Store, text: string): boolean {
   const s = store.getState();
-  const kind = MEASURE_TOOLS[s.tool];
+  const kind = measureKindOf(s);
   if (!kind) return false;
   const m = parseMeasure(text, s.units, kind);
   const fail = (message: string) => {

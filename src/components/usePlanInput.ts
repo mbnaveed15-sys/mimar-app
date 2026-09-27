@@ -33,7 +33,9 @@ type Drag =
   /** Eraser pressed: a click erases what is there when let go; a drag erases all it passes over. */
   | { kind: 'erase'; last: Point; click: () => void }
   | { kind: 'wall-start' | 'wall-end'; orig: Wall }
-  | { kind: 'resize' | 'rotate'; orig: Furniture };
+  | { kind: 'resize' | 'rotate'; orig: Furniture }
+  /** Dragging a corner of a plot to reshape it. */
+  | { kind: 'plot-corner'; plotId: string; index: number };
 
 /** Furniture sizes snap to 50 mm; rotation snaps to 15° unless Shift is held. */
 const SIZE_STEP = 50 / MM_PER_UNIT;
@@ -203,6 +205,8 @@ export function usePlanInput(
         startDrag(e, { kind: handle, orig: selected });
       } else if (selected.type === 'furniture' && (handle === 'resize' || handle === 'rotate')) {
         startDrag(e, { kind: handle, orig: selected });
+      } else if (selected.type === 'plot' && handle.startsWith('plot-corner-')) {
+        startDrag(e, { kind: 'plot-corner', plotId: selected.id, index: Number(handle.slice('plot-corner-'.length)) });
       }
       return;
     }
@@ -373,6 +377,13 @@ export function usePlanInput(
           const next =
             drag.kind === 'wall-start' ? { ...drag.orig, x1: p.x, y1: p.y } : { ...drag.orig, x2: p.x, y2: p.y };
           if (next.x1 !== next.x2 || next.y1 !== next.y2) s.updateElement(next);
+          break;
+        }
+        case 'plot-corner': {
+          // To the grid only: its own walls' ends sit half a wall inside the corner.
+          const ok = s.movePlotCorner(drag.plotId, drag.index, gridSnap(raw));
+          if (!ok) s.setWarning('The sides of the plot would cross: that corner can’t go there.');
+          else if (s.warnings.length) s.setWarning(null);
           break;
         }
         case 'resize': {

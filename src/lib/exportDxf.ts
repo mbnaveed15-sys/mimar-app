@@ -5,6 +5,7 @@ import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
 import type { MarlaSqFt, Opening, PlanDoc, Point, Units, Wall } from '../types';
 import { placeWallDimension, thicknessOf, wallPolygon, wallsOf } from '../walls';
 import { MM_PER_UNIT } from './scale';
+import { outlinePoints, plotSides, sideOutward } from './plot';
 import { buildableArea, stairLayout } from './site';
 import { formatArea, formatLength, formatMarla } from './units';
 
@@ -231,8 +232,17 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
 
   for (const el of doc.elements)
     if (el.type === 'plot') {
-      dxf.poly('C-PROP', el.points);
+      dxf.poly('C-PROP', outlinePoints(el));
       dxf.poly('C-PROP-SETB', buildableArea(el));
+      // ROAD beside each road side, 5' outside it.
+      plotSides(el).forEach((side, i) => {
+        if (side.kind !== 'road') return;
+        const a = el.points[i];
+        const b = el.points[(i + 1) % el.points.length];
+        const o = sideOutward(el, i);
+        const off = 1524 / MM_PER_UNIT;
+        dxf.text('C-PROP', { x: (a.x + b.x) / 2 + o.x * off, y: (a.y + b.y) / 2 + o.y * off }, 'ROAD');
+      });
     }
 
   for (const wall of walls)

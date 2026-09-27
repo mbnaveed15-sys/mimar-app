@@ -9,6 +9,9 @@ import {
   type Material,
   type Pattern,
   type PlanDoc,
+  type Plot,
+  type PlotSide,
+  type PlotSideKind,
   type PlanElement,
   type Point,
   type Room,
@@ -24,7 +27,7 @@ import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
 
 export const STORAGE_KEY = 'mimar.plan';
 /** 4 added groups and components; 5 added levels, columns, beams and slabs. */
-export const CURRENT_VERSION = 5;
+export const CURRENT_VERSION = 6;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -103,6 +106,33 @@ function normaliseLayers(raw: unknown): LayerState | undefined {
 
 const idOf = (v: unknown): string | undefined => (v === undefined || v === null ? undefined : String(v));
 
+const SIDE_KINDS: PlotSideKind[] = ['road', 'neighbour', 'back', 'open'];
+
+/** A plot's sides (one per edge, at least one road) and cut corner, when they are sound. */
+function plotExtras(raw: Record<string, unknown>, corners: number): Pick<Plot, 'sideList' | 'splay'> {
+  const out: Pick<Plot, 'sideList' | 'splay'> = {};
+  const list = raw.sideList;
+  if (Array.isArray(list) && list.length === corners && list.every(isObject)) {
+    const sides = list.map((side): PlotSide => {
+      const kind = SIDE_KINDS.includes(side.kind as PlotSideKind) ? (side.kind as PlotSideKind) : 'neighbour';
+      const wall = isObject(side.wall) ? side.wall : null;
+      return {
+        kind,
+        ...(inRange(side.setbackMm, 0, 100000) ? { setbackMm: side.setbackMm } : {}),
+        ...(wall && inRange(wall.heightMm, 1, 30000) && inRange(wall.thicknessMm, 10, 2000)
+          ? { wall: { heightMm: wall.heightMm, thicknessMm: wall.thicknessMm } }
+          : {}),
+        ...(wall && side.wallId !== undefined ? { wallId: idOf(side.wallId) } : {}),
+      };
+    });
+    if (sides.some((s) => s.kind === 'road')) out.sideList = sides;
+  }
+  const splay = isObject(raw.splay) ? raw.splay : null;
+  if (splay && inRange(splay.sizeMm, 1, 100000))
+    out.splay = { sizeMm: splay.sizeMm, ...(splay.wallId !== undefined ? { wallId: idOf(splay.wallId) } : {}) };
+  return out;
+}
+
 function normaliseElement(raw: unknown): PlanElement | null {
   if (!isObject(raw)) return null;
   const base = {
@@ -131,6 +161,10 @@ function normaliseElement(raw: unknown): PlanElement | null {
         heightMm: num('heightMm') > 0 ? num('heightMm') : undefined,
         materialA: idOf(raw.materialA),
         materialB: idOf(raw.materialB),
+        ...(raw.plotId !== undefined &&
+        (raw.plotSide === 'splay' || (Number.isInteger(raw.plotSide) && (raw.plotSide as number) >= 0))
+          ? { plotId: idOf(raw.plotId), plotSide: raw.plotSide as number | 'splay' }
+          : {}),
       };
       return [el.x1, el.y1, el.x2, el.y2].every(Number.isFinite) ? el : null;
     }
@@ -230,7 +264,11 @@ function normaliseElement(raw: unknown): PlanElement | null {
       const sb = isObject(raw.setbacks) ? raw.setbacks : {};
       const mm = (v: unknown) => (typeof v === 'number' && v >= 0 ? v : 0);
       if (points.length < 3) return null;
-      const front = Number.isInteger(raw.front) && (raw.front as number) < points.length ? (raw.front as number) : 0;
+      const extras = plotExtras(raw, points.length);
+      let front = Number.isInteger(raw.front) && (raw.front as number) < points.length ? (raw.front as number) : 0;
+      // The main road is a road side.
+      if (extras.sideList && extras.sideList[front].kind !== 'road')
+        front = extras.sideList.findIndex((s) => s.kind === 'road');
       return {
         ...base,
         type: 'plot' as const,
@@ -242,6 +280,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
           sides: mm(sb.sides),
           ...(typeof sb.side2 === 'number' && sb.side2 >= 0 ? { side2: sb.side2 } : {}),
         },
+        ...extras,
         ...(authorityById(raw.authority as string) ? { authority: raw.authority as AuthorityId } : {}),
       };
     }

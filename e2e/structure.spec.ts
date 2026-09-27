@@ -157,7 +157,7 @@ test('a plot under CDA bylaws: preset size, setbacks from the table, and a live 
   await page.getByRole('button', { name: 'Lock Walls' }).click();
   await click(25, 90);
   await expect(page.getByTestId('plot-rule')).toContainText('Type C');
-  await expect(page.getByLabel('Front', { exact: true })).toHaveValue(`15' 0"`);
+  await expect(page.getByLabel('Front (main road)', { exact: true })).toHaveValue(`15' 0"`);
   const download = page.waitForEvent('download');
   await page.keyboard.press('Control+p');
   expect((await download).suggestedFilename()).toMatch(/\.pdf$/);

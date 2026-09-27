@@ -13,6 +13,7 @@ import { thicknessOf } from '../walls';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { LengthField } from './LengthField';
 import { PlotBylawsPanel } from './PlotBylaws';
+import { PlotSidesPanel } from './PlotSides';
 import { SelectionPanel } from './SelectionPanel';
 
 /** Common room names in Pakistani homes, offered as suggestions. */
@@ -135,6 +136,12 @@ export function Inspector() {
         ) : el ? (
           <div className="mb-3 flex flex-col gap-2 rounded-md border border-line bg-raised p-2 text-xs">
             <div className="font-medium">Selected: {itemName(el)}</div>
+            {el.type === 'wall' && el.plotId && (
+              <div className="text-muted" data-testid="plot-wall-note">
+                Part of the plot’s boundary: it follows the plot when the plot is reshaped. Its side of the plot sets
+                its height and thickness (select the plot to change them).
+              </div>
+            )}
 
             {el.type === 'wall' && (
               <LengthField
@@ -410,12 +417,7 @@ export function Inspector() {
             {el.type === 'plot' && (
               <>
                 <PlotBylawsPanel plot={el} />
-                <button
-                  className={btn}
-                  onClick={() => updateElement({ ...el, front: (el.front + 1) % el.points.length })}
-                >
-                  Road on the next side
-                </button>
+                <PlotSidesPanel plot={el} />
                 <div className="text-muted">The dashed line shows where you may build inside the setbacks.</div>
               </>
             )}

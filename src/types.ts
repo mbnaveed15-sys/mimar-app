@@ -76,6 +76,9 @@ export interface Wall extends Grouped {
    */
   materialA?: Id;
   materialB?: Id;
+  /** A plot's boundary wall: the plot and the side (or its cut corner) it stands on. It follows the plot. */
+  plotId?: Id;
+  plotSide?: number | 'splay';
 }
 
 /** How a door opens: one leaf, two, sliding, folding, a rolling shutter, or no door (a doorway). */
@@ -182,15 +185,36 @@ export interface Slab extends Grouped {
 }
 
 /** The plot: its outline, which edge faces the road, and the setbacks (in mm) from each side. */
+/** What lies beyond a side of a plot. */
+export type PlotSideKind = 'road' | 'neighbour' | 'back' | 'open';
+
+/** One side of a plot (the edge from points[i] to points[i+1]). */
+export interface PlotSide {
+  kind: PlotSideKind;
+  /** A setback typed for this side, in millimetres; the plot's setback for this kind of side when missing. */
+  setbackMm?: number;
+  /** A boundary wall along this side (none when missing). */
+  wall?: { heightMm: number; thicknessMm: number };
+  /** The wall built for this side: it follows the plot when the plot is reshaped. */
+  wallId?: Id;
+}
+
 export interface Plot extends Grouped {
   id: Id;
   type: 'plot';
-  /** Four corners, in order round the plot. */
+  /** Corners, in order round the plot (three or more). */
   points: Point[];
-  /** Index of the edge (points[i] to points[i+1]) along the road. */
+  /** Index of the edge (points[i] to points[i+1]) along the main road. */
   front: number;
   /** Side 1 (`sides`) is the side after the road edge going round the outline; side 2 the other (as side 1 when missing). */
   setbacks: { front: number; rear: number; sides: number; side2?: number };
+  /**
+   * Each side's type, setback and wall, one per edge. Missing in plots made before 1.30: their sides
+   * are worked out from `front` (the road, the side opposite it and the two sides between).
+   */
+  sideList?: PlotSide[];
+  /** A corner plot's cut corner (splay) where the main road meets the other road: its size along each side. */
+  splay?: { sizeMm: number; wallId?: Id };
   /** The authority whose bylaws apply (setbacks and the plan check). */
   authority?: AuthorityId;
   material?: Id;
@@ -415,6 +439,8 @@ export type Draft =
   | { type: 'line'; x1: number; y1: number; x2: number; y2: number; chain?: boolean }
   | { type: 'slab'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'plot'; x1: number; y1: number; x2: number; y2: number }
+  /** A plot drawn corner by corner: the corners so far, and where the pointer is. */
+  | { type: 'plotPoly'; points: Point[]; cursor: Point }
   | {
       type: 'tape';
       a: Point;

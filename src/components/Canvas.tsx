@@ -250,6 +250,10 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
             <Handle name="wall-end" p={{ x: selected.x2, y: selected.y2 }} k={hk} />
           </>
         )}
+        {tool === 'select' &&
+          selected?.type === 'plot' &&
+          !selected.locked &&
+          selected.points.map((p, i) => <Handle key={i} name={`plot-corner-${i}`} p={p} k={hk} />)}
         {tool === 'select' && selected?.type === 'furniture' && showFurniture && (
           <FurnitureHandles item={selected} k={hk} />
         )}

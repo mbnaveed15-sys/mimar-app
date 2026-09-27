@@ -5,6 +5,7 @@
 import { elementOutline, pointInPolygon, pointToSegmentDistance } from '../geometry';
 import { plotRule, plotSetbacks, roomRuleFor, type Authority, type PlotRule } from './bylaws';
 import { MM_PER_UNIT } from './scale';
+import { isCornerPlot, outlinePoints, plotSides, sideSetbacks, SIDE_KIND_NAMES } from './plot';
 import { buildableArea } from './site';
 import { formatLength, MM_PER_FOOT } from './units';
 import { boxOf, cellFor, GridIndex } from './spatial';
@@ -35,6 +36,8 @@ export interface CheckRow {
   clause: string;
   /** Items to select to see the problem. */
   ids?: Id[];
+  /** A detail of the row above it (each side's setback under Setbacks): shown, not counted. */
+  detail?: boolean;
 }
 
 export interface PlanCheck {
@@ -161,7 +164,17 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       Math.abs(a.sides - plot.setbacks.sides) < 1 &&
       Math.abs((a.side2 ?? 0) - (plot.setbacks.side2 ?? plot.setbacks.sides)) < 1;
     const setbacks = matches(swapped) && !matches(fromRule) ? swapped : fromRule;
-    const line = buildableArea({ ...plot, setbacks });
+    // The bylaws' setbacks on every side, whatever was typed for a side.
+    const ruled: Plot = {
+      ...plot,
+      setbacks,
+      sideList: plotSides(plot).map((side) => {
+        const copy = { ...side };
+        delete copy.setbackMm;
+        return copy;
+      }),
+    };
+    const line = buildableArea(ruled);
     const outside = (pts: Point[]) => pts.some((p) => !inside(p, line));
     const hard: Id[] = [];
     const soft: Id[] = [];
@@ -184,6 +197,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       clause: clause(authority.setbackClause),
       ids: hard,
     });
+    rows.push(...sideRows(doc, ruled, len, clause(authority.setbackClause)));
     if (soft.length)
       rows.push({
         id: 'setback-items',
@@ -210,6 +224,16 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
           ids: deep.map((el) => el.id),
         });
     }
+
+    if (isCornerPlot(plot))
+      rows.push({
+        id: 'corner-plot',
+        label: 'Corner plot',
+        required: 'Both roads kept clear. The second road uses the side setback until corner-plot figures are added',
+        actual: plot.splay ? `Corner cut ${len(plot.splay.sizeMm)}` : 'Corner not cut',
+        status: 'check',
+        clause: clause(authority.setbackClause),
+      });
 
     const plotSqFt = plotAreaSqFt(plot);
     const ground = doc.levels[0]?.id ?? 'ground';
@@ -370,12 +394,13 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
     if (widthShare) {
       const a = plot.points[plot.front % plot.points.length];
       const b = plot.points[(plot.front + 1) % plot.points.length];
-      const c = plot.points[(plot.front + 2) % plot.points.length];
-      const d = plot.points[(plot.front + 3) % plot.points.length];
       const along = { x: b.x - a.x, y: b.y - a.y };
       const l = Math.hypot(along.x, along.y) || 1;
       const u = { x: along.x / l, y: along.y / l };
-      const avg = (l + Math.hypot(d.x - c.x, d.y - c.y)) / 2;
+      // The plot's average width along the road: its area over its depth from the road.
+      const depths = plot.points.map((p) => (p.x - a.x) * u.y - (p.y - a.y) * u.x);
+      const depth = Math.max(...depths) - Math.min(...depths) || 1;
+      const avg = polygonArea(plot.points) / depth;
       const proj = mumtyWalls.flatMap((w) => wallCorners(w)).map((p) => p.x * u.x + p.y * u.y);
       const width = Math.max(...proj) - Math.min(...proj);
       const max = avg * widthShare.share;
@@ -456,7 +481,51 @@ function itemOutline(el: PlanElement): Point[] | null {
 }
 
 const polygonSqFt = (pts: Point[]) => (polygonArea(pts) * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
-const plotAreaSqFt = (plot: Plot) => polygonSqFt(plot.points);
+const plotAreaSqFt = (plot: Plot) => polygonSqFt(outlinePoints(plot));
+
+/**
+ * One row per side of the plot, from the road going round: its setback, and how far the nearest
+ * building (walls other than boundary walls, and blocks) is from it. A second road's setback is
+ * provisional, so that side is marked "check" even when it is kept.
+ */
+function sideRows(doc: PlanDoc, plot: Plot, len: (mm: number) => string, clause: string): CheckRow[] {
+  const sides = plotSides(plot);
+  const setbacks = sideSetbacks(plot, sides);
+  const n = plot.points.length;
+  const items: { id: Id; pts: Point[] }[] = [];
+  for (const el of doc.elements) {
+    if (el.hidden || !((el.type === 'wall' && el.kind !== 'boundary') || (el.type === 'block' && el.heightMm > 0)))
+      continue;
+    const pts = itemOutline(el);
+    if (pts && pts.some((p) => pointInPolygon(p, plot.points))) items.push({ id: el.id, pts });
+  }
+  const rows: CheckRow[] = [];
+  for (let k = 0; k < n; k++) {
+    const i = (plot.front + k) % n;
+    const a = plot.points[i];
+    const b = plot.points[(i + 1) % n];
+    const need = setbacks[i].mm / MM_PER_UNIT;
+    let nearest = Infinity;
+    const close: Id[] = [];
+    for (const it of items) {
+      const d = Math.min(...it.pts.map((p) => pointToSegmentDistance(p, a, b)));
+      nearest = Math.min(nearest, d);
+      if (d < need - TOLERANCE) close.push(it.id);
+    }
+    const { provisional } = setbacks[i];
+    rows.push({
+      id: `setback-side-${i}`,
+      label: `Setback, side ${k + 1} (${SIDE_KIND_NAMES[sides[i].kind].toLowerCase()})`,
+      required: `At least ${len(setbacks[i].mm)}${provisional ? ' (provisional)' : ''}`,
+      actual: Number.isFinite(nearest) ? `${len(nearest * MM_PER_UNIT)} to the nearest wall` : 'Nothing built yet',
+      status: close.length ? 'fail' : provisional ? 'check' : 'ok',
+      clause,
+      ids: close,
+      detail: true,
+    });
+  }
+  return rows;
+}
 
 /** How high the top of the building is above the ground (mm): walls, slabs and blocks. */
 function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: number): number {
