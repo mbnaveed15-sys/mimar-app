@@ -61,6 +61,12 @@ const selectedElement = (s: PlannerState) =>
 const canTransform = (s: PlannerState) =>
   s.selectedIds.length > 1 || ['wall', 'furniture'].includes(selectedElement(s)?.type ?? '') || !!s.selectedGroup();
 
+/** Copy and Duplicate also take a door or window on its own (it goes onto a wall). */
+const canCopy = (s: PlannerState) => {
+  const el = selectedElement(s);
+  return canTransform(s) || ((el?.type === 'door' || el?.type === 'window') && !el.flat);
+};
+
 /** Switch to the floor above (1) or below (-1). */
 function stepLevel(step: number) {
   const s = st();
@@ -147,7 +153,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       group: 1,
       keys: ['Ctrl+C'],
       run: () => st().copySelected(),
-      enabled: canTransform,
+      enabled: canCopy,
     },
     {
       id: 'edit.paste',
@@ -165,7 +171,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       group: 1,
       keys: ['Ctrl+D'],
       run: () => st().duplicateSelected(),
-      enabled: canTransform,
+      enabled: canCopy,
     },
     {
       id: 'edit.delete',

@@ -9,12 +9,19 @@ From the 1.23 QA pass (six testers; full reports in the git-ignored `.qa/<tester
 
 1. **Still open from the 2D review (after 1.24):** a persistent dimension tool; zoom window and zoom previous; a cursor
    X,Y readout; arcs and circles for layout lines; grips for lines, beams, rooms, slabs and columns; shared
-   properties for a multi-selection; Mirror of a group keeping it a group; Paste then place. 2D pan on very large
+   properties for a multi-selection (done for doors and windows in 1.29.1); Mirror of a group keeping it a group; Paste then place. 2D pan on very large
    plans (~5,000 walls) is limited by SVG layout.
-2. **Generative layouts** (later): room program → a few variants, placed as ordinary walls and rooms.
+2. **Custom plots (1.30, planned with the owner):** any shape clicked corner by corner, each side its own type
+   (road, neighbour, back, open), setback and boundary wall (linked to the plot, gates kept), corner plots with two
+   road sides and an optional splay; old plots open as before with a "Rebuild walls from sides" button.
+3. **Generative layouts (1.31):** room program → a few variants on any of these plots, placed as ordinary walls,
+   rooms, doors and windows.
+4. **Basements (1.32):** below-ground floors, retaining walls, 3D, cost and bylaws; a basement option in the
+   generator.
 
 Done: bylaws, plot presets and the plan check (1.22); plan hints, the mumty, car porches and the north arrow (1.23);
-AutoCAD-style 2D (1.24); SketchUp-style 3D (1.25); interface polish (1.26); split view (1.27); quantities and cost (1.28).
+AutoCAD-style 2D (1.24); SketchUp-style 3D (1.25); interface polish (1.26); split view (1.27); quantities and cost (1.28);
+door and window types, plants and garden items (1.29); door and window placing with gaps, and snapping guides (1.29.1).
 
 Left from the cost estimate for later: rates for other cities; contingencies and the contractor's margin as a
 percentage; woodwork, kitchens and wardrobes; footings drawn rather than assumed; metric units in the table (it

@@ -5,7 +5,6 @@ import {
   isNear,
   nearestWall,
   nearestWallEnd,
-  placeOnWall,
   pointInPolygon,
   pointToSegmentDistance,
   snap,
@@ -18,6 +17,7 @@ import { itemsInBox, moveItems } from '../lib/selection';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, type PlannerState } from '../store/plannerStore';
 import { DRAG_PX, hover, MEASURE_TOOLS, press, release } from '../tools/controller';
+import { slideOpening } from '../store/openingAt';
 import { getPicker, setPointer } from '../three/picker';
 import { hasPoints, type Bounds, type Furniture, type PlanElement, type Point, type Wall } from '../types';
 
@@ -210,7 +210,7 @@ export function usePlanInput(
     if (s.tool in MEASURE_TOOLS) {
       capture(e);
       s.setMeasureText('');
-      press(plannerStore, raw, { ctrl: e.ctrlKey || e.metaKey, clicks });
+      press(plannerStore, raw, { ctrl: e.ctrlKey || e.metaKey, alt: e.altKey, clicks });
       return;
     }
 
@@ -249,10 +249,6 @@ export function usePlanInput(
       }
       case 'room':
         s.addRoomAt(raw);
-        break;
-      case 'door':
-      case 'window':
-        s.placeOpening(s.tool, raw);
         break;
       case 'furniture':
         s.addFurniture(gridSnap(raw));
@@ -355,8 +351,9 @@ export function usePlanInput(
           const { orig } = drag;
           if (orig.type === 'door' || orig.type === 'window') {
             // Doors and windows slide along their wall.
-            const wall = s.doc.elements.find((el): el is Wall => el.type === 'wall' && el.id === orig.wallId);
-            if (wall) s.updateElement({ ...orig, ...placeOnWall(wall, raw, orig.width) });
+            const slide = slideOpening(s, s.batchBase ?? s.doc, orig, raw);
+            s.setInference(slide.snap ? { point: slide.opening, kind: slide.snap } : null);
+            s.updateElement(slide.opening);
           } else {
             const anchor =
               orig.type === 'wall' || orig.type === 'beam' || orig.type === 'line'

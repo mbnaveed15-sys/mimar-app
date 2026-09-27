@@ -147,6 +147,23 @@ export function draftLines(s: PlannerState): DraftLine[] {
       return [[d.base, d.to]];
     case 'rotate':
       return d.start ? [[d.center, d.start]] : [];
+    case 'opening': {
+      // The door or window's outline across its wall, and the clear distances to the corners.
+      const g = d.ghost;
+      if (!g) return [];
+      const a = (g.angle * Math.PI) / 180;
+      const u = { x: Math.cos(a), y: Math.sin(a) };
+      const n = { x: -u.y, y: u.x };
+      const h = g.width / 2;
+      const t = (d.thickness ?? 0) / 2;
+      const c = [
+        [-h, -t],
+        [h, -t],
+        [h, t],
+        [-h, t],
+      ].map(([x, y]) => ({ x: g.x + u.x * x + n.x * y, y: g.y + u.y * x + n.y * y }));
+      return [...c.map((q, i): [Point, Point] => [q, c[(i + 1) % 4]]), ...(d.dims ?? [])];
+    }
     case 'mask': {
       const pts = [...d.points, ...(d.cursor ? [d.cursor] : [])];
       return pts.slice(1).map((q, i): [Point, Point] => [pts[i], q]);

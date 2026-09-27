@@ -11,6 +11,7 @@ import { MM_PER_UNIT } from './scale';
 import { formatArea, formatLength, MM_PER_FOOT } from './units';
 import { polygonArea, roomAreaSqMm, wallFaces } from '../rooms';
 import {
+  GROUND_LEVEL,
   levelOf,
   type Id,
   type Opening,
@@ -22,6 +23,7 @@ import {
   type Wall,
 } from '../types';
 import { thicknessOf } from '../walls';
+import { DEFAULT_OPENING_GAP_MM, openingFits } from './openingPlace';
 
 export type HintKind = 'reach' | 'daylight' | 'size' | 'layout';
 
@@ -31,6 +33,8 @@ export interface Hint {
   text: string;
   /** Rooms (and items) to select to see it. */
   ids: Id[];
+  /** A fix the app can make: move doors and windows off the corners. */
+  fix?: 'opening-gaps';
 }
 
 /** Spaces open to the sky or the garden: they count as outside. */
@@ -109,10 +113,43 @@ function touches(a: Point[], b: Point[], gap: number): boolean {
   return false;
 }
 
+/** Doors and windows (on any floor) that don't keep the gap from corners and each other. */
+export function tightOpenings(doc: PlanDoc, gap: number): Id[] {
+  const out: Id[] = [];
+  const levels = doc.levels.length ? doc.levels.map((l) => l.id) : [GROUND_LEVEL];
+  for (const level of levels) {
+    const els = doc.elements.filter((el) => levelOf(el) === level);
+    const walls = els.filter((el): el is Wall => el.type === 'wall');
+    const byId = new Map(walls.map((w) => [w.id, w] as const));
+    const openings = els.filter((el): el is Opening => (el.type === 'door' || el.type === 'window') && !el.flat);
+    const rules = { walls, openings, gap, grid: null, tolerance: 0, fmt: () => '', noun: '' };
+    for (const o of openings) {
+      const wall = byId.get(o.wallId);
+      if (wall && !o.hidden && !openingFits(o, wall, rules)) out.push(o.id);
+    }
+  }
+  return out;
+}
+
 /** Hints for the whole plan. Rooms in `skipSizes` (already too small for the bylaws) get no size hint. */
-export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id> }): Hint[] {
+export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>; gapMm?: number }): Hint[] {
   const hints: Hint[] = [];
   const len = (mm: number) => formatLength(mm, ctx.units);
+
+  // Doors and windows closer than the gap to a corner or to each other (drawn before it was kept).
+  const gapMm = ctx.gapMm ?? DEFAULT_OPENING_GAP_MM;
+  const tight = tightOpenings(doc, gapMm / MM_PER_UNIT);
+  if (tight.length)
+    hints.push({
+      id: 'opening-gaps',
+      kind: 'layout',
+      text:
+        tight.length === 1
+          ? `A door or window is closer than ${len(gapMm)} to a wall corner or to another one.`
+          : `${tight.length} doors and windows are closer than ${len(gapMm)} to a wall corner or to another one.`,
+      ids: tight,
+      fix: 'opening-gaps',
+    });
   const area = (sqMm: number) => formatArea(sqMm, ctx.units);
   const mumtys = mumtyLevelIds(doc);
   const wallById = new Map(doc.elements.filter((el): el is Wall => el.type === 'wall').map((w) => [w.id, w] as const));

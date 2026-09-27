@@ -1,4 +1,13 @@
-import { DOOR_KIND_NAMES, DOOR_KINDS, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
+import {
+  DOOR_KIND_NAMES,
+  DOOR_KINDS,
+  DOOR_WIDTH_MM,
+  WINDOW_KIND_NAMES,
+  WINDOW_KINDS,
+  WINDOW_SIZE_MM,
+} from '../lib/openingKinds';
+import { WINDOW_HEIGHT_MM } from '../lib/shapes';
+import { WINDOW_SILL_MM } from '../three/model';
 import { usePlanner, type SiteSpec } from '../store/plannerStore';
 import { LengthField } from './LengthField';
 import { AuthoritySelect, PlotPresets } from './PlotBylaws';
@@ -37,6 +46,28 @@ export function WallKindPicker() {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** While copies of a picked-up or pasted door or window are being placed: say so, with a way out. */
+function PickedUp() {
+  const stamp = usePlanner((s) => s.openingStamp);
+  const queue = usePlanner((s) => s.stampQueue);
+  const setOpeningStamp = usePlanner((s) => s.setOpeningStamp);
+  const setTool = usePlanner((s) => s.setTool);
+  if (!stamp.length) return null;
+  const noun = stamp[0].gate ? 'gate' : stamp[0].type;
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-sm bg-canvas p-1.5" data-testid="picked-up">
+      <span>
+        {queue
+          ? `Placing the pasted ${noun}${stamp.length > 1 ? ` (${stamp.length} to go)` : ''}.`
+          : `Placing copies of the ${noun} picked up.`}
+      </span>
+      <button className="m-btn px-2 py-0.5" onClick={() => (queue ? setTool('select') : setOpeningStamp([]))}>
+        Stop
+      </button>
     </div>
   );
 }
@@ -138,7 +169,8 @@ export function SiteOptions() {
         </div>
       </div>
     );
-  if (tool === 'window')
+  if (tool === 'window') {
+    const size = WINDOW_SIZE_MM[site.windowKind];
     return (
       <div className={box}>
         <div className="font-medium">Window type</div>
@@ -148,7 +180,10 @@ export function SiteOptions() {
               key={k}
               className="m-btn px-2 py-0.5"
               aria-pressed={site.windowKind === k}
-              onClick={() => setSite({ windowKind: k })}
+              // A new type brings its own size.
+              onClick={() =>
+                setSite({ windowKind: k, windowWidthMm: undefined, windowSillMm: undefined, windowHeightMm: undefined })
+              }
             >
               {WINDOW_KIND_NAMES[k]}
             </button>
@@ -157,8 +192,39 @@ export function SiteOptions() {
         {site.windowKind === 'vent' && (
           <div className="text-muted">Small and high (sill 6'): for baths and kitchens.</div>
         )}
+        <div className="grid grid-cols-3 gap-2">
+          <LengthField
+            id="new-window-width"
+            label="Width"
+            mm={site.windowWidthMm ?? size.width}
+            units={units}
+            min={150}
+            onCommit={(v) => setSite({ windowWidthMm: Math.min(v, 6000) })}
+          />
+          <LengthField
+            id="new-window-sill"
+            label="Sill"
+            mm={site.windowSillMm ?? size.sillMm ?? WINDOW_SILL_MM}
+            units={units}
+            min={0}
+            onCommit={(v) => setSite({ windowSillMm: Math.min(v, 3000) })}
+          />
+          <LengthField
+            id="new-window-height"
+            label="Height"
+            mm={site.windowHeightMm ?? size.heightMm ?? WINDOW_HEIGHT_MM}
+            units={units}
+            min={50}
+            onCommit={(v) => setSite({ windowHeightMm: Math.min(v, 10000) })}
+          />
+        </div>
+        <PickedUp />
+        <div className="text-muted">
+          Alt-click a window to place copies of it. Type a distance to set it from the corner.
+        </div>
       </div>
     );
+  }
   if (tool === 'door')
     return (
       <div className={box}>
@@ -169,7 +235,7 @@ export function SiteOptions() {
               key={k}
               className="m-btn px-2 py-0.5"
               aria-pressed={!site.gate && site.doorKind === k}
-              onClick={() => setSite({ gate: false, doorKind: k })}
+              onClick={() => setSite({ gate: false, doorKind: k, doorWidthMm: undefined })}
             >
               {DOOR_KIND_NAMES[k]}
             </button>
@@ -178,16 +244,45 @@ export function SiteOptions() {
             Gate
           </button>
         </div>
-        {site.gate && (
+        {site.gate ? (
           <LengthField
             id="gate-width"
             label="Gate width"
             mm={site.gateWidthMm}
             units={units}
             min={600}
-            onCommit={(v) => setSite({ gateWidthMm: v })}
+            onCommit={(v) => setSite({ gateWidthMm: Math.min(v, 12000) })}
+          />
+        ) : (
+          <LengthField
+            id="new-door-width"
+            label="Width"
+            mm={site.doorWidthMm ?? DOOR_WIDTH_MM[site.doorKind]}
+            units={units}
+            min={300}
+            onCommit={(v) => setSite({ doorWidthMm: Math.min(v, 6000) })}
           />
         )}
+        <div className="flex flex-col gap-1">
+          <div className="text-muted">Hinge, seen from the side it opens into (V flips it)</div>
+          <div className="flex gap-1" role="group" aria-label="Hinge side">
+            {(['left', 'right'] as const).map((hand) => (
+              <button
+                key={hand}
+                className="m-btn px-2 py-0.5"
+                aria-pressed={site.doorHand === hand}
+                onClick={() => setSite({ doorHand: hand })}
+              >
+                {hand === 'left' ? 'Left' : 'Right'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <PickedUp />
+        <div className="text-muted">
+          It opens towards the side the pointer is on. Alt-click a door to place copies of it; type a distance to set it
+          from the corner.
+        </div>
       </div>
     );
   return null;

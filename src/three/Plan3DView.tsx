@@ -321,6 +321,11 @@ const SNAP_COLORS: Record<SnapKind, string> = {
   locked: '#7c3aed',
   grid: '#6b7280',
   free: '#6b7280',
+  'wall-centre': '#0891b2',
+  'half-centre': '#0891b2',
+  'corner-gap': '#16a34a',
+  'from-corner': '#dc2626',
+  aligned: '#7c3aed',
 };
 
 const levelIndex = (s: PlannerState, id: string | undefined) =>
@@ -573,6 +578,17 @@ function drawOverlay(stage: Stage, s: PlannerState, pxMetres: number, hitY: numb
     const [x, z] = [inf.point.x * M_PER_UNIT, inf.point.y * M_PER_UNIT];
     marker.position.set(x, y, z);
     overlay.add(marker);
+    if (inf.guides?.length) {
+      // Dotted guides from what the point lines up with, on the floor.
+      const at = (p: Point) => new THREE.Vector3(p.x * M_PER_UNIT, base + 0.01, p.y * M_PER_UNIT);
+      const guides = new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(inf.guides.flatMap(([a, b]) => [at(a), at(b)])),
+        new THREE.LineDashedMaterial({ color: SNAP_COLORS[inf.kind], dashSize: 0.08, gapSize: 0.08, depthTest: false }),
+      );
+      guides.computeLineDistances();
+      guides.renderOrder = 10;
+      overlay.add(guides);
+    }
     if (y > base + 0.05) {
       // A dashed line down to the floor being drawn on, where the point lands.
       const drop = new THREE.Line(

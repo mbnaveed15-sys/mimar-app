@@ -80,4 +80,41 @@ describe('snapping (inference)', () => {
     expect(diag.point.x).toBeCloseTo(30);
     expect(diag.point.y).toBeCloseTo(80);
   });
+
+  it('snaps to the middle of each piece of a wall between the walls that meet it', () => {
+    // A partition meets the wall at 30: the pieces are 0–29 and 31–100 (the partition is 2 thick).
+    const part: Wall = { id: 'p', type: 'wall', x1: 30, y1: 0, x2: 30, y2: 60, thickness: 2 };
+    const o = { walls: [{ ...wall, thickness: 2 }, part], tolerance: 5, grid: null };
+    const left = infer({ x: 16, y: 0 }, o);
+    expect(left.kind).toBe('midpoint');
+    expect(left.point.x).toBeCloseTo(14.5, 3);
+    // On the face, the middle between the corner at the partition's face and the wall's end.
+    const right = infer({ x: 66, y: 1.2 }, o);
+    expect(right.kind).toBe('midpoint');
+    expect(right.point.x).toBeCloseTo(65.5, 3);
+    expect(right.point.y).toBeCloseTo(1);
+  });
+
+  it('counts grid steps along a wall face from the corner at the end of its piece', () => {
+    const thick: Wall = { id: 't', type: 'wall', x1: 0, y1: 0, x2: 100, y2: 0, thickness: 6 };
+    const end: Wall = { id: 'e', type: 'wall', x1: 0, y1: 0, x2: 0, y2: 60, thickness: 6 };
+    const p = infer({ x: 24, y: 4 }, { walls: [thick, end], tolerance: 5, grid: 10 });
+    // The face corner is at x = 3 (the end wall's face): 20 on from it.
+    expect(p.kind).toBe('on-face');
+    expect(p.point.x).toBeCloseTo(23, 3);
+    expect(p.point.y).toBeCloseTo(3);
+  });
+
+  it('lines up with the ends of nearby walls, with a dotted guide', () => {
+    const a: Wall = { id: 'a', type: 'wall', x1: 0, y1: 0, x2: 40, y2: 0 };
+    const b: Wall = { id: 'b', type: 'wall', x1: 80, y1: 60, x2: 80, y2: 100 };
+    const o = { walls: [a, b], tolerance: 5, grid: 10 };
+    // Straight below a's end (40, 0) and level with b's end (80, 60).
+    const both = infer({ x: 42, y: 58 }, o);
+    expect(both.kind).toBe('aligned');
+    expect(both.point).toEqual({ x: 40, y: 60 });
+    expect(both.guides).toHaveLength(2);
+    // Only straight below a's end: along the guide, at the grid step.
+    expect(infer({ x: 38, y: 33 }, o)).toMatchObject({ point: { x: 40, y: 30 }, kind: 'aligned' });
+  });
 });

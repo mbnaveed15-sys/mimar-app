@@ -439,6 +439,8 @@ export type Draft =
       zFrom?: { y: number; dz: number };
       /** Just pasted: placing it finishes the paste (one undo step), Esc takes the paste back. */
       pasted?: boolean;
+      /** Copying a door or window on its own: the copy's id. */
+      copyId?: Id;
     }
   | { type: 'rotate'; ids: Id[]; center: Point; start?: Point; angle: number }
   /** Offset: a parallel copy of a wall follows the pointer. */
@@ -459,6 +461,22 @@ export type Draft =
   | { type: 'erase'; ids: Id[] }
   /** Shape tool: the corners clicked so far on a surface, and where the pointer is. */
   | { type: 'shape'; kind: ShapeKind; surface: ShapeSurface; points: Point[]; cursor: Point }
+  /**
+   * Door or window tool: what would be placed where the pointer is (a see-through copy, and the clear
+   * distances to the ends of its piece of wall), or why it can't go there.
+   */
+  | {
+      type: 'opening';
+      cursor: Point;
+      ghost?: Opening;
+      /** Thickness of the wall it would go in. */
+      thickness?: number;
+      /** Clear distances from the ends of the piece of wall to the opening's edges. */
+      dims?: [Point, Point][];
+      /** Unit direction across the wall, towards the pointer: the side the distances are shown on. */
+      side?: Point;
+      error?: string;
+    }
   /**
    * Push/Pull: the face of an item being pushed or pulled, where it was grabbed (scene metres),
    * the way it faces, and how far it has gone so far (mm, outward is positive).

@@ -5,7 +5,7 @@ import { usePlanner } from './plannerStore';
 
 // One result shared by every part of the screen (the panel and the marks), worked out once per change.
 let lastCheck: { doc: PlanDoc; wallHeightMm: number; units: Units; result: PlanCheck | null } | null = null;
-let lastHints: { doc: PlanDoc; units: Units; check: PlanCheck | null; result: Hint[] } | null = null;
+let lastHints: { doc: PlanDoc; units: Units; check: PlanCheck | null; gapMm: number; result: Hint[] } | null = null;
 
 function checkFor(doc: PlanDoc, wallHeightMm: number, units: Units): PlanCheck | null {
   if (lastCheck?.doc !== doc || lastCheck.wallHeightMm !== wallHeightMm || lastCheck.units !== units)
@@ -13,11 +13,11 @@ function checkFor(doc: PlanDoc, wallHeightMm: number, units: Units): PlanCheck |
   return lastCheck.result;
 }
 
-function hintsFor(doc: PlanDoc, units: Units, check: PlanCheck | null): Hint[] {
-  if (lastHints?.doc !== doc || lastHints.units !== units || lastHints.check !== check) {
+function hintsFor(doc: PlanDoc, units: Units, check: PlanCheck | null, gapMm: number): Hint[] {
+  if (lastHints?.doc !== doc || lastHints.units !== units || lastHints.check !== check || lastHints.gapMm !== gapMm) {
     // Rooms the bylaws already find too small get no size hint as well.
     const skipSizes = new Set(check?.rows.find((r) => r.id === 'rooms')?.ids ?? []);
-    lastHints = { doc, units, check, result: planHints(doc, { units, skipSizes }) };
+    lastHints = { doc, units, check, gapMm, result: planHints(doc, { units, skipSizes, gapMm }) };
   }
   return lastHints.result;
 }
@@ -41,8 +41,9 @@ export function usePlanHints(): Hint[] {
   const doc = usePlanner(settledDoc);
   const units = usePlanner((s) => s.units);
   const show = usePlanner((s) => s.showHints);
+  const gapMm = usePlanner((s) => s.openingGapMm);
   const check = usePlanCheck();
-  return show ? hintsFor(doc, units, check) : NONE;
+  return show ? hintsFor(doc, units, check, gapMm) : NONE;
 }
 
 const NONE: Hint[] = [];

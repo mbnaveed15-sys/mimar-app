@@ -1,6 +1,7 @@
 import { snap } from '../geometry';
 import type { Point, Wall } from '../types';
 import { thicknessOf } from '../walls';
+import { clearAlong, wallPieces } from './openingPlace';
 
 /** What a drawing point snapped to, like SketchUp's inference and AutoCAD's object snaps. */
 export type SnapKind =
@@ -17,11 +18,20 @@ export type SnapKind =
   | 'axis-y'
   | 'locked'
   | 'grid'
-  | 'free';
+  | 'free'
+  // Doors and windows along their wall.
+  | 'wall-centre'
+  | 'half-centre'
+  | 'corner-gap'
+  | 'from-corner'
+  // Lined up with the end of another wall or line.
+  | 'aligned';
 
 export interface Inference {
   point: Point;
   kind: SnapKind;
+  /** Dotted guides to show: from the point it lines up with to the point snapped to. */
+  guides?: [Point, Point][];
 }
 
 export const SNAP_LABELS: Record<SnapKind, string> = {
@@ -39,6 +49,11 @@ export const SNAP_LABELS: Record<SnapKind, string> = {
   locked: 'Locked',
   grid: 'Grid',
   free: '',
+  'wall-centre': 'Centre of wall',
+  'half-centre': 'Centre of half',
+  'corner-gap': 'Gap from corner',
+  'from-corner': 'From corner',
+  aligned: 'Lined up',
 };
 
 /** A straight piece to snap to: a wall's centre line or a layout line. */
@@ -118,12 +133,17 @@ type Kind = 'on-wall' | 'on-face' | 'on-line' | 'building-line';
 
 /**
  * Snap a raw pointer position the way AutoCAD's object snaps and SketchUp's inference do:
- * 1. points, the nearest winning: ends, wall-face corners, midpoints, crossings (faces too),
- *    perpendicular from the last point, and where the axis from the last point meets a wall;
+ * 1. points, the nearest winning: ends, wall-face corners, midpoints (of whole walls, and of the
+ *    pieces between the walls that meet them, on the centre line and faces), crossings (faces
+ *    too), perpendicular from the last point, and where the axis from the last point meets a wall;
  * 2. along the building line (ahead of a grid point on it);
- * 3. straight across or up from the last point (the red and green axes), so a line stays level;
- * 4. along a wall's centre line or face, or a layout line, at the grid step nearest the pointer;
- * 5. the grid.
+ * 3. lined up with the ends of two nearby walls or lines at once, or with one and the last point's
+ *    axis, or with one where it crosses the wall or line under the pointer;
+ * 4. straight across or up from the last point (the red and green axes), so a line stays level;
+ * 5. lined up with the end of one nearby wall or line (a dotted guide shows which);
+ * 6. along a wall's centre line or face, or a layout line, a round number of grid steps from its
+ *    nearer end (for a face, from the corner at the end of its piece);
+ * 7. the grid.
  */
 export function infer(raw: Point, opts: InferOptions): Inference {
   const { walls, tolerance, from, grid, lock, ignoreIds } = opts;
@@ -178,6 +198,25 @@ export function infer(raw: Point, opts: InferOptions): Inference {
       consider({ x: seg.x1, y: seg.y1 }, 'corner');
       consider({ x: seg.x2, y: seg.y2 }, 'corner');
     }
+  // Midpoints of the pieces between the walls that meet a wall (the middle of each room's side).
+  for (const w of nearWalls) {
+    const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+    if (!len) continue;
+    for (const piece of wallPieces(w, others)) {
+      const t = (piece.a + piece.b) / 2 / len;
+      consider({ x: w.x1 + (w.x2 - w.x1) * t, y: w.y1 + (w.y2 - w.y1) * t }, 'midpoint');
+    }
+  }
+  for (const { seg, kind } of near)
+    if (kind === 'on-face') {
+      const a = { x: seg.x1, y: seg.y1 };
+      const len = dist(a, { x: seg.x2, y: seg.y2 });
+      if (!len) continue;
+      for (const [p, q] of clearAlong(a, { x: seg.x2, y: seg.y2 }, others, wallIdOf(seg))) {
+        const t = (p + q) / 2 / len;
+        consider({ x: seg.x1 + (seg.x2 - seg.x1) * t, y: seg.y1 + (seg.y2 - seg.y1) * t }, 'midpoint');
+      }
+    }
   for (const g of guides) {
     consider({ x: g.x1, y: g.y1 }, 'building-line');
     consider({ x: g.x2, y: g.y2 }, 'building-line');
@@ -217,7 +256,44 @@ export function infer(raw: Point, opts: InferOptions): Inference {
       );
   if (best) return best;
 
-  // 3. Straight across or up from the last point: ahead of grid points, so a line from an off-grid point stays level.
+  // 3. Lined up with the ends of nearby walls and lines (SketchUp's inference from points), where
+  //    two lines of alignment cross, or one crosses the axis from the last point or a wall.
+  // Not the ends of what the pointer is already on: along it, those are just its own line.
+  const under = new Set(near.map(({ seg, kind }) => (kind === 'on-face' ? wallIdOf(seg) : seg.id)));
+  const align = alignments(
+    raw,
+    [...others, ...lines].filter((seg) => !under.has(seg.id)),
+    from,
+    tolerance,
+  );
+  const { ax, ay } = align;
+  // On a wall or line, a point must stay on it: only where a guide crosses it counts.
+  const onSomething = near.some(({ kind }) => kind !== 'building-line');
+  if (ax && ay && !onSomething) return aligned({ x: ax.x, y: ay.y }, [ax, ay]);
+  if (from && ax && Math.abs(raw.y - from.y) < tolerance) return aligned({ x: ax.x, y: from.y }, [ax, from]);
+  if (from && ay && Math.abs(raw.x - from.x) < tolerance) return aligned({ x: from.x, y: ay.y }, [ay, from]);
+  let onSeg: Inference | null = null;
+  let onSegD = tolerance * 2;
+  for (const [q, upright] of [
+    [ax, true],
+    [ay, false],
+  ] as const) {
+    if (!q) continue;
+    const line = upright
+      ? { id: 'align', x1: q.x, y1: q.y - 1e7, x2: q.x, y2: q.y + 1e7 }
+      : { id: 'align', x1: q.x - 1e7, y1: q.y, x2: q.x + 1e7, y2: q.y };
+    for (const { seg, kind } of near) {
+      if (kind === 'building-line') continue;
+      const x = crossing(line, seg);
+      if (x && dist(x, raw) < onSegD) {
+        onSeg = aligned(x, [q]);
+        onSegD = dist(x, raw);
+      }
+    }
+  }
+  if (onSeg) return onSeg;
+
+  // 4. Straight across or up from the last point: ahead of grid points, so a line from an off-grid point stays level.
   if (from) {
     const dx = Math.abs(raw.x - from.x);
     const dy = Math.abs(raw.y - from.y);
@@ -229,20 +305,81 @@ export function infer(raw: Point, opts: InferOptions): Inference {
     }
   }
 
-  // 4. Along a wall, a wall face or a layout line, at the grid step nearest the pointer (the grid
-  //    point itself when it lies on it).
+  // 5. Lined up with one nearby end (away from walls and lines): along its dotted guide, at the grid
+  //    step nearest the pointer.
+  if (ax && !onSomething) return aligned({ x: ax.x, y: grid ? roundTo(raw.y, grid) : raw.y }, [ax]);
+  if (ay && !onSomething) return aligned({ x: grid ? roundTo(raw.x, grid) : raw.x, y: ay.y }, [ay]);
+
+  // 6. Along a wall, a wall face or a layout line, a round number of grid steps from its nearer end.
   for (const { seg, kind } of near)
-    if (kind !== 'building-line')
-      consider(
-        closestOnSegment(grid ? snap(raw, grid) : raw, { x: seg.x1, y: seg.y1 }, { x: seg.x2, y: seg.y2 }),
-        kind,
-        tolerance * 2,
-      );
+    if (kind !== 'building-line') consider(alongFromEnd(raw, seg, kind, grid, others), kind, tolerance * 2);
   if (best) return best;
 
-  // 5. The grid.
+  // 7. The grid.
   if (grid) return { point: snap(raw, grid), kind: 'grid' };
   return { point: raw, kind: 'free' };
+}
+
+/** A snapped point lined up with others, with a dotted guide from each. */
+function aligned(point: Point, from: Point[]): Inference {
+  return { point, kind: 'aligned', guides: from.map((q): [Point, Point] => [q, point]) };
+}
+
+/** The wall a face segment belongs to (face ids are the wall's id, a colon and the side). */
+const wallIdOf = (seg: Segment) => seg.id.slice(0, seg.id.lastIndexOf(':'));
+
+/**
+ * The ends of walls and lines near the pointer (but not under it) that it lines up with: the
+ * closest in x (straight above or below) and in y (straight across), within the tolerance.
+ */
+function alignments(raw: Point, segs: Segment[], from: Point | null | undefined, tolerance: number) {
+  const reach = tolerance * 40;
+  let ax: Point | null = null;
+  let ay: Point | null = null;
+  let bestX = tolerance;
+  let bestY = tolerance;
+  for (const seg of segs)
+    for (const q of [
+      { x: seg.x1, y: seg.y1 },
+      { x: seg.x2, y: seg.y2 },
+    ]) {
+      const d = dist(q, raw);
+      if (d < tolerance || d > reach || (from && dist(q, from) < 1e-6)) continue;
+      // The closest line-up wins; of ends lined up equally, the nearer one draws the guide.
+      const dx = Math.abs(raw.x - q.x);
+      const dy = Math.abs(raw.y - q.y);
+      if (dx < bestX - 1e-6 || (dx < bestX + 1e-6 && ax && d < dist(ax, raw))) {
+        ax = q;
+        bestX = dx;
+      }
+      if (dy < bestY - 1e-6 || (dy < bestY + 1e-6 && ay && d < dist(ay, raw))) {
+        ay = q;
+        bestY = dy;
+      }
+    }
+  return { ax, ay };
+}
+
+/**
+ * The point along a segment nearest the pointer a whole number of grid steps from its nearer end:
+ * for a wall face, from the corner at the end of its piece (where the next wall's face is).
+ */
+function alongFromEnd(raw: Point, seg: Segment, kind: Kind, grid: number | null, walls: Wall[]): Point {
+  const a = { x: seg.x1, y: seg.y1 };
+  const b = { x: seg.x2, y: seg.y2 };
+  const len = dist(a, b);
+  if (!grid || !len) return closestOnSegment(raw, a, b);
+  const u = { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+  const t = Math.max(0, Math.min(len, (raw.x - a.x) * u.x + (raw.y - a.y) * u.y));
+  let [lo, hi] = [0, len];
+  if (kind === 'on-face') {
+    const piece = clearAlong(a, b, walls, wallIdOf(seg)).find(([p, q]) => t >= p - 1e-6 && t <= q + 1e-6);
+    if (piece) [lo, hi] = piece;
+  }
+  const fromLo = t - lo <= hi - t;
+  const d = roundTo(fromLo ? t - lo : hi - t, grid);
+  const s = Math.max(0, Math.min(len, fromLo ? lo + d : hi - d));
+  return { x: a.x + u.x * s, y: a.y + u.y * s };
 }
 
 /** Unit direction for an arrow-key axis lock. */

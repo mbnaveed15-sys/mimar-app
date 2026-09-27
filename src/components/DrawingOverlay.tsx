@@ -5,6 +5,7 @@ import { PLAN } from '../theme/plan';
 import { protractor } from '../lib/protractor';
 import { draftOutline } from '../lib/shapes';
 import type { Draft, Point, Units } from '../types';
+import { OpeningShape } from './shapes/OpeningShape';
 
 /** An outline with its first point repeated at the end, when it should be drawn closed. */
 const closedShape = (points: Point[], closed: boolean) => (closed && points.length ? [...points, points[0]] : points);
@@ -33,6 +34,11 @@ const SNAP_COLORS: Partial<Record<Inference['kind'], string>> = {
   'axis-x': 'var(--axis-x)',
   'axis-y': 'var(--axis-y)',
   locked: 'var(--selection)',
+  'wall-centre': 'var(--snap-mid)',
+  'half-centre': 'var(--snap-mid)',
+  'corner-gap': 'var(--snap-end)',
+  'from-corner': 'var(--snap-edge)',
+  aligned: 'var(--selection)',
 };
 
 /** Colour of a rubber band: red or green when it runs along an axis, like SketchUp. */
@@ -309,6 +315,64 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
           )}
         </g>
       )}
+
+      {d?.type === 'opening' && d.ghost && (
+        <g data-testid="opening-ghost" opacity={0.8}>
+          <OpeningShape opening={d.ghost} selected wallThickness={d.thickness ?? 0} ghost />
+          {(d.dims ?? []).map(([a, b], i) => {
+            // The clear distance from the corner to the edge, beside the wall on the pointer's side.
+            const side = d.side ?? { x: 0, y: 1 };
+            const off = (d.thickness ?? 0) / 2 + 12 * k;
+            const p = { x: a.x + side.x * off, y: a.y + side.y * off };
+            const q = { x: b.x + side.x * off, y: b.y + side.y * off };
+            const tick = (c: Point) => (
+              <line
+                x1={c.x - side.x * 4 * k}
+                y1={c.y - side.y * 4 * k}
+                x2={c.x + side.x * 4 * k}
+                y2={c.y + side.y * 4 * k}
+              />
+            );
+            return (
+              <g key={i} data-testid="opening-dim" style={{ stroke: PLAN.selection }} strokeWidth={k}>
+                <line x1={p.x} y1={p.y} x2={q.x} y2={q.y} />
+                {tick(p)}
+                {tick(q)}
+                <Label
+                  p={{ x: (p.x + q.x) / 2 + side.x * 12 * k - 12 * k, y: (p.y + q.y) / 2 + side.y * 12 * k + 4 * k }}
+                  k={k}
+                  color={PLAN.selection}
+                >
+                  {len(a, b)}
+                </Label>
+              </g>
+            );
+          })}
+        </g>
+      )}
+
+      {d?.type === 'opening' && d.error && (
+        <g data-testid="opening-error">
+          <Label p={{ x: d.cursor.x + 14 * k, y: d.cursor.y - 14 * k }} k={k} color={PLAN.draft}>
+            {d.error}
+          </Label>
+        </g>
+      )}
+
+      {inference?.guides?.map(([a, b], i) => (
+        // What the point lines up with: a dotted guide from it.
+        <line
+          key={i}
+          data-testid="snap-guide"
+          x1={a.x}
+          y1={a.y}
+          x2={b.x}
+          y2={b.y}
+          style={{ stroke: SNAP_COLORS[inference.kind] }}
+          strokeWidth={k}
+          strokeDasharray={`${2 * k} ${3 * k}`}
+        />
+      ))}
 
       {inference && SNAP_COLORS[inference.kind] && (
         <g data-testid="snap-marker" data-snap={inference.kind}>

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { matchesKeys, type Command } from '../commands';
 import { isMeasureKey } from '../lib/measure';
 import { mirrorItems } from '../lib/modify';
+import { fitterFor } from '../store/openingAt';
 import { MM_PER_UNIT, plannerStore } from '../store/plannerStore';
 import {
   anchorOf,
@@ -13,6 +14,7 @@ import {
   toggleCopy,
   toggleHeightLock,
 } from '../tools/controller';
+import { flipOpeningHand } from '../tools/openingTool';
 import { aliasStep, ALIAS_GAP_MS } from '../lib/aliases';
 import { finishStep } from '../tools/finish';
 import { armCopyNext } from '../tools/controller';
@@ -166,7 +168,13 @@ export function useKeyboardShortcuts(commands: Command[]) {
         // Ctrl switches Mirror between making a copy and flipping the originals.
         const d = { ...s.draft, flip: !s.draft.flip };
         s.setDraft(d);
-        s.commitFromBase((base) => mirrorItems(base, d.ids, d.a, d.b, d.flip).doc);
+        s.commitFromBase((base) => mirrorItems(base, d.ids, d.a, d.b, d.flip, fitterFor(s)).doc);
+        return;
+      }
+
+      // V flips the hinge of the door or window being placed.
+      if (!mod && !e.shiftKey && e.key.toLowerCase() === 'v' && flipOpeningHand(plannerStore)) {
+        e.preventDefault();
         return;
       }
 

@@ -4,7 +4,6 @@ import {
   elementCenter,
   findElementNear,
   isNear,
-  nearestWall,
   placeOnWall,
   planBounds,
   pointInPolygon,
@@ -44,7 +43,8 @@ import { plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
 import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from '../lib/layers';
 import { SLAB_MM } from '../three/model';
-import { DOOR_WIDTH_MM, WINDOW_SIZE_MM } from '../lib/openingKinds';
+import { clampGap, type Hand } from '../lib/openingPlace';
+import { besideOpening, loneOpenings, nounOf, openingAt, refitOpening, tidy } from './openingAt';
 import { setActivePicker } from '../three/picker';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
@@ -100,6 +100,16 @@ export interface SiteSpec {
   /** The type of new doors and windows. */
   doorKind: DoorKind;
   windowKind: WindowKind;
+  /** Width of new doors (the type's own width when missing). */
+  doorWidthMm?: number;
+  /** New doors' hinge side, seen from the side they open into. */
+  doorHand: Hand;
+  /** Width, sill and height of new windows (the type's own when missing). */
+  windowWidthMm?: number;
+  windowSillMm?: number;
+  windowHeightMm?: number;
+  /** A material picked up from a door or window, for new ones (the chosen material when missing). */
+  openingMaterial?: Partial<Record<'door' | 'window', Id>>;
   stairShape: Stair['shape'];
   stairWidthMm: number;
   treadMm: number;
@@ -118,6 +128,7 @@ export const DEFAULT_SITE: SiteSpec = {
   gateWidthMm: 3048,
   doorKind: 'single',
   windowKind: 'sliding',
+  doorHand: 'right',
   stairShape: 'straight',
   stairWidthMm: 914.4,
   treadMm: 254,
@@ -318,7 +329,22 @@ export interface PlannerState {
   duplicateSelected: () => void;
 
   addWall: (a: Point, b: Point) => void;
-  placeOpening: (type: 'door' | 'window', p: Point) => void;
+  /**
+   * Place a door or window on the wall near p, or a typed distance from the nearer corner; false
+   * (with a warning saying why) when it doesn't fit.
+   */
+  placeOpening: (type: 'door' | 'window', p: Point, typedMm?: number) => boolean;
+  /** Gap kept between doors and windows and corners (and each other), in mm. */
+  openingGapMm: number;
+  setOpeningGapMm: (mm: number) => void;
+  /**
+   * A door or window picked up (Alt-click) or pasted: the next clicks place copies of it. Pasted
+   * ones (`stampQueue`) go down one per click, in turn; a picked-up one stays until the tool or its
+   * settings change.
+   */
+  openingStamp: Opening[];
+  stampQueue: boolean;
+  setOpeningStamp: (stamp: Opening[], queue?: boolean) => void;
   addFurniture: (p: Point) => void;
   /**
    * Give an item the chosen material. For a wall, `side` paints just one side (1 is side A, -1
@@ -414,6 +440,14 @@ export interface PlannerState {
   /** Replace an element; doors and windows follow their wall if it changed. */
   updateElement: (next: PlanElement) => void;
   flipOpening: (id: Id, which: 'side' | 'hinge') => void;
+  /**
+   * Change doors and windows together, as one undo step: `patch` gives each its new fields. A new
+   * width is fitted in the wall, clear of corners and other openings; one that doesn't fit keeps
+   * its old width (with a warning).
+   */
+  editOpenings: (ids: Id[], patch: (o: Opening) => Partial<Opening>) => void;
+  /** Move doors and windows the least they must to keep their gaps (one undo step); says which can't. */
+  fixOpeningGaps: (ids: Id[]) => void;
   nudgeSelected: (dx: number, dy: number) => void;
   /** Raise the selection by mm (lower it when negative); a window on its own moves its sill. */
   raiseSelected: (mm: number) => void;
@@ -442,7 +476,7 @@ export function createPlannerStore(
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
       const { showHints, pdfHints } = get();
-      const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars } = get();
+      const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm } = get();
       savePrefs({
         units,
         showDimensions,
@@ -455,6 +489,7 @@ export function createPlannerStore(
         pdfHints,
         mode,
         wallThicknessMm,
+        openingGapMm,
         marlaSqFt,
         paper,
         wallHeightMm,
@@ -543,6 +578,11 @@ export function createPlannerStore(
       furnitureKind: DEFAULT_FURNITURE_KIND,
       mode: prefs.mode,
       wallThicknessMm: prefs.wallThicknessMm,
+      openingGapMm: prefs.openingGapMm,
+      openingStamp: [],
+      stampQueue: false,
+      setOpeningStamp: (openingStamp, queue = false) =>
+        set({ openingStamp, stampQueue: queue && openingStamp.length > 0 }),
       marlaSqFt: prefs.marlaSqFt,
       paper: prefs.paper,
       wallHeightMm: prefs.wallHeightMm,
@@ -639,6 +679,8 @@ export function createPlannerStore(
         set((s) => ({
           tool,
           draft: null,
+          openingStamp: [],
+          stampQueue: false,
           warnings: [],
           selectedId: keep ? s.selectedId : null,
           selectedIds: keep ? s.selectedIds : [],
@@ -857,6 +899,33 @@ export function createPlannerStore(
       duplicateSelected: () => {
         const ids = get().selectedIds;
         if (!ids.length) return;
+        const lone = loneOpenings(get().doc, ids);
+        if (lone.length) {
+          // Doors and windows on their own: each copy goes beside its original, on the same wall.
+          let made: Id[] = [];
+          let misses = 0;
+          get().commit((doc) => {
+            made = [];
+            misses = 0;
+            let working = doc;
+            for (const o of lone) {
+              const copy = besideOpening(get(), working, o, newId());
+              if (!copy) misses += 1;
+              else {
+                working = { ...working, elements: [...working.elements, copy] };
+                made.push(copy.id);
+              }
+            }
+            return working;
+          });
+          if (made.length) get().setSelection(made);
+          get().setWarning(
+            misses
+              ? `No room on the wall for another ${nounOf(lone[0])} beside it: copy it (Ctrl+C) and paste it (Ctrl+V) onto another wall.`
+              : null,
+          );
+          return;
+        }
         const step = get().gridPx;
         let copies: Id[] = [];
         get().commit((doc) => {
@@ -882,35 +951,22 @@ export function createPlannerStore(
         } as PlanElement);
         updateElements((els) => [...els, wall]);
       },
-      placeOpening: (type, p) => {
-        const wall = nearestWall(get().levelElements(), p, get().hitTolerance() * 1.5);
-        if (!wall) {
-          get().setWarning(`Click on a wall to place a ${type}.`);
-          return;
+      placeOpening: (type, p, typedMm) => {
+        const at = openingAt(get(), type, p, typedMm);
+        if (!at.ok) {
+          get().setWarning(at.error);
+          return false;
         }
-        const { site } = get();
-        const gate = type === 'door' && site.gate;
-        const windowSize = WINDOW_SIZE_MM[site.windowKind];
-        const widthMm = gate ? site.gateWidthMm : type === 'door' ? DOOR_WIDTH_MM[site.doorKind] : windowSize.width;
-        const pos = placeOnWall(wall, p, mmToPx(widthMm));
-        updateElements((els) => [
-          ...els,
-          onActive<PlanElement>({
-            id: newId(),
-            type,
-            wallId: wall.id,
-            ...pos,
-            material: activeMat(),
-            ...(gate ? { gate: true } : {}),
-            ...(type === 'door' && !gate && site.doorKind !== 'single' && { doorKind: site.doorKind }),
-            ...(type === 'window' && {
-              windowKind: site.windowKind,
-              ...(windowSize.sillMm !== undefined && { sillMm: windowSize.sillMm }),
-              ...(windowSize.heightMm !== undefined && { heightMm: windowSize.heightMm }),
-            }),
-          }),
-        ]);
+        updateElements((els) => [...els, onActive<PlanElement>({ ...at.opening, id: newId() })]);
         get().setWarning(null);
+        // Pasted doors and windows go down one per click; after the last, back to selecting.
+        const { openingStamp, stampQueue } = get();
+        if (stampQueue) {
+          const rest = openingStamp.slice(1);
+          get().setTool(rest.length ? rest[0].type : 'select');
+          if (rest.length) set({ openingStamp: rest, stampQueue: true });
+        }
+        return true;
       },
       addFurniture: (p) => {
         const kind = get().furnitureKind;
@@ -1355,7 +1411,9 @@ export function createPlannerStore(
         if (hoverEdge || get().hoverEdge) set({ hoverEdge });
       },
       site: DEFAULT_SITE,
-      setSite: (patch) => set((st) => ({ site: { ...st.site, ...patch } })),
+      // New settings for the tools: a picked-up door or window gives way to them.
+      setSite: (patch) =>
+        set((st) => ({ site: { ...st.site, ...patch }, openingStamp: st.stampQueue ? st.openingStamp : [] })),
       addPlot: (points) => {
         const { site } = get();
         let plot: Plot = { id: newId(), type: 'plot', points, front: 2, setbacks: { ...site.setbacks } };
@@ -1459,6 +1517,10 @@ export function createPlannerStore(
       },
       setWallThicknessMm: (wallThicknessMm) => {
         set({ wallThicknessMm });
+        persistPrefs();
+      },
+      setOpeningGapMm: (mm) => {
+        set({ openingGapMm: clampGap(mm) });
         persistPrefs();
       },
       setMarlaSqFt: (marlaSqFt) => {
@@ -1593,6 +1655,57 @@ export function createPlannerStore(
         const el = get().doc.elements.find((e) => e.id === id);
         if (!el || (el.type !== 'door' && el.type !== 'window')) return;
         get().updateElement(which === 'side' ? { ...el, flipSide: !el.flipSide } : { ...el, flipHinge: !el.flipHinge });
+      },
+      editOpenings: (ids, patch) => {
+        let misfits: Opening[] = [];
+        get().commit((doc) => {
+          misfits = [];
+          let working = doc;
+          for (const id of ids) {
+            const o = working.elements.find(
+              (el): el is Opening => el.id === id && (el.type === 'door' || el.type === 'window'),
+            );
+            if (!o) continue;
+            const next = tidy({ ...o, ...patch(o) } as Opening);
+            const placed = next.width !== o.width && !o.flat ? refitOpening(get(), working, next) : next;
+            if (!placed) {
+              misfits.push(o);
+              continue;
+            }
+            working = { ...working, elements: working.elements.map((el) => (el.id === id ? placed : el)) };
+          }
+          return working;
+        });
+        const [first] = misfits;
+        get().setWarning(
+          !first
+            ? null
+            : misfits.length === 1
+              ? `The ${nounOf(first)} doesn't fit at that width here, with its gaps from the corners: it kept its width.`
+              : `${misfits.length} doors and windows don't fit at that width, with their gaps: they kept theirs.`,
+        );
+      },
+      fixOpeningGaps: (ids) => {
+        let stuck = 0;
+        get().commit((doc) => {
+          stuck = 0;
+          let working = doc;
+          for (const id of ids) {
+            const o = working.elements.find(
+              (el): el is Opening => el.id === id && (el.type === 'door' || el.type === 'window'),
+            );
+            if (!o) continue;
+            const moved = refitOpening(get(), working, o);
+            if (!moved) stuck += 1;
+            else working = { ...working, elements: working.elements.map((el) => (el.id === id ? moved : el)) };
+          }
+          return working;
+        });
+        get().setWarning(
+          stuck
+            ? `${stuck === 1 ? 'One door or window is' : `${stuck} doors and windows are`} too wide for its piece of wall with the gaps: make it narrower, or the gap smaller in Settings.`
+            : null,
+        );
       },
       nudgeSelected: (dx, dy) => {
         const { doc, selectedIds } = get();

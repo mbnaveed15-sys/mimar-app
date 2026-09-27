@@ -2,6 +2,7 @@ import { MARLA_OPTIONS, UNIT_LABELS } from '../lib/units';
 import { usePlanner } from '../store/plannerStore';
 import type { MarlaSqFt, PaperSize, Units } from '../types';
 import { LengthField } from './LengthField';
+import { MIN_OPENING_GAP_MM } from '../lib/openingPlace';
 
 /** Which way north points on the plan (for the PDF's north arrow). */
 const NORTH = [
@@ -30,6 +31,8 @@ export function SettingsPanel() {
   const setPaper = usePlanner((s) => s.setPaper);
   const plinthMm = usePlanner((s) => s.doc.plinthMm);
   const setPlinthMm = usePlanner((s) => s.setPlinthMm);
+  const openingGapMm = usePlanner((s) => s.openingGapMm);
+  const setOpeningGapMm = usePlanner((s) => s.setOpeningGapMm);
 
   return (
     <div className="flex flex-col gap-2 text-xs">
@@ -71,6 +74,14 @@ export function SettingsPanel() {
         units={units}
         min={0}
         onCommit={(mm) => setPlinthMm(mm)}
+      />
+      <LengthField
+        id="opening-gap"
+        label="Doors and windows: gap from wall corners"
+        mm={openingGapMm}
+        units={units}
+        min={MIN_OPENING_GAP_MM}
+        onCommit={(mm) => setOpeningGapMm(mm)}
       />
       <label htmlFor="north" className="font-medium">
         North points

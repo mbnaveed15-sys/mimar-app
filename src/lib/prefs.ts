@@ -1,5 +1,6 @@
 import { DEFAULT_THEME, isThemeId, type ThemeId } from '../theme/themes';
 import type { MarlaSqFt, Mode, PaperSize, Units } from '../types';
+import { clampGap, DEFAULT_OPENING_GAP_MM } from './openingPlace';
 import { browserStorage } from './storage';
 import { GRID_MM } from './units';
 import { DEFAULT_TOOLBARS, readToolbars, type ToolbarLayout } from './toolbars';
@@ -56,6 +57,8 @@ export interface Prefs {
   mode: Mode;
   /** Thickness for new walls, in millimetres. */
   wallThicknessMm: number;
+  /** Gap kept between doors and windows and wall corners (and each other), in millimetres. */
+  openingGapMm: number;
   marlaSqFt: MarlaSqFt;
   paper: PaperSize;
   /** Wall height in the 3D view, in millimetres. */
@@ -79,6 +82,7 @@ export const DEFAULT_PREFS: Prefs = {
   pdfHints: false,
   mode: 'simple',
   wallThicknessMm: 228.6,
+  openingGapMm: DEFAULT_OPENING_GAP_MM,
   marlaSqFt: 225,
   paper: 'A4',
   wallHeightMm: 3048,
@@ -143,6 +147,7 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       pdfHints: raw?.pdfHints === true,
       mode: raw?.mode === 'pro' ? 'pro' : 'simple',
       wallThicknessMm: thickness >= 25 && thickness <= 1000 ? thickness : DEFAULT_PREFS.wallThicknessMm,
+      openingGapMm: clampGap(raw?.openingGapMm),
       marlaSqFt: raw?.marlaSqFt === 272.25 ? 272.25 : 225,
       paper: raw?.paper === 'A3' ? 'A3' : 'A4',
       wallHeightMm:
