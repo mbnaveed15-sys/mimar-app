@@ -1,5 +1,6 @@
 import { wallLength, withWallLength } from '../geometry';
-import { FURNITURE_CATALOG } from '../furniture/catalog';
+import { FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
+import { sideName, USE_ZONES, zoneOf } from '../furniture/useZones';
 import { stairLayout } from '../lib/site';
 import { SLAB_MM, WINDOW_SILL_MM } from '../three/model';
 import { formatArea, formatLength, formatMarla } from '../lib/units';
@@ -7,7 +8,7 @@ import { WINDOW_HEIGHT_MM } from '../lib/shapes';
 import { withShapeDepth } from '../lib/pushPull';
 import { roomAreaSqMm } from '../rooms';
 import { KIND_HEIGHT_MM, MM_PER_UNIT, usePlanner } from '../store/plannerStore';
-import type { DoorKind, Opening, PlanElement, Stair, Wall, WindowKind } from '../types';
+import type { DoorKind, Opening, PlanElement, Stair, Units, Wall, WindowKind } from '../types';
 import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
 import { thicknessOf } from '../walls';
 import { useLevelDoc } from '../store/useLevelDoc';
@@ -537,6 +538,7 @@ export function Inspector() {
                     className="rounded-sm border p-1 tabular-nums"
                   />
                 </div>
+                {el.kind && <UseZoneNote kind={el.kind} units={units} />}
                 <div className="text-muted">Drag the corner handle to resize, the top handle to rotate.</div>
               </>
             )}
@@ -641,6 +643,28 @@ export function Inspector() {
           </ul>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The free space a library item needs to be used, and where the figures come from. */
+function UseZoneNote({ kind, units }: { kind: FurnitureKind; units: Units }) {
+  const accessible = usePlanner((s) => s.accessibleZones);
+  const zone = zoneOf(kind, accessible);
+  if (!zone) return null;
+  const len = (mm: number) => formatLength(mm, units);
+  const parts = [
+    zone.front && `${len(zone.front)} ${sideName(zone, 'front')}`,
+    zone.back && `${len(zone.back)} ${sideName(zone, 'back')}`,
+    zone.sides && `${len(zone.sides)} ${sideName(zone, 'left')}`,
+  ].filter(Boolean);
+  return (
+    <div data-testid="use-zone-note">
+      Free space to use it: {parts.join(', ')}.{' '}
+      <span className="text-muted">
+        {accessible && USE_ZONES[kind]?.accessible ? 'Wheelchair space, ' : ''}
+        {USE_ZONES[kind]?.source}.
+      </span>
     </div>
   );
 }

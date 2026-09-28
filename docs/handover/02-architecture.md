@@ -170,6 +170,14 @@ autosaves to local storage on every change.
   (`tightOpenings` in `planHints.ts`).
 - Plants and garden items are ordinary furniture kinds (`furniture/catalog.ts`, categories Plants and Garden);
   `isPlant` gives them a green plan fill; their 3D forms are stacked boxes in `furnitureSolids`.
+- Furniture use zones (1.33): `src/furniture/useZones.ts` holds `USE_ZONES` (free space in mm in front, behind and at
+  the sides of each library kind, an optional ADA wheelchair zone, and a source), `zoneRects` (in the item's own
+  frame: centred, back at the top) and `zoneSamples` (lines of test points out from the item). `blockedZones` in
+  `planHints.ts` finds zones where a wall or another item stands in half the width or more (`oneSide` items need
+  only one side free) and gives the `zone-<id>` hints. `FurnitureShape` draws the zone round a selected item; the
+  side panel's `UseZoneNote` gives the figures and source. The preference `accessibleZones` (Settings) picks the
+  ADA zones. Figures are public-domain ADA 2010 values or marked "General practice": never copy from copyrighted
+  handbooks (the owner's Architectural Graphic Standards disc is encrypted and not to be used).
 - Materials: `src/lib/materials.ts` (library), `patterns.ts` (procedural textures for 3D and swatches).
 
 ## Exports

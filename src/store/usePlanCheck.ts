@@ -5,7 +5,14 @@ import { usePlanner } from './plannerStore';
 
 // One result shared by every part of the screen (the panel and the marks), worked out once per change.
 let lastCheck: { doc: PlanDoc; wallHeightMm: number; units: Units; result: PlanCheck | null } | null = null;
-let lastHints: { doc: PlanDoc; units: Units; check: PlanCheck | null; gapMm: number; result: Hint[] } | null = null;
+let lastHints: {
+  doc: PlanDoc;
+  units: Units;
+  check: PlanCheck | null;
+  gapMm: number;
+  accessible: boolean;
+  result: Hint[];
+} | null = null;
 
 function checkFor(doc: PlanDoc, wallHeightMm: number, units: Units): PlanCheck | null {
   if (lastCheck?.doc !== doc || lastCheck.wallHeightMm !== wallHeightMm || lastCheck.units !== units)
@@ -13,11 +20,24 @@ function checkFor(doc: PlanDoc, wallHeightMm: number, units: Units): PlanCheck |
   return lastCheck.result;
 }
 
-function hintsFor(doc: PlanDoc, units: Units, check: PlanCheck | null, gapMm: number): Hint[] {
-  if (lastHints?.doc !== doc || lastHints.units !== units || lastHints.check !== check || lastHints.gapMm !== gapMm) {
+function hintsFor(doc: PlanDoc, units: Units, check: PlanCheck | null, gapMm: number, accessible: boolean): Hint[] {
+  if (
+    lastHints?.doc !== doc ||
+    lastHints.units !== units ||
+    lastHints.check !== check ||
+    lastHints.gapMm !== gapMm ||
+    lastHints.accessible !== accessible
+  ) {
     // Rooms the bylaws already find too small get no size hint as well.
     const skipSizes = new Set(check?.rows.find((r) => r.id === 'rooms')?.ids ?? []);
-    lastHints = { doc, units, check, gapMm, result: planHints(doc, { units, skipSizes, gapMm }) };
+    lastHints = {
+      doc,
+      units,
+      check,
+      gapMm,
+      accessible,
+      result: planHints(doc, { units, skipSizes, gapMm, accessible }),
+    };
   }
   return lastHints.result;
 }
@@ -42,8 +62,9 @@ export function usePlanHints(): Hint[] {
   const units = usePlanner((s) => s.units);
   const show = usePlanner((s) => s.showHints);
   const gapMm = usePlanner((s) => s.openingGapMm);
+  const accessible = usePlanner((s) => s.accessibleZones);
   const check = usePlanCheck();
-  return show ? hintsFor(doc, units, check, gapMm) : NONE;
+  return show ? hintsFor(doc, units, check, gapMm, accessible) : NONE;
 }
 
 const NONE: Hint[] = [];

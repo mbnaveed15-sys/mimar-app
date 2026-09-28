@@ -2,6 +2,7 @@ import { FurnitureSymbol } from '../../furniture/FurnitureSymbol';
 import type { Furniture } from '../../types';
 import { PLAN } from '../../theme/plan';
 import { isPlant } from '../../furniture/catalog';
+import { zoneOf, zoneRects } from '../../furniture/useZones';
 
 /** Plants and garden greenery on the plan, unless painted. */
 const PLANT_FILL = '#cfe3c1';
@@ -12,11 +13,15 @@ interface Props {
   selected: boolean;
   /** Plan units per screen pixel. */
   k: number;
+  /** Show the wheelchair (ADA) use zone where the item has one. */
+  accessible?: boolean;
 }
 
-export function FurnitureShape({ item, color, selected, k }: Props) {
+export function FurnitureShape({ item, color, selected, k, accessible }: Props) {
   const { w, h } = item;
   const showLabel = item.label !== undefined || !item.kind;
+  // The free space it needs to be used, shown while it is selected.
+  const zone = selected ? zoneOf(item.kind, accessible) : null;
   return (
     <g
       data-type="furniture"
@@ -43,6 +48,23 @@ export function FurnitureShape({ item, color, selected, k }: Props) {
           rx={6}
         />
       )}
+      {zone &&
+        zoneRects(zone, w, h).map((r) => (
+          <rect
+            key={r.side}
+            data-testid="use-zone"
+            x={r.x}
+            y={r.y}
+            width={r.w}
+            height={r.h}
+            pointerEvents="none"
+            style={{ fill: PLAN.selection, stroke: PLAN.selection }}
+            fillOpacity={0.08}
+            strokeOpacity={0.6}
+            strokeWidth={k}
+            strokeDasharray={`${3 * k} ${3 * k}`}
+          />
+        ))}
       {selected && (
         <rect
           x={-w / 2 - 3 * k}

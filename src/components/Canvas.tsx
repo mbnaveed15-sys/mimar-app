@@ -60,6 +60,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const showFurniture = usePlanner((s) => s.showFurniture);
   const showRoomLabels = usePlanner((s) => s.showRoomLabels);
   const showRoomFills = usePlanner((s) => s.showRoomFills);
+  const accessibleZones = usePlanner((s) => s.accessibleZones);
   const tool = usePlanner((s) => s.tool);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
   const touchInput = usePlanner((s) => s.touchInput);
@@ -211,6 +212,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         showRoomLabels={showRoomLabels}
         showRoomFills={showRoomFills}
         k={k}
+        accessibleZones={accessibleZones}
       />
 
       <CheckMarks elements={doc.elements} rooms={doc.rooms} k={k} />

@@ -27,6 +27,8 @@ export interface PlanDrawingProps {
   showRoomFills: boolean;
   /** Plan units per screen (or output) pixel, for line widths and text that keep a fixed size. */
   k: number;
+  /** Selected furniture shows its use zone sized for a wheelchair user (ADA), where that differs. */
+  accessibleZones?: boolean;
 }
 
 /**
@@ -95,7 +97,16 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
           }
           case 'furniture':
             if (!showFurniture) return null;
-            return <FurnitureShape key={el.id} item={el} color={color} selected={isSelected} k={k} />;
+            return (
+              <FurnitureShape
+                key={el.id}
+                item={el}
+                color={color}
+                selected={isSelected}
+                k={k}
+                accessible={props.accessibleZones}
+              />
+            );
           case 'column':
             return <ColumnShape key={el.id} col={el} selected={isSelected} color={color} k={k} />;
           case 'beam':

@@ -20,6 +20,7 @@ export function SettingsPanel() {
   const pdfCheck = usePlanner((s) => s.pdfCheck);
   const showHints = usePlanner((s) => s.showHints);
   const pdfHints = usePlanner((s) => s.pdfHints);
+  const accessibleZones = usePlanner((s) => s.accessibleZones);
   const northDeg = usePlanner((s) => s.doc.northDeg ?? 0);
   const setNorthDeg = usePlanner((s) => s.setNorthDeg);
   const setLayer = usePlanner((s) => s.setLayer);
@@ -127,6 +128,14 @@ export function SettingsPanel() {
           onChange={(e) => setLayer('pdfHints', e.target.checked)}
         />
         Add the plan hints to PDFs
+      </label>
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={accessibleZones}
+          onChange={(e) => setLayer('accessibleZones', e.target.checked)}
+        />
+        Wheelchair space round WCs, basins, showers and cars (ADA)
       </label>
     </div>
   );

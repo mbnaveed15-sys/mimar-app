@@ -70,10 +70,10 @@ export function exportPlanPng() {
 export function exportPlanPdf() {
   if (emptyFloor()) return;
   const { paper, units, marlaSqFt, setWarning, pdfCheck, doc, wallHeightMm } = plannerStore.getState();
-  const { showHints, pdfHints, openingGapMm: gapMm } = plannerStore.getState();
+  const { showHints, pdfHints, openingGapMm: gapMm, accessibleZones: accessible } = plannerStore.getState();
   const check = planCheck(doc, { wallHeightMm, units });
   const skipSizes = new Set(check?.rows.find((r) => r.id === 'rooms')?.ids ?? []);
-  const hints = showHints && pdfHints ? planHints(doc, { units, skipSizes, gapMm }).map((h) => h.text) : [];
+  const hints = showHints && pdfHints ? planHints(doc, { units, skipSizes, gapMm, accessible }).map((h) => h.text) : [];
   const name = exportName();
   // The same covered area as the plan check: to the walls' outer faces, without open-air rooms.
   const covered = builtAreaSqFt(doc, plannerStore.getState().activeLevel) * SQ_MM_PER_SQ_FT;
