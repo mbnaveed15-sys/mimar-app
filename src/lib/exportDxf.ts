@@ -9,7 +9,9 @@ import { outlinePoints, plotSides, sideOutward } from './plot';
 import { buildableArea, stairLayout } from './site';
 import { formatArea, formatLength, formatMarla } from './units';
 import { sectionLook } from './drawings/refs';
+import { formatLevel } from './drawings/levels';
 import type { SideDrawing } from './drawings/views';
+import { groundOnPlan, type GroundOnPlan } from './terrain/groundView';
 
 /** Layers, with AutoCAD colour numbers and line types, named the usual way (AIA style). */
 const LAYERS = {
@@ -35,6 +37,13 @@ const LAYERS = {
   'A-SECT-OUTL': { color: 7, ltype: 'CONTINUOUS' },
   'A-SECT-BYND': { color: 8, ltype: 'CONTINUOUS' },
   'A-SECT-GRND': { color: 32, ltype: 'CONTINUOUS' },
+  'C-TOPO-SECT': { color: 32, ltype: 'DASHED' },
+  'C-TOPO-MAJR': { color: 32, ltype: 'CONTINUOUS' },
+  'C-TOPO-MINR': { color: 33, ltype: 'CONTINUOUS' },
+  'C-TOPO-SPOT': { color: 2, ltype: 'CONTINUOUS' },
+  'C-TOPO-GRAD': { color: 3, ltype: 'CONTINUOUS' },
+  'C-CTXT-BLDG': { color: 8, ltype: 'CONTINUOUS' },
+  'C-CTXT-ROAD': { color: 9, ltype: 'CONTINUOUS' },
   'A-ANNO-LEVL': { color: 2, ltype: 'CONTINUOUS' },
   'A-ANNO-TTLB': { color: 7, ltype: 'CONTINUOUS' },
 } as const;
@@ -46,6 +55,11 @@ export interface DxfOptions {
   showDimensions: boolean;
   showFurniture: boolean;
   showRoomLabels: boolean;
+  /**
+   * The ground's contour lines (worked out from the whole plan, on the ground floor only; null for
+   * none). Worked out from the plan given when missing.
+   */
+  ground?: GroundOnPlan | null;
 }
 
 /** Text height on paper-like scale: 150 mm reads well at 1:100. */
@@ -388,6 +402,8 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
     }
   }
 
+  drawGround(dxf, doc, opts);
+
   for (const r of doc.rooms) {
     dxf.poly('A-AREA', r.points);
     if (!opts.showRoomLabels) continue;
@@ -452,6 +468,74 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
   });
 }
 
+/** A line's middle point along its length (for its label). */
+function midPoint(pts: Point[]): Point {
+  const lens = pts.slice(1).map((p, i) => Math.hypot(p.x - pts[i].x, p.y - pts[i].y));
+  let left = lens.reduce((a, b) => a + b, 0) / 2;
+  for (let i = 0; i < lens.length; i++) {
+    if (left <= lens[i] && lens[i] > 0) {
+      const t = left / lens[i];
+      return { x: pts[i].x + (pts[i + 1].x - pts[i].x) * t, y: pts[i].y + (pts[i + 1].y - pts[i].y) * t };
+    }
+    left -= lens[i];
+  }
+  return pts[0];
+}
+
+/**
+ * The site: contour lines worked out from the ground (heavier ones labelled), spot levels and drawn
+ * contours, levelled areas with their finished level, and the neighbouring buildings and roads.
+ * These items belong to the ground floor, so they only come with its plan.
+ */
+function drawGround(dxf: Dxf, doc: PlanDoc, opts: DxfOptions) {
+  const ground = opts.ground !== undefined ? opts.ground : groundOnPlan(doc, opts.units === 'metric');
+  for (const c of ground?.contours ?? [])
+    for (const line of c.lines) {
+      if (line.length < 2) continue;
+      const closed = line.length > 2 && line[0].x === line[line.length - 1].x && line[0].y === line[line.length - 1].y;
+      const pts = closed ? line.slice(0, -1) : line;
+      dxf.poly(c.major ? 'C-TOPO-MAJR' : 'C-TOPO-MINR', pts, closed);
+      if (c.major) dxf.text('C-TOPO-MAJR', midPoint(line), formatLevel(c.zMm, opts.units), 0, TEXT_MM * 0.6);
+    }
+  const arm = 100 / MM_PER_UNIT;
+  for (const el of doc.elements)
+    switch (el.type) {
+      case 'level':
+        dxf.line('C-TOPO-SPOT', { x: el.x - arm, y: el.y - arm }, { x: el.x + arm, y: el.y + arm });
+        dxf.line('C-TOPO-SPOT', { x: el.x - arm, y: el.y + arm }, { x: el.x + arm, y: el.y - arm });
+        dxf.text(
+          'C-TOPO-SPOT',
+          { x: el.x + arm * 5, y: el.y - arm * 1.5 },
+          `${el.approx ? '~' : ''}${formatLevel(el.zMm, opts.units)}`,
+          0,
+          TEXT_MM * 0.6,
+        );
+        break;
+      case 'contour': {
+        if (el.points.length < 2) break;
+        const last = el.points[el.points.length - 1];
+        const closed = el.points.length > 2 && last.x === el.points[0].x && last.y === el.points[0].y;
+        dxf.poly('C-TOPO-SPOT', closed ? el.points.slice(0, -1) : el.points, closed);
+        dxf.text('C-TOPO-SPOT', midPoint(el.points), formatLevel(el.zMm, opts.units), 0, TEXT_MM * 0.6);
+        break;
+      }
+      case 'pad':
+        if (el.points.length < 3) break;
+        dxf.poly('C-TOPO-GRAD', el.points);
+        dxf.text('C-TOPO-GRAD', labelPoint(el.points), `FGL ${formatLevel(el.zMm, opts.units)}`, 0, TEXT_MM * 0.8);
+        break;
+      case 'context':
+        if (el.kind === 'building') {
+          if (el.points.length >= 3) dxf.poly('C-CTXT-BLDG', el.points);
+          if (el.name && el.points.length >= 3) dxf.text('C-CTXT-BLDG', labelPoint(el.points), el.name);
+        } else if (el.points.length >= 2) {
+          dxf.poly('C-CTXT-ROAD', el.points, false);
+          if (el.name) dxf.text('C-CTXT-ROAD', midPoint(el.points), el.name);
+        }
+        break;
+    }
+}
+
 /** Space between drawings laid side by side in a DXF, in millimetres. */
 const DRAWING_GAP_MM = 4000;
 
@@ -485,17 +569,31 @@ export function sideDrawingsToDxf(drawings: SideDrawing[]): string {
         );
     }
     for (const l of d.lines) dxf.line(l.heavy ? 'A-SECT-OUTL' : 'A-SECT-BYND', at(...l.a), at(...l.b));
-    dxf.line('A-SECT-GRND', at(d.ground.u0, 0), at(d.ground.u1, 0));
+    // The ground: the finished ground solid, and the natural ground dashed where it differs.
+    if (d.profile?.finished.length)
+      dxf.poly(
+        'A-SECT-GRND',
+        d.profile.finished.map(([u, v]) => at(u, v)),
+        false,
+      );
+    else dxf.line('A-SECT-GRND', at(d.ground.u0, 0), at(d.ground.u1, 0));
+    for (const run of d.profile?.natural ?? [])
+      dxf.poly(
+        'C-TOPO-SECT',
+        run.map(([u, v]) => at(u, v)),
+        false,
+      );
     const right = Math.max(b.maxU, d.ground.u1);
     for (const m of d.levels) {
       const p = at(right + 0.4, m.v);
       dxf.line('A-ANNO-LEVL', at(right, m.v), at(right + 1.2, m.v));
       dxf.text('A-ANNO-LEVL', { x: p.x + 1800, y: p.y - 150 }, `${m.label} ${m.name}`, 0, 150);
     }
-    const bottom = Math.min(b.minV, 0) - 0.9;
+    const groundVs = d.profile ? [...d.profile.finished, ...d.profile.natural.flat()].map((p) => p[1]) : [];
+    const bottom = Math.min(b.minV, 0, ...groundVs) - 0.9;
     dxf.text('A-ANNO-TTLB', at((left + right) / 2, bottom), d.title.toUpperCase(), 0, 300);
     minV = Math.min(minV, bottom);
-    maxV = Math.max(maxV, b.maxV);
+    maxV = Math.max(maxV, b.maxV, ...groundVs);
     x0 += (right + 3.5 - left) * 1000 + DRAWING_GAP_MM;
   }
   return dxf.build({ min: { x: 0, y: minV * 1000 }, max: { x: Math.max(x0, 1000), y: maxV * 1000 } });

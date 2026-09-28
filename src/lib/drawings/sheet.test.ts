@@ -2,9 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_PREFS } from '../prefs';
 import { emptyDoc } from '../storage';
 import { createPlannerStore } from '../../store/plannerStore';
-import { layoutSheet, planArea, sheetsOf, sidePrims, suggestedSheets, type Prim, type SheetSource } from './sheet';
+import {
+  layoutSheet,
+  NATURAL_DASH,
+  PEN,
+  planArea,
+  sheetsOf,
+  sidePrims,
+  suggestedSheets,
+  type Prim,
+  type SheetSource,
+} from './sheet';
 import { sectionLines, sideCache } from './views';
-import type { PlanDoc, Sheet } from '../../types';
+import type { PlanDoc, PlanElement, Sheet } from '../../types';
 
 const ft = (f: number) => (f * 304.8) / 10;
 const OPTS = { wallHeightMm: 3048, units: 'imperial' as const };
@@ -114,5 +124,39 @@ describe('sheets', () => {
     // Twice the scale, half the size.
     expect(at(50)).toBeCloseTo(2 * at(100), 3);
     expect(texts(sidePrims(d, 100, 0, 0))).toEqual(expect.arrayContaining([`±0'-0"`, 'Natural ground']));
+  });
+
+  it('draws the ground as it is: the finished ground solid, the natural ground dashed', () => {
+    const doc = house();
+    const level = (id: string, y: number, zMm: number): PlanElement => ({ id, type: 'level', x: ft(10), y, zMm });
+    const sloping: PlanDoc = {
+      ...doc,
+      elements: [...doc.elements, level('l1', -ft(20), 0), level('l2', ft(50), -2000)],
+      ground: { levelMm: -500 },
+    };
+    // A levelled area under the front half of the house, so the natural ground shows beside it.
+    sloping.elements.push({
+      id: 'pad',
+      type: 'pad',
+      zMm: -500,
+      points: [
+        { x: -ft(5), y: -ft(5) },
+        { x: ft(25), y: -ft(5) },
+        { x: ft(25), y: ft(15) },
+        { x: -ft(5), y: ft(15) },
+      ],
+    });
+    // A section down the page, along the slope.
+    sloping.elements.push({ id: 'b', type: 'section', x1: ft(10), y1: -ft(10), x2: ft(10), y2: ft(40), label: 'B' });
+    const src = source(sloping);
+    const d = src.side({ kind: 'section', id: 'b' })!;
+    const prims = sidePrims(d, 100, 0, 0);
+    const lines = prims.filter((p): p is Extract<Prim, { t: 'line' }> => p.t === 'line');
+    const groundLines = lines.filter((p) => p.w === PEN.ground);
+    // Not one straight line: it follows the ground.
+    expect(groundLines.length).toBeGreaterThan(1);
+    expect(groundLines.some((p) => Math.abs(p.a[1] - p.b[1]) > 0.1)).toBe(true);
+    expect(lines.some((p) => p.dash === NATURAL_DASH)).toBe(true);
+    expect(texts(prims)).toEqual(expect.arrayContaining([`±0'-0"`, 'Road level (datum)']));
   });
 });

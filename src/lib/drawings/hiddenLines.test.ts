@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeLines, project, rightOf, type Line2, type Prism, type ViewFrame } from './hiddenLines';
+import { groundAt, mergeLines, project, rightOf, type Line2, type Prism, type ViewFrame } from './hiddenLines';
 
 /** A box in scene metres: x0..x0+w, z0..z0+d, y0..y0+h. */
 const box = (x0: number, z0: number, w: number, d: number, y0 = 0, h = 1): Prism => ({
@@ -99,5 +99,35 @@ describe('hidden lines', () => {
     expect(merged.map(round)).toHaveLength(4);
     expect(has(merged, [0, 0], [2, 0])).toBe(true);
     expect(has(merged, [5, 0], [6, 0])).toBe(true);
+  });
+});
+
+describe('ground on an elevation', () => {
+  it('leaves out what is below a sloping ground line, and keeps what is above it', () => {
+    // A 4 m wide, 3 m tall box, with the ground rising from 0 at its left to 2 m at its right.
+    const ground: [number, number][] = [
+      [-1, 0],
+      [0, 0],
+      [4, 2],
+      [5, 2],
+    ];
+    const p = project([box(0, 0, 4, 1, 0, 3)], { ...ELEVATION, ground });
+    expect(p.lines.length).toBeGreaterThan(0);
+    for (const l of p.lines)
+      for (const [u, v] of [l.a, l.b]) expect(v).toBeGreaterThanOrEqual(groundAt(ground, u) - 1e-6);
+    // The top is whole; the right side only shows above 2 m; the bottom is buried.
+    expect(has(p.lines, [0, 3], [4, 3])).toBe(true);
+    expect(has(p.lines, [4, 2], [4, 3])).toBe(true);
+    expect(p.lines.some((l) => l.a[1] < 1e-6 && l.b[1] < 1e-6 && Math.abs(l.a[0] - l.b[0]) > 1)).toBe(false);
+  });
+
+  it('reads the ground level beyond its ends', () => {
+    const ground: [number, number][] = [
+      [0, 1],
+      [2, 3],
+    ];
+    expect(groundAt(ground, -5)).toBe(1);
+    expect(groundAt(ground, 1)).toBeCloseTo(2);
+    expect(groundAt(ground, 9)).toBe(3);
   });
 });

@@ -220,7 +220,7 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
         />
       )}
 
-      {(d?.type === 'rectangle' || d?.type === 'slab' || d?.type === 'plot') && (
+      {(d?.type === 'rectangle' || d?.type === 'slab' || d?.type === 'plot' || d?.type === 'pad') && (
         <>
           <rect
             data-testid={`${d.type}-draft`}
@@ -239,6 +239,29 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
           <Label p={{ x: Math.max(d.x1, d.x2) + 8 * k, y: (d.y1 + d.y2) / 2 }} k={k} color={PLAN.draft}>
             {len({ x: 0, y: d.y1 }, { x: 0, y: d.y2 })}
           </Label>
+        </>
+      )}
+
+      {d?.type === 'contour' && (
+        <>
+          <polyline
+            data-testid="contour-draft"
+            points={[...d.points, d.cursor].map((p) => `${p.x},${p.y}`).join(' ')}
+            fill="none"
+            style={{ stroke: PLAN.draft }}
+            strokeWidth={1.5 * k}
+            strokeDasharray={dash}
+          />
+          {d.points.map((p, i) => (
+            <circle
+              key={i}
+              cx={p.x}
+              cy={p.y}
+              r={(i === 0 && d.points.length >= 3 ? 6 : 3) * k}
+              style={{ fill: i === 0 ? PLAN.paper : PLAN.draft, stroke: PLAN.draft }}
+              strokeWidth={1.5 * k}
+            />
+          ))}
         </>
       )}
 

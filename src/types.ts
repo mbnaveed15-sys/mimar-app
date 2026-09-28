@@ -298,12 +298,89 @@ export interface SectionLine extends Grouped {
   material?: Id;
 }
 
-export type PlanElement =
-  Wall | Opening | Furniture | Column | Beam | Slab | Plot | Stair | SketchLine | Block | SectionLine;
+/**
+ * A spot level: the height of the natural ground at a point, above the datum (±0, the road level at
+ * the middle of the plot's road side), as on a survey sheet. Always on the ground floor.
+ */
+export interface SpotLevel extends Grouped {
+  id: Id;
+  type: 'level';
+  x: number;
+  y: number;
+  /** Height above the datum, in millimetres (below it when negative). */
+  zMm: number;
+  /** From satellite data (SRTM), roughly 30 m apart: only a guide, and a survey wins where both exist. */
+  approx?: boolean;
+  material?: Id;
+}
 
-/** Items outlined by a list of points. */
-export const hasPoints = (el: PlanElement): el is Slab | Plot | Block =>
-  el.type === 'slab' || el.type === 'plot' || el.type === 'block';
+/** A contour line of the natural ground: every point of it at one height (above the datum, mm). */
+export interface Contour extends Grouped {
+  id: Id;
+  type: 'contour';
+  /** The line, click by click (two or more points; closed when its last point is its first). */
+  points: Point[];
+  zMm: number;
+  material?: Id;
+}
+
+/** A finished-ground area (a building pad or a terrace): the ground inside it is levelled to one height. */
+export interface Pad extends Grouped {
+  id: Id;
+  type: 'pad';
+  points: Point[];
+  zMm: number;
+  material?: Id;
+}
+
+/** Surroundings fetched from OpenStreetMap: a neighbouring building (a block) or a road (a strip). */
+export interface ContextItem extends Grouped {
+  id: Id;
+  type: 'context';
+  kind: 'building' | 'road';
+  /** A building's outline, or a road's centre line. */
+  points: Point[];
+  /** A building's height, mm. */
+  heightMm?: number;
+  /** A road's width, mm. */
+  widthMm?: number;
+  /** Its name on the map (a road's name), when it has one. */
+  name?: string;
+  material?: Id;
+}
+
+export type PlanElement =
+  | Wall
+  | Opening
+  | Furniture
+  | Column
+  | Beam
+  | Slab
+  | Plot
+  | Stair
+  | SketchLine
+  | Block
+  | SectionLine
+  | SpotLevel
+  | Contour
+  | Pad
+  | ContextItem;
+
+/** Items outlined (or, for contours and roads, drawn) by a list of points. */
+export type PointsElement = Slab | Plot | Block | Contour | Pad | ContextItem;
+
+/** Items outlined (or, for contours and roads, drawn) by a list of points. */
+export const hasPoints = (el: PlanElement): el is PointsElement =>
+  el.type === 'slab' ||
+  el.type === 'plot' ||
+  el.type === 'block' ||
+  el.type === 'contour' ||
+  el.type === 'pad' ||
+  el.type === 'context';
+
+/** Ground items: spot levels, contours, finished-ground pads and the surroundings (always on the ground floor). */
+export const isSiteItem = (el: PlanElement): el is SpotLevel | Contour | Pad | ContextItem =>
+  el.type === 'level' || el.type === 'contour' || el.type === 'pad' || el.type === 'context';
 
 /** A floor of the building. Levels stack in list order, starting with the ground floor. */
 export interface Level {
@@ -382,6 +459,22 @@ export interface PlanDoc {
   project?: ProjectSettings;
   /** The drawing sheets printed to PDF; the suggested set (worked out from the plan) when missing. */
   sheets?: Sheet[];
+  /** How the ground is shown and finished (flat at ±0 and levelled there when missing). */
+  ground?: GroundSettings;
+  /** Where the site is on the map, for the surroundings and satellite levels. */
+  location?: { lat: number; lon: number };
+}
+
+/** The finished ground and how the ground is drawn. */
+export interface GroundSettings {
+  /** Inside the plot the ground is levelled to `levelMm` (the default), or left as it is. */
+  grade?: 'level' | 'natural';
+  /** The height the plot is levelled to, mm above the datum (0, the road level, when missing). */
+  levelMm?: number;
+  /** Contour interval on the plan, mm (1' or 0.5 m when missing). */
+  contourMm?: number;
+  /** Tint the plan red where earth is cut and blue where it is filled (on when missing). */
+  cutFill?: boolean;
 }
 
 /** An elevation: the building seen from one side (the front is the plot's road side). */
@@ -463,7 +556,10 @@ export type Tool =
   | 'line'
   | 'shape'
   | 'pushpull'
-  | 'section';
+  | 'section'
+  | 'level'
+  | 'contour'
+  | 'pad';
 
 /** Every tool, in tool-rail order. */
 export const TOOLS: Tool[] = [
@@ -486,6 +582,9 @@ export const TOOLS: Tool[] = [
   'shape',
   'pushpull',
   'section',
+  'level',
+  'contour',
+  'pad',
   'move',
   'rotate',
   'tape',
@@ -527,6 +626,10 @@ export type Draft =
   | { type: 'plot'; x1: number; y1: number; x2: number; y2: number }
   /** A plot drawn corner by corner: the corners so far, and where the pointer is. */
   | { type: 'plotPoly'; points: Point[]; cursor: Point }
+  /** A contour line drawn click by click: its points so far, and where the pointer is. */
+  | { type: 'contour'; points: Point[]; cursor: Point }
+  /** A levelled area (pad) dragged or clicked out as a rectangle. */
+  | { type: 'pad'; x1: number; y1: number; x2: number; y2: number }
   | {
       type: 'tape';
       a: Point;

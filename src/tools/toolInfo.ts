@@ -22,6 +22,9 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
   shape: { label: 'Shape', icon: 'shape', key: 'Shift+R' },
   pushpull: { label: 'Push/Pull', icon: 'pushpull', key: 'P' },
   section: { label: 'Section', icon: 'section', key: 'Shift+E' },
+  level: { label: 'Spot level', icon: 'level', key: 'Shift+G' },
+  contour: { label: 'Contour', icon: 'contour', key: 'Shift+O' },
+  pad: { label: 'Levelled area', icon: 'pad', key: 'Shift+T' },
   move: { label: 'Move', icon: 'move', key: 'M' },
   rotate: { label: 'Rotate', icon: 'rotate', key: 'Q' },
   tape: { label: 'Tape measure', icon: 'tape', key: 'T' },
@@ -57,5 +60,8 @@ export const DRAW_TOOLS: Tool[] = [
   'furniture',
   'shape',
   'section',
+  'level',
+  'contour',
+  'pad',
   'mask',
 ];

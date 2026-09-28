@@ -2,7 +2,9 @@
 import { baseName } from '../files';
 import type { PlanImageContent } from '../planImage';
 import type { PlannerState } from '../../store/plannerStore';
-import { levelOf, type PlanDoc } from '../../types';
+import { groundOf } from '../terrain/ground';
+import { groundOnPlan } from '../terrain/groundView';
+import { GROUND_LEVEL, levelOf, type PlanDoc } from '../../types';
 import type { SheetSource } from './sheet';
 import { sideCache } from './views';
 
@@ -10,7 +12,8 @@ import { sideCache } from './views';
 export function drawingSource(s: PlannerState, shown: PlanDoc = s.shownDoc()): SheetSource {
   return {
     doc: shown,
-    side: sideCache(shown, { wallHeightMm: s.wallHeightMm, units: s.units }),
+    // Hidden spot levels still shape the ground the drawings cut through.
+    side: sideCache(shown, { wallHeightMm: s.wallHeightMm, units: s.units, ground: groundOf(s.doc) }),
     projectName: baseName(s.fileName),
     version: __APP_VERSION__,
     date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
@@ -21,7 +24,14 @@ export function drawingSource(s: PlannerState, shown: PlanDoc = s.shownDoc()): S
 export function levelContent(
   s: Pick<
     PlannerState,
-    'units' | 'marlaSqFt' | 'showDimensions' | 'showFurniture' | 'showRoomLabels' | 'showRoomFills' | 'exportLines'
+    | 'doc'
+    | 'units'
+    | 'marlaSqFt'
+    | 'showDimensions'
+    | 'showFurniture'
+    | 'showRoomLabels'
+    | 'showRoomFills'
+    | 'exportLines'
   >,
   shown: PlanDoc,
   levelId: string,
@@ -32,5 +42,7 @@ export function levelContent(
   );
   const doc = { ...shown, elements, rooms: shown.rooms.filter(onLevel) };
   const { units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills } = s;
-  return { doc, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills };
+  // The ground is worked out from the whole plan (hidden levels still shape it), on the ground floor.
+  const ground = levelId === GROUND_LEVEL ? groundOnPlan({ ...s.doc, layers: shown.layers }, units === 'metric') : null;
+  return { doc, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, ground };
 }

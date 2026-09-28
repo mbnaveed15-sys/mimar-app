@@ -5,6 +5,7 @@ export const TOOLBARS = [
   { id: 'view', label: 'View', tools: ['select', 'pan', 'zoom', 'orbit'] },
   { id: 'draw', label: 'Draw', tools: ['wall', 'line', 'rectangle', 'room', 'door', 'window', 'furniture'] },
   { id: 'structure', label: 'Structure', tools: ['column', 'beam', 'slab', 'plot', 'stairs', 'section'] },
+  { id: 'ground', label: 'Ground', tools: ['level', 'contour', 'pad'] },
   { id: 'shapes', label: 'Shape & Push/Pull', tools: ['shape', 'pushpull'] },
   { id: 'change', label: 'Move, rotate & measure', tools: ['move', 'rotate', 'tape'] },
   { id: 'finish', label: 'Paint & erase', tools: ['paint', 'erase'] },

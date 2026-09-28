@@ -10,6 +10,10 @@ export type CostUnit = 'cft' | 'sqft' | 'kg' | 'no';
 /** Rates in rupees per unit (per cft, sqft, kg or each). */
 export interface Rates {
   excavation: number;
+  /** Levelling the site: digging out (by machine), filling in layers and compacting, and carting surplus earth away, per cft. */
+  cut: number;
+  fill: number;
+  cartAway: number;
   pcc: number;
   brickwork: number;
   rcc: number;
@@ -66,6 +70,9 @@ export const FLOOR_NAMES: Record<Exclude<FloorKind, 'none'>, string> = {
 /** Starter rates: rough Rawalpindi/Islamabad figures for September 2026. Replace with your contractor's. */
 export const STARTER_RATES: Rates = {
   excavation: 30,
+  cut: 18,
+  fill: 25,
+  cartAway: 15,
   pcc: 480,
   brickwork: 420,
   rcc: 720,
@@ -160,6 +167,9 @@ export function estimate(q: FloorQuantities, rates: Rates, ratios: Ratios): Esti
 
   add('excavation', 'Excavation for foundations', excavation, 'cft', 'excavation', true);
   add('basementExcavation', 'Excavation for the basement', q.excavationCft, 'cft', 'excavation');
+  add('cut', 'Cutting the site down to the finished level', q.cutCft, 'cft', 'cut');
+  add('fill', 'Filling the site up to the finished level (in layers, compacted)', q.fillCft, 'cft', 'fill');
+  add('cartAway', 'Earth to cart away (cut less fill)', q.cutCft - q.fillCft, 'cft', 'cartAway');
   add('pcc', 'Plain concrete (PCC 1:4:8) under foundations', pcc, 'cft', 'pcc', true);
   add('brickwork', 'Brickwork in 1:6 (walls and plinth)', q.brickworkCft, 'cft', 'brickwork');
   add('boundary', 'Brickwork in 1:6 (boundary and parapet walls)', q.boundaryCft, 'cft', 'brickwork');

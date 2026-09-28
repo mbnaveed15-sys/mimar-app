@@ -24,11 +24,11 @@ AutoCAD-style 2D (1.24); SketchUp-style 3D (1.25); interface polish (1.26); spli
 door and window types, plants and garden items (1.29); door and window placing with gaps, and snapping guides (1.29.1); custom plots:
 any shape, per-side types, setbacks and walls, corner plots (1.30); layouts from a room list (1.31); basements (1.32);
 project types: free projects, buildings, per-floor heights, metric (1.33);
-furniture use zones with ADA wheelchair spaces (1.34); sections, elevations and drawing sheets (1.35).
+furniture use zones with ADA wheelchair spaces (1.34); sections, elevations and drawing sheets (1.35); terrain and site:
+spot levels, contours, survey import, levelled plot and pads, cut and fill, OpenStreetMap surroundings and satellite levels (1.36).
 
 Planned next (the roadmap agreed with the owner for all kinds of work; plan each with the owner first):
-1.36 terrain and site (contours from CSV/DXF, SRTM, OpenStreetMap context,
-cut and fill); 1.37 freer form (curved walls, pitched roofs, voids, curtain walls); 1.38 3D speed and IFC export;
+1.37 freer form (curved walls, pitched roofs, voids, curtain walls); 1.38 3D speed and IFC export;
 1.39 checks for non-residential buildings (each moved up one when furniture use zones took 1.34).
 First-floor plans from a room list are a later idea.
 
@@ -39,6 +39,14 @@ stair openings aren't cut in the floor slabs the drawings assume (a drawn slab w
 line (it is straight); hatching for materials (cut is solid black); the DXF fills only rectangular cuts (others are
 outlined); plans on sheets are pictures at up to 200 DPI in the PDF (as the plan PDF); furniture or shading as
 options; curved walls and pitched roofs come with freer form.
+
+Left from terrain and site for later: one finished level per plot plus levelled areas (no sloping driveways, ramps or
+terraces); site retaining walls are drawn by hand with the Retaining wall type; the plinth check still measures from ±0,
+and the rules for sloping plots in hilly areas (e.g. Murree) aren't covered; a survey is placed on the middle of the
+plot (line it up with Move and Rotate), not by coordinates; sections and elevations run only 1 m past the building,
+and an elevation's ground is the profile along the face it looks at; the cut and fill tint is worked out on a 0.5 m
+mesh; OpenStreetMap coverage of Pakistani schemes varies; satellite levels are about 30 m apart across and a few metres
+out in height, so only a rough guide for big sites; neighbouring buildings are plain blocks.
 
 Left from projects for later: room types turning into sizes or a room list for buildings; more uses; per-project
 material and cost rates for buildings; a floor-to-floor height field (today the wall height plus the slab).

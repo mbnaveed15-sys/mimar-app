@@ -211,6 +211,32 @@ autosaves to local storage on every change.
   - The Section tool is in `structureTools.ts` (draft `section`: two ends, then the side); section lines are
     `SectionLine` elements (`type: 'section'`, `label`, `flip`) drawn by `SectionShape.tsx` on every floor.
 
+- Terrain and site (1.36), in `src/lib/terrain/` (pure, tested, except the two fetchers):
+  - Items: `SpotLevel` (`type: 'level'`, `zMm`, `approx` for satellite levels), `Contour`, `Pad` (a levelled area) and
+    `ContextItem` (`kind: 'building' | 'road'`, from OpenStreetMap). They have no `levelId` (ground floor) and sit on
+    the layers `terrain`, `pads` and `context`. `PlanDoc.ground` (`GroundSettings`: `grade`, `levelMm`, `contourMm`,
+    `cutFill`; only non-defaults kept) and `PlanDoc.location` ({lat, lon}). Heights are mm above the datum, ±0 = the
+    road level at the middle of the plot's road side.
+  - `surface.ts`: Delaunay triangulation, `buildSurface` (height anywhere; flat beyond the hull), `contourLines`,
+    `meshArea` (a triangle mesh of an area with holes), `earthworks` (cut and fill by sampling a grid),
+    `profileAlong`. `ground.ts`: `groundOf(doc)` (memoised on the ground inputs) gives `naturalAt` and `finishedAt`
+    (a pad, else the levelled plot, else natural); satellite levels within 10 m of a surveyed point are dropped.
+    `groundView.ts`: contour lines with majors every fifth, the cut/fill tint and daylight line
+    (`cutFillMap`), `siteEarthworks` (for `quantities.ts`: `cutCft`, `fillCft`) and `groundOnPlan` (what the plan,
+    PDF, PNG, sheets and plan DXF draw; passed to `PlanDrawing` as `ground`, from the whole plan on the ground floor).
+  - `importSurvey.ts`: CSV and DXF survey readers and `placeSurvey` (units, column order, datum, centred on the plot).
+    `online.ts`: `parseLocation` (typed pairs and Google Maps links), `geoToPlan`/`planToGeo`, the Overpass query and
+    `contextFromOverpass`, terrarium (SRTM) tiles, `satelliteLevels`; `fetchContext` and `fetchHeights` need a browser
+    (the CSP in `vite.config.ts` allows `overpass-api.de` and `s3.amazonaws.com`).
+  - Tools: `src/tools/groundTools.ts` (Spot level, Contour, Levelled area; typed heights set `site.groundMm`),
+    dispatched from `structureTools.ts`; drafts `contour` and `pad`. Store actions: `addSpotLevel`, `addContour`,
+    `addPad`, `padUnderHouse`, `setGround`, `importSurvey`, `clearSurvey`, `setLocation`, `setContext`,
+    `setSatelliteLevels`. UI: `GroundPanel.tsx` (side panel "Ground and site", and the tools' options),
+    `shapes/TerrainShapes.tsx` (plan shapes and `GroundOverlay`), Inspector height fields.
+  - 3D: `src/three/terrain3d.ts` and `model.ts` (ground meshes, walls and plinth down to the ground, stepped
+    boundary walls, context blocks and roads). Drawings: `views.ts` adds a ground `profile` (finished and natural)
+    and `hiddenLines.ts` clips elevations under a varying ground (`ViewFrame.ground`).
+
 
 ## Exports
 

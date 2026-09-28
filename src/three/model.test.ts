@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { emptyDoc } from '../lib/storage';
 import type { PlanDoc, PlanElement } from '../types';
-import { buildModel, DEFAULT_WALL_HEIGHT_MM, SLAB_MM } from './model';
+import { groundOf } from '../lib/terrain/ground';
+import { buildModel, DEFAULT_WALL_HEIGHT_MM, M_PER_UNIT, SLAB_MM } from './model';
 
 const opts = { wallHeightMm: DEFAULT_WALL_HEIGHT_MM, showFurniture: true };
 // Without a plinth, so heights are measured from the floor.
@@ -245,5 +246,241 @@ describe('3D site', () => {
     const out = panels.find((p) => p.id === 'p')!;
     expect(out).toMatchObject({ role: 'wall', depth: 0.3 });
     expect(out.z).toBeCloseTo(-(0.115 + 0.15));
+  });
+});
+
+describe('3D terrain and site', () => {
+  // A 10 m square plot (plan units are 10 mm).
+  const plot: PlanElement = {
+    id: 'p',
+    type: 'plot',
+    front: 0,
+    setbacks: { front: 0, rear: 0, sides: 0 },
+    points: [
+      { x: 0, y: 0 },
+      { x: 1000, y: 0 },
+      { x: 1000, y: 1000 },
+      { x: 0, y: 1000 },
+    ],
+  };
+  // Ground rising 1 mm per plan unit (10%) to the east, surveyed well past the plot.
+  const slope: PlanElement[] = [
+    [-500, -500],
+    [1500, -500],
+    [1500, 1500],
+    [-500, 1500],
+  ].map(([x, y], i) => ({ id: `l${i}`, type: 'level', x, y, zMm: x }));
+  const site = (ground: PlanDoc['ground'], ...elements: PlanElement[]): PlanDoc => ({
+    ...docWith(...elements),
+    ground,
+  });
+  /** Scene corners of a mesh as [x, y, z]. */
+  const corners = (positions: number[]) =>
+    Array.from({ length: positions.length / 3 }, (_, i) => positions.slice(3 * i, 3 * i + 3));
+
+  it('leaves a flat site as it was: the lawn at ±0, no ground meshes', () => {
+    const doc = docWith(wall, plot);
+    const model = buildModel(doc, opts);
+    expect(model.terrain).toBeUndefined();
+    expect(model.groundY).toBeUndefined();
+    expect(model.floors.find((f) => f.id === 'p')!.y).toBe(0);
+    expect(model).toEqual(buildModel(doc, { ...opts, terrain: false }));
+  });
+
+  it('raises the lawn of a plot levelled at +600, with a bank down to the ground round it', () => {
+    const model = buildModel(site({ levelMm: 600 }, plot), opts);
+    expect(model.floors.find((f) => f.id === 'p')!.y).toBeCloseTo(0.6);
+    expect(model.guides![0].y).toBeCloseTo(0.612);
+    const bank = model.terrain!.find((t) => t.kind === 'bank')!;
+    const ys = corners(bank.positions).map((p) => p[1]);
+    expect(Math.min(...ys)).toBeCloseTo(0);
+    expect(Math.max(...ys)).toBeCloseTo(0.6);
+    expect(model.groundY!).toBeLessThan(0);
+  });
+
+  it('lays the lawn and the natural ground round it on a sloping survey', () => {
+    const doc = site({ grade: 'natural' }, plot, ...slope);
+    const model = buildModel(doc, opts);
+    const ground = groundOf(doc);
+    const lawn = model.terrain!.find((t) => t.kind === 'lawn')!;
+    expect(lawn).toMatchObject({ id: 'p', level: 'ground' });
+    expect(model.floors.find((f) => f.id === 'p')).toBeUndefined();
+    for (const [x, y, z] of corners(lawn.positions))
+      expect(y).toBeCloseTo(ground.finishedAt(x / M_PER_UNIT, z / M_PER_UNIT) / 1000, 6);
+    const natural = model.terrain!.find((t) => t.kind === 'natural')!;
+    const ring = corners(natural.positions);
+    for (const [x, y, z] of ring) expect(y).toBeCloseTo(ground.naturalAt(x / M_PER_UNIT, z / M_PER_UNIT) / 1000, 6);
+    // It reaches 10 m past the levels, and leaves the plot to the lawn.
+    expect(Math.min(...ring.map((p) => p[0]))).toBeCloseTo(-15);
+    expect(ring.some(([x, , z]) => x > 0.5 && x < 9.5 && z > 0.5 && z < 9.5)).toBe(false);
+    // The ground plane sits under the lowest ground.
+    expect(model.groundY!).toBeLessThan(Math.min(...ring.map((p) => p[1])));
+    // The setback line lies on the lawn.
+    expect(
+      model.guides![0].ys!.every((y, i) => Math.abs(y - (model.guides![0].points[i][0] / 10 + 0.012)) < 1e-6),
+    ).toBe(true);
+  });
+
+  it('meshes the lawn over a levelled plot where a levelled area cuts into it', () => {
+    const pad: PlanElement = {
+      id: 'pad',
+      type: 'pad',
+      zMm: -900,
+      points: [
+        { x: 800, y: 200 },
+        { x: 1300, y: 200 },
+        { x: 1300, y: 800 },
+        { x: 800, y: 800 },
+      ],
+    };
+    const model = buildModel(site({ levelMm: 300 }, plot, pad, ...slope), opts);
+    const lawn = model.terrain!.find((t) => t.kind === 'lawn')!;
+    const ys = new Set(corners(lawn.positions).map((p) => Math.round(p[1] * 1000)));
+    expect([...ys].sort((a, b) => a - b)).toEqual([-900, 300]);
+    const own = model.terrain!.find((t) => t.kind === 'pad')!;
+    expect(own.id).toBe('pad');
+    // Outside the plot only, at its height.
+    expect(corners(own.positions).every(([x, y]) => x >= 10 - 1e-9 && Math.abs(y + 0.9) < 1e-9)).toBe(true);
+  });
+
+  it('steps boundary walls down the slope, each step on the ground under it', () => {
+    const boundary: PlanElement = { ...wall, kind: 'boundary', heightMm: 2000 };
+    const doc = site({ grade: 'natural' }, plot, boundary, ...slope);
+    const steps = buildModel(doc, opts)
+      .solids.filter((s) => s.role === 'wall')
+      .sort((a, b) => a.x - b.x);
+    expect(steps).toHaveLength(3); // 10 m in steps of about 3 m
+    expect(steps.reduce((w, s) => w + s.w, 0)).toBeCloseTo(10, 6);
+    for (const s of steps) {
+      const [from, to] = [s.x - s.w / 2, s.x + s.w / 2];
+      // The ground rises 0.1 m a metre: the base is at the lower end, the top 2 m over the middle.
+      expect(s.y0).toBeCloseTo(from / 10, 6);
+      expect(s.y0 + s.h).toBeCloseTo(s.x / 10 + 2, 6);
+      expect(s.rotY).toBeCloseTo(0);
+      expect(to).toBeGreaterThan(from);
+    }
+    // Along x on the plan is along x in the scene, one step after another.
+    steps.slice(1).forEach((s, i) => expect(s.x - s.w / 2).toBeCloseTo(steps[i].x + steps[i].w / 2, 6));
+  });
+
+  it('steps a wall at an angle along its own length', () => {
+    const along: PlanElement = {
+      id: 'b',
+      type: 'wall',
+      kind: 'boundary',
+      x1: 0,
+      y1: 0,
+      x2: 600,
+      y2: 600,
+      thickness: 23,
+    };
+    const steps = buildModel(site({ grade: 'natural' }, plot, along, ...slope), opts).solids.filter(
+      (s) => s.role === 'wall',
+    );
+    expect(steps.length).toBeGreaterThan(1);
+    for (const s of steps) {
+      // Each step's middle lies on the wall's line (x = z on the plan).
+      expect(s.x).toBeCloseTo(s.z, 6);
+      expect(s.y0).toBeLessThan(s.x / 10);
+    }
+  });
+
+  it('runs the plinth down to the finished ground, and the steps up it', () => {
+    const doc: PlanDoc = { ...site({ levelMm: -300 }, plot, { ...wall, y1: 500, y2: 500 }, ...slope), plinthMm: 450 };
+    const solids = buildModel(doc, opts).solids;
+    const plinth = solids.find((s) => s.role === 'wall' && s.y0 < 0)!;
+    expect(plinth.y0).toBeCloseTo(-0.3);
+    expect(plinth.y0 + plinth.h).toBeCloseTo(0.45);
+    expect(solids.find((s) => s.role === 'wall' && s.y0 > 0.4)!.y0).toBeCloseTo(0.45);
+
+    const stair: PlanElement = {
+      id: 'st',
+      type: 'stair',
+      x: 300,
+      y: 700,
+      shape: 'straight',
+      width: 100,
+      riseMm: 450,
+      riserMm: 150,
+      treadMm: 300,
+      w: 100,
+      h: 90,
+    };
+    const steps = buildModel({ ...doc, elements: [...doc.elements, stair] }, opts).solids.filter(
+      (s) => s.role === 'stair',
+    );
+    expect(steps.length).toBeGreaterThan(0);
+    expect(steps.every((s) => Math.abs(s.y0 + 0.3) < 1e-9)).toBe(true);
+    expect(Math.max(...steps.map((s) => s.y0 + s.h))).toBeCloseTo(0.3); // the last riser is up to the floor
+  });
+
+  it('stands neighbouring buildings on the ground as blocks, and lays roads on it', () => {
+    const building: PlanElement = {
+      id: 'nb',
+      type: 'context',
+      kind: 'building',
+      heightMm: 9000,
+      points: [
+        { x: 1200, y: 0 },
+        { x: 1400, y: 0 },
+        { x: 1400, y: 300 },
+        { x: 1200, y: 300 },
+      ],
+    };
+    const road: PlanElement = {
+      id: 'rd',
+      type: 'context',
+      kind: 'road',
+      points: [
+        { x: -300, y: -500 },
+        { x: 1300, y: -500 },
+      ],
+    };
+    const flat = buildModel(docWith(plot, building, road), opts);
+    expect(flat.context).toHaveLength(1);
+    expect(flat.context![0]).toMatchObject({ id: 'nb', y0: 0, h: 9, role: 'block' });
+    const strip = flat.terrain!.find((t) => t.kind === 'road')!;
+    expect(strip.id).toBe('rd');
+    const pts = corners(strip.positions);
+    expect(pts.every((p) => Math.abs(p[1] - 0.01) < 1e-9)).toBe(true);
+    expect(Math.max(...pts.map((p) => p[2])) - Math.min(...pts.map((p) => p[2]))).toBeCloseTo(6); // 6 m wide
+    expect(flat.groundY).toBe(0);
+
+    // On the slope: the block's foot is at its lowest corner, its top 9 m over its middle; the road follows the ground.
+    const sloped = buildModel(site({ grade: 'natural' }, plot, building, road, ...slope), opts);
+    const block = sloped.context![0];
+    expect(block.y0).toBeCloseTo(1.2);
+    expect(block.y0 + block.h).toBeCloseTo(1.3 + 9);
+    for (const [x, y, z] of corners(sloped.terrain!.find((t) => t.kind === 'road')!.positions))
+      expect(y).toBeCloseTo(
+        groundOf(site({ grade: 'natural' }, ...slope)).naturalAt(x / M_PER_UNIT, z / M_PER_UNIT) / 1000 + 0.01,
+        6,
+      );
+  });
+
+  it('builds a 5-marla plot with 50 levels quickly, and keeps the ground when only walls change', () => {
+    const marla: PlanElement = {
+      ...plot,
+      points: [
+        { x: 0, y: 0 },
+        { x: 762, y: 0 },
+        { x: 762, y: 1372 },
+        { x: 0, y: 1372 },
+      ],
+    };
+    const levels: PlanElement[] = Array.from({ length: 50 }, (_, i) => ({
+      id: `s${i}`,
+      type: 'level',
+      x: -400 + (i % 7) * 260,
+      y: -400 + Math.floor(i / 7) * 310,
+      zMm: ((i * 37) % 11) * 120,
+    }));
+    const doc = site({ grade: 'natural' }, marla, ...levels);
+    const started = performance.now();
+    const first = buildModel(doc, opts);
+    const took = performance.now() - started;
+    expect(took).toBeLessThan(1000); // well under 100 ms on a desktop; generous for slow test machines
+    const again = buildModel({ ...doc, elements: [...doc.elements, wall] }, opts);
+    expect(again.terrain).toBe(first.terrain);
   });
 });

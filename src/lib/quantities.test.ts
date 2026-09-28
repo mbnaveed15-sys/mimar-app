@@ -98,6 +98,39 @@ describe('estimate', () => {
     expect(csv.split('\r\n')[3]).toBe('Item,Quantity,Unit,Rate (Rs),Amount (Rs),Note');
   });
 
+  it('measures the earth to cut and fill to level the plot, and prices cut, fill and carting away', () => {
+    // A 20' × 20' plot whose ground rises 2' from the front to the back, levelled at +6": mostly cut.
+    const plot: PlanElement = {
+      id: 'p',
+      type: 'plot',
+      front: 2,
+      setbacks: { front: 0, rear: 0, sides: 0 },
+      points: [
+        { x: 0, y: 0 },
+        { x: 20 * FT, y: 0 },
+        { x: 20 * FT, y: 20 * FT },
+        { x: 0, y: 20 * FT },
+      ],
+    };
+    // Heights along a line 1' outside the plot on each side, on the same slope (2' in 20').
+    const levels: PlanElement[] = [
+      { id: 'a', type: 'level', x: -FT, y: -FT, zMm: 640.08 },
+      { id: 'b', type: 'level', x: 21 * FT, y: -FT, zMm: 640.08 },
+      { id: 'c', type: 'level', x: 21 * FT, y: 21 * FT, zMm: -30.48 },
+      { id: 'd', type: 'level', x: -FT, y: 21 * FT, zMm: -30.48 },
+    ];
+    const doc: PlanDoc = { ...emptyDoc(), plinthMm: 0, elements: [plot, ...levels], ground: { levelMm: 152.4 } };
+    const q = quantities(doc, 3048).total;
+    // Ground from 0 at the front to 2' at the back over the plot; levelled at 6": 400 sqft × (1'-6")²/2/2' cut, 400 × (6")²/2/2' fill.
+    expect(q.cutCft).toBeCloseTo((400 * 1.5 * 1.5) / 2 / 2, -1);
+    expect(q.fillCft).toBeCloseTo((400 * 0.5 * 0.5) / 2 / 2, -1);
+    const est = estimate(q, STARTER_RATES, STARTER_RATIOS);
+    const line = (id: string) => est.lines.find((l) => l.id === id)!;
+    expect(line('cut').rate).toBe(STARTER_RATES.cut);
+    expect(line('fill').qty).toBeCloseTo(q.fillCft, 5);
+    expect(line('cartAway').qty).toBeCloseTo(q.cutCft - q.fillCft, 5);
+  });
+
   it('reads stored rates, keeping the starter value for anything missing or wrong', () => {
     const r = readRates({ brickwork: 500, rcc: -3, flooring: { tiles: 400, wood: 'x' } });
     expect(r.brickwork).toBe(500);

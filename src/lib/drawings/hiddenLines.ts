@@ -33,6 +33,11 @@ export interface ViewFrame {
   cut: boolean;
   /** Leave out everything below this height (an elevation hides what is underground). */
   minV?: number;
+  /**
+   * Leave out everything below this ground line ([u, v] points, u rising): an elevation on sloping
+   * ground. Beyond its ends the ground carries on level.
+   */
+  ground?: P2[];
 }
 
 /** A line of the drawing. `heavy` marks an outline against the sky or empty space. */
@@ -401,7 +406,8 @@ export function project(prisms: Prism[], frame: ViewFrame): Projection {
   for (const [a, b] of edges.values()) lines.push(...visibleParts(a, b, grid));
 
   const minV = frame.minV;
-  const shown = minV === undefined ? lines : clipBelow(lines, minV);
+  let shown = minV === undefined ? lines : clipBelow(lines, minV);
+  if (frame.ground && frame.ground.length) shown = clipBelowGround(shown, frame.ground);
   return { cut, lines: mergeLines(shown), bounds: boundsOf(cut, shown) };
 }
 
@@ -472,6 +478,75 @@ function clipBelow(lines: Line2[], minV: number): Line2[] {
     const t = (minV - a[1]) / (b[1] - a[1]);
     const m: P2 = [a[0] + (b[0] - a[0]) * t, minV];
     out.push({ ...l, ...(a[1] < minV ? { a: m } : { b: m }) });
+  }
+  return out;
+}
+
+/** The height of a ground line (u rising) at u, level beyond its ends. */
+export function groundAt(ground: P2[], u: number): number {
+  const n = ground.length;
+  if (u <= ground[0][0]) return ground[0][1];
+  if (u >= ground[n - 1][0]) return ground[n - 1][1];
+  let [lo, hi] = [0, n - 1];
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (ground[mid][0] <= u) lo = mid;
+    else hi = mid;
+  }
+  const [a, b] = [ground[lo], ground[hi]];
+  const du = b[0] - a[0];
+  return du < 1e-12 ? Math.max(a[1], b[1]) : a[1] + ((b[1] - a[1]) * (u - a[0])) / du;
+}
+
+/** Cut lines off below a ground line (u rising). */
+function clipBelowGround(lines: Line2[], ground: P2[]): Line2[] {
+  const top = Math.max(...ground.map((p) => p[1]));
+  // Carried on level far beyond its ends, so every crossing is with a segment of it.
+  const far = 1e6;
+  const g: P2[] = [[-far, ground[0][1]], ...ground, [far, ground[ground.length - 1][1]]];
+  const out: Line2[] = [];
+  for (const l of lines) {
+    const [a, b] = [l.a, l.b];
+    if (Math.min(a[1], b[1]) >= top - 1e-9) {
+      out.push(l);
+      continue;
+    }
+    const ts = [0, 1];
+    const lo = Math.min(a[0], b[0]);
+    const hi = Math.max(a[0], b[0]);
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    for (let i = 0; i + 1 < g.length; i++) {
+      const [p, q] = [g[i], g[i + 1]];
+      if (Math.max(p[0], q[0]) < lo - 1e-9 || Math.min(p[0], q[0]) > hi + 1e-9) continue;
+      const ex = q[0] - p[0];
+      const ey = q[1] - p[1];
+      const den = dx * ey - dy * ex;
+      if (Math.abs(den) < 1e-14) continue;
+      const rx = p[0] - a[0];
+      const ry = p[1] - a[1];
+      const t = (rx * ey - ry * ex) / den;
+      const s = (rx * dy - ry * dx) / den;
+      if (t > 0 && t < 1 && s >= -1e-9 && s <= 1 + 1e-9) ts.push(t);
+    }
+    ts.sort((x, y) => x - y);
+    const at = (t: number): P2 => [a[0] + dx * t, a[1] + dy * t];
+    let start: number | null = null;
+    let end = 0;
+    const flush = () => {
+      if (start !== null && end - start > 1e-9) out.push({ ...l, a: at(start), b: at(end) });
+      start = null;
+    };
+    for (let i = 0; i + 1 < ts.length; i++) {
+      const [t0, t1] = [ts[i], ts[i + 1]];
+      if (t1 - t0 < 1e-12) continue;
+      const m = at((t0 + t1) / 2);
+      if (m[1] >= groundAt(ground, m[0]) - 1e-6) {
+        start ??= t0;
+        end = t1;
+      } else flush();
+    }
+    flush();
   }
   return out;
 }

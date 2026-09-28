@@ -1,6 +1,7 @@
 import type { PlannerState } from '../store/plannerStore';
 import { modifyEnter } from './modifyTools';
 import { shapeEnter } from './shapeTools';
+import { finishContour } from './groundTools';
 import { finishPlotPoly } from './structureTools';
 
 interface Store {
@@ -12,7 +13,7 @@ interface Store {
  * when there was nothing to finish.
  */
 export function finishStep(store: Store): boolean {
-  if (modifyEnter(store) || shapeEnter(store) || finishPlotPoly(store)) return true;
+  if (modifyEnter(store) || shapeEnter(store) || finishPlotPoly(store) || finishContour(store)) return true;
   const s = store.getState();
   const d = s.draft;
   if (d?.type === 'mask') {

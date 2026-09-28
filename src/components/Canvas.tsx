@@ -8,7 +8,7 @@ import { plannerStore, usePlanner } from '../store/plannerStore';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { PLAN } from '../theme/plan';
 import { selectionBounds } from '../lib/selection';
-import { levelOf, type Furniture, type PlanElement, type Point, type SectionLine } from '../types';
+import { GROUND_LEVEL, levelOf, type Furniture, type PlanElement, type Point, type SectionLine } from '../types';
 import { wallPolygon, wallsOf } from '../walls';
 import { DrawingOverlay } from './DrawingOverlay';
 import { CheckMarks } from './CheckMarks';
@@ -17,6 +17,7 @@ import { clearPicker, setPicker, type Picker3D } from '../three/picker';
 import { cameraEye } from '../three/cameraEye';
 import { M_PER_UNIT } from '../three/model';
 import { PlanDrawing } from './PlanDrawing';
+import { groundOnPlan } from '../lib/terrain/groundView';
 import { PlanGrid } from './PlanGrid';
 import { usePlanInput, type ContextTarget } from './usePlanInput';
 import { useTouch } from './useTouch';
@@ -64,6 +65,13 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
             (el): el is SectionLine => el.type === 'section' && !el.hidden && levelOf(el) !== activeLevel,
           ),
     [allElements, activeLevel, layers],
+  );
+  // Contour lines and cut and fill are worked out from the whole plan and drawn on the ground floor.
+  const fullDoc = usePlanner((s) => s.doc);
+  const metric = usePlanner((s) => s.units) === 'metric';
+  const ground = useMemo(
+    () => (activeLevel === GROUND_LEVEL ? groundOnPlan(fullDoc, metric) : null),
+    [fullDoc, activeLevel, metric],
   );
   const draft = usePlanner((s) => s.draft);
   const inference = usePlanner((s) => s.inference);
@@ -234,6 +242,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         showRoomFills={showRoomFills}
         k={k}
         accessibleZones={accessibleZones}
+        ground={ground}
       />
 
       {otherSections.map((line) => (

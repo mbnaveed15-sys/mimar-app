@@ -17,7 +17,7 @@ describe('tool bars', () => {
     const layout = readToolbars({ top: ['draw', 'draw', 'nope'], right: ['modify'], left: 'x' });
     expect(layout.top).toEqual(['draw']);
     expect(layout.right).toEqual(['modify']);
-    expect(layout.left).toEqual(['view', 'structure', 'shapes', 'change', 'finish', 'pro']);
+    expect(layout.left).toEqual(['view', 'structure', 'ground', 'shapes', 'change', 'finish', 'pro']);
   });
 
   it('moves a bar to another side, or next to another bar', () => {

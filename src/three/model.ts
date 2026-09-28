@@ -22,6 +22,9 @@ import {
   type Wall,
 } from '../types';
 import { thicknessOf, wallExtensions, wallsOf } from '../walls';
+import { groundBeside, lowestAlong, lowestUnder, siteOf, stepOnGround, type TerrainMesh } from './terrain3d';
+
+export type { TerrainKind, TerrainMesh } from './terrain3d';
 
 /** Scene units are metres; plan units are 10 mm. */
 export const M_PER_UNIT = MM_PER_UNIT / 1000;
@@ -135,8 +138,20 @@ export interface Model3D {
   blocks: Slab3D[];
   /** Pieces of wall round shaped openings, their glass, and flat shapes on walls. */
   panels: Panel[];
-  /** Lines drawn on the ground (a plot's setback line), as closed outlines of [x, z] points. */
-  guides?: { points: [number, number][]; y: number; level?: string }[];
+  /**
+   * Lines drawn on the ground (a plot's setback line), as closed outlines of [x, z] points, at
+   * height y, or at each point's own height in `ys` when they follow the ground.
+   */
+  guides?: { points: [number, number][]; y: number; ys?: number[]; level?: string }[];
+  /**
+   * The ground, when it isn't flat at ±0: the plot's lawn where it follows the ground, the natural
+   * ground round it, levelled areas, the banks between them, and roads. Missing on a flat site.
+   */
+  terrain?: TerrainMesh[];
+  /** Neighbouring buildings, as blocks standing on the ground. */
+  context?: Slab3D[];
+  /** Where the big ground plane lies (m): just under the lowest ground; 0 when missing. */
+  groundY?: number;
   /** Centre and size of the building, for positioning the camera. */
   centre: { x: number; z: number };
   size: number;
@@ -147,6 +162,8 @@ export interface ModelOptions {
   showFurniture: boolean;
   /** Doors shut in their openings (for sections and elevations), rather than standing open. */
   closedDoors?: boolean;
+  /** Build the ground and the neighbours (on unless false; off for a preview of what is being drawn). */
+  terrain?: boolean;
 }
 
 const WALL_COLOR = '#eceae4';
@@ -799,6 +816,19 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       )
     : null;
   const pit = pitOutline ? [pitOutline.map((p) => [m(p.x), m(p.y)] as [number, number])] : [];
+  // The ground and the neighbours; null on a flat site with none, where everything stands at ±0.
+  const plotEl = doc.elements.find((el) => el.type === 'plot' && levelOf(el) === GROUND_LEVEL);
+  const site =
+    options.terrain === false
+      ? null
+      : siteOf(
+          doc,
+          pitOutline && pitOutline.length >= 3 ? pitOutline : null,
+          { color: colorOf(plotEl?.material) ?? LAWN, finish: finishOf(plotEl?.material, 'grass') },
+          (id, color) => ({ color: colorOf(id) ?? color, finish: finishOf(id) }),
+        );
+  /** The ground where walls and steps stand (null on a flat site: they stand at ±0). */
+  const terrain = site && !site.flat ? site.ground : null;
 
   levels.forEach((level) => {
     const base = doc.levels.length ? levelBaseM(doc, level.id, options.wallHeightMm) : plinth;
@@ -839,12 +869,37 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       const onGround = wall.kind === 'boundary' && ground;
       const place = <T extends Part>(s: T): T => from(wall.id)(raise(wall)(onGround ? s : lift(s)));
       const parts = wallParts(wall, walls, own, height);
-      solids.push(...parts.solids.map(paint).map(place));
-      panels.push(...parts.panels.map(paint).map(place));
+      // On sloping or levelled ground it steps down the slope; parts of it over openings rise with the ground.
+      const stepped = onGround && terrain ? parts.solids.flatMap((s) => stepOnGround(s, terrain)) : parts.solids;
+      const panelsOf =
+        onGround && terrain
+          ? parts.panels.map((p) => ({
+              ...p,
+              y0:
+                p.y0 +
+                groundBeside(
+                  terrain,
+                  { x: p.x / M_PER_UNIT, y: p.z / M_PER_UNIT },
+                  p.rotY,
+                  thicknessOf(wall) * M_PER_UNIT,
+                ) /
+                  1000,
+            }))
+          : parts.panels;
+      solids.push(...stepped.map(paint).map(place));
+      panels.push(...panelsOf.map(paint).map(place));
       if (wall.kind) continue;
-      // The plinth: ground-floor walls carry on down to the ground (not under a raised wall).
-      if (ground && plinth > 0 && !wall.elevMm)
-        solids.push(...wallParts(wall, walls, [], doc.plinthMm).solids.map(paint).map(from(wall.id)));
+      // The plinth: ground-floor walls carry on down to the ground (not under a raised wall), to the
+      // lowest finished ground along them.
+      const footMm =
+        ground && terrain ? lowestAlong(terrain, { x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 }) : 0;
+      if (ground && doc.plinthMm - footMm > 0.5 && !wall.elevMm)
+        solids.push(
+          ...wallParts(wall, walls, [], doc.plinthMm - footMm)
+            .solids.map((s) => (footMm ? { ...s, y0: s.y0 + mmToM(footMm) } : s))
+            .map(paint)
+            .map(from(wall.id)),
+        );
     }
     for (const door of openings) {
       const host = walls.find((w) => w.id === door.wallId);
@@ -854,7 +909,14 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           ? closedDoor(door, host.heightMm ?? levelMm)
           : doorLeaves(door, host.heightMm ?? levelMm, m(thicknessOf(host)))
       ).map(raise(host));
-      solids.push(...(host.kind === 'boundary' && ground ? leaves : leaves.map(lift)).map(from(door.id)));
+      const onGround = host.kind === 'boundary' && ground;
+      // A gate in a wall on sloping ground rises with the ground at it.
+      const rise =
+        onGround && terrain
+          ? mmToM(groundBeside(terrain, door, (-door.angle * Math.PI) / 180, m(thicknessOf(host))))
+          : 0;
+      const placed = onGround ? leaves.map((s) => (rise ? { ...s, y0: s.y0 + rise } : s)) : leaves.map(lift);
+      solids.push(...placed.map(from(door.id)));
     }
     for (const el of els) {
       if (el.type === 'furniture' && options.showFurniture)
@@ -885,17 +947,36 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       if (el.type === 'stair') {
         // Steps up the plinth start from the natural ground; others from the floor they are on.
         const fromGround = ground && Math.abs(el.riseMm - doc.plinthMm) < 1 && !el.elevMm;
-        const parts = stairSolids(el, colorOf(el.material)).map(withFinish(el.material, 'concrete'));
+        let parts = stairSolids(el, colorOf(el.material)).map(withFinish(el.material, 'concrete'));
+        // On sloping or levelled ground each step reaches down to (or starts from) the ground under it.
+        if (fromGround && terrain)
+          parts = parts.map((s) => {
+            const top = s.y0 + s.h;
+            const h = Math.max(0.01, top - mmToM(lowestUnder(terrain, s)));
+            return { ...s, y0: top - h, h };
+          });
         solids.push(...(fromGround ? parts : parts.map(lift)).map(raise(el)).map(from(el.id)));
       }
+      // The plot's lawn: a floor where it is flat, else a mesh following the ground (in the terrain).
+      const lawnY = el.type === 'plot' && ground ? (el.id === plotEl?.id ? site?.lawnY : 0) : undefined;
       if (el.type === 'plot' && ground) {
         const line = buildableArea(el);
-        if (line.length >= 3) guides.push({ points: line.map((p) => [m(p.x), m(p.y)]), y: 0.012, level: level.id });
+        if (line.length >= 3 && lawnY === null) {
+          // Draped over the ground, a point every 0.5 m.
+          const pts = densify(line, 50);
+          guides.push({
+            points: pts.map(toXZ),
+            y: 0.012,
+            ys: pts.map((p) => mmToM(site!.lawnAt(p.x, p.y)) + 0.012),
+            level: level.id,
+          });
+        } else if (line.length >= 3)
+          guides.push({ points: line.map((p) => [m(p.x), m(p.y)]), y: (lawnY ?? 0) + 0.012, level: level.id });
       }
-      if (el.type === 'plot' && ground)
+      if (el.type === 'plot' && ground && lawnY !== null)
         floors.push({
           points: outlinePoints(el).map((p) => [m(p.x), m(p.y)] as [number, number]),
-          y: 0,
+          y: lawnY ?? 0,
           color: colorOf(el.material) ?? LAWN,
           finish: finishOf(el.material, 'grass'),
           opacity: 0.82,
@@ -953,5 +1034,16 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const hi = (v: number[]) => v.reduce((m, x) => (x > m ? x : m), -Infinity);
   const centre = xs.length ? { x: (lo(xs) + hi(xs)) / 2, z: (lo(zs) + hi(zs)) / 2 } : { x: 8, z: 5 };
   const size = xs.length ? Math.max(hi(xs) - lo(xs), hi(zs) - lo(zs), 4) : 16;
-  return { solids, floors, slabs, blocks, panels, guides, centre, size };
+  const model: Model3D = { solids, floors, slabs, blocks, panels, guides, centre, size };
+  if (!site) return model;
+  return { ...model, terrain: site.terrain, context: site.context, groundY: site.groundY };
+}
+
+/** A closed outline with points added so none are more than `step` apart. */
+function densify(ring: Point[], step: number): Point[] {
+  return ring.flatMap((a, i) => {
+    const b = ring[(i + 1) % ring.length];
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / step));
+    return Array.from({ length: n }, (_, k) => ({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }));
+  });
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Opening, PlanDoc, Wall } from '../types';
+import type { Opening, PlanDoc, PlanElement, Wall } from '../types';
 import { dxfText, planToDxf, sideDrawingsToDxf, wallPieces } from './exportDxf';
 import type { SideDrawing } from './drawings/views';
 import { emptyDoc } from './storage';
@@ -106,5 +106,100 @@ describe('DXF export', () => {
     // A 3 m wall is 3000 mm tall.
     expect(dxf).toContain('\r\n20\r\n3000\r\n');
     expect([...dxf].every((ch) => ch.charCodeAt(0) < 128)).toBe(true);
+  });
+
+  it('draws the natural ground dashed on sections, on its own layer', () => {
+    const d: SideDrawing = {
+      title: 'Section A–A',
+      cut: [],
+      lines: [{ a: [1, 0], b: [1, 3], heavy: true }],
+      bounds: { minU: 0, maxU: 1, minV: 0, maxV: 3 },
+      ground: { u0: -1, u1: 2 },
+      profile: {
+        finished: [
+          [-1, -0.5],
+          [0, -0.5],
+          [2, -1.5],
+        ],
+        natural: [
+          [
+            [-1, 0],
+            [0, -0.5],
+          ],
+        ],
+      },
+      levels: [{ v: 0, name: 'Road level (datum)', label: '+/-0.000' }],
+    };
+    const dxf = sideDrawingsToDxf([d]);
+    expect(dxf).toContain('\r\n8\r\nC-TOPO-SECT\r\n');
+    expect(dxf).toContain('\r\n8\r\nA-SECT-GRND\r\n');
+    // The finished ground falls to 1.5 m below the datum.
+    expect(dxf).toContain('\r\n20\r\n-1500\r\n');
+    expect(dxf).toContain('Road level (datum)');
+  });
+
+  it('puts the ground and the surroundings on the site layers', () => {
+    const level = (id: string, x: number, y: number, zMm: number): PlanElement => ({ id, type: 'level', x, y, zMm });
+    const doc: PlanDoc = {
+      ...emptyDoc(),
+      elements: [
+        wall,
+        level('l1', 0, 0, 0),
+        level('l2', 2000, 0, 0),
+        level('l3', 0, 2000, -3000),
+        level('l4', 2000, 2000, -3000),
+        {
+          id: 'c',
+          type: 'contour',
+          zMm: -1200,
+          points: [
+            { x: 0, y: 800 },
+            { x: 2000, y: 800 },
+          ],
+        },
+        {
+          id: 'p',
+          type: 'pad',
+          zMm: -1000,
+          points: [
+            { x: 500, y: 500 },
+            { x: 1500, y: 500 },
+            { x: 1500, y: 1500 },
+            { x: 500, y: 1500 },
+          ],
+        },
+        {
+          id: 'b',
+          type: 'context',
+          kind: 'building',
+          points: [
+            { x: 2500, y: 0 },
+            { x: 3000, y: 0 },
+            { x: 3000, y: 500 },
+          ],
+          heightMm: 6000,
+        },
+        {
+          id: 'r',
+          type: 'context',
+          kind: 'road',
+          name: 'Main Boulevard',
+          points: [
+            { x: -500, y: 2500 },
+            { x: 2500, y: 2500 },
+          ],
+        },
+      ],
+    };
+    const dxf = planToDxf(doc, opts);
+    for (const layer of ['C-TOPO-MAJR', 'C-TOPO-MINR', 'C-TOPO-SPOT', 'C-TOPO-GRAD', 'C-CTXT-BLDG', 'C-CTXT-ROAD'])
+      expect(dxf).toContain(`\r\n8\r\n${layer}\r\n`);
+    // Heights as the drawings write them: the major contours, the spot levels, the drawn contour, the levelled area.
+    for (const text of ['-2.500', '+/-0.000', '-3.000', '-1.200', 'FGL -1.000', 'Main Boulevard'])
+      expect(dxf).toContain(`\r\n1\r\n${dxfText(text.replace('+/-', '\u00b1'))}\r\n`);
+    // Without the ground (another floor's plan, or none given), none of it.
+    const bare = planToDxf({ ...doc, elements: [wall] }, { ...opts, ground: null });
+    expect(bare).not.toContain('\r\n8\r\nC-TOPO-MAJR\r\n');
+    expect(bare).not.toContain('\r\n8\r\nC-TOPO-MINR\r\n');
   });
 });
