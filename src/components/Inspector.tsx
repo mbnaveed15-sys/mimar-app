@@ -9,7 +9,7 @@ import { WINDOW_HEIGHT_MM } from '../lib/shapes';
 import { withShapeDepth } from '../lib/pushPull';
 import { projectOf, ROOM_TYPES } from '../lib/project';
 import { roomAreaSqMm } from '../rooms';
-import { KIND_HEIGHT_MM, MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
+import { kindHeightMm, MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
 import {
   isSiteItem,
   levelOf,
@@ -22,7 +22,8 @@ import {
   type WindowKind,
 } from '../types';
 import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
-import { thicknessOf } from '../walls';
+import { CURTAIN_MM, thicknessOf } from '../walls';
+import { bowForRadius, isArc, radiusOf } from '../lib/arc';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { LengthField } from './LengthField';
 import { PlotBylawsPanel } from './PlotBylaws';
@@ -179,6 +180,28 @@ export function Inspector() {
                 onCommit={(mm) => updateElement(withWallLength(el, toUnits(mm)))}
               />
             )}
+            {el.type === 'wall' && isArc(el) && (
+              <div className="flex items-end gap-2">
+                <LengthField
+                  id="wall-radius"
+                  label="Radius"
+                  mm={radiusOf(el)! * MM_PER_UNIT}
+                  units={units}
+                  min={(Math.hypot(el.x2 - el.x1, el.y2 - el.y1) / 2) * MM_PER_UNIT - 0.5}
+                  onCommit={(mm) => updateElement({ ...el, bow: bowForRadius(el, toUnits(mm)) })}
+                />
+                <button
+                  className={btn}
+                  onClick={() => {
+                    const next = { ...el };
+                    delete next.bow;
+                    updateElement(next);
+                  }}
+                >
+                  Make straight
+                </button>
+              </div>
+            )}
             {el.type === 'wall' && (
               <LengthField
                 id="wall-thickness"
@@ -197,13 +220,23 @@ export function Inspector() {
                     ['boundary', 'Boundary'],
                     ['parapet', 'Parapet'],
                     ['retaining', 'Retaining'],
+                    ['curtain', 'Glass'],
                   ] as const
                 ).map(([kind, label]) => (
                   <button
                     key={label}
                     className="m-btn px-2 py-0.5"
                     aria-pressed={el.kind === kind}
-                    onClick={() => updateElement({ ...el, kind, heightMm: kind ? KIND_HEIGHT_MM[kind] : undefined })}
+                    onClick={() =>
+                      updateElement({
+                        ...el,
+                        kind,
+                        heightMm: kindHeightMm(kind),
+                        // Glass is a thin frame; back to brick, it is 9" again.
+                        ...(kind === 'curtain' && { thickness: CURTAIN_MM / MM_PER_UNIT }),
+                        ...(el.kind === 'curtain' && kind !== 'curtain' && { thickness: undefined }),
+                      })
+                    }
                   >
                     {label}
                   </button>
@@ -214,7 +247,7 @@ export function Inspector() {
               <LengthField
                 id="wall-height-edit"
                 label="Height"
-                mm={el.heightMm ?? (el.kind ? KIND_HEIGHT_MM[el.kind] : wallHeightMm)}
+                mm={el.heightMm ?? kindHeightMm(el.kind) ?? wallHeightMm}
                 units={units}
                 min={100}
                 onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 10000) })}

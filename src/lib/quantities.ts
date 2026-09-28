@@ -4,6 +4,7 @@
  * lines (the usual centre-line method), with doors and windows taken out.
  */
 import { pointInPolygon, wallLength } from '../geometry';
+import { directionAlong, pointAlong } from './arc';
 import { polygonArea } from '../rooms';
 import { outsideOutline } from './outline';
 import { DOOR_HEAD_MM, WINDOW_HEAD_MM, WINDOW_SILL_MM } from '../three/model';
@@ -173,7 +174,8 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
         .filter((o) => o.flat && o.depthMm)
         .reduce((s, o) => s + (polygonArea(openingProfileMm(o)) / MM_PER_FT ** 2) * mmFt(o.depthMm!), 0);
       // The plinth rises from the finished ground under the wall (±0 on flat ground).
-      const under = ground ? site.finishedAt((wall.x1 + wall.x2) / 2, (wall.y1 + wall.y2) / 2) : 0;
+      const centre = pointAlong(wall, 0.5);
+      const under = ground ? site.finishedAt(centre.x, centre.y) : 0;
       const plinth = ground && !wall.kind && !wall.elevMm ? Math.max(0, mmFt(doc.plinthMm - under)) : 0;
       const volume = Math.max(0, L * t * (H + plinth) - holes * t + shaped);
       if (wall.kind === 'retaining') q.retainingCft += volume;
@@ -185,11 +187,8 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       const face = Math.max(0, L * H - holes);
       for (const sign of [1, -1]) {
         const off = (thicknessOf(wall) / 2 + 5) * sign;
-        const len = wallLength(wall);
-        const mid = {
-          x: (wall.x1 + wall.x2) / 2 + (-(wall.y2 - wall.y1) / len) * off,
-          y: (wall.y1 + wall.y2) / 2 + ((wall.x2 - wall.x1) / len) * off,
-        };
+        const u = directionAlong(wall, 0.5);
+        const mid = { x: centre.x - u.y * off, y: centre.y + u.x * off };
         const room = (!wall.kind || wall.kind === 'retaining') && inRoom(mid);
         if (room) q.insideFaceSqft += face;
         // A retaining wall's earth side is waterproofed, not plastered.

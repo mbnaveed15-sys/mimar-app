@@ -21,7 +21,8 @@ import {
   type Stair,
   type Wall,
 } from '../types';
-import { thicknessOf, wallExtensions, wallsOf } from '../walls';
+import { isBuildingWall, thicknessOf, wallExtensions, wallsOf } from '../walls';
+import { straightPieces } from '../lib/arc';
 import { groundBeside, lowestAlong, lowestUnder, siteOf, stepOnGround, type TerrainMesh } from './terrain3d';
 
 export type { TerrainKind, TerrainMesh } from './terrain3d';
@@ -202,7 +203,28 @@ interface WallParts {
 const PANEL_PAD = 2; // plan units (20 mm)
 const PANEL_EDGE_M = 0.005;
 
-function wallParts(wall: Wall, walls: Wall[], openings: Opening[], heightMm: number): WallParts {
+/**
+ * The parts of a wall: a curved wall is built as short straight pieces (each door or window in a
+ * piece of its own, flat on the curve), joined so the outside of the bend is closed.
+ */
+function curvedWallParts(wall: Wall, walls: Wall[], openings: Opening[], heightMm: number): WallParts {
+  const pieces = straightPieces(wall, openings, thicknessOf(wall) / 2);
+  const out: WallParts = { solids: [], panels: [] };
+  for (const p of pieces) {
+    const parts = wallParts(p.wall, walls, p.openings, heightMm, p);
+    out.solids.push(...parts.solids);
+    out.panels.push(...parts.panels);
+  }
+  return out;
+}
+
+function wallParts(
+  wall: Wall,
+  walls: Wall[],
+  openings: Opening[],
+  heightMm: number,
+  ends: { start?: number; end?: number } = {},
+): WallParts {
   const len = wallLength(wall);
   if (len === 0) return { solids: [], panels: [] };
   const angle = (Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1) * 180) / Math.PI;
@@ -210,7 +232,9 @@ function wallParts(wall: Wall, walls: Wall[], openings: Opening[], heightMm: num
   const origin = { x: wall.x1, y: wall.y1 };
   const thickness = m(thicknessOf(wall));
   const top = mmToM(heightMm);
-  const { start, end } = wallExtensions(wall, walls);
+  const joins = wallExtensions(wall, walls);
+  const start = ends.start ?? joins.start;
+  const end = ends.end ?? joins.end;
 
   /** A piece of wall from s0 to s1 along it (plan units), between two heights (metres). */
   const piece = (s0: number, s1: number, y0: number, y1: number, role: Solid['role'] = 'wall', depth = thickness) => {
@@ -868,7 +892,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       // A boundary wall stands on the natural ground, not on the plinth.
       const onGround = wall.kind === 'boundary' && ground;
       const place = <T extends Part>(s: T): T => from(wall.id)(raise(wall)(onGround ? s : lift(s)));
-      const parts = wallParts(wall, walls, own, height);
+      const parts = curvedWallParts(wall, walls, own, height);
       // On sloping or levelled ground it steps down the slope; parts of it over openings rise with the ground.
       const stepped = onGround && terrain ? parts.solids.flatMap((s) => stepOnGround(s, terrain)) : parts.solids;
       const panelsOf =
@@ -888,14 +912,14 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           : parts.panels;
       solids.push(...stepped.map(paint).map(place));
       panels.push(...panelsOf.map(paint).map(place));
-      if (wall.kind) continue;
+      if (!isBuildingWall(wall)) continue;
       // The plinth: ground-floor walls carry on down to the ground (not under a raised wall), to the
       // lowest finished ground along them.
       const footMm =
         ground && terrain ? lowestAlong(terrain, { x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 }) : 0;
       if (ground && doc.plinthMm - footMm > 0.5 && !wall.elevMm)
         solids.push(
-          ...wallParts(wall, walls, [], doc.plinthMm - footMm)
+          ...curvedWallParts(wall, walls, [], doc.plinthMm - footMm)
             .solids.map((s) => (footMm ? { ...s, y0: s.y0 + mmToM(footMm) } : s))
             .map(paint)
             .map(from(wall.id)),

@@ -1,4 +1,5 @@
 import { pointInPolygon } from './geometry';
+import { wallSegments } from './lib/arc';
 import { MM_PER_UNIT } from './lib/scale';
 import type { PlanElement, Point, Room, Wall } from './types';
 
@@ -67,13 +68,14 @@ export function buildWallGraph(walls: Wall[]): Graph {
   };
 
   const edges = new Set<string>();
-  const segs = walls.map((w) => ({
-    a: { x: w.x1, y: w.y1 },
-    b: { x: w.x2, y: w.y2 },
-    minX: Math.min(w.x1, w.x2) - EPS,
-    maxX: Math.max(w.x1, w.x2) + EPS,
-    minY: Math.min(w.y1, w.y2) - EPS,
-    maxY: Math.max(w.y1, w.y2) + EPS,
+  // A curved wall is its row of short straight pieces.
+  const segs = walls.flatMap(wallSegments).map(([a, b]) => ({
+    a,
+    b,
+    minX: Math.min(a.x, b.x) - EPS,
+    maxX: Math.max(a.x, b.x) + EPS,
+    minY: Math.min(a.y, b.y) - EPS,
+    maxY: Math.max(a.y, b.y) + EPS,
   }));
   // Only walls whose boxes overlap can meet: sweep along x to find them.
   const order = segs.map((_, i) => i).sort((i, j) => segs[i].minX - segs[j].minX);

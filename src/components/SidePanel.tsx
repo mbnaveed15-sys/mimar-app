@@ -8,7 +8,7 @@ import { Inspector } from './Inspector';
 import { LayersPanel } from './LayersPanel';
 import { MaterialsPanel } from './MaterialsPanel';
 import { SettingsPanel } from './SettingsPanel';
-import { SiteOptions, WallKindPicker } from './SiteOptions';
+import { SiteOptions, WallKindPicker, WallShapePicker } from './SiteOptions';
 import { PlanCheckPanel } from './PlanCheckPanel';
 import { ShapeOptions } from './ShapeOptions';
 import { StructureOptions } from './StructureOptions';
@@ -64,6 +64,7 @@ function ToolOptions() {
   if (tool === 'wall' || tool === 'rectangle')
     return (
       <>
+        {tool === 'wall' && <WallShapePicker />}
         <WallThicknessPicker />
         <WallKindPicker />
       </>

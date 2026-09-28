@@ -7,6 +7,7 @@
 import { placeOnWall } from '../geometry';
 import { detectRoom } from '../rooms';
 import { outsideOutline } from './outline';
+import { isBuildingWall } from '../walls';
 import { MM_PER_UNIT } from './scale';
 import { stairLayout } from './site';
 import { insetPolygon, plotSides, sideOutward, sideSetbacks } from './plot';
@@ -462,7 +463,7 @@ export function basementOutline(doc: PlanDoc, plot: Plot): Point[] | undefined {
   if (authorityById(plot.authority)?.basement?.extent === 'house')
     return largest(
       doc.elements.filter(
-        (el): el is Wall => el.type === 'wall' && !el.hidden && !el.kind && levelOf(el) === GROUND_LEVEL,
+        (el): el is Wall => el.type === 'wall' && !el.hidden && isBuildingWall(el) && levelOf(el) === GROUND_LEVEL,
       ),
     );
   return undefined;

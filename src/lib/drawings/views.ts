@@ -5,6 +5,7 @@
 import { buildModel, levelBaseM, M_PER_UNIT, type Model3D } from '../../three/model';
 import { levelWallMm, slabMm } from '../levels';
 import { outsideOutline } from '../outline';
+import { isBuildingWall } from '../../walls';
 import { sideOutward } from '../plot';
 import { groundOf, type Ground } from '../terrain/ground';
 import { profileAlong } from '../terrain/surface';
@@ -87,9 +88,9 @@ export function elevationLook(doc: PlanDoc, side: ElevationSide): { x: number; z
   }
 }
 
-/** Walls that make up the building (not boundary walls, parapets or retaining walls). */
+/** Walls that make up the building (glass ones too; not boundary walls, parapets or retaining walls). */
 const buildingWalls = (doc: PlanDoc, levelId: Id) =>
-  doc.elements.filter((el): el is Wall => el.type === 'wall' && !el.kind && levelOf(el) === levelId);
+  doc.elements.filter((el): el is Wall => el.type === 'wall' && isBuildingWall(el) && levelOf(el) === levelId);
 
 /**
  * Floor and roof slabs the plan leaves to be understood: under each floor, and over each floor with
@@ -189,7 +190,7 @@ export function levelMarks(doc: PlanDoc, opts: DrawingOptions): LevelMark[] {
     const base = levelBaseM(doc, level.id, opts.wallHeightMm);
     const els = doc.elements.filter((el) => levelOf(el) === level.id);
     const walls = els.filter((el): el is Wall => el.type === 'wall');
-    const built = walls.some((w) => !w.kind);
+    const built = walls.some(isBuildingWall);
     if (built || level.id === GROUND_LEVEL || level.basement)
       add(base, level.id === GROUND_LEVEL && doc.plinthMm > 0 ? `${level.name} (plinth)` : level.name);
     if (built) {

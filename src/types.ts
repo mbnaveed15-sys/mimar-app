@@ -56,7 +56,7 @@ export interface Grouped {
 }
 
 /** Walls other than ordinary ones. */
-export type WallKind = 'boundary' | 'parapet' | 'retaining';
+export type WallKind = 'boundary' | 'parapet' | 'retaining' | 'curtain';
 
 export interface Wall extends Grouped {
   id: Id;
@@ -65,15 +65,25 @@ export interface Wall extends Grouped {
   y1: number;
   x2: number;
   y2: number;
+  /**
+   * A curved wall: how far the middle of the arc bows out from the straight line between its ends,
+   * towards side A (negative: side B), in plan units. Missing for a straight wall.
+   */
+  bow?: number;
   /** Wall thickness in plan units; the default (9") is used when missing. */
   thickness?: number;
   /**
    * A boundary wall stands on natural ground (7' tall); a parapet runs round a roof (3'); a
-   * retaining wall is a basement's RCC outside wall, holding back the earth (up to the ground floor).
+   * retaining wall is a basement's RCC outside wall, holding back the earth (up to the ground floor); a
+   * curtain wall is glass in a frame of mullions and transoms.
    */
   kind?: WallKind;
   /** Height in millimetres, when it differs from the usual wall height (e.g. a boundary wall). */
   heightMm?: number;
+  /** A glass curtain wall: the spacing of its mullions (upright frames), mm; 4' (1.2 m metric) when missing. */
+  mullionMm?: number;
+  /** A glass curtain wall: the height of its transom (cross frame) above the floor, mm; door height when missing, 0 for none. */
+  transomMm?: number;
   /** Its material: both sides, the top and the ends (unless a side has its own). */
   material?: Id;
   /**
@@ -616,6 +626,9 @@ export type Draft =
       chain?: boolean;
       /** Where the chain began; clicking it again closes the loop. */
       chainStart?: Point;
+      /** An arc wall with both ends down: the pointer bends it (its bow, as on Wall). */
+      bend?: boolean;
+      bow?: number;
     }
   | { type: 'rectangle'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'beam'; x1: number; y1: number; x2: number; y2: number }
@@ -659,7 +672,18 @@ export type Draft =
     }
   | { type: 'rotate'; ids: Id[]; center: Point; start?: Point; angle: number }
   /** Offset: a parallel copy of a wall follows the pointer. */
-  | { type: 'offset'; wallId: Id; side: Point; dist: number; x1: number; y1: number; x2: number; y2: number }
+  | {
+      type: 'offset';
+      wallId: Id;
+      side: Point;
+      dist: number;
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      /** Offsetting a curved wall: the copy's bow. */
+      bow?: number;
+    }
   /** Mirror line from a to b; flip turns the originals over instead of copying them. */
   | { type: 'mirror'; ids: Id[]; a: Point; b: Point; flip: boolean }
   /** The first wall picked by Join, Fillet, Chamfer or Break, and where it was clicked. */

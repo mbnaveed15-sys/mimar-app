@@ -10,6 +10,7 @@ import { PLAN } from '../theme/plan';
 import { selectionBounds } from '../lib/selection';
 import { GROUND_LEVEL, levelOf, type Furniture, type PlanElement, type Point, type SectionLine } from '../types';
 import { wallPolygon, wallsOf } from '../walls';
+import { pointAlong } from '../lib/arc';
 import { DrawingOverlay } from './DrawingOverlay';
 import { CheckMarks } from './CheckMarks';
 import { faceAt2D } from '../lib/faces2d';
@@ -284,6 +285,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
           <>
             <Handle name="wall-start" p={{ x: selected.x1, y: selected.y1 }} k={hk} />
             <Handle name="wall-end" p={{ x: selected.x2, y: selected.y2 }} k={hk} />
+            {!selected.plotId && <Handle name="wall-bend" p={pointAlong(selected, 0.5)} k={hk} />}
           </>
         )}
         {tool === 'select' &&

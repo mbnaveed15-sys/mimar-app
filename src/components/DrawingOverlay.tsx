@@ -1,6 +1,7 @@
 import { SectionShape } from './shapes/SectionShape';
 import { SNAP_LABELS, type Inference } from '../lib/inference';
 import { formatLength } from '../lib/units';
+import { pointAlong, radiusOf, wallPath } from '../lib/arc';
 import { MM_PER_UNIT } from '../store/plannerStore';
 import { PLAN } from '../theme/plan';
 import { protractor } from '../lib/protractor';
@@ -74,7 +75,27 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
 
   return (
     <g pointerEvents="none" data-testid="drawing-overlay">
-      {d?.type === 'wall' && (
+      {d?.type === 'wall' && d.bend && (
+        <>
+          <polyline
+            data-testid="wall-draft"
+            data-arc
+            points={wallPath(d)
+              .map((p) => `${p.x},${p.y}`)
+              .join(' ')}
+            fill="none"
+            style={{ stroke: band }}
+            strokeWidth={2 * k}
+            strokeDasharray={dash}
+          />
+          {radiusOf(d) !== null && (
+            <Label p={{ x: pointAlong(d, 0.5).x + 10 * k, y: pointAlong(d, 0.5).y - 10 * k }} k={k} color={PLAN.draft}>
+              {`R ${formatLength(radiusOf(d)! * MM_PER_UNIT, units)}`}
+            </Label>
+          )}
+        </>
+      )}
+      {d?.type === 'wall' && !d.bend && (
         <>
           <line
             data-testid="wall-draft"
@@ -93,12 +114,12 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
       )}
 
       {d?.type === 'offset' && (
-        <line
+        <polyline
           data-testid="offset-preview"
-          x1={d.x1}
-          y1={d.y1}
-          x2={d.x2}
-          y2={d.y2}
+          points={wallPath(d)
+            .map((p) => `${p.x},${p.y}`)
+            .join(' ')}
+          fill="none"
           style={{ stroke: PLAN.draft }}
           strokeWidth={3 * k}
           strokeDasharray={dash}

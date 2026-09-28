@@ -27,7 +27,7 @@ import {
   type Units,
   type Wall,
 } from '../types';
-import { thicknessOf } from '../walls';
+import { isBuildingWall, thicknessOf } from '../walls';
 
 export type CheckStatus = 'ok' | 'fail' | 'check';
 
@@ -54,7 +54,7 @@ export interface PlanCheck {
 
 const SQ_MM_PER_SQ_FT = 92903.04;
 const TOLERANCE = 1; // plan units (10 mm)
-const BUILT_KINDS = (w: Wall) => !w.kind || w.kind === 'retaining';
+const BUILT_KINDS = (w: Wall) => isBuildingWall(w) || w.kind === 'retaining';
 
 /** A wall's four corners, thickness included. */
 function wallCorners(w: Wall): Point[] {
@@ -317,7 +317,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       });
     else {
       const groundWalls = doc.elements.filter(
-        (el): el is Wall => el.type === 'wall' && !el.hidden && !el.kind && levelOf(el) === GROUND_LEVEL,
+        (el): el is Wall => el.type === 'wall' && !el.hidden && isBuildingWall(el) && levelOf(el) === GROUND_LEVEL,
       );
       const area =
         br.extent === 'house'
@@ -605,7 +605,7 @@ function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: number)
   }
   // A floor with walls carries a slab over it even when none is drawn (a basement's is below the ground).
   for (const l of doc.levels)
-    if (!l.basement && built.some((el) => el.type === 'wall' && !el.kind && levelOf(el) === l.id))
+    if (!l.basement && built.some((el) => el.type === 'wall' && isBuildingWall(el) && levelOf(el) === l.id))
       top = Math.max(
         top,
         levelBaseM(doc, l.id, wallHeightMm) * 1000 + levelWallMm(doc, l.id, wallHeightMm) + slabMm(doc),

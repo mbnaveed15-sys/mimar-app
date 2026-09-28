@@ -3,6 +3,7 @@ import { modifyEnter } from './modifyTools';
 import { shapeEnter } from './shapeTools';
 import { finishContour } from './groundTools';
 import { finishPlotPoly } from './structureTools';
+import { finishArcWall } from './controller';
 
 interface Store {
   getState: () => PlannerState;
@@ -18,6 +19,11 @@ export function finishStep(store: Store): boolean {
   const d = s.draft;
   if (d?.type === 'mask') {
     s.finishMask();
+    return true;
+  }
+  // An arc wall being bent goes in as it is, and the chain stops.
+  if (d?.type === 'wall' && d.bend) {
+    finishArcWall(store, d.bow ?? 0, 0, false);
     return true;
   }
   if (d?.type === 'wall' || d?.type === 'line' || d?.type === 'tape') {

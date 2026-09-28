@@ -47,6 +47,7 @@ import { formatLength } from '../lib/units';
 import { basementOf, levelWallMm, slabMm } from '../lib/levels';
 import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
+import { CURTAIN_MM, isBuildingWall } from '../walls';
 import { groundOf, roundLevel } from '../lib/terrain/ground';
 import type { Built } from '../lib/layoutBuild';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
@@ -112,6 +113,8 @@ export interface SiteSpec {
   boundaryWall: boolean;
   /** Type of new walls drawn with the Wall and Rectangle tools. */
   wallKind: 'normal' | WallKind;
+  /** The Wall tool draws arcs: the start, the end, then a point the curve passes through. */
+  wallArc: boolean;
   /** Door tool places a door or a gate. */
   gate: boolean;
   gateWidthMm: number;
@@ -139,6 +142,9 @@ export interface SiteSpec {
 
 /** Heights of boundary walls (7') and parapets (3'). */
 export const KIND_HEIGHT_MM = { boundary: 2133.6, parapet: 914.4, retaining: 3048 + 152.4 } as const;
+/** The height a new wall of this type starts at, or undefined for the floor's own wall height. */
+export const kindHeightMm = (kind?: WallKind): number | undefined =>
+  kind && kind !== 'curtain' ? KIND_HEIGHT_MM[kind] : undefined;
 /** A retaining wall's usual thickness: 12" RCC, in millimetres. */
 export const RETAINING_MM = 304.8;
 
@@ -147,6 +153,7 @@ export const DEFAULT_SITE: SiteSpec = {
   plotShape: 'rect',
   boundaryWall: true,
   wallKind: 'normal',
+  wallArc: false,
   gate: false,
   gateWidthMm: 3048,
   doorKind: 'single',
@@ -422,7 +429,8 @@ export interface PlannerState {
   paste: () => Id[];
   duplicateSelected: () => void;
 
-  addWall: (a: Point, b: Point) => void;
+  /** A new wall from a to b on the active floor; with a bow, curved (see Wall.bow). */
+  addWall: (a: Point, b: Point, bow?: number) => void;
   /**
    * Place a door or window on the wall near p, or a typed distance from the nearer corner; false
    * (with a warning saying why) when it doesn't fit.
@@ -633,6 +641,8 @@ export function createPlannerStore(
           thickness: RETAINING_MM / MM_PER_UNIT,
           heightMm: levelWallMm(get().doc, get().activeLevel, get().wallHeightMm) + slabMm(get().doc),
         };
+      // A glass curtain wall is as tall as the floor, and thin.
+      if (kind === 'curtain') return { kind, thickness: CURTAIN_MM / MM_PER_UNIT };
       return { kind, heightMm: KIND_HEIGHT_MM[kind] };
     };
     /** Put a new item on the active floor. */
@@ -1073,7 +1083,7 @@ export function createPlannerStore(
         get().setSelection(copies);
       },
 
-      addWall: (a, b) => {
+      addWall: (a, b, bow) => {
         if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
         const wall: PlanElement = onActive({
           id: newId(),
@@ -1082,6 +1092,7 @@ export function createPlannerStore(
           y1: a.y,
           x2: b.x,
           y2: b.y,
+          ...(bow && Math.abs(bow) > 0.05 && { bow }),
           thickness: get().wallThicknessMm / MM_PER_UNIT,
           material: activeMat(),
           ...kindFields(get().site.wallKind),
@@ -1448,7 +1459,7 @@ export function createPlannerStore(
         let outline: Point[] | null;
         if (mode === 'house') {
           const walls = doc.elements.filter(
-            (el): el is Wall => el.type === 'wall' && !el.kind && !el.hidden && levelOf(el) === GROUND_LEVEL,
+            (el): el is Wall => el.type === 'wall' && isBuildingWall(el) && !el.hidden && levelOf(el) === GROUND_LEVEL,
           );
           outline = outsideOutline(walls);
           if (!outline) {
@@ -1606,7 +1617,7 @@ export function createPlannerStore(
       },
       padUnderHouse: () => {
         const walls = get().doc.elements.filter(
-          (el): el is Wall => el.type === 'wall' && !el.kind && levelOf(el) === GROUND_LEVEL,
+          (el): el is Wall => el.type === 'wall' && isBuildingWall(el) && levelOf(el) === GROUND_LEVEL,
         );
         const outline = walls.length ? outsideOutline(walls) : null;
         if (!outline || outline.length < 3) {
@@ -1861,7 +1872,7 @@ export function createPlannerStore(
       layoutClash: (retaining = false) => {
         const els = get().levelElements();
         const walls = els.filter(
-          (el) => el.type === 'wall' && (!el.kind || (retaining && el.kind === 'retaining')),
+          (el) => el.type === 'wall' && (isBuildingWall(el) || (retaining && el.kind === 'retaining')),
         ).length;
         const rooms = get().levelRooms().length;
         const other = els.filter((el) => REPLACED_BY_LAYOUT.has(el.type)).length;
@@ -1876,7 +1887,7 @@ export function createPlannerStore(
               .filter(
                 (el) =>
                   here(el) &&
-                  ((el.type === 'wall' && (!el.kind || (retaining && el.kind === 'retaining'))) ||
+                  ((el.type === 'wall' && (isBuildingWall(el) || (retaining && el.kind === 'retaining'))) ||
                     REPLACED_BY_LAYOUT.has(el.type)),
               )
               .map((el) => el.id),

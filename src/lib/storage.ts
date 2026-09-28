@@ -38,8 +38,11 @@ import { defaultMaterials, PATTERNS } from './materials';
 import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
 
 export const STORAGE_KEY = 'mimar.plan';
-/** 4 added groups and components; 5 added levels, columns, beams and slabs; 9 section lines and sheets. */
-export const CURRENT_VERSION = 10;
+/**
+ * 4 added groups and components; 5 added levels, columns, beams and slabs; 9 section lines and sheets;
+ * 10 the ground; 11 curved and glass walls, pitched roofs and double-height rooms.
+ */
+export const CURRENT_VERSION = 11;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -172,8 +175,13 @@ function normaliseElement(raw: unknown): PlanElement | null {
         x2: num('x2'),
         y2: num('y2'),
         thickness: thickness > 0 ? thickness : undefined,
-        kind: ['boundary', 'parapet', 'retaining'].includes(raw.kind as string) ? (raw.kind as WallKind) : undefined,
+        ...(Math.abs(num('bow')) > 0.05 && { bow: num('bow') }),
+        kind: ['boundary', 'parapet', 'retaining', 'curtain'].includes(raw.kind as string)
+          ? (raw.kind as WallKind)
+          : undefined,
         heightMm: num('heightMm') > 0 ? num('heightMm') : undefined,
+        ...(num('mullionMm') >= 100 && { mullionMm: num('mullionMm') }),
+        ...(num('transomMm') >= 0 && { transomMm: num('transomMm') }),
         materialA: idOf(raw.materialA),
         materialB: idOf(raw.materialB),
         ...(raw.plotId !== undefined &&

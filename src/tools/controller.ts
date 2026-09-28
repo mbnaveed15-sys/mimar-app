@@ -20,6 +20,7 @@ import { getPicker, getPointer } from '../three/picker';
 import type { Id, PlanDoc, Plot, Point, SketchLine, Tool } from '../types';
 import { MODIFY_TOOLS } from '../types';
 import { wallsOf } from '../walls';
+import { bowForRadius, bowThrough, radiusOf } from '../lib/arc';
 import {
   modifyAnchor,
   modifyHint,
@@ -240,6 +241,9 @@ export function hover(store: Store, raw: Point, shift = false, screenY?: number)
 
   switch (d.type) {
     case 'wall':
+      if (d.bend) s.setDraft({ ...d, bow: bowThrough(d, raw) });
+      else s.setDraft({ ...d, x2: p.x, y2: p.y });
+      break;
     case 'line':
     case 'rectangle':
       s.setDraft({ ...d, x2: p.x, y2: p.y });
@@ -482,8 +486,13 @@ export function press(
         s.setDraft({ type: 'wall', x1: p.x, y1: p.y, x2: p.x, y2: p.y, chainStart: p });
         return true;
       }
+      if (d.bend) {
+        finishArcWall(store, d.bow ?? 0, tol);
+        return true;
+      }
       if (!d.chain) return true;
-      finishWallAt(store, p, tol);
+      if (s.site.wallArc) startBend(store, p);
+      else finishWallAt(store, p, tol);
       return true;
     }
     case 'line': {
@@ -575,6 +584,33 @@ function finishWallAt(store: Store, p: Point, tol: number) {
   );
 }
 
+/** An arc wall: its end is down at p, and the pointer now bends it. */
+function startBend(store: Store, p: Point) {
+  const s = store.getState();
+  const d = s.draft;
+  if (d?.type !== 'wall' || same({ x: d.x1, y: d.y1 }, p, 0.01)) return;
+  s.setAxisLock(null);
+  s.setDraft({ ...d, x2: p.x, y2: p.y, chain: true, bend: true, bow: 0 });
+}
+
+/** Add the arc wall being bent, and carry on from its end unless the loop closed. */
+export function finishArcWall(store: Store, bow: number, tol: number, carryOn = true) {
+  const s = store.getState();
+  const d = s.draft;
+  if (d?.type !== 'wall' || !d.bend) return;
+  const [start, end] = [
+    { x: d.x1, y: d.y1 },
+    { x: d.x2, y: d.y2 },
+  ];
+  s.addWall(start, end, bow);
+  const closed = d.chainStart && same(end, d.chainStart, tol) && !same(start, d.chainStart, 0.01);
+  s.setDraft(
+    closed || !carryOn
+      ? null
+      : { type: 'wall', x1: end.x, y1: end.y, x2: end.x, y2: end.y, chain: true, chainStart: d.chainStart },
+  );
+}
+
 /** Add the layout line being drawn, ending at p, and carry on from p. */
 function finishLineAt(store: Store, p: Point) {
   const s = store.getState();
@@ -604,7 +640,8 @@ export function release(store: Store, dragged: boolean) {
     return;
   }
   if (s.tool !== 'wall' || d?.type !== 'wall' || d.chain) return;
-  if (dragged) {
+  if (dragged && s.site.wallArc) startBend(store, { x: d.x2, y: d.y2 });
+  else if (dragged) {
     s.addWall({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 });
     s.setDraft(null);
   } else {
@@ -677,11 +714,21 @@ export function applyMeasure(store: Store, text: string): boolean {
       return true;
     }
     case 'wall': {
+      const tol = 10 * s.reach() * s.pxUnits();
+      if (d?.type === 'wall' && d.bend) {
+        // Bending an arc: the radius, on the side the pointer has bent it to.
+        const chord = Math.hypot(d.x2 - d.x1, d.y2 - d.y1);
+        if (m.kind !== 'length' || units(m.mm) < chord / 2 - 1e-6)
+          return fail(`Type the arc's radius: at least half the distance between its ends.`);
+        finishArcWall(store, bowForRadius({ ...d, bow: d.bow || 1 }, units(m.mm)), tol);
+        return true;
+      }
       const end = d?.type === 'wall' ? endFrom({ x: d.x1, y: d.y1 }) : null;
       if (d?.type !== 'wall' || !end)
         return fail(`Click where the wall starts, then type its length (or @x,y, or length<angle).`);
       if (!d.chain) s.setDraft({ ...d, chain: true });
-      finishWallAt(store, end, 10 * s.reach() * s.pxUnits());
+      if (s.site.wallArc) startBend(store, end);
+      else finishWallAt(store, end, tol);
       return true;
     }
     case 'rectangle': {
@@ -831,8 +878,13 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
   switch (s.tool) {
     case 'line':
       return { label: 'Length', value: d?.type === 'line' ? len(sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 })) : '' };
-    case 'wall':
+    case 'wall': {
+      if (d?.type === 'wall' && d.bend) {
+        const r = radiusOf(d);
+        return { label: 'Radius', value: r ? formatLength(r * MM_PER_UNIT, s.units) : '' };
+      }
       return { label: 'Length', value: d?.type === 'wall' ? len(sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 })) : '' };
+    }
     case 'rectangle':
       return {
         label: 'Dimensions',
@@ -875,6 +927,12 @@ export function toolHint(s: PlannerState): string {
         ? 'Click the next point (or type a length). Lines chain until Esc; select them and use "Turn into walls" to build.'
         : 'Draw layout lines to plan with: click to chain, drag for one line. They snap like walls.';
     case 'wall':
+      if (d?.type === 'wall' && d.bend)
+        return 'Move the pointer to bend the wall and click, or type its radius and press Enter.';
+      if (s.site.wallArc)
+        return d?.type === 'wall'
+          ? 'Click where the arc wall ends (or type its length), then bend it.'
+          : 'Click where the arc wall starts, then where it ends, then a point the curve passes through.';
       return d?.type === 'wall'
         ? 'Click the next corner or type a length and press Enter. Arrow keys lock an axis; Esc stops.'
         : 'Click to start a wall (or drag to draw one). Walls snap to ends, midpoints and the grid.';

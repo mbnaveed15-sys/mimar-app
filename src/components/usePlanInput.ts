@@ -12,6 +12,7 @@ import {
   translateElement,
 } from '../geometry';
 import { trimAt } from '../lib/modify';
+import { bowThrough } from '../lib/arc';
 import { faceOf } from '../lib/pushPull';
 import { itemsInBox, moveItems } from '../lib/selection';
 import { panBy } from '../lib/view';
@@ -33,6 +34,8 @@ type Drag =
   /** Eraser pressed: a click erases what is there when let go; a drag erases all it passes over. */
   | { kind: 'erase'; last: Point; click: () => void }
   | { kind: 'wall-start' | 'wall-end'; orig: Wall }
+  /** Dragging a wall's middle sideways to bend it into an arc (or back to straight). */
+  | { kind: 'wall-bend'; orig: Wall }
   | { kind: 'resize' | 'rotate'; orig: Furniture }
   /** Dragging a corner of a plot to reshape it. */
   | { kind: 'plot-corner'; plotId: string; index: number };
@@ -201,7 +204,7 @@ export function usePlanInput(
     const handle = (e.target as Element).closest('[data-handle]')?.getAttribute('data-handle');
     const selected = s.selectedIds.length === 1 ? s.doc.elements.find((el) => el.id === s.selectedId) : undefined;
     if (handle && selected && s.tool === 'select') {
-      if (selected.type === 'wall' && (handle === 'wall-start' || handle === 'wall-end')) {
+      if (selected.type === 'wall' && (handle === 'wall-start' || handle === 'wall-end' || handle === 'wall-bend')) {
         startDrag(e, { kind: handle, orig: selected });
       } else if (selected.type === 'furniture' && (handle === 'resize' || handle === 'rotate')) {
         startDrag(e, { kind: handle, orig: selected });
@@ -376,7 +379,20 @@ export function usePlanInput(
           const p = snapPoint(raw, drag.orig.id);
           const next =
             drag.kind === 'wall-start' ? { ...drag.orig, x1: p.x, y1: p.y } : { ...drag.orig, x2: p.x, y2: p.y };
+          // A curved wall keeps its shape: its bow grows or shrinks with the distance between its ends.
+          const o = drag.orig;
+          const was = Math.hypot(o.x2 - o.x1, o.y2 - o.y1);
+          if (o.bow && was) next.bow = (o.bow * Math.hypot(next.x2 - next.x1, next.y2 - next.y1)) / was;
           if (next.x1 !== next.x2 || next.y1 !== next.y2) s.updateElement(next);
+          break;
+        }
+        case 'wall-bend': {
+          // Close to the straight line (a few pixels), it snaps straight again.
+          const bow = bowThrough(drag.orig, raw);
+          const straight = Math.abs(bow) < 6 * s.pxUnits();
+          const next: Wall = { ...drag.orig, bow };
+          if (straight) delete next.bow;
+          s.updateElement(next);
           break;
         }
         case 'plot-corner': {

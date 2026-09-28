@@ -3,7 +3,8 @@
  * tool's settings (or from a door or window picked up or pasted), on the nearest wall, placed by
  * the rules in openingPlace (inside a piece of wall, clear of corners and other openings).
  */
-import { nearestWall } from '../geometry';
+import { nearestWall, wallLength } from '../geometry';
+import { pointAlong } from '../lib/arc';
 import { DOOR_WIDTH_MM, WINDOW_SIZE_MM } from '../lib/openingKinds';
 import {
   flipsTowards,
@@ -156,9 +157,8 @@ export function openingAt(s: PlannerState, type: 'door' | 'window', p: Point, ty
 
 /** Where the clear distances go: from each end of the piece to the opening's near edge, on the centre line. */
 export function openingDims(wall: Wall, at: Extract<Placement, { ok: true }>): [Point, Point][] {
-  const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) || 1;
-  const u = { x: (wall.x2 - wall.x1) / len, y: (wall.y2 - wall.y1) / len };
-  const pt = (s: number) => ({ x: wall.x1 + u.x * s, y: wall.y1 + u.y * s });
+  const len = wallLength(wall) || 1;
+  const pt = (s: number) => pointAlong(wall, s / len);
   const out: [Point, Point][] = [];
   if (at.before > 0.5) out.push([pt(at.piece.a), pt(at.s - at.width / 2)]);
   if (at.after > 0.5) out.push([pt(at.s + at.width / 2), pt(at.piece.b)]);

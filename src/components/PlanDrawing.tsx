@@ -5,7 +5,7 @@ import { formatLength } from '../lib/units';
 import { PLAN } from '../theme/plan';
 import type { MarlaSqFt, PlanDoc, Units } from '../types';
 import { wallFaces } from '../rooms';
-import { DEFAULT_WALL_THICKNESS, placeWallDimension, thicknessOf, wallsOf } from '../walls';
+import { DEFAULT_WALL_THICKNESS, openingCover, placeWallDimension, wallsOf } from '../walls';
 import { FurnitureShape } from './shapes/FurnitureShape';
 import { MaskShape } from './shapes/MaskShape';
 import { OpeningShape } from './shapes/OpeningShape';
@@ -106,7 +106,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
                 opening={el}
                 color={color}
                 selected={isSelected}
-                wallThickness={host ? thicknessOf(host) : DEFAULT_WALL_THICKNESS}
+                wallThickness={host ? openingCover(host, el.width) : DEFAULT_WALL_THICKNESS}
               />
             );
           }

@@ -2,7 +2,17 @@
  * AutoCAD-style editing of walls: trim, extend, break, join, fillet, chamfer and offset, plus
  * mirror, scale and stretch for any selection. Everything here is pure: plan in, plan out.
  */
-import { mapOutline, placeOnWall, pointToSegmentDistance, wallParam } from '../geometry';
+import { mapOutline, placeOnWall, wallParam } from '../geometry';
+import {
+  directionAlong,
+  distanceToWall,
+  isArc,
+  offsetWall as offsetArc,
+  partOf,
+  projectOnWall,
+  runLength,
+  wallSegments,
+} from './arc';
 import { doorSides, flipsFor } from './openingPlace';
 import { thicknessOf } from '../walls';
 import {
@@ -67,10 +77,22 @@ export function lineCross(a: Wall, b: Wall): Point | null {
 /** Points along a wall (0–1) where other walls cross it or end on it, in order. */
 export function wallCuts(doc: PlanDoc, wall: Wall, tol: number): number[] {
   const ts: number[] = [];
+  const curved = (w: Wall) => w.type === 'wall' && isArc(w);
   for (const other of wallsOf(doc)) {
     if (other.id === wall.id || levelOf(other) !== levelOf(wall)) continue;
-    const hit = segmentHit(start(wall), end(wall), start(other), end(other), tol);
-    if (hit && hit.t > EPS && hit.t < 1 - EPS) ts.push(hit.t);
+    if (!curved(wall) && !curved(other)) {
+      const hit = segmentHit(start(wall), end(wall), start(other), end(other), tol);
+      if (hit && hit.t > EPS && hit.t < 1 - EPS) ts.push(hit.t);
+      continue;
+    }
+    // A curved wall: where the short straight pieces of the two cross, as a place along this wall.
+    for (const [a1, a2] of wallSegments(wall))
+      for (const [b1, b2] of wallSegments(other)) {
+        const hit = segmentHit(a1, a2, b1, b2, tol);
+        if (!hit) continue;
+        const t = wallParam(wall, add(a1, mul(sub(a2, a1), hit.t)));
+        if (t > EPS && t < 1 - EPS) ts.push(t);
+      }
   }
   ts.sort((a, b) => a - b);
   return ts.filter((t, i) => i === 0 || t - ts[i - 1] > 1e-9);
@@ -78,7 +100,7 @@ export function wallCuts(doc: PlanDoc, wall: Wall, tol: number): number[] {
 
 /** An opening kept at its place on a changed wall, or null if it no longer fits there. */
 function refit(o: Opening, wall: Wall): Opening | null {
-  const L = len(sub(end(wall), start(wall)));
+  const L = runLength(wall);
   const t = wallParam(wall, o);
   const half = o.width / 2;
   if (t * L < half - EPS || t * L > L - half + EPS) return null;
@@ -94,7 +116,7 @@ export function keepPieces(doc: PlanDoc, wallId: Id, ranges: [number, number][])
   if (!wall) return doc;
   const pieces = ranges
     .filter(([a, b]) => b - a > EPS)
-    .map(([a, b], i) => withEnds({ ...wall, id: i === 0 ? wall.id : newId() }, at(wall, a), at(wall, b)));
+    .map(([a, b], i) => partOf({ ...wall, id: i === 0 ? wall.id : newId() }, a, b));
   const elements: PlanElement[] = [];
   for (const el of doc.elements) {
     if (el.id === wallId) {
@@ -137,7 +159,8 @@ export function breakWall(doc: PlanDoc, wallId: Id, t1: number, t2 = t1): PlanDo
 /** Extend: lengthen a wall from its end nearest p until it meets another wall. Null if nothing is in the way. */
 export function extendWall(doc: PlanDoc, wallId: Id, p: Point): PlanDoc | null {
   const wall = wallsOf(doc).find((w) => w.id === wallId);
-  if (!wall) return null;
+  // A curved wall isn't extended (its curve could go anywhere).
+  if (!wall || isArc(wall)) return null;
   const fromEnd = len(sub(p, end(wall))) <= len(sub(p, start(wall)));
   const tip = fromEnd ? end(wall) : start(wall);
   const dir = fromEnd ? sub(end(wall), start(wall)) : sub(start(wall), end(wall));
@@ -147,12 +170,14 @@ export function extendWall(doc: PlanDoc, wallId: Id, p: Point): PlanDoc | null {
   let bestD = Infinity;
   for (const other of wallsOf(doc)) {
     if (other.id === wall.id || levelOf(other) !== levelOf(wall)) continue;
-    const hit = segmentHit(tip, ray, start(other), end(other));
-    if (!hit || hit.t * 1e4 < 1e-3) continue;
-    const d = hit.t * 1e4;
-    if (d < bestD) {
-      bestD = d;
-      best = add(tip, mul(dir, d / L));
+    for (const [b1, b2] of wallSegments(other)) {
+      const hit = segmentHit(tip, ray, b1, b2);
+      if (!hit || hit.t * 1e4 < 1e-3) continue;
+      const d = hit.t * 1e4;
+      if (d < bestD) {
+        bestD = d;
+        best = add(tip, mul(dir, d / L));
+      }
     }
   }
   if (!best) return null;
@@ -179,8 +204,8 @@ function replaceWall(doc: PlanDoc, old: Wall, next: Wall): PlanDoc {
 export function joinWalls(doc: PlanDoc, idA: Id, idB: Id, tol: number): PlanDoc | null {
   const a = wallsOf(doc).find((w) => w.id === idA);
   const b = wallsOf(doc).find((w) => w.id === idB);
-  // A wall joins a wall, a line a line.
-  if (!a || !b || a.id === b.id || a.type !== b.type) return null;
+  // A wall joins a wall, a line a line; curved walls don't join.
+  if (!a || !b || a.id === b.id || a.type !== b.type || isArc(a) || isArc(b)) return null;
   const dir = sub(end(a), start(a));
   const L = len(dir);
   const u = mul(dir, 1 / L);
@@ -230,7 +255,7 @@ function keptSide(w: Wall, c: Point, pick: Point): { far: Point; toCorner: Point
 export function filletWalls(doc: PlanDoc, idA: Id, pickA: Point, idB: Id, pickB: Point, radius = 0): PlanDoc | null {
   const a = wallsOf(doc).find((w) => w.id === idA);
   const b = wallsOf(doc).find((w) => w.id === idB);
-  if (!a || !b || a.id === b.id) return null;
+  if (!a || !b || a.id === b.id || isArc(a) || isArc(b)) return null;
   const c = lineCross(a, b);
   if (!c) return null;
   const A = keptSide(a, c, pickA);
@@ -275,7 +300,7 @@ export function chamferWalls(
 ): PlanDoc | null {
   const a = wallsOf(doc).find((w) => w.id === idA);
   const b = wallsOf(doc).find((w) => w.id === idB);
-  if (!a || !b || a.id === b.id) return null;
+  if (!a || !b || a.id === b.id || isArc(a) || isArc(b)) return null;
   const c = lineCross(a, b);
   if (!c) return null;
   const A = keptSide(a, c, pickA);
@@ -289,6 +314,13 @@ export function chamferWalls(
 
 /** Offset: a parallel copy of a wall, `dist` away on the side of `side`. */
 export function offsetWall(wall: Wall, dist: number, side: Point): Wall {
+  if (isArc(wall)) {
+    // A curved wall: an arc on the same centre, on the side of `side`.
+    const on = projectOnWall(wall, side);
+    const u = directionAlong(wall, on.t);
+    const sign = dot({ x: -u.y, y: u.x }, sub(side, on.point)) >= 0 ? 1 : -1;
+    return { ...offsetArc(wall, sign * dist), id: newId(), groupId: undefined, defKey: undefined };
+  }
   const d = sub(end(wall), start(wall));
   let n = { x: -d.y / len(d), y: d.x / len(d) };
   if (dot(n, sub(side, start(wall))) < 0) n = mul(n, -1);
@@ -302,6 +334,7 @@ export function offsetWall(wall: Wall, dist: number, side: Point): Wall {
 
 /** Distance from a wall's line to p (for a live offset preview). */
 export function distanceToLine(wall: Wall, p: Point): number {
+  if (isArc(wall)) return projectOnWall(wall, p).dist;
   const d = sub(end(wall), start(wall));
   return Math.abs(cross(d, sub(p, start(wall)))) / len(d);
 }
@@ -427,7 +460,7 @@ function mirrorLone(
   let best = Infinity;
   for (const w of doc.elements) {
     if (w.type !== 'wall' || levelOf(w) !== level) continue;
-    const d = pointToSegmentDistance(p, start(w), end(w));
+    const d = distanceToWall(w, p);
     if (d <= thicknessOf(w) / 2 + 1 && d < best) {
       host = w;
       best = d;
@@ -460,7 +493,8 @@ export function scaleItems(doc: PlanDoc, ids: Id[], base: Point, factor: number)
   const elements = doc.elements.map((el) => {
     if (!set.has(el.id) || isOpening(el)) return el;
     if (el.type === 'wall') {
-      const w = withEnds(el, sc(start(el)), sc(end(el)));
+      const w = withEnds(el, sc(start(el)), sc(end(el))) as WallItem;
+      if (el.bow) w.bow = el.bow * factor;
       walls.set(w.id, w);
       return w;
     }
@@ -508,7 +542,10 @@ export function stretchItems(
   const elements = doc.elements.map((el) => {
     if (!can(el.id)) return el;
     if (el.type === 'wall') {
-      const w = withEnds(el, move(start(el)), move(end(el)));
+      const w = withEnds(el, move(start(el)), move(end(el))) as WallItem;
+      // A curved wall keeps its shape as its ends move apart or together.
+      const was = len(sub(end(el), start(el)));
+      if (el.bow && was) w.bow = (el.bow * len(sub(end(w), start(w)))) / was;
       walls.set(w.id, w);
       return w;
     }

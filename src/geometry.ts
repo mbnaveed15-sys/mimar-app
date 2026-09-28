@@ -1,3 +1,4 @@
+import { arcOf, distanceToWall, isArc, paramAlong, placeOnArc, pointAlong, runLength, wallPath } from './lib/arc';
 import { boxOf } from './lib/spatial';
 import { reversedSides } from './lib/plot';
 import { MM_PER_UNIT } from './lib/scale';
@@ -22,8 +23,9 @@ export function snap(p: Point, grid: number): Point {
   return { x: Math.round(p.x / grid) * grid, y: Math.round(p.y / grid) * grid };
 }
 
-export function wallLength(w: Wall): number {
-  return Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+/** A wall's length along its centre line (along the curve, for a curved wall). */
+export function wallLength(w: Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2' | 'bow'>): number {
+  return runLength(w);
 }
 
 export function pointToSegmentDistance(p: Point, a: Point, b: Point): number {
@@ -77,6 +79,7 @@ export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Poin
 }
 
 export function elementCenter(el: PlanElement): Point {
+  if (el.type === 'wall' && isArc(el)) return pointAlong(el, 0.5);
   if (el.type === 'wall' || el.type === 'beam' || el.type === 'line' || el.type === 'section')
     return { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 };
   if (hasPoints(el)) return centroid(el.points);
@@ -88,7 +91,7 @@ export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
     case 'wall': {
       // Anywhere on the wall's thickness counts, as well as near its centre line.
       const reach = Math.max(threshold, (el.thickness ?? DEFAULT_THICKNESS) / 2);
-      return pointToSegmentDistance(p, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 }) < reach;
+      return distanceToWall(el, p) < reach;
     }
     case 'furniture':
     case 'column':
@@ -154,7 +157,7 @@ export function nearestWall(elements: PlanElement[], p: Point, maxDistance: numb
   let bestD = maxDistance;
   for (const el of elements) {
     if (el.type !== 'wall') continue;
-    const d = pointToSegmentDistance(p, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 });
+    const d = distanceToWall(el, p);
     if (d < bestD) {
       best = el;
       bestD = d;
@@ -168,10 +171,12 @@ export function nearestWall(elements: PlanElement[], p: Point, maxDistance: numb
  * clamped so it stays within the wall. The width is capped at the wall length.
  */
 export function placeOnWall(
-  wall: Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>,
+  wall: Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2' | 'bow'>,
   p: Point,
   width: number,
 ): { x: number; y: number; angle: number; width: number } {
+  const onArc = placeOnArc(wall, p, width);
+  if (onArc) return onArc;
   const C = wall.x2 - wall.x1;
   const D = wall.y2 - wall.y1;
   const len = Math.hypot(C, D);
@@ -200,12 +205,9 @@ export function fromFurnitureLocal(f: Placed, local: Point): Point {
   };
 }
 
-/** Position of p along the wall: 0 at the start, 1 at the end. */
-export function wallParam(wall: Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>, p: Point): number {
-  const C = wall.x2 - wall.x1;
-  const D = wall.y2 - wall.y1;
-  const lenSq = C * C + D * D;
-  return lenSq === 0 ? 0 : ((p.x - wall.x1) * C + (p.y - wall.y1) * D) / lenSq;
+/** Position of p along the wall: 0 at the start, 1 at the end (along the curve, for a curved wall). */
+export function wallParam(wall: Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2' | 'bow'>, p: Point): number {
+  return paramAlong(wall, p);
 }
 
 /**
@@ -220,12 +222,20 @@ export function reattachOpening(opening: Opening, oldWall: Wall, newWall: Wall):
   const startKept = same(oldWall.x1, oldWall.y1, newWall.x1, newWall.y1);
   const endKept = same(oldWall.x2, oldWall.y2, newWall.x2, newWall.y2);
   const t = Math.max(0, Math.min(1, !startKept && endKept ? 1 - (oldLen - along) / newLen : along / newLen));
-  const p = { x: newWall.x1 + t * (newWall.x2 - newWall.x1), y: newWall.y1 + t * (newWall.y2 - newWall.y1) };
+  const p = pointAlong(newWall, t);
   return { ...opening, ...placeOnWall(newWall, p, opening.width) };
 }
 
-/** Wall with the same start point and direction but a new length. */
+/** Wall with the same start point and direction but a new length (a curved wall keeps its radius). */
 export function withWallLength(wall: Wall, length: number): Wall {
+  const arc = arcOf(wall);
+  if (arc) {
+    // Round the same circle, as far as the new length reaches (short of a full circle).
+    const sweep = Math.sign(arc.sweep) * Math.min(length / arc.r, Math.PI * 2 - 0.01);
+    const a = arc.a0 + sweep;
+    const bow = Math.sign(wall.bow ?? 0) * arc.r * (1 - Math.cos(sweep / 2));
+    return { ...wall, x2: arc.cx + arc.r * Math.cos(a), y2: arc.cy + arc.r * Math.sin(a), bow };
+  }
   const len = wallLength(wall);
   const ux = len ? (wall.x2 - wall.x1) / len : 1;
   const uy = len ? (wall.y2 - wall.y1) / len : 0;
@@ -274,6 +284,7 @@ export function elementOutline(el: PlanElement): Point[] {
 function elementPoints(el: PlanElement): Point[] {
   switch (el.type) {
     case 'wall':
+      return wallPath(el);
     case 'beam':
     case 'line':
     case 'section':

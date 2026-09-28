@@ -23,7 +23,7 @@ import {
   type Units,
   type Wall,
 } from '../types';
-import { thicknessOf, wallPolygon } from '../walls';
+import { isBuildingWall, thicknessOf, wallPolygon } from '../walls';
 import { DEFAULT_OPENING_GAP_MM, openingFits } from './openingPlace';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { sideName, toPlan, zoneOf, zoneRects, zoneSamples, type ZoneSide } from '../furniture/useZones';
@@ -241,7 +241,7 @@ export function planHints(
     if (!rooms.length) return;
     const indoor = rooms.filter((r) => !OUTDOOR.test(r.name));
     const walls = doc.elements.filter(
-      (el): el is Wall => el.type === 'wall' && !el.hidden && !el.kind && levelOf(el) === level.id,
+      (el): el is Wall => el.type === 'wall' && !el.hidden && isBuildingWall(el) && levelOf(el) === level.id,
     );
     const openings = doc.elements.filter(
       (el): el is Opening =>
