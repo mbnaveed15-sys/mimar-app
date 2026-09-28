@@ -215,8 +215,14 @@ export function modelMeshes(model: Model3D): ExportMesh[] {
       return set.mesh(part.role, color, part.opacity ?? 1, finish?.name);
     };
   for (const s of model.solids) addBox(meshFor(s), s);
-  for (const f of model.floors)
-    if (f.points.length >= 3) addFlat(set.mesh('floor', f.color, 1, f.finish?.name), f.points, f.y + FLOOR_LIFT);
+  for (const f of model.floors) {
+    if (f.points.length < 3) continue;
+    const mesh = set.mesh('floor', f.color, 1, f.finish?.name);
+    // A floor with openings (the lawn over a basement) goes out as a thin slab with holes.
+    if (f.holes?.length)
+      addPrism(mesh, { points: f.points, holes: f.holes, y0: f.y + FLOOR_LIFT, h: 0.001, color: f.color });
+    else addFlat(mesh, f.points, f.y + FLOOR_LIFT);
+  }
   for (const s of [...model.slabs, ...model.blocks])
     if (s.points.length >= 3 && s.role !== 'shape') addPrism(set.mesh(s.role ?? 'slab', s.color, 1, s.finish?.name), s);
   for (const p of model.panels) if (p.outline.length >= 3 && p.role !== 'shape') addPanel(meshFor(p), p);

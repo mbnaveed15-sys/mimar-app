@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { plannerStore, usePlanner } from '../store/plannerStore';
-import { GROUND_LEVEL } from '../types';
+import { BASEMENT_HEIGHT_MM, GROUND_LEVEL } from '../types';
+import { LengthField } from './LengthField';
 import { Icon } from './Icon';
 
 /** Pick the floor to draw on, add floors, and rename or delete them. */
 export function LevelSwitcher() {
   const levels = usePlanner((s) => s.doc.levels);
   const active = usePlanner((s) => s.activeLevel);
+  const units = usePlanner((s) => s.units);
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -64,6 +66,41 @@ export function LevelSwitcher() {
             <span className="w-3" />
             Add floor above
           </button>
+          {!levels.some((l) => l.basement) && (
+            <button role="menuitem" className={item} onClick={() => (s.addBasement(), setOpen(false))}>
+              <span className="w-3" />
+              Add basement below
+            </button>
+          )}
+          {current.basement && (
+            <div className="px-2 py-1">
+              <LengthField
+                id="basement-height"
+                label="Basement clear height"
+                mm={current.heightMm ?? BASEMENT_HEIGHT_MM}
+                units={units}
+                min={1800}
+                onCommit={(mm) => s.setBasementHeight(Math.min(mm, 9000))}
+              />
+              <div className="mt-2 text-xs text-muted">Retaining walls round it (12" RCC):</div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                <button
+                  className="m-btn px-2 py-0.5 text-xs"
+                  title="Under the ground floor's outside walls (CDA: the plinth area only)"
+                  onClick={() => s.addRetainingWalls('house') && setOpen(false)}
+                >
+                  Under the house
+                </button>
+                <button
+                  className="m-btn px-2 py-0.5 text-xs"
+                  title="On the plot's building line (DHA: 100% after the setbacks)"
+                  onClick={() => s.addRetainingWalls('building') && setOpen(false)}
+                >
+                  Whole building line
+                </button>
+              </div>
+            </div>
+          )}
           {renaming ? (
             <input
               autoFocus

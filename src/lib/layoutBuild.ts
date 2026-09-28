@@ -6,11 +6,26 @@
  */
 import { placeOnWall } from '../geometry';
 import { detectRoom } from '../rooms';
+import { outsideOutline } from './outline';
 import { MM_PER_UNIT } from './scale';
 import { stairLayout } from './site';
 import { insetPolygon, plotSides, sideOutward, sideSetbacks } from './plot';
 import { feetToUnits as ft, type Layout, type LayoutRoom, type Rect } from './layoutGen';
-import type { Id, Opening, Plot, Point, Room, Stair, Wall } from '../types';
+import {
+  GROUND_LEVEL,
+  levelOf,
+  type Id,
+  type Opening,
+  type PlanDoc,
+  type Plot,
+  type Point,
+  type Room,
+  type Stair,
+  type Wall,
+  type WallKind,
+} from '../types';
+import { basementOf } from './levels';
+import { authorityById } from './bylaws';
 
 /** Local to plan coordinates: p = o + x·u + y·v (x along the road, y in from it). */
 export interface Frame {
@@ -24,7 +39,7 @@ export const toPlan = (f: Frame, x: number, y: number): Point => ({
   y: f.o.y + x * f.u.y + y * f.v.y,
 });
 
-const OUTER = (9 * 25.4) / MM_PER_UNIT;
+const OUTER_WALL = (9 * 25.4) / MM_PER_UNIT;
 const INNER = (4.5 * 25.4) / MM_PER_UNIT;
 /** A house wall beside a boundary wall stands this far off it (a gap for the plaster). */
 const CLEARANCE_MM = 25;
@@ -109,15 +124,23 @@ export function largestRect(poly: Point[]): Rect | null {
  */
 export function layoutSite(
   plot: Plot,
-  opts: { maxAreaSqFt?: number; needSqFt?: number } = {},
+  opts: {
+    maxAreaSqFt?: number;
+    needSqFt?: number;
+    /** Build inside this outline instead (a basement's), squared to the plot's road all the same. */
+    within?: Point[];
+    /** The outside walls' thickness (plan units): 9" unless given. */
+    outer?: number;
+  } = {},
 ): { frame: Frame; W: number; D: number; fullW: number; fullD: number } | null {
+  const OUTER = opts.outer ?? OUTER_WALL;
   // Inside the building line, and inside the boundary walls where a side has no setback to speak of.
   const sides = plotSides(plot);
   const setbacks = sideSetbacks(plot, sides);
   const clear = setbacks.map(
     (sb, i) => Math.max(sb.mm, sides[i].wall ? sides[i].wall!.thicknessMm + CLEARANCE_MM : 0) / MM_PER_UNIT,
   );
-  const line = insetPolygon(plot.points, clear).points;
+  const line = opts.within ?? insetPolygon(plot.points, clear).points;
   if (line.length < 3) return null;
   const n = plot.points.length;
   const a = plot.points[plot.front % n];
@@ -162,7 +185,7 @@ const OUT = -1;
 const key = (v: number) => Math.round(v * 1000) / 1000;
 
 /** The walls of a plan in its own frame: each piece of room edge, with the rooms on either side. */
-function wallSegments(plan: Layout): (Seg & { thickness: number })[] {
+function wallSegments(plan: Layout, OUTER = OUTER_WALL): (Seg & { thickness: number })[] {
   const lines = new Map<
     string,
     { dir: 'h' | 'v'; at: number; edges: { from: number; to: number; room: number; side: 1 | -1 }[] }
@@ -248,15 +271,38 @@ const VENTED = new Set(['bath', 'powder', 'laundry']);
 export function buildLayout(
   plan: Layout,
   frame: Frame,
-  opts: { newId: () => Id; levelId?: Id; riseMm: number },
+  opts: {
+    newId: () => Id;
+    levelId?: Id;
+    riseMm: number;
+    /** The outside walls (a basement's retaining walls): thickness in plan units, type and height. */
+    outer?: { thickness: number; kind?: WallKind; heightMm?: number };
+    /** No windows (a basement). */
+    noWindows?: boolean;
+    /** Put the stair here (under the one on the floor above) rather than in the stair room. */
+    stairAt?: Pick<Stair, 'x' | 'y' | 'rotation'>;
+  },
 ): Built {
   const P = (x: number, y: number) => toPlan(frame, x, y);
   const on = opts.levelId ? { levelId: opts.levelId } : {};
-  const segs = wallSegments(plan);
+  const outer = opts.outer;
+  const segs = wallSegments(plan, outer?.thickness);
   const walls: Wall[] = segs.map((s) => {
     const a = s.dir === 'h' ? P(s.from, s.at) : P(s.at, s.from);
     const b = s.dir === 'h' ? P(s.to, s.at) : P(s.at, s.to);
-    return { id: opts.newId(), type: 'wall', x1: a.x, y1: a.y, x2: b.x, y2: b.y, thickness: s.thickness, ...on };
+    const isOuter = !!outer && Math.abs(s.thickness - outer.thickness) < 1e-6 && s.thickness !== INNER;
+    return {
+      id: opts.newId(),
+      type: 'wall',
+      x1: a.x,
+      y1: a.y,
+      x2: b.x,
+      y2: b.y,
+      thickness: s.thickness,
+      ...(isOuter && outer.kind ? { kind: outer.kind } : {}),
+      ...(isOuter && outer.heightMm ? { heightMm: outer.heightMm } : {}),
+      ...on,
+    };
   });
   const wallAt = (seg: Seg, t: number) => {
     const i = segs.findIndex(
@@ -310,6 +356,7 @@ export function buildLayout(
 
   // Windows: on the longest stretch of outside wall, away from a door there.
   plan.rooms.forEach((room) => {
+    if (opts.noWindows) return;
     const vent = VENTED.has(room.kind);
     if (!vent && !WINDOWED.has(room.kind)) return;
     const edges: Seg[] = [];
@@ -362,7 +409,20 @@ export function buildLayout(
   // A U stair in the stair room, turned to fit.
   const stairs: Stair[] = [];
   const stairRoom = plan.rooms.find((r) => r.kind === 'stair');
-  if (stairRoom) {
+  if (opts.stairAt) {
+    const spec = { shape: 'U' as const, width: ft(3), riseMm: opts.riseMm, treadMm: 254 };
+    const l = stairLayout(spec);
+    stairs.push({
+      id: opts.newId(),
+      type: 'stair',
+      ...opts.stairAt,
+      ...spec,
+      riserMm: l.riserMm,
+      w: l.w,
+      h: l.h,
+      ...on,
+    });
+  } else if (stairRoom) {
     const r = stairRoom.rects[0];
     const spec = { shape: 'U' as const, width: ft(3), riseMm: opts.riseMm, treadMm: 254 };
     const l = stairLayout(spec);
@@ -387,4 +447,23 @@ export function buildLayout(
     });
   }
   return { walls, openings, rooms, stairs };
+}
+
+/**
+ * Where a basement's plans go: round the outside of the walls it already has; with none, under the
+ * ground floor where its bylaws say so (CDA); otherwise (undefined) the building line.
+ */
+export function basementOutline(doc: PlanDoc, plot: Plot): Point[] | undefined {
+  const basement = basementOf(doc);
+  if (!basement) return undefined;
+  const largest = (walls: Wall[]) => outsideOutline(walls) ?? undefined;
+  const own = doc.elements.filter((el): el is Wall => el.type === 'wall' && !el.hidden && levelOf(el) === basement.id);
+  if (own.length) return largest(own);
+  if (authorityById(plot.authority)?.basement?.extent === 'house')
+    return largest(
+      doc.elements.filter(
+        (el): el is Wall => el.type === 'wall' && !el.hidden && !el.kind && levelOf(el) === GROUND_LEVEL,
+      ),
+    );
+  return undefined;
 }

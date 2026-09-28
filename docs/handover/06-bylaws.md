@@ -98,3 +98,9 @@ No official corner-plot figures yet. A plot with two road sides uses the front s
 side setback (side 1 or side 2, by position) on the second road, marked **provisional** in the Sides list and the
 plan check, which adds a "Corner plot" row to check with the authority. The cut corner (splay) is off by default;
 when ticked it starts at 5' along each road. Replace these with the authorities' figures when the owner uploads them.
+
+## Basements (1.32)
+
+In the plan check: CDA Schedule-I, under the plinth area (the ground floor) only, clear height 8'6"–12'; DHA
+Islamabad 8.56.5.3, 100% after the setbacks (inside the building line); DHA Lahore (provisional summary), 100%.
+No figures yet for CDA private schemes (Schedule-5), Bahria or LDA: the check shows "check".

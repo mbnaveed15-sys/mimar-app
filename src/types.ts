@@ -55,6 +55,9 @@ export interface Grouped {
   defKey?: string;
 }
 
+/** Walls other than ordinary ones. */
+export type WallKind = 'boundary' | 'parapet' | 'retaining';
+
 export interface Wall extends Grouped {
   id: Id;
   type: 'wall';
@@ -64,8 +67,11 @@ export interface Wall extends Grouped {
   y2: number;
   /** Wall thickness in plan units; the default (9") is used when missing. */
   thickness?: number;
-  /** A boundary wall stands on natural ground (7' tall); a parapet runs round a roof (3'). */
-  kind?: 'boundary' | 'parapet';
+  /**
+   * A boundary wall stands on natural ground (7' tall); a parapet runs round a roof (3'); a
+   * retaining wall is a basement's RCC outside wall, holding back the earth (up to the ground floor).
+   */
+  kind?: WallKind;
   /** Height in millimetres, when it differs from the usual wall height (e.g. a boundary wall). */
   heightMm?: number;
   /** Its material: both sides, the top and the ends (unless a side has its own). */
@@ -284,7 +290,14 @@ export const hasPoints = (el: PlanElement): el is Slab | Plot | Block =>
 export interface Level {
   id: Id;
   name: string;
+  /** A floor below the ground floor (there is at most one, first in the list). */
+  basement?: boolean;
+  /** A basement's clear height, floor to ceiling, in millimetres (`BASEMENT_HEIGHT_MM` when missing). */
+  heightMm?: number;
 }
+
+/** A basement's usual clear height: 10'. */
+export const BASEMENT_HEIGHT_MM = 3048;
 
 /** The ground floor's id; items without a levelId are on it. */
 export const GROUND_LEVEL = 'ground';

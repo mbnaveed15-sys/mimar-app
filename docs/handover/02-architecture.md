@@ -91,6 +91,18 @@ autosaves to local storage on every change.
   edges: 9" facing outside or the porch, 4½" between rooms, none inside a room or porch-to-outside; doors swinging
   into the room entered; windows; rooms by `detectRoom`; a U stair). Store: `layoutClash`, `placeLayout` (one commit).
   UI: `src/components/LayoutPanel.tsx` (section `layout`; the list in browser storage `mimar.roomList`).
+- Basements (1.32): `Level.basement` / `heightMm` (at most one, first in `doc.levels`, before the ground floor;
+  `normaliseLevels` keeps that order). `src/lib/levels.ts`: `groundIndex`, `basementOf`, `isBasement`,
+  `levelWallMm` (a floor's default wall height). Never treat `levels[0]` as the ground floor: use `GROUND_LEVEL`.
+  `levelBaseM` puts floors below the ground floor at the plinth less a slab and their height. Wall kind
+  `'retaining'` (`WallKind` in `types.ts`; `KIND_HEIGHT_MM`, `RETAINING_MM` in the store); `addRetainingWalls`
+  builds them from `outsideOutline` (`src/lib/outline.ts`: the walls' outside faces from `wallFaces(walls, true)`,
+  the centre-line loop round the outside, moved out by half each wall) or the building line. 3D: `Floor.holes`
+  opens the lawn over the basement (rendered in `Plan3DView`, exported as a thin prism). Quantities:
+  `retainingCft`, `excavationCft`, `raftCft` (`RAFT_FT`), `waterproofSqft`; rates `waterproofing`, ratio
+  `steelRetaining`. Bylaws: `Authority.basement` (`extent`, `clearMm`); plan check rows `basement-extent`,
+  `basement-height`, `basement`. Layouts: `Program.basement`/`gym`, `basementOutline`, `buildLayout` options
+  `outer`, `noWindows`, `stairAt`; `placeLayout(built, true)` replaces retaining walls too.
 - `src/lib/spatial.ts`: `GridIndex` (buckets for point lookups) and `boxOf`, used by the hints and the covered
   area so they scale to thousands of rooms. `src/store/usePlanCheck.ts` keeps one shared result per change and uses
   the plan from before a drag (`batchBase`) until it is let go. `src/lib/text.ts` `cleanText` strips control

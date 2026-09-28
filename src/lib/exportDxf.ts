@@ -27,6 +27,7 @@ const LAYERS = {
   'A-ANNO-LAYT': { color: 9, ltype: 'CONTINUOUS' },
   'A-FLOR-BLCK': { color: 8, ltype: 'CONTINUOUS' },
   'A-WALL-PROJ': { color: 7, ltype: 'DASHED' },
+  'S-WALL-RETN': { color: 1, ltype: 'CONTINUOUS' },
 } as const;
 type Layer = keyof typeof LAYERS;
 
@@ -251,7 +252,8 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       walls,
       openings.filter((o) => o.wallId === wall.id),
     ))
-      dxf.poly('A-WALL', piece);
+      // A basement's retaining walls are RCC: on the structure layers.
+      dxf.poly(wall.kind === 'retaining' ? 'S-WALL-RETN' : 'A-WALL', piece);
 
   // Niches and projections: their outline on the face they're on.
   for (const o of doc.elements) {

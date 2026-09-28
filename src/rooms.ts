@@ -142,8 +142,11 @@ function removeSpikes(pts: Point[]): Point[] {
   return out;
 }
 
-/** Every enclosed area formed by the walls, as polygons with positive signed area. */
-export function wallFaces(walls: Wall[]): Point[][] {
+/**
+ * Every enclosed area formed by the walls, as polygons with positive signed area. With `outside`,
+ * the outlines round the outside of each group of joined walls instead (their outer faces).
+ */
+export function wallFaces(walls: Wall[], outside = false): Point[][] {
   const { nodes, adjacency } = buildWallGraph(walls);
   const visited = new Set<string>();
   const faces: Point[][] = [];
@@ -163,7 +166,10 @@ export function wallFaces(walls: Wall[]): Point[][] {
         [a, b] = [b, next];
       }
       const pts = removeSpikes(loop.map((i) => nodes[i]));
-      if (pts.length >= 3 && signedArea(pts) > 1) faces.push(pts);
+      if (pts.length < 3) continue;
+      const area = signedArea(pts);
+      if (!outside && area > 1) faces.push(pts);
+      if (outside && area < -1) faces.push([...pts].reverse());
     }
   }
   return faces;

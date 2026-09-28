@@ -38,11 +38,13 @@ import {
   syncComponent,
   ungroup,
 } from '../lib/selection';
-import { boundaryWallLines, stairLayout } from '../lib/site';
+import { boundaryWallLines, buildableArea, stairLayout } from '../lib/site';
 import { plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
-import { guessSideKinds, orientOutline, outlineProblem, plotSides, signedArea2 } from '../lib/plot';
+import { guessSideKinds, insetPolygon, orientOutline, outlineProblem, plotSides, signedArea2 } from '../lib/plot';
 import { boundaryWallsAlong, buildPlotWalls, syncPlotWalls } from '../lib/plotWalls';
 import { formatLength } from '../lib/units';
+import { basementOf, levelWallMm } from '../lib/levels';
+import { outsideOutline } from '../lib/outline';
 import type { Built } from '../lib/layoutBuild';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
 import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from '../lib/layers';
@@ -51,13 +53,14 @@ import { clampGap, type Hand } from '../lib/openingPlace';
 import { besideOpening, loneOpenings, nounOf, openingAt, refitOpening, tidy } from './openingAt';
 import { setActivePicker } from '../three/picker';
 import { applyTheme, type ThemeId } from '../theme/themes';
-import { GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
+import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
 import type {
   Block,
   DoorKind,
   Opening,
   ShapeKind,
   Wall,
+  WallKind,
   Plot,
   PlotSide,
   SketchLine,
@@ -100,7 +103,7 @@ export interface SiteSpec {
   plotShape: 'rect' | 'any';
   boundaryWall: boolean;
   /** Type of new walls drawn with the Wall and Rectangle tools. */
-  wallKind: 'normal' | 'boundary' | 'parapet';
+  wallKind: 'normal' | WallKind;
   /** Door tool places a door or a gate. */
   gate: boolean;
   gateWidthMm: number;
@@ -125,7 +128,9 @@ export interface SiteSpec {
 }
 
 /** Heights of boundary walls (7') and parapets (3'). */
-export const KIND_HEIGHT_MM = { boundary: 2133.6, parapet: 914.4 } as const;
+export const KIND_HEIGHT_MM = { boundary: 2133.6, parapet: 914.4, retaining: 3048 + 152.4 } as const;
+/** A retaining wall's usual thickness: 12" RCC, in millimetres. */
+export const RETAINING_MM = 304.8;
 
 export const DEFAULT_SITE: SiteSpec = {
   setbacks: { front: 1524, rear: 609.6, sides: 0 },
@@ -188,6 +193,16 @@ export interface PlannerState {
   setActiveLevel: (id: Id) => void;
   /** Add a floor above the top one and switch to it. */
   addLevel: () => void;
+  /** Add a basement below the ground floor (or go to the one there is) and draw on it. */
+  addBasement: () => void;
+  /** The basement's clear height, floor to ceiling, in millimetres. */
+  setBasementHeight: (mm: number) => void;
+  /**
+   * Retaining walls (12" RCC) round the basement, their outer face under the ground floor's outside
+   * walls ('house') or on the plot's building line ('building'), in place of the ones it had (one
+   * undo step). Says why and returns false when there is no basement, house or plot to follow.
+   */
+  addRetainingWalls: (mode: 'house' | 'building') => boolean;
   renameLevel: (id: Id, name: string) => void;
   /** Remove a floor (not the ground floor) and everything on it. */
   deleteLevel: (id: Id) => void;
@@ -251,9 +266,9 @@ export interface PlannerState {
    * What placing a plan would take away on the floor being viewed: its walls (not boundary walls or
    * parapets) with their doors and windows, rooms, stairs, furniture, columns, beams, slabs and blocks.
    */
-  layoutClash: () => { walls: number; rooms: number; other: number };
+  layoutClash: (retaining?: boolean) => { walls: number; rooms: number; other: number };
   /** Put a plan built from the room list on the floor being viewed, in place of what `layoutClash` counts (one undo step). */
-  placeLayout: (built: Built) => void;
+  placeLayout: (built: Built, retaining?: boolean) => void;
   /** Put a plot under an authority's bylaws (or none), taking its setbacks from their table. */
   setPlotAuthority: (plotId: Id, authority: AuthorityId | undefined) => void;
   addStair: (p: Point) => void;
@@ -548,8 +563,17 @@ export function createPlannerStore(
       activeLevel: GROUND_LEVEL,
     };
     /** Type and height fields for a new wall of the given kind. */
-    const kindFields = (kind: SiteSpec['wallKind']) =>
-      kind === 'normal' ? {} : { kind, heightMm: KIND_HEIGHT_MM[kind] };
+    const kindFields = (kind: SiteSpec['wallKind']) => {
+      if (kind === 'normal') return {};
+      // A retaining wall is 12" RCC, up to the ground floor from the floor it stands on.
+      if (kind === 'retaining')
+        return {
+          kind,
+          thickness: RETAINING_MM / MM_PER_UNIT,
+          heightMm: levelWallMm(get().doc, get().activeLevel, get().wallHeightMm) + SLAB_MM,
+        };
+      return { kind, heightMm: KIND_HEIGHT_MM[kind] };
+    };
     /** Put a new item on the active floor. */
     const onActive = <T extends { levelId?: Id }>(item: T): T => {
       const level = get().activeLevel;
@@ -1329,12 +1353,87 @@ export function createPlannerStore(
       addLevel: () => {
         const names = ['Ground floor', 'First floor', 'Second floor', 'Third floor', 'Fourth floor'];
         const id = newId();
-        get().commit((doc) => ({
-          ...doc,
-          levels: [...doc.levels, { id, name: names[doc.levels.length] ?? `Floor ${doc.levels.length}` }],
-        }));
+        get().commit((doc) => {
+          // Named by how far above the ground floor it is (a basement doesn't count).
+          const n = doc.levels.filter((l) => !l.basement).length;
+          return { ...doc, levels: [...doc.levels, { id, name: names[n] ?? `Floor ${n}` }] };
+        });
         get().setActiveLevel(id);
       },
+      addBasement: () => {
+        const existing = basementOf(get().doc);
+        if (existing) return get().setActiveLevel(existing.id);
+        const id = newId();
+        get().commit((doc) => ({ ...doc, levels: [{ id, name: 'Basement', basement: true }, ...doc.levels] }));
+        get().setActiveLevel(id);
+      },
+      addRetainingWalls: (mode) => {
+        const { doc } = get();
+        const basement = basementOf(doc);
+        if (!basement) {
+          get().setWarning('Add a basement first: Floors › Add basement below.');
+          return false;
+        }
+        let outline: Point[] | null;
+        if (mode === 'house') {
+          const walls = doc.elements.filter(
+            (el): el is Wall => el.type === 'wall' && !el.kind && !el.hidden && levelOf(el) === GROUND_LEVEL,
+          );
+          outline = outsideOutline(walls);
+          if (!outline) {
+            get().setWarning('Draw the ground floor’s walls first: the basement goes under them.');
+            return false;
+          }
+        } else {
+          const plot = doc.elements.find((el): el is Plot => el.type === 'plot' && !el.hidden);
+          outline = plot ? buildableArea(plot) : null;
+          if (!outline || outline.length < 3) {
+            get().setWarning('Draw a plot first: the basement fills its building line.');
+            return false;
+          }
+        }
+        const t = RETAINING_MM / MM_PER_UNIT;
+        const line = insetPolygon(
+          outline,
+          outline.map(() => t / 2),
+        ).points;
+        const heightMm = (basement.heightMm ?? BASEMENT_HEIGHT_MM) + SLAB_MM;
+        const walls: Wall[] = line.map((a, i) => {
+          const b = line[(i + 1) % line.length];
+          return {
+            id: newId(),
+            type: 'wall',
+            x1: a.x,
+            y1: a.y,
+            x2: b.x,
+            y2: b.y,
+            thickness: t,
+            kind: 'retaining',
+            heightMm,
+            levelId: basement.id,
+          };
+        });
+        get().commit((d) => {
+          const old = new Set(
+            d.elements
+              .filter((el) => el.type === 'wall' && el.kind === 'retaining' && levelOf(el) === basement.id)
+              .map((el) => el.id),
+          );
+          const kept = d.elements.filter(
+            (el) => !old.has(el.id) && !((el.type === 'door' || el.type === 'window') && old.has(el.wallId)),
+          );
+          return { ...d, elements: [...kept, ...walls] };
+        });
+        get().setActiveLevel(basement.id);
+        get().setWarning(null);
+        return true;
+      },
+      setBasementHeight: (mm) =>
+        get().commit((doc) => {
+          const b = basementOf(doc);
+          if (!b || Math.abs((b.heightMm ?? BASEMENT_HEIGHT_MM) - mm) < 0.5) return doc;
+          return { ...doc, levels: doc.levels.map((l) => (l === b ? { ...l, heightMm: mm } : l)) };
+        }),
       renameLevel: (id, name) =>
         get().commit((doc) =>
           cleanText(name).trim() && doc.levels.some((l) => l.id === id && l.name !== name)
@@ -1596,20 +1695,27 @@ export function createPlannerStore(
           return built;
         });
       },
-      layoutClash: () => {
+      layoutClash: (retaining = false) => {
         const els = get().levelElements();
-        const walls = els.filter((el) => el.type === 'wall' && !el.kind).length;
+        const walls = els.filter(
+          (el) => el.type === 'wall' && (!el.kind || (retaining && el.kind === 'retaining')),
+        ).length;
         const rooms = get().levelRooms().length;
         const other = els.filter((el) => REPLACED_BY_LAYOUT.has(el.type)).length;
         return { walls, rooms, other };
       },
-      placeLayout: (built) => {
+      placeLayout: (built, retaining = false) => {
         const level = get().activeLevel;
         get().commit((doc) => {
           const here = (el: { levelId?: Id }) => levelOf(el) === level;
           const gone = new Set(
             doc.elements
-              .filter((el) => here(el) && ((el.type === 'wall' && !el.kind) || REPLACED_BY_LAYOUT.has(el.type)))
+              .filter(
+                (el) =>
+                  here(el) &&
+                  ((el.type === 'wall' && (!el.kind || (retaining && el.kind === 'retaining'))) ||
+                    REPLACED_BY_LAYOUT.has(el.type)),
+              )
               .map((el) => el.id),
           );
           const kept = doc.elements.filter(
@@ -1634,8 +1740,9 @@ export function createPlannerStore(
         get().updateElement(rule ? { ...next, setbacks: plotSetbacks(rule) } : next);
       },
       addStair: (p) => {
-        const { site, doc, wallHeightMm } = get();
-        const riseMm = site.climb === 'plinth' ? doc.plinthMm : wallHeightMm + SLAB_MM;
+        const { site, doc, wallHeightMm, activeLevel } = get();
+        // A full floor: this floor's height and the slab over it (a basement's own height).
+        const riseMm = site.climb === 'plinth' ? doc.plinthMm : levelWallMm(doc, activeLevel, wallHeightMm) + SLAB_MM;
         const spec = { shape: site.stairShape, width: site.stairWidthMm / MM_PER_UNIT, riseMm, treadMm: site.treadMm };
         const layout = stairLayout(spec);
         const stair: PlanElement = {

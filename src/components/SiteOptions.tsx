@@ -18,6 +18,7 @@ const WALL_KINDS: { id: SiteSpec['wallKind']; label: string }[] = [
   { id: 'normal', label: 'Wall' },
   { id: 'boundary', label: 'Boundary 7′' },
   { id: 'parapet', label: 'Parapet 3′' },
+  { id: 'retaining', label: 'Retaining (basement)' },
 ];
 
 const STAIR_SHAPES: { id: SiteSpec['stairShape']; label: string }[] = [

@@ -19,6 +19,8 @@ export interface Rates {
   paintOutside: number;
   door: number;
   window: number;
+  /** Basement waterproofing (membrane and protection), per sqft. */
+  waterproofing: number;
   /** Per sqft of covered area. */
   electrical: number;
   plumbing: number;
@@ -35,6 +37,7 @@ export interface Ratios {
   steelBeam: number;
   steelColumn: number;
   steelStair: number;
+  steelRetaining: number;
   /** Foundation trench under the walls: width and depth, and the concrete (PCC) bed's thickness, ft. */
   footingWidthFt: number;
   footingDepthFt: number;
@@ -72,6 +75,7 @@ export const STARTER_RATES: Rates = {
   paintOutside: 75,
   door: 45000,
   window: 1500,
+  waterproofing: 140,
   electrical: 380,
   plumbing: 450,
   flooring: { tiles: 380, marble: 480, granite: 850, wood: 750, stone: 300, concrete: 120, other: 300 },
@@ -84,6 +88,7 @@ export const STARTER_RATIOS: Ratios = {
   steelBeam: 4.3,
   steelColumn: 5.1,
   steelStair: 2.8,
+  steelRetaining: 4.5,
   footingWidthFt: 3,
   footingDepthFt: 4,
   pccFt: 0.5,
@@ -143,15 +148,18 @@ export function estimate(q: FloorQuantities, rates: Rates, ratios: Ratios): Esti
   const trench = q.foundationRft * ratios.footingWidthFt;
   const excavation = trench * ratios.footingDepthFt;
   const pcc = trench * ratios.pccFt;
-  const rccStructural = q.slabCft + q.slabEstimateCft + q.beamCft + q.columnCft + q.stairCft;
+  const rccStructural =
+    q.slabCft + q.slabEstimateCft + q.beamCft + q.columnCft + q.stairCft + q.retainingCft + q.raftCft;
   const steelKg =
-    (q.slabCft + q.slabEstimateCft) * ratios.steelSlab +
+    (q.slabCft + q.slabEstimateCft + q.raftCft) * ratios.steelSlab +
+    q.retainingCft * ratios.steelRetaining +
     q.beamCft * ratios.steelBeam +
     q.columnCft * ratios.steelColumn +
     q.stairCft * ratios.steelStair;
   const brick = q.brickworkCft + q.boundaryCft;
 
   add('excavation', 'Excavation for foundations', excavation, 'cft', 'excavation', true);
+  add('basementExcavation', 'Excavation for the basement', q.excavationCft, 'cft', 'excavation');
   add('pcc', 'Plain concrete (PCC 1:4:8) under foundations', pcc, 'cft', 'pcc', true);
   add('brickwork', 'Brickwork in 1:6 (walls and plinth)', q.brickworkCft, 'cft', 'brickwork');
   add('boundary', 'Brickwork in 1:6 (boundary and parapet walls)', q.boundaryCft, 'cft', 'brickwork');
@@ -167,6 +175,9 @@ export function estimate(q: FloorQuantities, rates: Rates, ratios: Ratios): Esti
   add('beam', 'RCC 1:2:4 beams', q.beamCft, 'cft', 'rcc');
   add('column', 'RCC 1:2:4 columns', q.columnCft, 'cft', 'rcc');
   add('stair', 'RCC 1:2:4 stairs', q.stairCft, 'cft', 'rcc', true);
+  add('retaining', 'RCC 1:2:4 retaining walls (basement)', q.retainingCft, 'cft', 'rcc');
+  add('raft', 'RCC 1:2:4 basement floor (12" raft)', q.raftCft, 'cft', 'rcc', true);
+  add('waterproofing', 'Basement waterproofing (walls outside and floor)', q.waterproofSqft, 'sqft', 'waterproofing');
   add('block', 'Concrete blocks and raised shapes', q.blockCft, 'cft', 'rcc');
   add('steel', 'Steel reinforcement (Grade 60)', steelKg, 'kg', 'steel', true);
   add('plaster', 'Cement plaster 1:4, ½" (both faces)', q.insideFaceSqft + q.outsideFaceSqft, 'sqft', 'plaster');

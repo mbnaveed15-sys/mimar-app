@@ -5,8 +5,10 @@
  */
 import { pointInPolygon, wallLength } from '../geometry';
 import { polygonArea } from '../rooms';
+import { outsideOutline } from './outline';
 import { DOOR_HEAD_MM, SLAB_MM, WINDOW_HEAD_MM, WINDOW_SILL_MM } from '../three/model';
-import { levelOf, type Opening, type PlanDoc, type Point, type Room } from '../types';
+import { GROUND_LEVEL, levelOf, type Opening, type PlanDoc, type Point, type Room } from '../types';
+import { levelWallMm } from './levels';
 import { thicknessOf, wallsOf } from '../walls';
 import { MM_PER_UNIT } from './scale';
 import { builtAreaSqFt } from './planCheck';
@@ -51,7 +53,18 @@ export interface FloorQuantities {
   windowSqft: number;
   /** Length of walls standing on the ground (for the foundations), rft. Ground floor only. */
   foundationRft: number;
+  /** A basement's RCC retaining walls, cft. */
+  retainingCft: number;
+  /** Digging out the basement: its outline × its depth below the ground and its floor slab, cft. */
+  excavationCft: number;
+  /** The basement's RCC floor (raft), 12" over its outline, cft (estimated). */
+  raftCft: number;
+  /** Waterproofing: the retaining walls' outer faces and the basement floor, sqft. */
+  waterproofSqft: number;
 }
+
+/** A basement floor (raft) assumed 12" thick. */
+export const RAFT_FT = 1;
 
 export interface Quantities {
   floors: FloorQuantities[];
@@ -90,6 +103,10 @@ function emptyFloor(levelId: string, name: string): FloorQuantities {
     windows: 0,
     windowSqft: 0,
     foundationRft: 0,
+    retainingCft: 0,
+    excavationCft: 0,
+    raftCft: 0,
+    waterproofSqft: 0,
   };
 }
 
@@ -117,7 +134,9 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
     if (!mat) return 'none';
     return PATTERN_KIND[mat.pattern ?? 'plain'] ?? 'other';
   };
-  const floors = levels.map((level, i) => {
+  const floors = levels.map((level) => {
+    const ground = level.id === GROUND_LEVEL;
+    const levelMm = levelWallMm(doc, level.id, wallHeightMm);
     const q = emptyFloor(level.id, level.name);
     const els = doc.elements.filter((el) => levelOf(el) === level.id);
     const rooms = doc.rooms.filter((r) => levelOf(r) === level.id);
@@ -135,18 +154,19 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       const L = wallLength(wall) * FT;
       if (!L) continue;
       const t = thicknessOf(wall) * FT;
-      const H = mmFt(wall.heightMm ?? wallHeightMm);
+      const H = mmFt(wall.heightMm ?? levelMm);
       const own = onWall.get(wall.id) ?? [];
       const holes = own.filter((o) => !o.flat).reduce((s, o) => s + openingSqft(o, H), 0);
       // Niches take brickwork out; projections add it.
       const shaped = own
         .filter((o) => o.flat && o.depthMm)
         .reduce((s, o) => s + (polygonArea(openingProfileMm(o)) / MM_PER_FT ** 2) * mmFt(o.depthMm!), 0);
-      const plinth = i === 0 && !wall.kind && !wall.elevMm ? mmFt(doc.plinthMm) : 0;
+      const plinth = ground && !wall.kind && !wall.elevMm ? mmFt(doc.plinthMm) : 0;
       const volume = Math.max(0, L * t * (H + plinth) - holes * t + shaped);
-      if (wall.kind) q.boundaryCft += volume;
+      if (wall.kind === 'retaining') q.retainingCft += volume;
+      else if (wall.kind) q.boundaryCft += volume;
       else q.brickworkCft += volume;
-      if (i === 0 && !wall.elevMm) q.foundationRft += L;
+      if (ground && !wall.elevMm) q.foundationRft += L;
 
       // Each face: towards a room is inside; otherwise (and boundary walls) outside.
       const face = Math.max(0, L * H - holes);
@@ -157,7 +177,10 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
           x: (wall.x1 + wall.x2) / 2 + (-(wall.y2 - wall.y1) / len) * off,
           y: (wall.y1 + wall.y2) / 2 + ((wall.x2 - wall.x1) / len) * off,
         };
-        if (!wall.kind && inRoom(mid)) q.insideFaceSqft += face;
+        const room = (!wall.kind || wall.kind === 'retaining') && inRoom(mid);
+        if (room) q.insideFaceSqft += face;
+        // A retaining wall's earth side is waterproofed, not plastered.
+        else if (wall.kind === 'retaining') q.waterproofSqft += face;
         else q.outsideFaceSqft += face;
       }
     }
@@ -196,6 +219,15 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
     }
 
     q.coveredSqft = builtAreaSqFt(doc, level.id);
+    if (level.basement) {
+      // Dug out to the outside of its walls, down to its floor and the raft under it.
+      const outline = outsideOutline(walls);
+      const plan = outline ? areaSqft(outline) : q.coveredSqft;
+      const depthFt = Math.max(0, mmFt(levelMm + SLAB_MM - doc.plinthMm)) + RAFT_FT;
+      q.excavationCft = plan * depthFt;
+      q.raftCft = plan * RAFT_FT;
+      q.waterproofSqft += plan;
+    }
     if (!els.some((el) => el.type === 'slab')) q.slabEstimateCft = q.coveredSqft * ESTIMATED_SLAB_FT;
     for (const r of rooms) {
       const kind = floorKind(r);
