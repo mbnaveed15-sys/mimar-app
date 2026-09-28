@@ -292,7 +292,10 @@ export interface Level {
   name: string;
   /** A floor below the ground floor (there is at most one, first in the list). */
   basement?: boolean;
-  /** A basement's clear height, floor to ceiling, in millimetres (`BASEMENT_HEIGHT_MM` when missing). */
+  /**
+   * This floor's wall height (a basement's clear height), floor to ceiling, in millimetres; the
+   * project's usual height (a basement's `BASEMENT_HEIGHT_MM`) when missing.
+   */
   heightMm?: number;
 }
 
@@ -356,6 +359,28 @@ export interface PlanDoc {
   northDeg?: number;
   /** Layers that are hidden or locked (every item is on the layer for its kind). */
   layers?: LayerState;
+  /** What kind of project this is, and its own settings (a house on a plot, as before 1.33, when missing). */
+  project?: ProjectSettings;
+}
+
+/** A house on a plot (with bylaws and marla), a free project (studio work, no rules), or a non-residential building. */
+export type ProjectType = 'house' | 'free' | 'building';
+/** What a building is for: it gives the room types and their hints. */
+export type BuildingUse = 'office' | 'school' | 'clinic' | 'shop' | 'mosque' | 'other';
+/** The side panel's sections a project can hide. */
+export type ProjectPanel = 'bylaws' | 'hints' | 'roomList' | 'cost';
+
+export interface ProjectSettings {
+  type: ProjectType;
+  use?: BuildingUse;
+  /** This project's units; the app's own setting when missing. */
+  units?: Units;
+  /** The usual wall height of a floor, mm (the slab goes on top); the app's own setting when missing. */
+  wallHeightMm?: number;
+  /** Floor slab thickness, mm (6" when missing). */
+  slabMm?: number;
+  /** Sections shown or hidden, where they differ from the project type's usual. */
+  panels?: Partial<Record<ProjectPanel, boolean>>;
 }
 
 export type Tool =

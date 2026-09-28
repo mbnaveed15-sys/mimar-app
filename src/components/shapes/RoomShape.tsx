@@ -8,7 +8,8 @@ interface Props {
   color?: string;
   selected: boolean;
   units: Units;
-  marlaSqFt: MarlaSqFt;
+  /** Marla shows only for a house. */
+  marlaSqFt?: MarlaSqFt;
   showLabel: boolean;
   showFill: boolean;
   k: number;
@@ -55,7 +56,8 @@ export function RoomShape({ room, color, selected, units, marlaSqFt, showLabel, 
             {...text}
             data-testid="room-area"
           >
-            {formatArea(area, units)} · {formatMarla(area, marlaSqFt)}
+            {formatArea(area, units)}
+            {marlaSqFt && ` · ${formatMarla(area, marlaSqFt)}`}
           </text>
         </>
       )}

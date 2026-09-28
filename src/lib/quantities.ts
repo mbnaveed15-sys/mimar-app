@@ -6,9 +6,9 @@
 import { pointInPolygon, wallLength } from '../geometry';
 import { polygonArea } from '../rooms';
 import { outsideOutline } from './outline';
-import { DOOR_HEAD_MM, SLAB_MM, WINDOW_HEAD_MM, WINDOW_SILL_MM } from '../three/model';
+import { DOOR_HEAD_MM, WINDOW_HEAD_MM, WINDOW_SILL_MM } from '../three/model';
 import { GROUND_LEVEL, levelOf, type Opening, type PlanDoc, type Point, type Room } from '../types';
-import { levelWallMm } from './levels';
+import { levelWallMm, slabMm } from './levels';
 import { thicknessOf, wallsOf } from '../walls';
 import { MM_PER_UNIT } from './scale';
 import { builtAreaSqFt } from './planCheck';
@@ -205,7 +205,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
           break;
         case 'column': {
           const plan = el.shape === 'round' ? Math.PI * ((el.w / 2) * FT) ** 2 : el.w * FT * el.h * FT;
-          q.columnCft += plan * mmFt(el.heightMm ?? wallHeightMm + SLAB_MM);
+          q.columnCft += plan * mmFt(el.heightMm ?? levelMm + slabMm(doc));
           break;
         }
         case 'stair':
@@ -223,7 +223,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       // Dug out to the outside of its walls, down to its floor and the raft under it.
       const outline = outsideOutline(walls);
       const plan = outline ? areaSqft(outline) : q.coveredSqft;
-      const depthFt = Math.max(0, mmFt(levelMm + SLAB_MM - doc.plinthMm)) + RAFT_FT;
+      const depthFt = Math.max(0, mmFt(levelMm + slabMm(doc) - doc.plinthMm)) + RAFT_FT;
       q.excavationCft = plan * depthFt;
       q.raftCft = plan * RAFT_FT;
       q.waterproofSqft += plan;

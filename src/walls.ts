@@ -21,6 +21,14 @@ export const WALL_PRESETS_MM: Record<Units, { label: string; mm: number }[]> = {
   ],
 };
 
+/** Round metric thicknesses for free projects and buildings (blockwork, partitions, concrete). */
+export const METRIC_WALL_PRESETS_MM: { label: string; mm: number }[] = [
+  { label: '100 mm', mm: 100 },
+  { label: '150 mm', mm: 150 },
+  { label: '200 mm', mm: 200 },
+  { label: '230 mm', mm: 230 },
+];
+
 export const thicknessOf = (w: Wall) => w.thickness ?? DEFAULT_WALL_THICKNESS;
 
 const JOIN_EPS = 0.5;

@@ -3,7 +3,14 @@ import { buildCommands } from '../commands';
 import { baseName } from '../lib/files';
 import { usePlanner } from '../store/plannerStore';
 import { Canvas } from './Canvas';
-import { CommandPalette, ContextMenu, DiscardDialog, ShortcutsDialog, type ContextMenuState } from './Dialogs';
+import {
+  CommandPalette,
+  ContextMenu,
+  DiscardDialog,
+  NewProjectDialog,
+  ShortcutsDialog,
+  type ContextMenuState,
+} from './Dialogs';
 import { Icon } from './Icon';
 import { MenuBar } from './MenuBar';
 import { SidePanel } from './SidePanel';
@@ -20,7 +27,7 @@ import { Welcome } from './Welcome';
 // three.js is large, so the 3D view loads the first time it is opened.
 const Plan3DView = lazy(() => import('../three/Plan3DView'));
 
-type Dialog = 'search' | 'shortcuts' | 'welcome' | null;
+type Dialog = 'search' | 'shortcuts' | 'welcome' | 'newProject' | null;
 
 /** The editor: menu bar, tool rail, plan, side panel and status bar, like a classic desktop CAD app. */
 export default function PlannerApp() {
@@ -31,9 +38,14 @@ export default function PlannerApp() {
   const setWarning = usePlanner((s) => s.setWarning);
   const fileName = usePlanner((s) => s.fileName);
   const dirty = usePlanner((s) => s.doc !== s.savedDoc);
-  const { save, open, newPlan } = useFileActions();
+  const { save, open, newPlan: clearPlan } = useFileActions();
   const [pending, setPending] = useState<'new' | 'open' | null>(null);
   const [dialog, setDialog] = useState<Dialog>(() => (shouldWelcome() ? 'welcome' : null));
+  // A new plan starts blank, then asks what kind of project it is.
+  const newPlan = useCallback(() => {
+    clearPlan();
+    setDialog('newProject');
+  }, [clearPlan]);
   /** Replacing the plan from the welcome (the sample house) waits for this when there are unsaved changes. */
   const [pendingReplace, setPendingReplace] = useState<(() => void) | null>(null);
   const [menuAt, setMenuAt] = useState<ContextMenuState | null>(null);
@@ -134,10 +146,12 @@ export default function PlannerApp() {
       {menuAt && <ContextMenu at={menuAt} onClose={() => setMenuAt(null)} onProperties={focusProperties} />}
       {dialog === 'search' && <CommandPalette commands={commands} onClose={() => setDialog(null)} />}
       {dialog === 'shortcuts' && <ShortcutsDialog commands={commands} onClose={() => setDialog(null)} />}
+      {dialog === 'newProject' && <NewProjectDialog onClose={() => setDialog(null)} />}
       {dialog === 'welcome' && (
         <Welcome
           onClose={() => setDialog(null)}
           confirmReplace={(then) => (isDirty() ? setPendingReplace(() => then) : then())}
+          onNewProject={() => (isDirty() ? setPending('new') : newPlan())}
         />
       )}
       {pendingReplace && (

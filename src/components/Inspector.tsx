@@ -2,13 +2,24 @@ import { wallLength, withWallLength } from '../geometry';
 import { FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { sideName, USE_ZONES, zoneOf } from '../furniture/useZones';
 import { stairLayout } from '../lib/site';
-import { SLAB_MM, WINDOW_SILL_MM } from '../three/model';
+import { WINDOW_SILL_MM } from '../three/model';
+import { levelWallMm, slabMm } from '../lib/levels';
 import { formatArea, formatLength, formatMarla } from '../lib/units';
 import { WINDOW_HEIGHT_MM } from '../lib/shapes';
 import { withShapeDepth } from '../lib/pushPull';
+import { projectOf, ROOM_TYPES } from '../lib/project';
 import { roomAreaSqMm } from '../rooms';
-import { KIND_HEIGHT_MM, MM_PER_UNIT, usePlanner } from '../store/plannerStore';
-import type { DoorKind, Opening, PlanElement, Stair, Units, Wall, WindowKind } from '../types';
+import { KIND_HEIGHT_MM, MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
+import {
+  levelOf,
+  type DoorKind,
+  type Opening,
+  type PlanElement,
+  type Stair,
+  type Units,
+  type Wall,
+  type WindowKind,
+} from '../types';
 import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
 import { thicknessOf } from '../walls';
 import { useLevelDoc } from '../store/useLevelDoc';
@@ -107,6 +118,8 @@ export function Inspector() {
   const updateRoom = usePlanner((s) => s.updateRoom);
   const mode = usePlanner((s) => s.mode);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
+  const project = projectOf(doc);
+  const house = project.type === 'house';
   const addParapetAround = usePlanner((s) => s.addParapetAround);
   const plinthMm = usePlanner((s) => s.doc.plinthMm);
   const wallHeightMm = usePlanner((s) => s.wallHeightMm);
@@ -440,7 +453,8 @@ export function Inspector() {
                             shape === 'ramp'
                               ? Math.min(el.riseMm, plinthMm)
                               : el.shape === 'ramp'
-                                ? wallHeightMm + SLAB_MM
+                                ? levelWallMm(plannerStore.getState().doc, levelOf(el), wallHeightMm) +
+                                  slabMm(plannerStore.getState().doc)
                                 : el.riseMm,
                         })
                       }
@@ -584,13 +598,16 @@ export function Inspector() {
                 className="rounded-sm border p-1"
               />
               <datalist id="room-names">
-                {ROOM_NAMES.map((n) => (
-                  <option key={n} value={n} />
-                ))}
+                {project.type === 'building'
+                  ? ROOM_TYPES[project.use ?? 'other'].map((t) => (
+                      <option key={t.name} value={t.name} label={`${t.name}, usually ${t.w} × ${t.d} m`} />
+                    ))
+                  : ROOM_NAMES.map((n) => <option key={n} value={n} />)}
               </datalist>
             </div>
             <div data-testid="selected-room-area">
-              Area: {formatArea(roomAreaSqMm(room), units)} · {formatMarla(roomAreaSqMm(room), marlaSqFt)}
+              Area: {formatArea(roomAreaSqMm(room), units)}
+              {house && ` · ${formatMarla(roomAreaSqMm(room), marlaSqFt)}`}
             </div>
             <div>Floor: {materialName(room.material) ?? '—'}</div>
             <div className="flex flex-wrap gap-2">
@@ -627,7 +644,8 @@ export function Inspector() {
             <div className="flex justify-between gap-2 border-t border-line pt-1 font-medium tabular-nums">
               <span>Room area</span>
               <span>
-                {formatArea(coveredArea, units)} · {formatMarla(coveredArea, marlaSqFt)}
+                {formatArea(coveredArea, units)}
+                {house && ` · ${formatMarla(coveredArea, marlaSqFt)}`}
               </span>
             </div>
           </div>

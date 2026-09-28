@@ -7,12 +7,13 @@ import { plotRule, plotSetbacks, roomRuleFor, type Authority, type PlotRule } fr
 import { MM_PER_UNIT } from './scale';
 import { isCornerPlot, outlinePoints, plotSides, sideSetbacks, SIDE_KIND_NAMES } from './plot';
 import { buildableArea } from './site';
-import { basementOf, groundIndex } from './levels';
+import { basementOf, groundIndex, levelWallMm, slabMm } from './levels';
 import { outsideOutline } from './outline';
+import { shows } from './project';
 import { formatLength, MM_PER_FOOT } from './units';
 import { boxOf, cellFor, GridIndex } from './spatial';
 import { labelPoint, polygonArea, roomAreaSqMm, wallFaces } from '../rooms';
-import { levelBaseM, SLAB_MM } from '../three/model';
+import { levelBaseM } from '../three/model';
 import {
   BASEMENT_HEIGHT_MM,
   GROUND_LEVEL,
@@ -152,6 +153,8 @@ const sqft = (v: number) => `${Math.round(v).toLocaleString('en-US')} sq ft`;
  * `wallHeightMm` is the usual wall height (for floors and the total height).
  */
 export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Units }): PlanCheck | null {
+  // A project that doesn't use bylaws (a free project, unless switched on) has no check.
+  if (!shows(doc, 'bylaws')) return null;
   const plot = doc.elements.find((el): el is Plot => el.type === 'plot' && !!plotRule(el));
   const found = plot && plotRule(plot);
   if (!plot || !found) return null;
@@ -442,8 +445,9 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       });
     }
     if (height) {
-      const tall = mumtyWalls.filter((w) => (w.heightMm ?? ctx.wallHeightMm) + SLAB_MM > height.maxMm + 1);
-      const top = Math.max(...mumtyWalls.map((w) => (w.heightMm ?? ctx.wallHeightMm) + SLAB_MM));
+      const wallOf = (w: Wall) => w.heightMm ?? levelWallMm(doc, levelOf(w), ctx.wallHeightMm);
+      const tall = mumtyWalls.filter((w) => wallOf(w) + slabMm(doc) > height.maxMm + 1);
+      const top = Math.max(...mumtyWalls.map((w) => wallOf(w) + slabMm(doc)));
       rows.push({
         id: 'mumty-height',
         label: 'Mumty height',
@@ -602,6 +606,9 @@ function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: number)
   // A floor with walls carries a slab over it even when none is drawn (a basement's is below the ground).
   for (const l of doc.levels)
     if (!l.basement && built.some((el) => el.type === 'wall' && !el.kind && levelOf(el) === l.id))
-      top = Math.max(top, levelBaseM(doc, l.id, wallHeightMm) * 1000 + wallHeightMm + SLAB_MM);
+      top = Math.max(
+        top,
+        levelBaseM(doc, l.id, wallHeightMm) * 1000 + levelWallMm(doc, l.id, wallHeightMm) + slabMm(doc),
+      );
   return top;
 }
