@@ -3,6 +3,7 @@ import { planBounds } from '../geometry';
 import { plannerStore } from '../store/plannerStore';
 import { exportPdf } from './exportPdf';
 import { builtAreaSqFt, planCheck } from './planCheck';
+import { shows } from './project';
 import { planHints } from './planHints';
 import { downloadUrl, exportPng } from './exportPng';
 import { planToDxf } from './exportDxf';
@@ -87,9 +88,10 @@ export function exportPlanPdf() {
     northDeg: doc.northDeg ?? 0,
     checkTitle: baseName(plannerStore.getState().fileName),
     hints,
-    cost: costStore.getState().pdfCost
-      ? costPdf(costReport(doc, wallHeightMm, 'all', costStore.getState()))
-      : undefined,
+    cost:
+      costStore.getState().pdfCost && shows(doc, 'cost')
+        ? costPdf(costReport(doc, wallHeightMm, 'all', costStore.getState()))
+        : undefined,
     bylawNote: check
       ? `Bylaws: ${check.authority.name}${check.authority.status === 'provisional' ? ' (provisional)' : ''}${check.rule ? `, ${check.rule.label}` : ''}`
       : '',

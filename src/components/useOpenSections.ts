@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { browserStorage } from '../lib/storage';
 
 export type SectionId =
-  'layout' | 'check' | 'cost' | 'materials' | 'components' | 'layers' | 'grid' | 'theme' | 'settings';
+  'project' | 'layout' | 'check' | 'cost' | 'materials' | 'components' | 'layers' | 'grid' | 'theme' | 'settings';
 
 const OPEN_KEY = 'mimar.panels';
 const DEFAULT_OPEN: SectionId[] = ['check', 'materials', 'layers'];

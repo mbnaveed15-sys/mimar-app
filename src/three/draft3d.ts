@@ -1,7 +1,7 @@
 import { outlineProblem } from '../lib/plot';
 import { plotRect, stairLayout } from '../lib/site';
 import { MM_PER_UNIT } from '../lib/scale';
-import { SLAB_MM } from './model';
+import { levelWallMm, slabMm } from '../lib/levels';
 import type { PlannerState } from '../store/plannerStore';
 import type { PlanElement, Point } from '../types';
 
@@ -103,7 +103,8 @@ export function draftElements(s: PlannerState): PlanElement[] {
   }
   if (!d && p && s.tool === 'stairs') {
     const { site } = s;
-    const riseMm = site.climb === 'plinth' ? s.doc.plinthMm : s.wallHeightMm + SLAB_MM;
+    const riseMm =
+      site.climb === 'plinth' ? s.doc.plinthMm : levelWallMm(s.doc, s.activeLevel, s.wallHeightMm) + slabMm(s.doc);
     const spec = { shape: site.stairShape, width: site.stairWidthMm / MM_PER_UNIT, riseMm, treadMm: site.treadMm };
     const l = stairLayout(spec);
     return [

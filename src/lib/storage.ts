@@ -10,6 +10,10 @@ import {
   type Pattern,
   type PlanDoc,
   type Plot,
+  type BuildingUse,
+  type ProjectPanel,
+  type ProjectSettings,
+  type ProjectType,
   type PlotSide,
   type PlotSideKind,
   type PlanElement,
@@ -28,7 +32,7 @@ import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
 
 export const STORAGE_KEY = 'mimar.plan';
 /** 4 added groups and components; 5 added levels, columns, beams and slabs. */
-export const CURRENT_VERSION = 7;
+export const CURRENT_VERSION = 8;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -338,6 +342,25 @@ function readPoints(raw: unknown): Point[] {
     .map(({ x, y }) => ({ x, y }));
 }
 
+const PROJECT_TYPES: ProjectType[] = ['house', 'free', 'building'];
+const USES: BuildingUse[] = ['office', 'school', 'clinic', 'shop', 'mosque', 'other'];
+const PANELS: ProjectPanel[] = ['bylaws', 'hints', 'roomList', 'cost'];
+
+/** A project's type and settings, keeping only sound values (none: a house on a plot, as before 1.33). */
+function normaliseProject(raw: unknown): ProjectSettings | undefined {
+  if (!isObject(raw) || !PROJECT_TYPES.includes(raw.type as ProjectType)) return undefined;
+  const given = isObject(raw.panels) ? raw.panels : {};
+  const panels = Object.fromEntries(PANELS.filter((k) => typeof given[k] === 'boolean').map((k) => [k, given[k]]));
+  return {
+    type: raw.type as ProjectType,
+    ...(USES.includes(raw.use as BuildingUse) ? { use: raw.use as BuildingUse } : {}),
+    ...(raw.units === 'metric' || raw.units === 'imperial' ? { units: raw.units } : {}),
+    ...(inRange(raw.wallHeightMm, 2000, 9000) ? { wallHeightMm: raw.wallHeightMm } : {}),
+    ...(inRange(raw.slabMm, 50, 600) ? { slabMm: raw.slabMm } : {}),
+    ...(Object.keys(panels).length ? { panels } : {}),
+  };
+}
+
 function normaliseLevels(raw: unknown): Level[] {
   const levels = (Array.isArray(raw) ? raw : [])
     .filter((l): l is Record<string, unknown> => isObject(l) && l.id !== undefined)
@@ -345,12 +368,18 @@ function normaliseLevels(raw: unknown): Level[] {
       id: String(l.id),
       name: nameOf(l.name, 'Floor'),
       ...(l.basement === true && l.id !== GROUND_LEVEL ? { basement: true } : {}),
-      ...(l.basement === true && inRange(l.heightMm, 1800, 9000) ? { heightMm: l.heightMm } : {}),
+      ...(inRange(l.heightMm, 1800, 9000) ? { heightMm: l.heightMm } : {}),
     }));
   // The ground floor always exists; one basement (if any) comes before it, the other floors after.
   const ground = levels.find((l) => l.id === GROUND_LEVEL) ?? defaultLevels()[0];
   const basement = levels.find((l) => l.basement);
-  const above = levels.filter((l) => l.id !== GROUND_LEVEL && l !== basement).map((l) => ({ id: l.id, name: l.name }));
+  const above = levels
+    .filter((l) => l.id !== GROUND_LEVEL && l !== basement)
+    .map((l) => {
+      const plain = { ...l };
+      delete plain.basement;
+      return plain;
+    });
   return [...(basement ? [basement] : []), ground, ...above];
 }
 
@@ -450,6 +479,7 @@ export function normaliseDoc(raw: unknown): PlanDoc {
       .map(normaliseComponent)
       .filter((c): c is ComponentDef => c !== null),
     levels: normaliseLevels(obj.levels),
+    ...(normaliseProject(obj.project) ? { project: normaliseProject(obj.project) } : {}),
     plinthMm:
       typeof obj.plinthMm === 'number' && obj.plinthMm >= 0 && obj.plinthMm <= 3000 ? obj.plinthMm : DEFAULT_PLINTH_MM,
     ...(normaliseLayers(obj.layers) ? { layers: normaliseLayers(obj.layers) } : {}),

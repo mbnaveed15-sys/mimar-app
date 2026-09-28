@@ -5,7 +5,7 @@ import { doorKindOf } from '../lib/openingKinds';
 import { openingProfileMm } from '../lib/shapes';
 import { buildableArea, stairLayout } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
-import { basementOf, groundIndex, levelWallMm } from '../lib/levels';
+import { basementOf, groundIndex, levelWallMm, slabMm } from '../lib/levels';
 import { outsideOutline } from '../lib/outline';
 import {
   GROUND_LEVEL,
@@ -732,9 +732,11 @@ export function levelBaseM(doc: PlanDoc, levelId: string, wallHeightMm: number):
   const g = groundIndex(doc);
   const found = doc.levels.findIndex((l) => l.id === levelId);
   const i = found < 0 ? g : found;
-  if (i >= g) return mmToM(doc.plinthMm) + (i - g) * mmToM(wallHeightMm + SLAB_MM);
+  const slab = slabMm(doc);
   let base = mmToM(doc.plinthMm);
-  for (let k = g - 1; k >= i; k--) base -= mmToM(SLAB_MM + levelWallMm(doc, doc.levels[k].id, wallHeightMm));
+  // Up a floor's walls and its slab for each floor between it and the ground floor; down for a basement.
+  for (let k = g; k < i; k++) base += mmToM(levelWallMm(doc, doc.levels[k].id, wallHeightMm) + slab);
+  for (let k = g - 1; k >= i; k--) base -= mmToM(slab + levelWallMm(doc, doc.levels[k].id, wallHeightMm));
   return base;
 }
 

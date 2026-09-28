@@ -17,8 +17,7 @@ import {
 import { browserStorage } from '../lib/storage';
 import { formatLength, MM_PER_FOOT } from '../lib/units';
 import { MM_PER_UNIT, RETAINING_MM, usePlanner, plannerStore } from '../store/plannerStore';
-import { SLAB_MM } from '../three/model';
-import { isBasement, levelWallMm } from '../lib/levels';
+import { isBasement, levelWallMm, slabMm } from '../lib/levels';
 import { GROUND_LEVEL, levelOf, type Plot, type Stair } from '../types';
 import { LengthField } from './LengthField';
 
@@ -254,10 +253,10 @@ export function LayoutPanel() {
       return;
     }
     const levelMm = levelWallMm(plannerStore.getState().doc, activeLevel, wallHeightMm);
-    const riseMm = levelMm + SLAB_MM;
+    const riseMm = levelMm + slabMm(plannerStore.getState().doc);
     const basementOpts = inBasement
       ? {
-          outer: { thickness: RETAINING_MM / MM_PER_UNIT, kind: 'retaining' as const, heightMm: levelMm + SLAB_MM },
+          outer: { thickness: RETAINING_MM / MM_PER_UNIT, kind: 'retaining' as const, heightMm: riseMm },
           noWindows: true,
           ...(groundStair ? { stairAt: { x: groundStair.x, y: groundStair.y, rotation: groundStair.rotation } } : {}),
         }

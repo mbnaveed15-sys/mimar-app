@@ -3,6 +3,8 @@ import { MENUS, showKeys, type Command } from '../commands';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import { pasteToPlace } from '../tools/controller';
 import { Icon } from './Icon';
+import { BUILDING_USES, PROJECT_TYPES } from '../lib/project';
+import type { BuildingUse, ProjectType } from '../types';
 import { useFocusTrap, useMenuKeys } from './useFocus';
 
 /** A centred dialog over a dimmed app; Esc or a click outside closes it. */
@@ -334,5 +336,78 @@ export function ContextMenu({
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * What kind of project to start: a house on a plot, a free project or a building (with its use).
+ * Esc or Cancel leaves the new plan a house on a plot, as before project types.
+ */
+export function NewProjectDialog({ onClose }: { onClose: () => void }) {
+  const [type, setType] = useState<ProjectType>('house');
+  const [use, setUse] = useState<BuildingUse>('office');
+  const start = () => {
+    plannerStore.getState().newProject(type, type === 'building' ? use : undefined);
+    onClose();
+  };
+  return (
+    <Modal label="New project" onClose={onClose}>
+      <form
+        className="flex flex-col gap-3 p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          start();
+        }}
+      >
+        <p className="font-semibold">What are you making?</p>
+        <div role="radiogroup" aria-label="Project type" className="flex flex-col gap-2">
+          {PROJECT_TYPES.map((t, i) => (
+            <label
+              key={t.id}
+              className={`flex cursor-pointer gap-2 rounded-md border p-2 ${type === t.id ? 'border-accent bg-accent-soft' : 'border-line'}`}
+            >
+              <input
+                type="radio"
+                name="project-type"
+                value={t.id}
+                checked={type === t.id}
+                autoFocus={i === 0}
+                onChange={() => setType(t.id)}
+              />
+              <span>
+                <span className="block font-medium">{t.label}</span>
+                <span className="block text-xs text-muted">{t.blurb}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        {type === 'building' && (
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted">What is it for?</span>
+            <select
+              aria-label="Building use"
+              value={use}
+              onChange={(e) => setUse(e.target.value as BuildingUse)}
+              className="rounded-sm border p-1"
+            >
+              {BUILDING_USES.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <p className="text-xs text-muted">You can change this later in the Project section of the side panel.</p>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="m-btn">
+            Cancel
+          </button>
+          <button type="submit" className="m-btn m-btn-primary">
+            Start
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

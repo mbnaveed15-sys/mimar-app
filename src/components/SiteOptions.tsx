@@ -6,6 +6,7 @@ import {
   WINDOW_KINDS,
   WINDOW_SIZE_MM,
 } from '../lib/openingKinds';
+import { projectOf, shows } from '../lib/project';
 import { WINDOW_HEIGHT_MM } from '../lib/shapes';
 import { WINDOW_SILL_MM } from '../three/model';
 import { plannerStore, usePlanner, type SiteSpec } from '../store/plannerStore';
@@ -79,6 +80,8 @@ export function SiteOptions() {
   const site = usePlanner((s) => s.site);
   const setSite = usePlanner((s) => s.setSite);
   const units = usePlanner((s) => s.units);
+  const bylaws = usePlanner((s) => shows(s.doc, 'bylaws'));
+  const house = usePlanner((s) => projectOf(s.doc).type === 'house');
 
   if (tool === 'plot')
     return (
@@ -113,9 +116,15 @@ export function SiteOptions() {
             </div>
           )}
         </div>
-        <AuthoritySelect id="site-authority" value={site.authority} onChange={(authority) => setSite({ authority })} />
-        <PlotPresets />
-        {site.authority ? (
+        {bylaws && (
+          <AuthoritySelect
+            id="site-authority"
+            value={site.authority}
+            onChange={(authority) => setSite({ authority })}
+          />
+        )}
+        {house && <PlotPresets />}
+        {bylaws && site.authority ? (
           <div className="text-muted">Setbacks come from the bylaws table for the plot's size.</div>
         ) : (
           <div className="grid grid-cols-3 gap-2">

@@ -73,9 +73,12 @@ function useTargetRect(selector: string | null) {
 export function Welcome({
   onClose,
   confirmReplace,
+  onNewProject,
 }: {
   onClose: () => void;
   confirmReplace: (then: () => void) => void;
+  /** Start a new project (a house, a free project or a building), after asking about unsaved changes. */
+  onNewProject?: () => void;
 }) {
   const [step, setStep] = useState<number | null>(null);
   const hasPlan = plannerStore.getState().doc.elements.length > 0;
@@ -129,7 +132,7 @@ export function Welcome({
             <Mark size={52} />
             <div>
               <h2 className="text-xl font-semibold">Welcome to Mimar</h2>
-              <p className="text-sm text-muted">House plans in feet and marla, in 2D and 3D.</p>
+              <p className="text-sm text-muted">Houses, buildings and studio projects, in 2D and 3D.</p>
             </div>
           </div>
           <div className="mt-5 flex flex-col gap-2">
@@ -139,6 +142,17 @@ export function Welcome({
             <button className="m-btn justify-center py-2" onClick={openSample}>
               Start with a sample 5-marla house
             </button>
+            {onNewProject && (
+              <button
+                className="m-btn justify-center py-2"
+                onClick={() => {
+                  markSeen();
+                  onNewProject();
+                }}
+              >
+                Start a new project…
+              </button>
+            )}
             <button className="m-btn justify-center py-2" onClick={finish}>
               {hasPlan ? 'Carry on with my plan' : 'Start blank'}
             </button>

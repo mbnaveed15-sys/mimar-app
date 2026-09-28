@@ -3,8 +3,7 @@ import type { Measure } from '../lib/measure';
 import { formatLength, MM_PER_FOOT } from '../lib/units';
 import { plotRect, stairLayout } from '../lib/site';
 import { detectRoom } from '../rooms';
-import { SLAB_MM } from '../three/model';
-import { levelWallMm } from '../lib/levels';
+import { levelWallMm, slabMm } from '../lib/levels';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
 import type { Point, Tool } from '../types';
 
@@ -264,7 +263,7 @@ export function structureReadout(s: PlannerState): { label: string; value: strin
     const { site } = s;
     if (site.stairShape === 'ramp') return { label: 'Ramp', value: `1 in 12` };
     const riseMm =
-      site.climb === 'plinth' ? s.doc.plinthMm : levelWallMm(s.doc, s.activeLevel, s.wallHeightMm) + SLAB_MM;
+      site.climb === 'plinth' ? s.doc.plinthMm : levelWallMm(s.doc, s.activeLevel, s.wallHeightMm) + slabMm(s.doc);
     const l = stairLayout({
       shape: site.stairShape,
       width: site.stairWidthMm / MM_PER_UNIT,

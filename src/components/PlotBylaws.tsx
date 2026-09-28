@@ -1,4 +1,5 @@
 import { AUTHORITIES, plotMeasures, plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
+import { shows } from '../lib/project';
 import { usePlanner } from '../store/plannerStore';
 import type { Plot } from '../types';
 import { LengthField } from './LengthField';
@@ -69,6 +70,7 @@ export function PlotBylawsPanel({ plot }: { plot: Plot }) {
   const units = usePlanner((s) => s.units);
   const updateElement = usePlanner((s) => s.updateElement);
   const setPlotAuthority = usePlanner((s) => s.setPlotAuthority);
+  const bylaws = usePlanner((s) => shows(s.doc, 'bylaws'));
   const found = plotRule(plot);
   const rule = found?.rule;
   const { areaSqFt, frontageFt } = plotMeasures(plot);
@@ -83,12 +85,23 @@ export function PlotBylawsPanel({ plot }: { plot: Plot }) {
 
   return (
     <div className="flex flex-col gap-2" data-testid="plot-bylaws">
-      <AuthoritySelect id="plot-authority" value={plot.authority} onChange={(a) => setPlotAuthority(plot.id, a)} />
+      {bylaws && (
+        <AuthoritySelect id="plot-authority" value={plot.authority} onChange={(a) => setPlotAuthority(plot.id, a)} />
+      )}
       <div className="text-muted tabular-nums">
-        {Math.round(areaSqFt).toLocaleString('en-US')} sq ft ({Math.round(areaSqFt / 9)} sq yd),{' '}
-        {Math.round(frontageFt)}' along the road
+        {units === 'metric' ? (
+          <>
+            {Math.round(areaSqFt * 0.09290304).toLocaleString('en-US')} m², {(frontageFt * 0.3048).toFixed(1)} m along
+            the road
+          </>
+        ) : (
+          <>
+            {Math.round(areaSqFt).toLocaleString('en-US')} sq ft ({Math.round(areaSqFt / 9)} sq yd),{' '}
+            {Math.round(frontageFt)}' along the road
+          </>
+        )}
       </div>
-      {found && (
+      {bylaws && found && (
         <div className="rounded-sm border border-line p-1.5">
           <div className="font-medium" data-testid="plot-rule">
             {rule ? rule.label : 'No row in the table fits this plot'}

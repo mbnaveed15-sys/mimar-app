@@ -1,5 +1,6 @@
 import { getViewControls, isParallel, requestView, toggleParallel } from './three/viewControls';
 import { aliasesFor } from './lib/aliases';
+import { shows } from './lib/project';
 import { exportCostCsv, exportModel, exportPlanDxf, exportPlanPdf, exportPlanPng } from './lib/exportActions';
 import { plannerStore, type PlannerState } from './store/plannerStore';
 import { THEMES } from './theme/themes';
@@ -521,6 +522,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       menu: 'draw',
       group: 2,
       run: () => ctx.showSection('layout'),
+      hidden: (s) => !shows(s.doc, 'roomList'),
       aliases: ['plan', 'rooms', 'auto'],
     },
     ...MODIFY_TOOLS.map((t) => toolCommand(t, 'modify', ['offset', 'mirror', 'scale', 'stretch'].includes(t) ? 0 : 1)),
