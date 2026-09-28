@@ -25,11 +25,12 @@ door and window types, plants and garden items (1.29); door and window placing w
 any shape, per-side types, setbacks and walls, corner plots (1.30); layouts from a room list (1.31); basements (1.32);
 project types: free projects, buildings, per-floor heights, metric (1.33);
 furniture use zones with ADA wheelchair spaces (1.34); sections, elevations and drawing sheets (1.35); terrain and site:
-spot levels, contours, survey import, levelled plot and pads, cut and fill, OpenStreetMap surroundings and satellite levels (1.36).
+spot levels, contours, survey import, levelled plot and pads, cut and fill, OpenStreetMap surroundings and satellite levels (1.36);
+freer form: curved walls, double-height rooms, glass curtain walls and pitched roofs (1.37).
 
 Planned next (the roadmap agreed with the owner for all kinds of work; plan each with the owner first):
-1.37 freer form (curved walls, pitched roofs, voids, curtain walls); 1.38 3D speed and IFC export;
-1.39 checks for non-residential buildings (each moved up one when furniture use zones took 1.34).
+1.38 3D speed and IFC export; 1.39 checks for non-residential buildings (each moved up one when furniture use
+zones took 1.34).
 First-floor plans from a room list are a later idea.
 
 Left from sections and elevations for later: dimension strings on sections (only level marks now); each section and
@@ -38,7 +39,14 @@ Drawings view opens slowly on very big plans, as 3D does;
 stair openings aren't cut in the floor slabs the drawings assume (a drawn slab with a void is); a stepped section
 line (it is straight); hatching for materials (cut is solid black); the DXF fills only rectangular cuts (others are
 outlined); plans on sheets are pictures at up to 200 DPI in the PDF (as the plan PDF); furniture or shading as
-options; curved walls and pitched roofs come with freer form.
+options.
+
+Left from freer form for later: no domes, vaults or free-form roofs, no dormers or roof windows (skylights); arcs
+are circular only (no ellipses or splines) and can't be extended, joined, filleted or chamfered (straight walls can);
+Push/Pull takes only an arc wall's top; no spiral stairs; curved glass is flat panes between mullions; a roof is one
+pitch all round (no per-side pitches or mansards) and doesn't clip the walls under it (walls stop at their own
+height, gable walls fill up to the roof); roofs aren't drawn in the auto-planner's layouts; the roof over a house with
+curved walls follows the curve as short straight eaves.
 
 Left from terrain and site for later: one finished level per plot plus levelled areas (no sloping driveways, ramps or
 terraces); site retaining walls are drawn by hand with the Retaining wall type; the plinth check still measures from ±0,

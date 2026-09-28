@@ -75,6 +75,17 @@ export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Poin
   if (el.type === 'slab' && el.holes) return { ...el, points: map(el.points), holes: el.holes.map(map) };
   // A plot's road and sides stay on the same edges as its corners turn round.
   if (el.type === 'plot' && reverse) return { ...el, points: map(el.points), ...reversedSides(el) };
+  // A roof's gable ends and low side stay on the same edges too.
+  if (el.type === 'roof' && reverse) {
+    const n = el.points.length;
+    const edge = (i: number) => (((n - 2 - i) % n) + n) % n;
+    return {
+      ...el,
+      points: map(el.points),
+      ...(el.gables && { gables: el.gables.map(edge) }),
+      ...(el.lowEdge !== undefined && { lowEdge: edge(el.lowEdge) }),
+    };
+  }
   return { ...el, points: map(el.points) };
 }
 
@@ -123,7 +134,8 @@ export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
     case 'contour':
       return nearPolyline(el.points, p, threshold);
     case 'pad':
-      // Picked by its edge, like a slab, so what stands on it stays clickable.
+    case 'roof':
+      // Picked by its edge, like a slab, so what stands on it (or under it) stays clickable.
       return el.points.some((a, i) => pointToSegmentDistance(p, a, el.points[(i + 1) % el.points.length]) < threshold);
     case 'context':
       return el.kind === 'road'
@@ -298,6 +310,7 @@ function elementPoints(el: PlanElement): Point[] {
     case 'contour':
     case 'pad':
     case 'context':
+    case 'roof':
       return el.points;
     case 'level':
       return [{ x: el.x, y: el.y }];

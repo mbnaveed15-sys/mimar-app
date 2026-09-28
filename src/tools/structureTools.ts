@@ -4,6 +4,7 @@ import { formatLength, MM_PER_FOOT } from '../lib/units';
 import { plotRect, stairLayout } from '../lib/site';
 import { detectRoom } from '../rooms';
 import { levelWallMm, slabMm } from '../lib/levels';
+import { riseIn12 } from '../lib/roof/roof';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
 import type { Point, Tool } from '../types';
 import {
@@ -21,7 +22,7 @@ interface Store {
   getState: () => PlannerState;
 }
 
-export const STRUCTURE_TOOLS: Tool[] = ['column', 'beam', 'slab', 'plot', 'stairs', 'section', ...GROUND_TOOLS];
+export const STRUCTURE_TOOLS: Tool[] = ['column', 'beam', 'slab', 'roof', 'plot', 'stairs', 'section', ...GROUND_TOOLS];
 
 /** Default wall half-thickness (4½"), how far a slab reaches past a room's inner faces to the wall centres. */
 const SLAB_OVERHANG = (4.5 * 25.4) / MM_PER_UNIT;
@@ -103,6 +104,8 @@ export function structurePress(store: Store, inf: Inference) {
     case 'stairs':
       s.addStair(p);
       return;
+    case 'roof':
+      return roofCorner(store, p, true);
     case 'section':
       if (d?.type !== 'section')
         return s.setDraft({ type: 'section', x1: p.x, y1: p.y, x2: p.x, y2: p.y, placed: false, flip: false });
@@ -127,7 +130,7 @@ export function structureHover(store: Store, inf: Inference) {
   const d = s.draft;
   if (d?.type === 'beam' || d?.type === 'slab' || d?.type === 'plot')
     s.setDraft({ ...d, x2: inf.point.x, y2: inf.point.y });
-  if (d?.type === 'plotPoly') s.setDraft({ ...d, cursor: inf.point });
+  if (d?.type === 'plotPoly' || d?.type === 'roof') s.setDraft({ ...d, cursor: inf.point });
   if (d?.type === 'section') {
     if (!d.placed) s.setDraft({ ...d, x2: inf.point.x, y2: inf.point.y });
     else if (onLeft(d, inf.point) !== d.flip) s.setDraft({ ...d, flip: !d.flip });
@@ -196,6 +199,44 @@ export function finishPlotPoly(store: Store): boolean {
 }
 
 /**
+ * A corner of a roof drawn round the walls. Clicking the first corner again (with three or more placed)
+ * finishes it; `snapClose` lets a click near the first corner count.
+ */
+function roofCorner(store: Store, p: Point, snapClose: boolean) {
+  const s = store.getState();
+  const d = s.draft;
+  if (d?.type !== 'roof') {
+    s.setWarning(null);
+    return s.setDraft({ type: 'roof', points: [p], cursor: p });
+  }
+  const tol = snapClose ? 10 * s.reach() * s.pxUnits() : 1;
+  if (d.points.length >= 3 && dist(p, d.points[0]) <= tol) {
+    finishRoof(store);
+    return;
+  }
+  if (dist(p, d.points[d.points.length - 1]) < 1) return;
+  if (sideCrosses(d.points, p)) {
+    s.setWarning('That side would cross another side of the roof: put the corner somewhere else.');
+    return;
+  }
+  s.setWarning(null);
+  s.setDraft({ ...d, points: [...d.points, p], cursor: p });
+}
+
+/** Enter (or clicking the first corner): put the roof on over the outline drawn. */
+export function finishRoof(store: Store): boolean {
+  const s = store.getState();
+  const d = s.draft;
+  if (d?.type !== 'roof') return false;
+  if (d.points.length < 3) {
+    s.setWarning('A roof needs at least three corners.');
+    return true;
+  }
+  if (s.addRoof(d.points)) s.setDraft(null);
+  return true;
+}
+
+/**
  * A slab drawn by dragging is a rectangle. A click (no drag) inside walls makes a slab over that
  * area, reaching to the wall centres; a click elsewhere starts a rectangle for a second click.
  */
@@ -208,6 +249,13 @@ export function structureRelease(store: Store, dragged: boolean) {
     const [a] = d.points;
     if (Math.abs(d.cursor.x - a.x) > 1 && Math.abs(d.cursor.y - a.y) > 1) s.addPlot(plotRect(a, d.cursor));
     return s.setDraft(null);
+  }
+  // A roof dragged out from its first corner is a rectangle.
+  if (s.tool === 'roof' && d?.type === 'roof' && dragged && d.points.length === 1) {
+    const [a] = d.points;
+    if (Math.abs(d.cursor.x - a.x) > 1 && Math.abs(d.cursor.y - a.y) > 1 && s.addRoof(rectPoints(a, d.cursor)))
+      s.setDraft(null);
+    return;
   }
   // A section line dragged out: its ends are down, and the next click picks the side it looks to.
   if (s.tool === 'section' && d?.type === 'section' && !d.placed && dragged) {
@@ -257,6 +305,15 @@ export function structureMeasure(store: Store, m: Measure): string | null {
     s.setDraft(null);
     return null;
   }
+  if (s.tool === 'roof') {
+    if (d?.type !== 'roof') return 'Click the first corner round the walls, then type the length of each side.';
+    const next = typedCorner(s, d, m);
+    if (typeof next === 'string') return next;
+    const before = s.draft;
+    roofCorner(store, next, false);
+    if (store.getState().draft === before) return store.getState().warnings[0] ?? 'That corner can’t be used.';
+    return null;
+  }
   if (s.tool === 'plot' && (d?.type === 'plotPoly' || (s.site.plotShape === 'any' && !s.site.plotSize))) {
     if (d?.type !== 'plotPoly') return 'Click the first corner of the plot, then type the length of each side.';
     const last = d.points[d.points.length - 1];
@@ -292,6 +349,19 @@ export function structureMeasure(store: Store, m: Measure): string | null {
   return 'Columns are placed by clicking; set their size on the right.';
 }
 
+/** The next corner from a typed side: a length the way the pointer (or a lock) goes, or @x,y. An error otherwise. */
+function typedCorner(s: PlannerState, d: { points: Point[]; cursor: Point }, m: Measure): Point | string {
+  const units = (mm: number) => mm / MM_PER_UNIT;
+  const last = d.points[d.points.length - 1];
+  if (m.kind === 'vector') return { x: last.x + units(m.dx), y: last.y - units(m.dy) };
+  if (m.kind !== 'length') return `Type the length of the side, e.g. 30', or @x,y.`;
+  const lock = s.axisLock === 'x' ? { x: 1, y: 0 } : s.axisLock === 'y' ? { x: 0, y: 1 } : s.shiftLock;
+  const v = lock ?? { x: d.cursor.x - last.x, y: d.cursor.y - last.y };
+  const l = Math.hypot(v.x, v.y);
+  if (l < 1e-9) return 'Point the way the side goes first, then type its length.';
+  return { x: last.x + (v.x / l) * units(m.mm), y: last.y + (v.y / l) * units(m.mm) };
+}
+
 export function structureReadout(s: PlannerState): { label: string; value: string } {
   if (GROUND_TOOLS.includes(s.tool)) return groundReadout(s);
   const d = s.draft;
@@ -313,7 +383,15 @@ export function structureReadout(s: PlannerState): { label: string; value: strin
     });
     return { label: 'Risers', value: `${l.risers} × ${formatLength(l.riserMm, s.units)}` };
   }
-  if (d?.type === 'plotPoly') {
+  if (s.tool === 'roof' && d?.type !== 'roof') {
+    const pitch = s.site.roofPitchDeg;
+    return {
+      label: 'Pitch',
+      value:
+        s.site.roofShape === 'flat' ? 'Flat' : `${Math.round(pitch * 10) / 10}° (${riseIn12(pitch).toFixed(1)} in 12)`,
+    };
+  }
+  if (d?.type === 'plotPoly' || d?.type === 'roof') {
     const last = d.points[d.points.length - 1];
     return { label: 'Length', value: len(Math.hypot(d.cursor.x - last.x, d.cursor.y - last.y)) };
   }
@@ -352,6 +430,12 @@ export function structureHint(s: PlannerState): string {
         : s.site.plotSize
           ? `Click where the plot's back-left corner goes (${s.site.plotSize.w}' × ${s.site.plotSize.d}'; the road is along the bottom).`
           : 'Click or drag the plot, or pick a size on the right. Setbacks and a boundary wall are added for you.';
+    case 'roof':
+      if (d?.type === 'roof')
+        return d.points.length < 3
+          ? 'Click the next corner round the walls, or type the side’s length.'
+          : 'Click the next corner, or click the first corner (or press Enter) to put the roof on. Ctrl+Z takes back a corner.';
+      return 'Click the corners round the outside of the walls (a drag makes a rectangle); the eaves reach past them by the overhang. Or use Roof over the house on the right.';
     case 'stairs':
       return 'Click to place a stair. Pick straight, L, U or a ramp on the right; risers are worked out for you.';
     case 'section':

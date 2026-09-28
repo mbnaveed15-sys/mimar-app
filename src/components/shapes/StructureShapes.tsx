@@ -1,6 +1,7 @@
-import { fromFurnitureLocal } from '../../geometry';
+import { centroid, fromFurnitureLocal } from '../../geometry';
+import { roofShape, slopedFaces } from '../../lib/roof/roof';
 import { PLAN } from '../../theme/plan';
-import type { Beam, Block, Column, Point, Slab } from '../../types';
+import type { Beam, Block, Column, Point, Roof, Slab } from '../../types';
 
 /** A column: solid, as it is cut by the plan. */
 export function ColumnShape({
@@ -124,5 +125,91 @@ export function BlockShape({
       strokeWidth={(selected ? 2.5 : 1.25) * k}
       strokeDasharray={flat ? `${6 * k} ${3 * k}` : undefined}
     />
+  );
+}
+
+/**
+ * A roof seen from under the plan's cut: its eaves dashed, as work above; its ridges, hips and valleys; and an
+ * arrow down each slope. When picked, its sides are numbered (for the gable ends and low side).
+ */
+export function RoofShape({ roof, selected, k }: { roof: Roof; selected: boolean; k: number }) {
+  const stroke = { stroke: selected ? PLAN.selection : PLAN.inkMuted };
+  const shape = roofShape(roof);
+  const pitched = roof.shape !== 'flat';
+  const n = roof.points.length;
+  const inside = centroid(roof.points);
+  return (
+    <g data-type="roof" data-id={roof.id} data-shape={roof.shape}>
+      <path
+        d={ring(roof.points)}
+        style={{ fill: PLAN.selection, ...stroke }}
+        fillOpacity={selected ? 0.08 : 0}
+        strokeWidth={(selected ? 2.5 : 1.25) * k}
+        strokeDasharray={`${10 * k} ${5 * k}`}
+      />
+      {pitched &&
+        shape.lines
+          .filter((l) => l.kind === 'ridge' || l.kind === 'hip' || l.kind === 'valley')
+          .map((l, i) => (
+            <line
+              key={i}
+              data-kind={l.kind}
+              x1={l.a.x}
+              y1={l.a.y}
+              x2={l.b.x}
+              y2={l.b.y}
+              style={stroke}
+              strokeWidth={(l.kind === 'ridge' ? 1.5 : 1) * k}
+              strokeDasharray={l.kind === 'valley' ? `${6 * k} ${3 * k}` : undefined}
+            />
+          ))}
+      {pitched &&
+        slopedFaces(roof).map((f, i) => {
+          const [a, b] = f.points;
+          const c = centroid(f.points);
+          const ex = b.x - a.x;
+          const ey = b.y - a.y;
+          const len = Math.hypot(ex, ey);
+          if (len < 1e-9) return null;
+          let nx = ey / len;
+          let ny = -ex / len;
+          const reach = (a.x - c.x) * nx + (a.y - c.y) * ny;
+          if (reach < 0) [nx, ny] = [-nx, -ny];
+          const arrow = Math.min(Math.abs(reach) * 0.7, 91.44);
+          if (arrow < 6 * k) return null;
+          const tip = { x: c.x + nx * arrow, y: c.y + ny * arrow };
+          const head = 6 * k;
+          return (
+            <g key={i} data-testid="roof-arrow" style={stroke} strokeWidth={1 * k}>
+              <line x1={c.x} y1={c.y} x2={tip.x} y2={tip.y} />
+              <path
+                d={`M ${tip.x} ${tip.y} L ${tip.x - nx * head * 1.6 + ny * head} ${tip.y - ny * head * 1.6 - nx * head} L ${tip.x - nx * head * 1.6 - ny * head} ${tip.y - ny * head * 1.6 + nx * head} Z`}
+                style={{ fill: stroke.stroke }}
+              />
+            </g>
+          );
+        })}
+      {selected &&
+        roof.points.map((a, i) => {
+          const b = roof.points[(i + 1) % n];
+          const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          const d = Math.hypot(mid.x - inside.x, mid.y - inside.y) || 1;
+          const at = { x: mid.x + ((mid.x - inside.x) / d) * 14 * k, y: mid.y + ((mid.y - inside.y) / d) * 14 * k };
+          return (
+            <text
+              key={i}
+              data-testid="roof-side"
+              x={at.x}
+              y={at.y}
+              fontSize={11 * k}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              style={{ fill: PLAN.selection }}
+            >
+              {i + 1}
+            </text>
+          );
+        })}
+    </g>
   );
 }

@@ -200,6 +200,31 @@ export interface Slab extends Grouped {
   material?: Id;
 }
 
+/** How a roof is shaped: sloping on every side, with gable ends, one slope, or flat. */
+export type RoofKind = 'hip' | 'gable' | 'shed' | 'flat';
+
+/**
+ * A roof over the top of its level's walls. Its outline is the eaves' line in plan (the walls' line plus the
+ * overhang); its slopes pass over the walls' line at the top of the walls.
+ */
+export interface Roof extends Grouped {
+  id: Id;
+  type: 'roof';
+  points: Point[];
+  shape: RoofKind;
+  /** The slope, degrees from level. */
+  pitchDeg: number;
+  /** A gabled roof's gable ends: edges (points[i] to points[i+1]) that rise as walls; the two short ends when missing. */
+  gables?: number[];
+  /** A shed roof's low side (an edge index); the longest edge when missing. */
+  lowEdge?: number;
+  /** How far the eaves reach past the walls, mm. */
+  overhangMm: number;
+  /** The roof's thickness (deck, insulation and covering), mm. */
+  thicknessMm: number;
+  material?: Id;
+}
+
 /** The plot: its outline, which edge faces the road, and the setbacks (in mm) from each side. */
 /** What lies beyond a side of a plot. */
 export type PlotSideKind = 'road' | 'neighbour' | 'back' | 'open';
@@ -374,10 +399,11 @@ export type PlanElement =
   | SpotLevel
   | Contour
   | Pad
-  | ContextItem;
+  | ContextItem
+  | Roof;
 
 /** Items outlined (or, for contours and roads, drawn) by a list of points. */
-export type PointsElement = Slab | Plot | Block | Contour | Pad | ContextItem;
+export type PointsElement = Slab | Plot | Block | Contour | Pad | ContextItem | Roof;
 
 /** Items outlined (or, for contours and roads, drawn) by a list of points. */
 export const hasPoints = (el: PlanElement): el is PointsElement =>
@@ -386,7 +412,8 @@ export const hasPoints = (el: PlanElement): el is PointsElement =>
   el.type === 'block' ||
   el.type === 'contour' ||
   el.type === 'pad' ||
-  el.type === 'context';
+  el.type === 'context' ||
+  el.type === 'roof';
 
 /** Ground items: spot levels, contours, finished-ground pads and the surroundings (always on the ground floor). */
 export const isSiteItem = (el: PlanElement): el is SpotLevel | Contour | Pad | ContextItem =>
@@ -571,7 +598,8 @@ export type Tool =
   | 'section'
   | 'level'
   | 'contour'
-  | 'pad';
+  | 'pad'
+  | 'roof';
 
 /** Every tool, in tool-rail order. */
 export const TOOLS: Tool[] = [
@@ -586,6 +614,7 @@ export const TOOLS: Tool[] = [
   'column',
   'beam',
   'slab',
+  'roof',
   'plot',
   'stairs',
   'door',
@@ -643,6 +672,8 @@ export type Draft =
   | { type: 'plotPoly'; points: Point[]; cursor: Point }
   /** A contour line drawn click by click: its points so far, and where the pointer is. */
   | { type: 'contour'; points: Point[]; cursor: Point }
+  /** A roof drawn corner by corner round the walls: the corners so far, and where the pointer is. */
+  | { type: 'roof'; points: Point[]; cursor: Point }
   /** A levelled area (pad) dragged or clicked out as a rectangle. */
   | { type: 'pad'; x1: number; y1: number; x2: number; y2: number }
   | {

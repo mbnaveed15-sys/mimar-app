@@ -237,6 +237,38 @@ autosaves to local storage on every change.
     boundary walls, context blocks and roads). Drawings: `views.ts` adds a ground `profile` (finished and natural)
     and `hiddenLines.ts` clips elevations under a varying ground (`ViewFrame.ground`).
 
+- Freer form (1.37):
+  - Curved walls: `Wall.bow` is the signed sagitta (plan units) towards side A (the left normal); none or 0 is
+    straight. `src/lib/arc.ts` (pure, tested) has the circle (`arcOf`, cached), `runLength`, `pointAlong`,
+    `wallPath` (faceted: 0.2 unit tolerance, 5° steps), `wallSegments`, `projectOnWall`/`distanceToWall`,
+    `bowThrough`/`bowForRadius`, `partOf`, `reversed`, `offsetWall` (same centre), `straightPieces` (the 3D pieces,
+    openings in their own flat piece, joints closed) and `placeOnArc` (a door flat across the curve, ends on it).
+    Everything that measured a wall by its ends goes through these (geometry, rooms' wall graph, outline, inference,
+    opening placing, quantities, hints, modify, DXF bulges and ARC dimensions). Draw: `site.wallArc`, draft
+    `wall.bend`/`bow`, `finishArcWall` in `controller.ts`; the `wall-bend` grip in `Canvas.tsx`/`usePlanInput.ts`.
+  - Double-height rooms: `Room.openAbove`. `src/lib/voids.ts`: `openRooms` (none on the top floor), `voidsOver`,
+    `within`/`overlaps`; used for slab holes (model, implied slabs, quantities), floors above, `builtAreaSqFt`,
+    the "Open to below" plan shape (`voids` prop of `PlanDrawing`, from `exportActions.ts`/`drawings/source.ts`) and
+    the over-void hint.
+  - Curtain walls: `kind: 'curtain'` (`isBuildingWall` counts them), `mullionMm`, `transomMm`. `src/lib/curtain.ts`
+    (spacing, transom, `mullionStops`, `metricProject`); `curtainParts` in `model.ts`; `CurtainMarks` in
+    `WallsLayer.tsx`; quantities `glazingSqft` (rate `glazing`).
+  - Pitched roofs: `Roof` (`type: 'roof'`, `points` = the eaves, `shape` hip/gable/shed/flat, `pitchDeg`,
+    `gables?`, `lowEdge?`, `overhangMm`, `thicknessMm`) on the `roofs` layer. `src/lib/roof/skeleton.ts` (pure,
+    tested): `skeletonRoof` (weighted straight skeleton: eaves weight 1, gables 0; faces, ridge/hip/valley lines,
+    `heightAt`, `peak`) and `shedRoof`. `src/lib/roof/roof.ts`: `roofShape` (cached per item), `gableEdges`
+    (default: wing ends), `lowEdgeOf`, `eaveMm` (the slope passes over the walls' outside faces, `overhangMm` in,
+    at the top of the walls), `roofTopMm`, `slopedArea`, `gableWalls`, `readPitch`/`formatPitch`, `withOverhang`
+    (keeps gable edges via `insetPolygon`'s edge map) and a small `triangulate`. `mapOutline` remaps gable and low
+    edges when a mirror turns the outline round. 3D: `Model3D.roofs` (`Roof3D`: sloped faces thickened straight
+    up), `roofMesh` (used by `Plan3DView.tsx` and `export3d.ts`), gable walls as wall `Panel`s. Drawings: roof faces
+    are prisms in `modelPrisms`; `hiddenLines.ts` cuts a sloping face pushed upright; `impliedSlabs` and
+    `slabEstimateCft` skip a roofed floor; `levelMarks` adds "Top of walls" and "Ridge". Tool: `roof` in
+    `structureTools.ts` (draft `roof`, corner by corner like the plot; `finishRoof` on Enter), settings
+    `site.roofShape`/`roofPitchDeg`/`roofOverhangMm`, store `addRoof`/`roofOverHouse`, UI `RoofOptions.tsx`
+    (tool options and Inspector fields), plan `RoofShape` in `shapes/StructureShapes.tsx`, DXF `A-ROOF`/`A-ROOF-OTLN`.
+    Quantities: `roofSqft` (rate `roof`), the roof as RCC slab, gable walls as brickwork.
+
 
 ## Exports
 

@@ -1,4 +1,5 @@
 import { elementOutline, fromFurnitureLocal, planBounds, wallLength, wallParam } from '../geometry';
+import { formatPitch, roofShape } from './roof/roof';
 import { openingSymbol } from './openingKinds';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
@@ -49,6 +50,8 @@ const LAYERS = {
   'C-CTXT-ROAD': { color: 9, ltype: 'CONTINUOUS' },
   'A-ANNO-LEVL': { color: 2, ltype: 'CONTINUOUS' },
   'A-FLOR-OPEN': { color: 8, ltype: 'DASHED' },
+  'A-ROOF-OTLN': { color: 4, ltype: 'DASHED' },
+  'A-ROOF': { color: 4, ltype: 'CONTINUOUS' },
   'A-ANNO-TTLB': { color: 7, ltype: 'CONTINUOUS' },
 } as const;
 type Layer = keyof typeof LAYERS;
@@ -467,6 +470,21 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
         dxf.poly('S-SLAB', el.points);
         for (const h of el.holes ?? []) dxf.poly('S-SLAB', h);
         break;
+      case 'roof': {
+        // The eaves dashed (above the cut); ridges, hips and valleys, and the pitch.
+        dxf.poly('A-ROOF-OTLN', el.points);
+        if (el.shape === 'flat') break;
+        for (const l of roofShape(el).lines)
+          if (l.kind === 'ridge' || l.kind === 'hip' || l.kind === 'valley') dxf.line('A-ROOF', l.a, l.b);
+        dxf.text(
+          'A-ROOF',
+          labelPoint(el.points),
+          `${el.shape.toUpperCase()} ROOF ${formatPitch(el.pitchDeg).replace('°', '%%d')}`,
+          0,
+          TEXT_MM * 0.8,
+        );
+        break;
+      }
       case 'block':
         // Flat shapes are drafting aids, not built: only blocks with a height go out.
         if (el.heightMm > 0) dxf.poly('A-FLOR-BLCK', el.points);

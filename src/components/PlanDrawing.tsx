@@ -14,7 +14,7 @@ import { RoomShape } from './shapes/RoomShape';
 import { PlotShape, StairShape } from './shapes/SiteShapes';
 import { SectionShape } from './shapes/SectionShape';
 import { SketchLineShape } from './shapes/SketchLineShape';
-import { BeamShape, BlockShape, ColumnShape, SlabShape } from './shapes/StructureShapes';
+import { BeamShape, BlockShape, ColumnShape, RoofShape, SlabShape } from './shapes/StructureShapes';
 import { WallDimension } from './shapes/WallDimension';
 import { WallsLayer } from './shapes/WallsLayer';
 import { ContextShape, ContourShape, GroundOverlay, PadShape, SpotLevelShape } from './shapes/TerrainShapes';
@@ -143,7 +143,11 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
       })}
 
       {doc.elements.map((el) =>
-        el.type === 'slab' ? <SlabShape key={el.id} slab={el} selected={selected.has(el.id)} k={k} /> : null,
+        el.type === 'slab' ? (
+          <SlabShape key={el.id} slab={el} selected={selected.has(el.id)} k={k} />
+        ) : el.type === 'roof' ? (
+          <RoofShape key={el.id} roof={el} selected={selected.has(el.id)} k={k} />
+        ) : null,
       )}
 
       {doc.elements.map((el) =>

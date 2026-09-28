@@ -30,12 +30,16 @@ import {
   type SheetItem,
   type SheetScale,
   type GroundSettings,
+  type RoofKind,
 } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
 import { authorityById, type AuthorityId } from './bylaws';
 import { LAYERS, type LayerState } from './layers';
 import { defaultMaterials, PATTERNS } from './materials';
 import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
+import { MAX_PITCH_DEG, ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from './roof/roof';
+
+const ROOF_SHAPES: RoofKind[] = ['hip', 'gable', 'shed', 'flat'];
 
 export const STORAGE_KEY = 'mimar.plan';
 /**
@@ -281,6 +285,24 @@ function normaliseElement(raw: unknown): PlanElement | null {
       return points.length >= 3 && thickness > 0
         ? { ...base, type: 'slab' as const, points, thickness, ...(holes.length ? { holes } : {}) }
         : null;
+    }
+    case 'roof': {
+      const points = readPoints(raw.points);
+      if (points.length < 3) return null;
+      const shape = ROOF_SHAPES.includes(raw.shape as RoofKind) ? (raw.shape as RoofKind) : 'hip';
+      const edge = (v: unknown) => Number.isInteger(v) && (v as number) >= 0 && (v as number) < points.length;
+      const gables = Array.isArray(raw.gables) ? [...new Set(raw.gables.filter(edge) as number[])] : undefined;
+      return {
+        ...base,
+        type: 'roof' as const,
+        points,
+        shape,
+        pitchDeg: inRange(raw.pitchDeg, 0, MAX_PITCH_DEG) ? raw.pitchDeg : ROOF_PITCH_DEG,
+        ...(gables && { gables }),
+        ...(edge(raw.lowEdge) && { lowEdge: raw.lowEdge as number }),
+        overhangMm: inRange(raw.overhangMm, 0, 5000) ? raw.overhangMm : ROOF_OVERHANG_MM.imperial,
+        thicknessMm: inRange(raw.thicknessMm, 10, 1000) ? raw.thicknessMm : ROOF_THICKNESS_MM,
+      };
     }
     case 'level': {
       const el = {

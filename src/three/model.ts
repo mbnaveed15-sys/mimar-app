@@ -18,6 +18,7 @@ import {
   type Pattern,
   type PlanDoc,
   type Point,
+  type Roof,
   type Slab,
   type Stair,
   type Wall,
@@ -25,6 +26,7 @@ import {
 import { isBuildingWall, thicknessOf, wallExtensions, wallsOf } from '../walls';
 import { paramAlong, pointAlong, straightPieces } from '../lib/arc';
 import { FRAME_MM, isCurtain, metricProject, mullionStops, transomMm } from '../lib/curtain';
+import { eaveMm, gableWalls, GABLE_WALL_MM, slopedFaces, thicknessUpMm, triangulate } from '../lib/roof/roof';
 import { groundBeside, lowestAlong, lowestUnder, siteOf, stepOnGround, type TerrainMesh } from './terrain3d';
 
 export type { TerrainKind, TerrainMesh } from './terrain3d';
@@ -133,14 +135,26 @@ export interface Slab3D {
   role?: 'slab' | 'block' | 'shape';
 }
 
+/** A roof: its sloped faces (the underside, as [x, y, z] points in metres), thickened straight up by h. */
+export interface Roof3D {
+  faces: [number, number, number][][];
+  h: number;
+  color: string;
+  finish?: Finish;
+  id?: string;
+  level?: string;
+}
+
 export interface Model3D {
   solids: Solid[];
   floors: Floor[];
   slabs: Slab3D[];
   /** Blocks, and flat shapes on floors (role 'shape'). */
   blocks: Slab3D[];
-  /** Pieces of wall round shaped openings, their glass, and flat shapes on walls. */
+  /** Pieces of wall round shaped openings, their glass, flat shapes on walls, and gable walls. */
   panels: Panel[];
+  /** Pitched and flat roofs. */
+  roofs?: Roof3D[];
   /**
    * Lines drawn on the ground (a plot's setback line), as closed outlines of [x, z] points, at
    * height y, or at each point's own height in `ys` when they follow the ground.
@@ -915,6 +929,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const slabs: Slab3D[] = [];
   const blocks: Slab3D[] = [];
   const panels: Panel[] = [];
+  const roofs: Roof3D[] = [];
   const plinth = mmToM(doc.plinthMm);
   const levels = doc.levels.length ? doc.levels : [{ id: 'ground', name: 'Ground floor' }];
   // The lawn opens over the basement, round the outside of its walls.
@@ -1113,6 +1128,11 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           role: 'slab',
         });
       }
+      if (el.type === 'roof') {
+        const built = roofParts(el, base, levelMm, colorOf(el.material) ?? ROOF_COLOR, finishOf(el.material));
+        roofs.push({ ...built.roof, level: level.id });
+        panels.push(...built.gables.map((g) => ({ ...g, level: level.id })));
+      }
       if (el.type === 'block') {
         // On a slab it stands on the slab's top; otherwise on the floor.
         const host = el.slabId ? els.find((x): x is Slab => x.type === 'slab' && x.id === el.slabId) : undefined;
@@ -1148,7 +1168,10 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
     }
   });
 
-  const flat = [...floors, ...slabs, ...blocks].flatMap((f) => f.points);
+  const flat = [
+    ...[...floors, ...slabs, ...blocks].flatMap((f) => f.points),
+    ...roofs.flatMap((r) => r.faces.flat().map(([x, , z]): [number, number] => [x, z])),
+  ];
   const xs = [...solids.map((s) => s.x), ...flat.map((p) => p[0])];
   const zs = [...solids.map((s) => s.z), ...flat.map((p) => p[1])];
   // Not Math.min(...xs): a big plan has too many values to spread into one call.
@@ -1156,9 +1179,93 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const hi = (v: number[]) => v.reduce((m, x) => (x > m ? x : m), -Infinity);
   const centre = xs.length ? { x: (lo(xs) + hi(xs)) / 2, z: (lo(zs) + hi(zs)) / 2 } : { x: 8, z: 5 };
   const size = xs.length ? Math.max(hi(xs) - lo(xs), hi(zs) - lo(zs), 4) : 16;
-  const model: Model3D = { solids, floors, slabs, blocks, panels, guides, centre, size };
+  const model: Model3D = { solids, floors, slabs, blocks, panels, roofs, guides, centre, size };
   if (!site) return model;
   return { ...model, terrain: site.terrain, context: site.context, groundY: site.groundY };
+}
+
+const ROOF_COLOR = '#9a4a3a';
+
+/** A roof's sloped faces over its floor (base, m) and the gable walls rising from the top of the walls to it. */
+function roofParts(
+  roof: Roof,
+  base: number,
+  wallTopMm: number,
+  color: string,
+  finish?: Finish,
+): { roof: Roof3D; gables: Panel[] } {
+  const eave = base + mmToM(eaveMm(roof, wallTopMm));
+  const faces = slopedFaces(roof).map((f) =>
+    f.points.map((p): [number, number, number] => [m(p.x), eave + m(p.z), m(p.y)]),
+  );
+  const gables = gableWalls(roof).map((g): Panel => ({
+    outline: g.outline.map(([s, z]) => [m(s), m(z)]),
+    x: m(g.at.x),
+    z: m(g.at.y),
+    y0: base + mmToM(wallTopMm + (roof.elevMm ?? 0)),
+    rotY: Math.atan2(-g.dir.y, g.dir.x),
+    depth: mmToM(GABLE_WALL_MM),
+    color: WALL_COLOR,
+    id: roof.id,
+    role: 'wall',
+  }));
+  return { roof: { faces, h: mmToM(thicknessUpMm(roof)), color, ...(finish && { finish }), id: roof.id }, gables };
+}
+
+/**
+ * A roof as triangles: each face's underside and top (h above it), and the edges round the roof closed.
+ * Corners are not shared between faces, so each face stays flat when lit.
+ */
+export function roofMesh(r: Roof3D): { positions: number[]; indices: number[] } {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  type V = [number, number, number];
+  const add = (v: V) => {
+    positions.push(v[0], v[1], v[2]);
+    return positions.length / 3 - 1;
+  };
+  const normalY = (a: V, b: V, c: V) => (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+  const key = (v: V) => `${v[0].toFixed(4)},${v[1].toFixed(4)},${v[2].toFixed(4)}`;
+  const uses = new Map<string, { a: V; b: V; centre: V; n: number }>();
+  for (const face of r.faces) {
+    if (face.length < 3) continue;
+    const up = face.map((p): V => [p[0], p[1] + r.h, p[2]]);
+    const tris = triangulate(face.map(([x, , z]) => ({ x, y: z })));
+    const centre = face
+      .reduce((s, p) => [s[0] + p[0], s[1] + p[1], s[2] + p[2]] as V, [0, 0, 0] as V)
+      .map((c) => c / face.length) as V;
+    for (const [surface, facing] of [
+      [face, -1],
+      [up, 1],
+    ] as const) {
+      const ids = surface.map(add);
+      for (const [i, j, k] of tris) {
+        // The top faces up, the underside down.
+        const flip = normalY(surface[i], surface[j], surface[k]) * facing < 0;
+        indices.push(ids[i], ...(flip ? [ids[k], ids[j]] : [ids[j], ids[k]]));
+      }
+    }
+    face.forEach((a, i) => {
+      const b = face[(i + 1) % face.length];
+      const k = [key(a), key(b)].sort().join('|');
+      const seen = uses.get(k);
+      if (seen) seen.n++;
+      else uses.set(k, { a, b, centre, n: 1 });
+    });
+  }
+  // Edges only one face has are the roof's edges: close them with an upright strip facing out.
+  for (const { a, b, centre, n } of uses.values()) {
+    if (n !== 1) continue;
+    const quad: V[] = [a, b, [b[0], b[1] + r.h, b[2]], [a[0], a[1] + r.h, a[2]]];
+    const ids = quad.map(add);
+    const ex = b[0] - a[0];
+    const ez = b[2] - a[2];
+    // (ez, -ex) points out of the face when it faces away from its middle.
+    const out = ez * ((a[0] + b[0]) / 2 - centre[0]) - ex * ((a[2] + b[2]) / 2 - centre[2]) > 0;
+    const tri = out ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+    indices.push(...tri.map((t) => ids[t]));
+  }
+  return { positions, indices };
 }
 
 /** A closed outline with points added so none are more than `step` apart. */

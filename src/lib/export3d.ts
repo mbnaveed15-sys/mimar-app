@@ -1,5 +1,14 @@
 import { ShapeUtils, Vector2 } from 'three';
-import type { Finish, Model3D, Panel, Sides, Slab3D, Solid, TerrainMesh } from '../three/model';
+import {
+  roofMesh,
+  type Finish,
+  type Model3D,
+  type Panel,
+  type Sides,
+  type Slab3D,
+  type Solid,
+  type TerrainMesh,
+} from '../three/model';
 
 /** One mesh of triangles, all in one material, in metres with y up. */
 export interface ExportMesh {
@@ -247,6 +256,8 @@ export function modelMeshes(model: Model3D): ExportMesh[] {
   for (const s of [...model.slabs, ...model.blocks])
     if (s.points.length >= 3 && s.role !== 'shape') addPrism(set.mesh(s.role ?? 'slab', s.color, 1, s.finish?.name), s);
   for (const p of model.panels) if (p.outline.length >= 3 && p.role !== 'shape') addPanel(meshFor(p), p);
+  for (const r of model.roofs ?? [])
+    addTerrain(set.mesh('roof', r.color, 1, r.finish?.name), { kind: 'pad', color: r.color, ...roofMesh(r) });
   // The site: the ground by what it is, and the neighbours' buildings.
   for (const t of model.terrain ?? [])
     if (t.indices.length)

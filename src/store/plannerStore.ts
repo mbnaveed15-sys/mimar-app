@@ -57,7 +57,9 @@ import { besideOpening, loneOpenings, nounOf, openingAt, refitOpening, tidy } fr
 import { setActivePicker } from '../three/picker';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
+import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
 import type {
+  RoofKind,
   Block,
   ContextItem,
   GroundSettings,
@@ -138,6 +140,10 @@ export interface SiteSpec {
   climb: 'floor' | 'plinth';
   /** Height of new spot levels and contour lines, mm above the datum (the road level). */
   groundMm: number;
+  /** New roofs: their shape, pitch (degrees) and overhang (mm; 1'6" or 450 mm by the units when missing). */
+  roofShape: RoofKind;
+  roofPitchDeg: number;
+  roofOverhangMm?: number;
 }
 
 /** Heights of boundary walls (7') and parapets (3'). */
@@ -164,6 +170,8 @@ export const DEFAULT_SITE: SiteSpec = {
   treadMm: 254,
   climb: 'floor',
   groundMm: 0,
+  roofShape: 'hip',
+  roofPitchDeg: ROOF_PITCH_DEG,
 };
 
 /** A copy of an object without one key. */
@@ -250,6 +258,10 @@ export interface PlannerState {
   addPad: (points: Point[], zMm?: number) => void;
   /** A levelled area under the house (its outside walls, 3' or 1 m round), at the natural ground's height there. */
   padUnderHouse: () => boolean;
+  /** A roof over an outline drawn round the walls, reaching past it by the overhang, with the Roof tool's settings. */
+  addRoof: (points: Point[]) => boolean;
+  /** A roof over the outside of the walls on the floor being viewed. */
+  roofOverHouse: () => boolean;
   /** How the ground is finished and drawn. */
   setGround: (patch: Partial<GroundSettings>) => void;
   /** Add a survey's levels and contour lines as one step, grouped and selected so they can be lined up. */
@@ -785,7 +797,7 @@ export function createPlannerStore(
         get().endBatch();
         // Drawing a plot corner by corner, undo takes back the last corner.
         const drawing = get().draft;
-        if (drawing?.type === 'plotPoly' || drawing?.type === 'contour') {
+        if (drawing?.type === 'plotPoly' || drawing?.type === 'contour' || drawing?.type === 'roof') {
           const points = drawing.points.slice(0, -1);
           set({ draft: points.length ? { ...drawing, points } : null });
           return;
@@ -1631,6 +1643,47 @@ export function createPlannerStore(
         ).points;
         get().addPad(grown.length >= 3 ? grown : outline);
         return true;
+      },
+      addRoof: (points) => {
+        const { site, units } = get();
+        const overhangMm = site.roofOverhangMm ?? ROOF_OVERHANG_MM[units];
+        const grown =
+          overhangMm > 0
+            ? insetPolygon(
+                points,
+                points.map(() => -overhangMm / MM_PER_UNIT),
+              ).points
+            : points;
+        if (grown.length < 3) {
+          get().setWarning('That outline can’t take a roof: draw round the walls with at least three corners.');
+          return false;
+        }
+        const roof: PlanElement = {
+          id: newId(),
+          type: 'roof',
+          points: grown,
+          shape: site.roofShape,
+          pitchDeg: site.roofPitchDeg,
+          overhangMm,
+          thicknessMm: ROOF_THICKNESS_MM,
+        };
+        updateElements((els) => [...els, onActive(roof)]);
+        get().select(roof.id);
+        return true;
+      },
+      roofOverHouse: () => {
+        const { activeLevel, doc } = get();
+        const walls = doc.elements.filter(
+          (el): el is Wall => el.type === 'wall' && isBuildingWall(el) && levelOf(el) === activeLevel,
+        );
+        const outline = walls.length ? outsideOutline(walls) : null;
+        if (!outline || outline.length < 3) {
+          get().setWarning(
+            'Draw the walls of this floor first (or go to the top floor with Page Up): the roof goes round their outside.',
+          );
+          return false;
+        }
+        return get().addRoof(outline);
       },
       setGround: (patch) =>
         get().commit((doc) => {

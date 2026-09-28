@@ -71,6 +71,7 @@ export const ICONS = {
     "<rect x='8' y='8' width='8' height='8' fill='currentColor' stroke='none'/><path d='M4 4h16v16H4z' stroke-dasharray='2 2'/>",
   line: "<path d='M4 19 20 5' stroke-dasharray='1 0'/><circle cx='4' cy='19' r='1.6' fill='currentColor'/><circle cx='20' cy='5' r='1.6' fill='currentColor'/><path d='M2 20.8 4 19M20 5l2-1.8' opacity='.5'/>",
   beam: "<path d='M3 9h18M3 15h18' stroke-dasharray='3 2'/><rect x='2.5' y='7' width='3' height='10' fill='currentColor' stroke='none'/><rect x='18.5' y='7' width='3' height='10' fill='currentColor' stroke='none'/>",
+  roof: "<path d='M2 13 12 5l10 8'/><path d='M5 11v8h14v-8'/><path d='M8 9.5h8' stroke-dasharray='2 2'/>",
   slab: "<path d='M3 9 12 4l9 5-9 5z'/><path d='M3 9v3l9 5 9-5V9'/>",
   shape: "<rect x='3' y='11' width='9' height='9' rx='0.5'/><circle cx='16' cy='8' r='5'/>",
   pushpull: "<path d='M4 15 12 11l8 4-8 4z'/><path d='M12 11V2.5M9 5.5l3-3 3 3'/>",

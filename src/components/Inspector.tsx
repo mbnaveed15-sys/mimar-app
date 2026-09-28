@@ -27,6 +27,7 @@ import { bowForRadius, isArc, radiusOf } from '../lib/arc';
 import { levelAbove } from '../lib/voids';
 import { metricProject, mullionSpacingMm, TRANSOM_MM } from '../lib/curtain';
 import { useLevelDoc } from '../store/useLevelDoc';
+import { RoofFields } from './RoofOptions';
 import { LengthField } from './LengthField';
 import { PlotBylawsPanel } from './PlotBylaws';
 import { PlotSidesPanel } from './PlotSides';
@@ -71,6 +72,7 @@ function itemName(el: PlanElement): string {
   if (el.type === 'level') return el.approx ? 'approximate level' : 'spot level';
   if (el.type === 'contour') return 'contour line';
   if (el.type === 'pad') return 'levelled area';
+  if (el.type === 'roof') return `${el.shape} roof`;
   if (el.type === 'context') return el.kind === 'road' ? 'road (surroundings)' : 'building (surroundings)';
   return el.type;
 }
@@ -454,6 +456,7 @@ export function Inspector() {
                 />
               </div>
             )}
+            {el.type === 'roof' && <RoofFields roof={el} />}
             {el.type === 'slab' && (
               <LengthField
                 id="slab-thickness-edit"

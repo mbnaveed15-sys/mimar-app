@@ -11,6 +11,7 @@ import { SettingsPanel } from './SettingsPanel';
 import { SiteOptions, WallKindPicker, WallShapePicker } from './SiteOptions';
 import { PlanCheckPanel } from './PlanCheckPanel';
 import { ShapeOptions } from './ShapeOptions';
+import { RoofToolOptions } from './RoofOptions';
 import { StructureOptions } from './StructureOptions';
 import { ThemePicker } from './ThemePicker';
 import { UpdatePanel } from './UpdatePanel';
@@ -72,6 +73,7 @@ function ToolOptions() {
   if (tool === 'plot' || tool === 'stairs' || tool === 'door' || tool === 'window') return <SiteOptions />;
   if (tool === 'furniture') return <FurnitureLibrary />;
   if (tool === 'column' || tool === 'beam' || tool === 'slab') return <StructureOptions />;
+  if (tool === 'roof') return <RoofToolOptions />;
   if (tool === 'shape') return <ShapeOptions />;
   if (tool === 'level' || tool === 'contour' || tool === 'pad') return <GroundToolOptions />;
   if (tool === 'brush')

@@ -20,7 +20,7 @@ import { shapeDraftScene } from '../tools/shapeTools';
 import { clearPicker, getPointer, setPicker, type FaceHit, type Picker3D } from './picker';
 import type { StandardView } from './cameraRig';
 import { isParallel, requestView, setViewControls, toggleParallel } from './viewControls';
-import { buildModel, levelBaseM, M_PER_UNIT, type Finish, type Model3D, type Sides } from './model';
+import { buildModel, levelBaseM, M_PER_UNIT, roofMesh, type Finish, type Model3D, type Sides } from './model';
 
 function hasWebGL(): boolean {
   try {
@@ -291,6 +291,28 @@ function buildMeshes(model: Model3D): THREE.Group {
     mesh.receiveShadow = !flatShape;
     mesh.userData = { id: slab.id, level: slab.level };
     addWithEdges(mesh, slab.level);
+  }
+
+  for (const roof of model.roofs ?? []) {
+    const { positions, indices } = roofMesh(roof);
+    if (!indices.length) continue;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    // Patterns laid in plan, in metres.
+    const uv: number[] = [];
+    for (let i = 0; i < positions.length; i += 3) uv.push(positions[i], positions[i + 2]);
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry, material(roof.color, 1, roof.finish));
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData = { id: roof.id, level: roof.level };
+    group.add(mesh);
+    // Ridges, hips, valleys and the eaves, not the joins across a flat face.
+    const lines = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 10), edgeMaterial);
+    lines.userData = { level: roof.level };
+    group.add(lines);
   }
 
   for (const panel of model.panels) {
@@ -940,6 +962,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       model.blocks.filter((b) => b.role === 'shape').length + model.panels.filter((p) => p.role === 'shape').length,
     );
     host.dataset.panels = String(model.panels.filter((p) => p.role === 'wall').length);
+    host.dataset.roofs = String(model.roofs?.length ?? 0);
     host.dataset.terrain = String(model.terrain?.filter((t) => t.kind !== 'road').length ?? 0);
     host.dataset.context = String(
       (model.context?.length ?? 0) + (model.terrain?.filter((t) => t.kind === 'road').length ?? 0),

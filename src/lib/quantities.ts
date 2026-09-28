@@ -7,6 +7,7 @@ import { pointInPolygon, wallLength } from '../geometry';
 import { directionAlong, pointAlong } from './arc';
 import { openRooms, within } from './voids';
 import { isCurtain } from './curtain';
+import { gableArea, GABLE_WALL_MM, slopedArea } from './roof/roof';
 import { polygonArea } from '../rooms';
 import { outsideOutline } from './outline';
 import { DOOR_HEAD_MM, WINDOW_HEAD_MM, WINDOW_SILL_MM } from '../three/model';
@@ -258,6 +259,18 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
         case 'block':
           if (el.heightMm > 0) q.blockCft += areaSqft(el.points) * mmFt(el.heightMm);
           break;
+        case 'roof': {
+          // A flat roof is a slab; a pitched one a sloping slab, covered along its slopes.
+          const sqft = el.shape === 'flat' ? areaSqft(el.points) : slopedArea(el) * FT * FT;
+          q.slabCft += sqft * mmFt(el.thicknessMm);
+          if (el.shape !== 'flat') q.roofSqft += sqft;
+          // The gable walls up to it, plastered both sides.
+          const gable = gableArea(el) * FT * FT;
+          q.brickworkCft += gable * mmFt(GABLE_WALL_MM);
+          q.insideFaceSqft += gable;
+          q.outsideFaceSqft += gable;
+          break;
+        }
       }
     }
 
@@ -276,7 +289,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       q.cutCft = earth.cutM3 * CFT_PER_M3;
       q.fillCft = earth.fillM3 * CFT_PER_M3;
     }
-    if (!els.some((el) => el.type === 'slab'))
+    if (!els.some((el) => el.type === 'slab' || el.type === 'roof'))
       q.slabEstimateCft = Math.max(0, q.coveredSqft - openSqft) * ESTIMATED_SLAB_FT;
     for (const r of rooms) {
       const kind = floorKind(r);

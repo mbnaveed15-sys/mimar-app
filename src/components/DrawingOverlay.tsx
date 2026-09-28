@@ -286,10 +286,10 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
         </>
       )}
 
-      {d?.type === 'plotPoly' && (
+      {(d?.type === 'plotPoly' || d?.type === 'roof') && (
         <>
           <polyline
-            data-testid="plot-draft"
+            data-testid={d.type === 'roof' ? 'roof-draft' : 'plot-draft'}
             points={[...d.points, d.cursor].map((p) => `${p.x},${p.y}`).join(' ')}
             fill="none"
             style={{ stroke: PLAN.draft }}

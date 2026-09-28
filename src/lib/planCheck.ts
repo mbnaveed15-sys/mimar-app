@@ -3,6 +3,7 @@
  * plan in, rows out. It is indicative only; the authority's own check is what counts.
  */
 import { elementOutline, pointInPolygon, pointToSegmentDistance } from '../geometry';
+import { roofTopMm } from './roof/roof';
 import { plotRule, plotSetbacks, roomRuleFor, type Authority, type PlotRule } from './bylaws';
 import { MM_PER_UNIT } from './scale';
 import { isCornerPlot, outlinePoints, plotSides, sideSetbacks, SIDE_KIND_NAMES } from './plot';
@@ -608,6 +609,12 @@ function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: number)
     if (el.type === 'wall' && el.kind !== 'boundary') top = Math.max(top, base + (el.heightMm ?? wallHeightMm));
     if (el.type === 'slab') top = Math.max(top, base + wallHeightMm + el.thickness * MM_PER_UNIT);
     if (el.type === 'block' && el.heightMm > 0) top = Math.max(top, base + el.heightMm);
+    // A pitched roof to its ridge.
+    if (el.type === 'roof')
+      top = Math.max(
+        top,
+        levelBaseM(doc, levelOf(el), wallHeightMm) * 1000 + roofTopMm(el, levelWallMm(doc, levelOf(el), wallHeightMm)),
+      );
   }
   // A floor with walls carries a slab over it even when none is drawn (a basement's is below the ground).
   for (const l of doc.levels)

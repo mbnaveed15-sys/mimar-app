@@ -212,6 +212,25 @@ function cutOf(prism: Prism, view: (p: V3) => P3): P2[][][] {
   const all = [...outer, ...outer.map((p): P3 => [p[0] + ev[0], p[1] + ev[1], p[2] + ev[2]])];
   if (Math.min(...all.map((p) => p[2])) >= 0 || Math.max(...all.map((p) => p[2])) <= 0) return out;
   const upright = Math.abs(ev[0]) < 1e-9 && Math.abs(ev[2]) < 1e-9;
+  const level = outer.every((p) => Math.abs(p[1] - outer[0][1]) < 1e-9);
+  if (upright && !level) {
+    // A sloping face pushed straight up (a roof): where its edges cross d = 0, paired off along the cut,
+    // each pair a strip as deep as the push.
+    const hits: P2[] = [];
+    outer.forEach((a, i) => {
+      const b = outer[(i + 1) % outer.length];
+      if (a[2] < 0 === b[2] < 0) return;
+      const t = a[2] / (a[2] - b[2]);
+      hits.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    });
+    hits.sort((p, q) => p[0] - q[0]);
+    for (let i = 0; i + 1 < hits.length; i += 2) {
+      const [p, q] = [hits[i], hits[i + 1]];
+      if (q[0] - p[0] < 1e-9) continue;
+      out.push([[p, q, [q[0], q[1] + ev[1]], [p[0], p[1] + ev[1]]]]);
+    }
+    return out;
+  }
   if (upright) {
     // Pushed straight up (walls, slabs, stairs): cut the plan outline along the line d = 0.
     const y0 = outer[0][1];

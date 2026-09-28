@@ -175,6 +175,20 @@ const ELEMENTS: PlanElement[] = [
     ],
   },
   {
+    id: 'rf',
+    type: 'roof',
+    shape: 'gable',
+    pitchDeg: 30,
+    overhangMm: 457.2,
+    thicknessMm: 152.4,
+    points: [
+      { x: -46, y: -46 },
+      { x: 546, y: -46 },
+      { x: 546, y: 446 },
+      { x: -46, y: 446 },
+    ],
+  },
+  {
     id: 'cb',
     type: 'context',
     kind: 'building',
@@ -270,11 +284,15 @@ describe('every kind of item', () => {
       'C-TOPO-GRAD',
       'C-CTXT-BLDG',
       'C-CTXT-ROAD',
+      'A-ROOF',
+      'A-ROOF-OTLN',
     ])
       expect(dxf).toContain(`\r\n8\r\n${layer}\r\n`);
     // Round and arched openings are cut out of wall panels; the arch has glass; the flat shape is a skin.
-    // …plus two for the niche (the wall behind it, and the cut layer) and one for the ledge.
-    expect(model.panels.filter((p) => p.role === 'wall')).toHaveLength(5);
+    // …plus two for the niche (the wall behind it, and the cut layer) and one for the ledge, and the roof's two gables.
+    expect(model.panels.filter((p) => p.role === 'wall')).toHaveLength(7);
+    expect(model.roofs).toHaveLength(1);
+    expect(meshes.some((m) => m.name.startsWith('roof'))).toBe(true);
     expect(model.panels.filter((p) => p.role === 'glass')).toHaveLength(1);
     expect(model.panels.filter((p) => p.role === 'shape')).toHaveLength(1);
     expect(model.blocks.map((b) => b.role)).toEqual(['block', 'shape']);

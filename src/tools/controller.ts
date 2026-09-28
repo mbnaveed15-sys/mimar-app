@@ -68,6 +68,7 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   column: 'none',
   beam: 'length',
   slab: 'pair',
+  roof: 'length',
   plot: 'pair',
   stairs: 'none',
   section: 'none',
@@ -153,7 +154,7 @@ export function anchorOf(s: PlannerState): Point | null {
   if (!d) return null;
   if (MODIFY_TOOLS.includes(s.tool)) return modifyAnchor(s);
   if (d.type === 'beam' || d.type === 'slab' || d.type === 'plot' || d.type === 'pad') return { x: d.x1, y: d.y1 };
-  if (d.type === 'plotPoly' || d.type === 'contour') return d.points[d.points.length - 1];
+  if (d.type === 'plotPoly' || d.type === 'contour' || d.type === 'roof') return d.points[d.points.length - 1];
   switch (d.type) {
     case 'wall':
     case 'line':
@@ -180,7 +181,8 @@ export function currentDirection(s: PlannerState): Point | null {
     return sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 });
   if (d.type === 'tape') return sub(d.b, d.a);
   if (d.type === 'move') return sub(d.to, d.base);
-  if (d.type === 'plotPoly' || d.type === 'contour') return sub(d.cursor, d.points[d.points.length - 1]);
+  if (d.type === 'plotPoly' || d.type === 'contour' || d.type === 'roof')
+    return sub(d.cursor, d.points[d.points.length - 1]);
   return null;
 }
 
