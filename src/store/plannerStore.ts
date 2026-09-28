@@ -426,7 +426,15 @@ export interface PlannerState {
   setUnits: (units: Units) => void;
   setShowDimensions: (show: boolean) => void;
   setLayer: (
-    layer: 'showFurniture' | 'showRoomLabels' | 'showRoomFills' | 'exportLines' | 'pdfCheck' | 'showHints' | 'pdfHints',
+    layer:
+      | 'showFurniture'
+      | 'showRoomLabels'
+      | 'showRoomFills'
+      | 'exportLines'
+      | 'pdfCheck'
+      | 'showHints'
+      | 'pdfHints'
+      | 'accessibleZones',
     show: boolean,
   ) => void;
   /** Add the plan check page to PDFs. */
@@ -435,6 +443,8 @@ export interface PlannerState {
   showHints: boolean;
   /** Add the plan hints to the PDF's plan check page. */
   pdfHints: boolean;
+  /** Furniture use zones sized for a wheelchair user (ADA), where they differ. */
+  accessibleZones: boolean;
   /** Library item placed by the Furniture tool. */
   furnitureKind: FurnitureKind;
   setFurnitureKind: (kind: FurnitureKind) => void;
@@ -538,7 +548,7 @@ export function createPlannerStore(
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
-      const { showHints, pdfHints } = get();
+      const { showHints, pdfHints, accessibleZones } = get();
       const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm } = get();
       savePrefs({
         units,
@@ -550,6 +560,7 @@ export function createPlannerStore(
         pdfCheck,
         showHints,
         pdfHints,
+        accessibleZones,
         mode,
         wallThicknessMm,
         openingGapMm,
@@ -648,6 +659,7 @@ export function createPlannerStore(
       pdfCheck: prefs.pdfCheck,
       showHints: prefs.showHints,
       pdfHints: prefs.pdfHints,
+      accessibleZones: prefs.accessibleZones,
       furnitureKind: DEFAULT_FURNITURE_KIND,
       mode: prefs.mode,
       wallThicknessMm: prefs.wallThicknessMm,

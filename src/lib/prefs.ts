@@ -54,6 +54,8 @@ export interface Prefs {
   showHints: boolean;
   /** Add the plan hints to the PDF's plan check page. */
   pdfHints: boolean;
+  /** Furniture use zones sized for a wheelchair user (ADA), where they differ. */
+  accessibleZones: boolean;
   mode: Mode;
   /** Thickness for new walls, in millimetres. */
   wallThicknessMm: number;
@@ -80,6 +82,7 @@ export const DEFAULT_PREFS: Prefs = {
   pdfCheck: true,
   showHints: true,
   pdfHints: false,
+  accessibleZones: false,
   mode: 'simple',
   wallThicknessMm: 228.6,
   openingGapMm: DEFAULT_OPENING_GAP_MM,
@@ -145,6 +148,7 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       pdfCheck: raw?.pdfCheck !== false,
       showHints: raw?.showHints !== false,
       pdfHints: raw?.pdfHints === true,
+      accessibleZones: raw?.accessibleZones === true,
       mode: raw?.mode === 'pro' ? 'pro' : 'simple',
       wallThicknessMm: thickness >= 25 && thickness <= 1000 ? thickness : DEFAULT_PREFS.wallThicknessMm,
       openingGapMm: clampGap(raw?.openingGapMm),

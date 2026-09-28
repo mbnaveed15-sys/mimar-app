@@ -80,12 +80,13 @@ export function buildSamplePlan(): PlanDoc {
   s().placeOpening('door', ft(12.5, 44.6));
   s().setSite({ gate: false });
 
-  // [kind, x, y, turn]: beds with their heads on the rear wall, the counter along the kitchen's side wall.
+  // [kind, x, y, turn]: beds with their heads on the rear wall and room to walk round them, wardrobes
+  // and the basin facing into their rooms, the counter along the kitchen's side wall.
   const furniture: [FurnitureKind, number, number, number][] = [
-    ['bed-double', 5.5, 6.9, 0],
-    ['bed-king', 19.5, 7, 0],
-    ['wardrobe', 2.8, 11.2, 90],
-    ['wardrobe', 22.2, 11.2, 270],
+    ['bed-double', 7, 6.9, 0],
+    ['bed-king', 18, 7, 0],
+    ['wardrobe', 2.8, 11.2, 270],
+    ['wardrobe', 22.2, 11.2, 90],
     ['sofa-3', 5.5, 17.2, 0],
     ['tv-unit', 5.5, 26.1, 180],
     ['counter', 22.5, 21, 90],
@@ -94,7 +95,7 @@ export function buildSamplePlan(): PlanDoc {
     ['sofa-2', 4.2, 30, 0],
     ['armchair', 10.4, 30.2, 0],
     ['wc', 14.75, 28.6, 0],
-    ['basin', 16.2, 31.8, 270],
+    ['basin', 15.9, 31.8, 90],
   ];
   for (const [kind, x, y, rotation] of furniture) {
     s().setFurnitureKind(kind);

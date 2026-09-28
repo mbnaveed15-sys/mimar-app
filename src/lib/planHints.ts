@@ -14,6 +14,7 @@ import {
   GROUND_LEVEL,
   levelOf,
   type Id,
+  type Furniture,
   type Opening,
   type PlanDoc,
   type Point,
@@ -22,8 +23,10 @@ import {
   type Units,
   type Wall,
 } from '../types';
-import { thicknessOf } from '../walls';
+import { thicknessOf, wallPolygon } from '../walls';
 import { DEFAULT_OPENING_GAP_MM, openingFits } from './openingPlace';
+import { FURNITURE_CATALOG } from '../furniture/catalog';
+import { sideName, toPlan, zoneOf, zoneRects, zoneSamples, type ZoneSide } from '../furniture/useZones';
 import { daylightRooms, projectOf, shows } from './project';
 
 export type HintKind = 'reach' | 'daylight' | 'size' | 'layout';
@@ -133,7 +136,58 @@ export function tightOpenings(doc: PlanDoc, gap: number): Id[] {
 }
 
 /** Hints for the whole plan. Rooms in `skipSizes` (already too small for the bylaws) get no size hint. */
-export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>; gapMm?: number }): Hint[] {
+/**
+ * Library items whose use zone (the free space in front, behind or beside them) is mostly taken by a
+ * wall or another item, with the sides that are blocked. `accessible` uses the ADA wheelchair spaces.
+ */
+export function blockedZones(doc: PlanDoc, accessible = false): { item: Furniture; sides: ZoneSide[] }[] {
+  const out: { item: Furniture; sides: ZoneSide[] }[] = [];
+  const levels = doc.levels.length ? doc.levels.map((l) => l.id) : [GROUND_LEVEL];
+  for (const level of levels) {
+    const onLevel = doc.elements.filter((el) => !el.hidden && levelOf(el) === level);
+    const items = onLevel.filter((el): el is Furniture => el.type === 'furniture');
+    if (!items.some((f) => zoneOf(f.kind, accessible))) continue;
+    const levelWalls = onLevel.filter((el): el is Wall => el.type === 'wall');
+    const faces = levelWalls.map((w) => wallPolygon(w, levelWalls));
+    const bodies = items.map((f) => ({
+      id: f.id,
+      pts: [
+        { x: -f.w / 2, y: -f.h / 2 },
+        { x: f.w / 2, y: -f.h / 2 },
+        { x: f.w / 2, y: f.h / 2 },
+        { x: -f.w / 2, y: f.h / 2 },
+      ].map((p) => toPlan(f, p)),
+    }));
+    const shapes = [...faces.map((pts) => ({ id: '', pts })), ...bodies];
+    const boxes = shapes.map((s) => boxOf(s.pts));
+    const index = new GridIndex<{ id: string; pts: Point[] }>(cellFor(boxes));
+    shapes.forEach((s, i) => index.add(s, boxes[i]));
+    const taken = (self: Id, p: Point) => index.at(p).some((s) => s.id !== self && pointInPolygon(p, s.pts));
+    for (const item of items) {
+      const zone = zoneOf(item.kind, accessible);
+      if (!zone) continue;
+      // Blocked when a wall or another item stands in at least half of the zone's width.
+      const blocked = zoneRects(zone, item.w, item.h)
+        .filter((r) => {
+          const lines = zoneSamples(item, r);
+          return lines.filter((line) => line.some((p) => taken(item.id, p))).length * 2 >= lines.length;
+        })
+        .map((r) => r.side);
+      const sides = zone.oneSide
+        ? blocked.filter(
+            (s) => (s !== 'left' && s !== 'right') || (blocked.includes('left') && blocked.includes('right')),
+          )
+        : blocked;
+      if (sides.length) out.push({ item, sides });
+    }
+  }
+  return out;
+}
+
+export function planHints(
+  doc: PlanDoc,
+  ctx: { units: Units; skipSizes?: Set<Id>; gapMm?: number; accessible?: boolean },
+): Hint[] {
   if (!shows(doc, 'hints')) return [];
   // A house gets every hint; a building its own daylight rooms; a free project only reach and gaps.
   const type = projectOf(doc).type;
@@ -141,6 +195,28 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
   const light = daylightRooms(doc) ?? DAYLIGHT;
   const hints: Hint[] = [];
   const len = (mm: number) => formatLength(mm, ctx.units);
+
+  // Furniture without the free space it needs to be used.
+  const levelNames = new Map(doc.levels.map((l, i) => [l.id, i > 0 ? `${l.name}: ` : ''] as const));
+  for (const { item, sides } of blockedZones(doc, ctx.accessible)) {
+    const zone = zoneOf(item.kind, ctx.accessible)!;
+    const mmOf = (s: ZoneSide) => (s === 'front' ? zone.front : s === 'back' ? zone.back : zone.sides) ?? 0;
+    const both = sides.includes('left') && sides.includes('right');
+    const named = sides
+      .filter((s) => s !== 'right' || !sides.includes('left'))
+      .map((s) => {
+        const where =
+          s === 'front' || s === 'back' ? sideName(zone, s) : both && !zone.oneSide ? 'at both sides' : 'at one side';
+        return `${where} (${len(mmOf(s))})`;
+      });
+    const name = item.label ?? (item.kind ? FURNITURE_CATALOG[item.kind].name : 'Item');
+    hints.push({
+      id: `zone-${item.id}`,
+      kind: 'layout',
+      text: `${levelNames.get(levelOf(item)) ?? ''}${name} needs more free space ${named.join(' and ')}.`,
+      ids: [item.id],
+    });
+  }
 
   // Doors and windows closer than the gap to a corner or to each other (drawn before it was kept).
   const gapMm = ctx.gapMm ?? DEFAULT_OPENING_GAP_MM;

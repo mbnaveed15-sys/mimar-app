@@ -103,3 +103,49 @@ test('plan hints: rooms reached through doors, daylight, marks, and turning them
   await openSection(page, 'Settings');
   await expect(page.getByLabel('North points')).toHaveValue('90');
 });
+
+test('furniture use zones: a hint when a wall is in the way, shown round the selected item', async ({ page }) => {
+  // A king bed against bedroom 1's side wall, and a WC in the lounge.
+  const furniture = [
+    { id: 'bed', type: 'furniture', kind: 'bed-king', x: 3.5 * FT, y: 3.7 * FT, w: 183, h: 198 },
+    { id: 'wc', type: 'furniture', kind: 'wc', x: 20 * FT, y: 10 * FT, w: 40, h: 70 },
+  ];
+  await page.evaluate(
+    ([plan, extra]) => {
+      const p = plan as typeof PLAN;
+      localStorage.setItem(
+        'mimar.plan',
+        JSON.stringify({ ...p, doc: { ...p.doc, elements: [...p.doc.elements, ...(extra as object[])] } }),
+      );
+    },
+    [PLAN, furniture] as const,
+  );
+  await page.reload();
+  await ready(page);
+  const hints = page.getByTestId('plan-hints');
+  await expect(hints).toContainText(`King bed needs more free space at one side (2' 0").`);
+  await expect(hints.locator('[data-hint]')).toHaveCount(3);
+
+  // Picking the hint selects the bed: its use zone shows round it, and the side panel says why.
+  await hints.locator('[data-hint="zone-bed"]').click();
+  await expect(page.getByText('Selected: King bed')).toBeVisible();
+  await expect(page.locator('[data-testid="use-zone"]')).toHaveCount(3);
+  await expect(page.getByTestId('use-zone-note')).toContainText(`2' 0" at its foot, 2' 0" at each side`);
+  await expect(page.getByTestId('use-zone-note')).toContainText('General practice');
+  await page.keyboard.press('Escape');
+
+  // The wheelchair setting gives the WC the larger ADA space.
+  await openSection(page, 'Settings');
+  await page.getByLabel('Wheelchair space round WCs, basins, showers and cars (ADA)').check();
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const [x, y] = await page.getByTestId('plan-canvas').evaluate(
+    (svg, [px, py]) => {
+      const pt = new DOMPoint(px, py).matrixTransform((svg as SVGSVGElement).getScreenCTM()!);
+      return [pt.x, pt.y];
+    },
+    [20 * FT, 10 * FT],
+  );
+  await page.mouse.click(x, y);
+  await expect(page.getByTestId('use-zone-note')).toContainText(`2' 4" in front, 2' 10" at one side`);
+  await expect(page.getByTestId('use-zone-note')).toContainText('Wheelchair space');
+});
