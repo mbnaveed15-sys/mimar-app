@@ -15,7 +15,8 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  "connect-src 'self'",
+  // The site's surroundings (OpenStreetMap) and approximate levels (satellite tiles), only when asked for.
+  "connect-src 'self' https://overpass-api.de https://s3.amazonaws.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'none'",

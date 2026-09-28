@@ -3,7 +3,7 @@ import { DEFAULT_PREFS } from '../prefs';
 import { emptyDoc } from '../storage';
 import { plotRect } from '../site';
 import { createPlannerStore } from '../../store/plannerStore';
-import { rightOf } from './hiddenLines';
+import { groundAt, rightOf } from './hiddenLines';
 import { formatLevel } from './levels';
 import {
   drawingFromKey,
@@ -17,7 +17,7 @@ import {
   sideDrawing,
   sideDrawingRefs,
 } from './views';
-import type { DrawingRef, PlanElement } from '../../types';
+import type { DrawingRef, GroundSettings, PlanDoc, PlanElement } from '../../types';
 
 const ft = (f: number) => (f * 304.8) / 10;
 const OPTS = { wallHeightMm: 3048, units: 'imperial' as const };
@@ -144,5 +144,89 @@ describe('drawing a house', () => {
     s().deleteSelected();
     expect(sideDrawing(s().doc, { kind: 'section', id }, OPTS)).toBeNull();
     expect(drawingTitle(s().doc, { kind: 'section', id })).toBeNull();
+  });
+});
+
+/**
+ * A 20' × 30' house in a 40' × 60' plot, with a section down the page through both, on ground that
+ * falls 3 m from the top of the page to the bottom (the road side).
+ */
+function slopingHouse(ground: GroundSettings): PlanDoc {
+  const store = createPlannerStore(emptyDoc(), undefined, DEFAULT_PREFS);
+  const s = store.getState;
+  s().addPlot(plotRect({ x: -ft(10), y: -ft(15) }, { x: ft(30), y: ft(45) }));
+  s().addRectangle({ x: 0, y: 0 }, { x: ft(20), y: ft(30) });
+  s().addSection({ x: ft(10), y: -ft(25) }, { x: ft(10), y: ft(55) }, false);
+  const level = (id: string, x: number, y: number, zMm: number): PlanElement => ({ id, type: 'level', x, y, zMm });
+  const levels = [
+    level('l1', -ft(40), -ft(40), 0),
+    level('l2', ft(60), -ft(40), 0),
+    level('l3', -ft(40), ft(70), -3000),
+    level('l4', ft(60), ft(70), -3000),
+  ];
+  return { ...s().doc, elements: [...s().doc.elements, ...levels], ground };
+}
+
+describe('drawing the ground', () => {
+  it('follows the ground along a section', () => {
+    const doc = slopingHouse({ grade: 'natural' });
+    const [line] = sectionLines(doc);
+    const d = sideDrawing(doc, { kind: 'section', id: line.id }, OPTS)!;
+    const { finished, natural } = d.profile!;
+    // Left as it is, the ground is only the natural ground, falling steadily across the drawing.
+    expect(natural).toEqual([]);
+    const vs = finished.map((p) => p[1]);
+    expect(Math.max(...vs) - Math.min(...vs)).toBeGreaterThan(1.5);
+    const falling = vs[vs.length - 1] < vs[0];
+    for (let i = 1; i < vs.length; i++)
+      expect(falling ? vs[i] <= vs[i - 1] + 1e-9 : vs[i] >= vs[i - 1] - 1e-9).toBe(true);
+    // It runs as far as the drawing's ground.
+    expect(finished[0][0]).toBeCloseTo(d.ground.u0);
+    expect(finished[finished.length - 1][0]).toBeCloseTo(d.ground.u1);
+    // Heights count from the road level.
+    const datum = d.levels.find((l) => l.v === 0)!;
+    expect(datum.name).toBe('Road level (datum)');
+    expect(datum.label).toBe(`±0'-0"`);
+    expect(d.levels.some((l) => l.name.includes('Natural ground'))).toBe(false);
+  });
+
+  it('shows the natural ground dashed where a levelled plot differs from it', () => {
+    const doc = slopingHouse({ levelMm: -1000 });
+    const [line] = sectionLines(doc);
+    const d = sideDrawing(doc, { kind: 'section', id: line.id }, OPTS)!;
+    const { finished, natural } = d.profile!;
+    // Inside the plot the finished ground is level at -1 m; outside it, it is the natural ground.
+    const flat = finished.filter((p) => Math.abs(p[1] + 1) < 1e-6);
+    expect(flat.length).toBeGreaterThanOrEqual(2);
+    expect(Math.abs(flat[flat.length - 1][0] - flat[0][0])).toBeCloseTo(ft(60) / 100, 1);
+    expect(natural.length).toBeGreaterThan(0);
+    // The natural ground runs above the finished ground on one side and below it on the other.
+    const nat = natural.flat();
+    expect(nat.some((p) => p[1] > -0.9)).toBe(true);
+    expect(nat.some((p) => p[1] < -1.1)).toBe(true);
+    for (const p of nat) expect(p[0]).toBeGreaterThanOrEqual(Math.min(...flat.map((q) => q[0])) - 0.01);
+    // Levels mark where the plot is finished to.
+    expect(d.levels.find((l) => l.name === 'Finished ground')?.v).toBeCloseTo(-1);
+  });
+
+  it('leaves out what is below the finished ground in an elevation', () => {
+    const raised = slopingHouse({ levelMm: 1000 });
+    const front = sideDrawing(raised, { kind: 'elevation', side: 'front' }, OPTS)!;
+    // The plot is filled up to +1 m round the house, so nothing shows below it.
+    expect(front.bounds!.minV).toBeGreaterThan(0.99);
+    expect(front.profile!.finished.some((p) => Math.abs(p[1] - 1) < 1e-6)).toBe(true);
+    // Across the slope, every line stays above the ground where it is.
+    const side = sideDrawing(slopingHouse({ grade: 'natural' }), { kind: 'elevation', side: 'left' }, OPTS)!;
+    const g = side.profile!.finished;
+    expect(Math.max(...g.map((p) => p[1])) - Math.min(...g.map((p) => p[1]))).toBeGreaterThan(0.5);
+    for (const l of side.lines)
+      for (const p of [l.a, l.b]) expect(p[1]).toBeGreaterThanOrEqual(groundAt(g, p[0]) - 1e-6);
+  });
+
+  it('draws as before when there is no ground', () => {
+    const { s } = house();
+    const d = sideDrawing(s().doc, { kind: 'elevation', side: 'front' }, OPTS)!;
+    expect(d.profile).toBeUndefined();
+    expect(d.levels.some((l) => l.name === 'Natural ground')).toBe(true);
   });
 });

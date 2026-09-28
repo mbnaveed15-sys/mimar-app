@@ -29,6 +29,7 @@ import {
   type Sheet,
   type SheetItem,
   type SheetScale,
+  type GroundSettings,
 } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
 import { authorityById, type AuthorityId } from './bylaws';
@@ -38,7 +39,7 @@ import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
 
 export const STORAGE_KEY = 'mimar.plan';
 /** 4 added groups and components; 5 added levels, columns, beams and slabs; 9 section lines and sheets. */
-export const CURRENT_VERSION = 9;
+export const CURRENT_VERSION = 10;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -90,6 +91,9 @@ const flagsOf = (raw: Record<string, unknown>) => ({
   ...(raw.hidden === true ? { hidden: true } : {}),
   ...(raw.locked === true ? { locked: true } : {}),
 });
+
+/** Ground levels beyond a kilometre above or below the datum are damage, not a survey. */
+const MAX_LEVEL_MM = 1_000_000;
 
 /** Plan coordinates and sizes beyond this (100 km, in plan units) are damage, not a drawing. */
 const MAX_UNITS = 10_000_000;
@@ -269,6 +273,39 @@ function normaliseElement(raw: unknown): PlanElement | null {
       return points.length >= 3 && thickness > 0
         ? { ...base, type: 'slab' as const, points, thickness, ...(holes.length ? { holes } : {}) }
         : null;
+    }
+    case 'level': {
+      const el = {
+        ...base,
+        levelId: undefined,
+        type: 'level' as const,
+        x: num('x'),
+        y: num('y'),
+        zMm: inRange(raw.zMm, -MAX_LEVEL_MM, MAX_LEVEL_MM) ? raw.zMm : NaN,
+        ...(raw.approx === true ? { approx: true } : {}),
+      };
+      return [el.x, el.y, el.zMm].every(Number.isFinite) ? el : null;
+    }
+    case 'contour':
+    case 'pad': {
+      const points = readPoints(raw.points);
+      if (points.length < (raw.type === 'pad' ? 3 : 2) || !inRange(raw.zMm, -MAX_LEVEL_MM, MAX_LEVEL_MM)) return null;
+      return { ...base, levelId: undefined, type: raw.type, points, zMm: raw.zMm };
+    }
+    case 'context': {
+      const points = readPoints(raw.points);
+      const kind = raw.kind === 'road' ? ('road' as const) : ('building' as const);
+      if (points.length < (kind === 'road' ? 2 : 3)) return null;
+      return {
+        ...base,
+        levelId: undefined,
+        type: 'context' as const,
+        kind,
+        points,
+        ...(kind === 'building' && inRange(raw.heightMm, 100, 1_000_000) ? { heightMm: raw.heightMm } : {}),
+        ...(kind === 'road' && inRange(raw.widthMm, 100, 200_000) ? { widthMm: raw.widthMm } : {}),
+        ...(typeof raw.name === 'string' && cleanText(raw.name).trim() ? { name: cleanText(raw.name).trim() } : {}),
+      };
     }
     case 'block': {
       const points = readPoints(raw.points);
@@ -506,7 +543,23 @@ export function normaliseDoc(raw: unknown): PlanDoc {
       ? { northDeg: ((obj.northDeg % 360) + 360) % 360 }
       : {}),
     ...(Array.isArray(obj.sheets) ? { sheets: normaliseSheets(obj.sheets) } : {}),
+    ...(normaliseGround(obj.ground) ? { ground: normaliseGround(obj.ground) } : {}),
+    ...(isObject(obj.location) && inRange(obj.location.lat, -90, 90) && inRange(obj.location.lon, -180, 180)
+      ? { location: { lat: obj.location.lat, lon: obj.location.lon } }
+      : {}),
   };
+}
+
+/** How the ground is finished and drawn, keeping only what differs from the defaults and is sensible. */
+function normaliseGround(raw: unknown): GroundSettings | undefined {
+  if (!isObject(raw)) return undefined;
+  const out: GroundSettings = {
+    ...(raw.grade === 'natural' ? { grade: 'natural' as const } : {}),
+    ...(inRange(raw.levelMm, -MAX_LEVEL_MM, MAX_LEVEL_MM) && raw.levelMm !== 0 ? { levelMm: raw.levelMm } : {}),
+    ...(inRange(raw.contourMm, 10, 100_000) ? { contourMm: raw.contourMm } : {}),
+    ...(raw.cutFill === false ? { cutFill: false } : {}),
+  };
+  return Object.keys(out).length ? out : undefined;
 }
 
 const PAPERS: PaperSize[] = ['A4', 'A3', 'A1'];

@@ -11,6 +11,7 @@ import { projectOf, ROOM_TYPES } from '../lib/project';
 import { roomAreaSqMm } from '../rooms';
 import { KIND_HEIGHT_MM, MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
 import {
+  isSiteItem,
   levelOf,
   type DoorKind,
   type Opening,
@@ -48,6 +49,12 @@ const ROOM_NAMES = [
 
 const SHAPE_NAMES = { rect: 'rectangle', circle: 'circle', arch: 'arch', polygon: 'polygon' } as const;
 
+/** Heights of the ground are kept within a kilometre of the road level. */
+const MAX_GROUND_MM = 1_000_000;
+/** A neighbouring building without a height is taken as 2 floors; a road without a width as 6 m. */
+const CONTEXT_HEIGHT_MM = 6000;
+const CONTEXT_ROAD_MM = 6000;
+
 /** What to call a selected item. */
 function itemName(el: PlanElement): string {
   if (el.type === 'furniture' && el.kind) return FURNITURE_CATALOG[el.kind].name;
@@ -58,6 +65,10 @@ function itemName(el: PlanElement): string {
   if (el.type === 'window' && el.shape) return el.open ? `${el.shape} opening` : `${el.shape} window`;
   if (el.type === 'window' && el.open) return 'opening';
   if (el.type === 'section') return `section line ${el.label}–${el.label}`;
+  if (el.type === 'level') return el.approx ? 'approximate level' : 'spot level';
+  if (el.type === 'contour') return 'contour line';
+  if (el.type === 'pad') return 'levelled area';
+  if (el.type === 'context') return el.kind === 'road' ? 'road (surroundings)' : 'building (surroundings)';
   return el.type;
 }
 
@@ -588,20 +599,74 @@ export function Inspector() {
                 </div>
               </>
             )}
-            {el.type !== 'door' && el.type !== 'window' && el.type !== 'plot' && el.type !== 'section' && (
-              <LengthField
-                id="elevation"
-                label="Height above floor"
-                mm={el.elevMm ?? 0}
-                units={units}
-                min={-5000}
-                onCommit={(mm) => updateElement({ ...el, elevMm: Math.min(mm, 30000) || undefined })}
-              />
+            {(el.type === 'level' || el.type === 'contour' || el.type === 'pad') && (
+              <>
+                <LengthField
+                  id="ground-height"
+                  label={el.type === 'pad' ? 'Finished level (above road level)' : 'Height (above road level)'}
+                  mm={el.zMm}
+                  units={units}
+                  min={-MAX_GROUND_MM}
+                  onCommit={(mm) =>
+                    updateElement({
+                      ...el,
+                      zMm: Math.min(mm, MAX_GROUND_MM),
+                      ...(el.type === 'level' ? { approx: undefined } : {}),
+                    })
+                  }
+                />
+                <div className="text-muted">
+                  {el.type === 'level' && el.approx
+                    ? 'An approximate level from satellite data. Typing a height makes it a surveyed level.'
+                    : el.type === 'pad'
+                      ? 'The ground inside is levelled to this height. Cut and fill show on the plan and in Quantities & cost.'
+                      : 'Heights count from the road level at the middle of the plot’s road side (±0).'}
+                </div>
+              </>
             )}
-            {el.type !== 'section' && <div>Material: {materialName(el.material) ?? '—'}</div>}
+            {el.type === 'context' && (
+              <>
+                {el.name && <div>{el.name}</div>}
+                {el.kind === 'building' ? (
+                  <LengthField
+                    id="context-height"
+                    label="Height"
+                    mm={el.heightMm ?? CONTEXT_HEIGHT_MM}
+                    units={units}
+                    min={1000}
+                    onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 300000) })}
+                  />
+                ) : (
+                  <LengthField
+                    id="context-width"
+                    label="Width"
+                    mm={el.widthMm ?? CONTEXT_ROAD_MM}
+                    units={units}
+                    min={1000}
+                    onCommit={(mm) => updateElement({ ...el, widthMm: Math.min(mm, 100000) })}
+                  />
+                )}
+                <div className="text-muted">From OpenStreetMap, for reference.</div>
+              </>
+            )}
+            {el.type !== 'door' &&
+              el.type !== 'window' &&
+              el.type !== 'plot' &&
+              el.type !== 'section' &&
+              !isSiteItem(el) && (
+                <LengthField
+                  id="elevation"
+                  label="Height above floor"
+                  mm={el.elevMm ?? 0}
+                  units={units}
+                  min={-5000}
+                  onCommit={(mm) => updateElement({ ...el, elevMm: Math.min(mm, 30000) || undefined })}
+                />
+              )}
+            {el.type !== 'section' && !isSiteItem(el) && <div>Material: {materialName(el.material) ?? '—'}</div>}
             {el.type === 'wall' && <WallSides wall={el} materialName={materialName} />}
             <div className="flex flex-wrap gap-2">
-              {el.type !== 'section' && (
+              {el.type !== 'section' && !isSiteItem(el) && (
                 <button onClick={() => applyMaterial(el.id)} className={btn}>
                   Apply selected material
                 </button>

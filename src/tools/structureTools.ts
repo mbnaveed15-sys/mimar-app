@@ -6,13 +6,22 @@ import { detectRoom } from '../rooms';
 import { levelWallMm, slabMm } from '../lib/levels';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
 import type { Point, Tool } from '../types';
+import {
+  GROUND_TOOLS,
+  groundHint,
+  groundHover,
+  groundMeasure,
+  groundPress,
+  groundReadout,
+  groundRelease,
+} from './groundTools';
 
 /** The bits of a zustand store these tools need. */
 interface Store {
   getState: () => PlannerState;
 }
 
-export const STRUCTURE_TOOLS: Tool[] = ['column', 'beam', 'slab', 'plot', 'stairs', 'section'];
+export const STRUCTURE_TOOLS: Tool[] = ['column', 'beam', 'slab', 'plot', 'stairs', 'section', ...GROUND_TOOLS];
 
 /** Default wall half-thickness (4½"), how far a slab reaches past a room's inner faces to the wall centres. */
 const SLAB_OVERHANG = (4.5 * 25.4) / MM_PER_UNIT;
@@ -61,6 +70,7 @@ export function offsetPolygon(pts: Point[], d: number): Point[] {
 const rectPoints = (a: Point, b: Point): Point[] => [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
 
 export function structurePress(store: Store, inf: Inference) {
+  if (GROUND_TOOLS.includes(store.getState().tool)) return groundPress(store, inf);
   const s = store.getState();
   const d = s.draft;
   const p = inf.point;
@@ -112,6 +122,7 @@ function onLeft(d: { x1: number; y1: number; x2: number; y2: number }, p: Point)
 }
 
 export function structureHover(store: Store, inf: Inference) {
+  if (GROUND_TOOLS.includes(store.getState().tool)) return groundHover(store, inf);
   const s = store.getState();
   const d = s.draft;
   if (d?.type === 'beam' || d?.type === 'slab' || d?.type === 'plot')
@@ -189,6 +200,7 @@ export function finishPlotPoly(store: Store): boolean {
  * area, reaching to the wall centres; a click elsewhere starts a rectangle for a second click.
  */
 export function structureRelease(store: Store, dragged: boolean) {
+  if (GROUND_TOOLS.includes(store.getState().tool)) return groundRelease(store, dragged);
   const s = store.getState();
   const d = s.draft;
   // Drawing corner by corner, a drag from the first corner still makes a rectangle.
@@ -220,6 +232,7 @@ export function structureRelease(store: Store, dragged: boolean) {
 }
 
 export function structureMeasure(store: Store, m: Measure): string | null {
+  if (GROUND_TOOLS.includes(store.getState().tool)) return groundMeasure(store, m);
   const s = store.getState();
   const d = s.draft;
   const units = (mm: number) => mm / MM_PER_UNIT;
@@ -280,6 +293,7 @@ export function structureMeasure(store: Store, m: Measure): string | null {
 }
 
 export function structureReadout(s: PlannerState): { label: string; value: string } {
+  if (GROUND_TOOLS.includes(s.tool)) return groundReadout(s);
   const d = s.draft;
   const len = (u: number) => formatLength(u * MM_PER_UNIT, s.units);
   if (s.tool === 'beam')
@@ -313,6 +327,7 @@ export function structureReadout(s: PlannerState): { label: string; value: strin
 }
 
 export function structureHint(s: PlannerState): string {
+  if (GROUND_TOOLS.includes(s.tool)) return groundHint(s);
   const d = s.draft;
   switch (s.tool) {
     case 'column':

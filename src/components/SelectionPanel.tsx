@@ -17,6 +17,10 @@ const NAMES: Record<PlanElement['type'] | 'room', [string, string]> = {
   stair: ['stair', 'stairs'],
   line: ['layout line', 'layout lines'],
   section: ['section line', 'section lines'],
+  level: ['spot level', 'spot levels'],
+  contour: ['contour line', 'contour lines'],
+  pad: ['levelled area', 'levelled areas'],
+  context: ['surrounding', 'surroundings'],
   room: ['room', 'rooms'],
 };
 

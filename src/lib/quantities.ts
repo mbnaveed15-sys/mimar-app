@@ -14,6 +14,11 @@ import { MM_PER_UNIT } from './scale';
 import { builtAreaSqFt } from './planCheck';
 import { boxOf, cellFor, GridIndex } from './spatial';
 import { openingProfileMm } from './shapes';
+import { groundOf } from './terrain/ground';
+import { siteEarthworks } from './terrain/groundView';
+
+/** Cubic feet in a cubic metre. */
+const CFT_PER_M3 = 35.3147;
 
 const MM_PER_FT = 304.8;
 /** Plan units to feet. */
@@ -61,6 +66,9 @@ export interface FloorQuantities {
   raftCft: number;
   /** Waterproofing: the retaining walls' outer faces and the basement floor, sqft. */
   waterproofSqft: number;
+  /** Levelling the site (ground floor): earth dug out above the finished ground, and filled in below it, cft. */
+  cutCft: number;
+  fillCft: number;
 }
 
 /** A basement floor (raft) assumed 12" thick. */
@@ -107,6 +115,8 @@ function emptyFloor(levelId: string, name: string): FloorQuantities {
     excavationCft: 0,
     raftCft: 0,
     waterproofSqft: 0,
+    cutCft: 0,
+    fillCft: 0,
   };
 }
 
@@ -134,6 +144,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
     if (!mat) return 'none';
     return PATTERN_KIND[mat.pattern ?? 'plain'] ?? 'other';
   };
+  const site = groundOf(doc);
   const floors = levels.map((level) => {
     const ground = level.id === GROUND_LEVEL;
     const levelMm = levelWallMm(doc, level.id, wallHeightMm);
@@ -161,7 +172,9 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       const shaped = own
         .filter((o) => o.flat && o.depthMm)
         .reduce((s, o) => s + (polygonArea(openingProfileMm(o)) / MM_PER_FT ** 2) * mmFt(o.depthMm!), 0);
-      const plinth = ground && !wall.kind && !wall.elevMm ? mmFt(doc.plinthMm) : 0;
+      // The plinth rises from the finished ground under the wall (±0 on flat ground).
+      const under = ground ? site.finishedAt((wall.x1 + wall.x2) / 2, (wall.y1 + wall.y2) / 2) : 0;
+      const plinth = ground && !wall.kind && !wall.elevMm ? Math.max(0, mmFt(doc.plinthMm - under)) : 0;
       const volume = Math.max(0, L * t * (H + plinth) - holes * t + shaped);
       if (wall.kind === 'retaining') q.retainingCft += volume;
       else if (wall.kind) q.boundaryCft += volume;
@@ -227,6 +240,11 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       q.excavationCft = plan * depthFt;
       q.raftCft = plan * RAFT_FT;
       q.waterproofSqft += plan;
+    }
+    if (ground) {
+      const earth = siteEarthworks(site);
+      q.cutCft = earth.cutM3 * CFT_PER_M3;
+      q.fillCft = earth.fillM3 * CFT_PER_M3;
     }
     if (!els.some((el) => el.type === 'slab')) q.slabEstimateCft = q.coveredSqft * ESTIMATED_SLAB_FT;
     for (const r of rooms) {

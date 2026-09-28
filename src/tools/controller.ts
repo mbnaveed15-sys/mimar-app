@@ -70,6 +70,9 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   plot: 'pair',
   stairs: 'none',
   section: 'none',
+  level: 'length',
+  contour: 'length',
+  pad: 'pair',
   shape: 'pair',
   pushpull: 'length',
   door: 'length',
@@ -148,8 +151,8 @@ export function anchorOf(s: PlannerState): Point | null {
   const d = s.draft;
   if (!d) return null;
   if (MODIFY_TOOLS.includes(s.tool)) return modifyAnchor(s);
-  if (d.type === 'beam' || d.type === 'slab' || d.type === 'plot') return { x: d.x1, y: d.y1 };
-  if (d.type === 'plotPoly') return d.points[d.points.length - 1];
+  if (d.type === 'beam' || d.type === 'slab' || d.type === 'plot' || d.type === 'pad') return { x: d.x1, y: d.y1 };
+  if (d.type === 'plotPoly' || d.type === 'contour') return d.points[d.points.length - 1];
   switch (d.type) {
     case 'wall':
     case 'line':
@@ -176,7 +179,7 @@ export function currentDirection(s: PlannerState): Point | null {
     return sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 });
   if (d.type === 'tape') return sub(d.b, d.a);
   if (d.type === 'move') return sub(d.to, d.base);
-  if (d.type === 'plotPoly') return sub(d.cursor, d.points[d.points.length - 1]);
+  if (d.type === 'plotPoly' || d.type === 'contour') return sub(d.cursor, d.points[d.points.length - 1]);
   return null;
 }
 
@@ -630,7 +633,9 @@ export function applyMeasure(store: Store, text: string): boolean {
     };
     return fail(hints[kind]);
   }
-  if (m.kind === 'length' && m.mm === 0 && s.tool !== 'fillet') return fail('Type a length above zero.');
+  // Zero is a height (the road level) for spot levels and contours, and a square fillet.
+  if (m.kind === 'length' && m.mm === 0 && !['fillet', 'level', 'contour'].includes(s.tool))
+    return fail('Type a length above zero.');
   const measureWith = MODIFY_TOOLS.includes(s.tool)
     ? modifyMeasure
     : SHAPE_TOOLS.includes(s.tool)

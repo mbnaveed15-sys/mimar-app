@@ -1,4 +1,5 @@
-import { levelOf } from '../types';
+import { GROUND_LEVEL, levelOf } from '../types';
+import { groundOnPlan } from './terrain/groundView';
 import { planBounds } from '../geometry';
 import { plannerStore } from '../store/plannerStore';
 import { exportPdf } from './exportPdf';
@@ -35,7 +36,8 @@ function exportContent() {
   );
   const doc = { ...shown, elements, rooms: shown.rooms.filter(onLevel) };
   const { units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills } = s;
-  return { doc, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills };
+  const ground = s.activeLevel === GROUND_LEVEL ? groundOnPlan(s.doc, units === 'metric') : null;
+  return { doc, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, ground };
 }
 
 /**
@@ -180,9 +182,10 @@ function saveBlob(data: BlobPart, type: string, filename: string) {
 export function exportPlanDxf() {
   if (emptyFloor()) return;
   const s = plannerStore.getState();
-  const { doc } = exportContent();
+  const { doc, ground } = exportContent();
   try {
     const text = planToDxf(doc, {
+      ground,
       units: s.units,
       marlaSqFt: s.marlaSqFt,
       showDimensions: s.showDimensions,

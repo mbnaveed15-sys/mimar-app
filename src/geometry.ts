@@ -1,15 +1,14 @@
 import { boxOf } from './lib/spatial';
 import { reversedSides } from './lib/plot';
+import { MM_PER_UNIT } from './lib/scale';
 import {
   hasPoints,
-  type Block,
   type Bounds,
   type Mask,
   type Opening,
   type PlanElement,
-  type Plot,
   type Point,
-  type Slab,
+  type PointsElement,
   type Wall,
 } from './types';
 
@@ -69,7 +68,7 @@ export function centroid(points: Point[]): Point {
  * An outlined item (slab, plot, block) with every point moved by f, voids included; `reverse` keeps
  * the outlines running the same way round after a mirror.
  */
-export function mapOutline<T extends Slab | Plot | Block>(el: T, f: (p: Point) => Point, reverse = false): T {
+export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Point, reverse = false): T {
   const map = (pts: Point[]) => (reverse ? pts.map(f).reverse() : pts.map(f));
   if (el.type === 'slab' && el.holes) return { ...el, points: map(el.points), holes: el.holes.map(map) };
   // A plot's road and sides stay on the same edges as its corners turn round.
@@ -116,12 +115,30 @@ export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
         pointInPolygon(p, el.points) ||
         el.points.some((a, i) => pointToSegmentDistance(p, a, el.points[(i + 1) % el.points.length]) < threshold)
       );
+    case 'level':
+      return Math.hypot(p.x - el.x, p.y - el.y) < threshold * 1.5;
+    case 'contour':
+      return nearPolyline(el.points, p, threshold);
+    case 'pad':
+      // Picked by its edge, like a slab, so what stands on it stays clickable.
+      return el.points.some((a, i) => pointToSegmentDistance(p, a, el.points[(i + 1) % el.points.length]) < threshold);
+    case 'context':
+      return el.kind === 'road'
+        ? nearPolyline(el.points, p, Math.max(threshold, (el.widthMm ?? 0) / MM_PER_UNIT / 2))
+        : pointInPolygon(p, el.points) || nearPolyline([...el.points, el.points[0]], p, threshold);
     case 'door':
     case 'window': {
       const [a, b] = openingEndpoints(el);
       return pointToSegmentDistance(p, a, b) < threshold;
     }
   }
+}
+
+/** Whether p is within `reach` of an open line through the points. */
+function nearPolyline(points: Point[], p: Point, reach: number): boolean {
+  for (let i = 0; i + 1 < points.length; i++)
+    if (pointToSegmentDistance(p, points[i], points[i + 1]) < reach) return true;
+  return points.length === 1 && Math.hypot(p.x - points[0].x, p.y - points[0].y) < reach;
 }
 
 /** Topmost (last drawn) element near the point, or null. */
@@ -244,6 +261,7 @@ export function rotateElement<T extends PlanElement>(el: T, c: Point, degrees: n
     const p = rotatePoint({ x: el.x, y: el.y }, c, degrees);
     return { ...el, x: p.x, y: p.y, rotation: ((((el.rotation ?? 0) + degrees) % 360) + 360) % 360 };
   }
+  if (el.type === 'level') return { ...el, ...rotatePoint({ x: el.x, y: el.y }, c, degrees) };
   const p = rotatePoint({ x: el.x, y: el.y }, c, degrees);
   return { ...el, x: p.x, y: p.y, angle: el.angle + degrees };
 }
@@ -266,7 +284,12 @@ function elementPoints(el: PlanElement): Point[] {
     case 'slab':
     case 'plot':
     case 'block':
+    case 'contour':
+    case 'pad':
+    case 'context':
       return el.points;
+    case 'level':
+      return [{ x: el.x, y: el.y }];
     case 'furniture':
     case 'column':
     case 'stair':

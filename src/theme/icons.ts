@@ -30,6 +30,11 @@ export const ICONS = {
     "<path d='M6 12h12' stroke-dasharray='3 2'/><circle cx='4' cy='12' r='2.2'/><circle cx='20' cy='12' r='2.2'/><path d='M4 14.2V19m-2-2 2 2 2-2M20 14.2V19m-2-2 2 2 2-2'/>",
   'view-drawings':
     "<path d='M3 20h18'/><path d='M5 20V9l7-5 7 5v11'/><rect x='9' y='12' width='6' height='8'/><path d='M5 9h14'/>",
+  level:
+    "<path d='M4 20h16'/><path d='M12 4v10M7 9h10'/><path d='m9.5 17 2.5-3 2.5 3z' fill='currentColor' stroke='none'/>",
+  contour:
+    "<path d='M3 17c3-3 5 1 9-2s5-4 9-2'/><path d='M4 11c3-3 5 0 8-2s4-3 8-1' stroke-dasharray='2.2 2'/><path d='M6 5.5c3-1.5 5 .5 7-.5s3-1.5 5-.5'/>",
+  pad: "<path d='M3 16 8 11h8l5 5z'/><path d='M8 11V8h8v3' stroke-dasharray='2 2'/><path d='M3 20h18'/>",
   sheet: "<rect x='3' y='5' width='18' height='14' rx='0.5'/><path d='M14 19v-4h7M14 17h7'/><path d='M6 8h6v6H6z'/>",
   'view-2d': "<rect x='3.5' y='3.5' width='17' height='17' rx='0.5'/><path d='M3.5 12H11v8.5M15 3.5V9'/>",
   'view-split':

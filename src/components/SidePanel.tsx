@@ -20,6 +20,7 @@ import { ProjectPanel } from './ProjectPanel';
 import { shows } from '../lib/project';
 import { WallThicknessPicker } from './WallThicknessPicker';
 import { CostPanel } from './CostPanel';
+import { GroundPanel, GroundToolOptions } from './GroundPanel';
 
 function Section({
   id,
@@ -71,6 +72,7 @@ function ToolOptions() {
   if (tool === 'furniture') return <FurnitureLibrary />;
   if (tool === 'column' || tool === 'beam' || tool === 'slab') return <StructureOptions />;
   if (tool === 'shape') return <ShapeOptions />;
+  if (tool === 'level' || tool === 'contour' || tool === 'pad') return <GroundToolOptions />;
   if (tool === 'brush')
     return (
       <div className="flex flex-col gap-1 text-xs">
@@ -116,6 +118,7 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
         <Inspector />
       </div>
       {section('project', 'Project', open.includes('project') ? <ProjectPanel /> : null)}
+      {section('ground', 'Ground and site', open.includes('ground') ? <GroundPanel /> : null)}
       {roomList && section('layout', 'Layout from a room list', open.includes('layout') ? <LayoutPanel /> : null)}
       {checks && section('check', 'Plan check', <PlanCheckPanel />)}
       {cost && section('cost', 'Quantities & cost', open.includes('cost') ? <CostPanel /> : null)}

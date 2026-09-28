@@ -14,6 +14,7 @@ import {
   type SheetItem,
   type SheetScale,
 } from '../../types';
+import { groundAt } from './hiddenLines';
 import { drawingKey, drawingTitle, sideDrawingRefs, type SideDrawing } from './views';
 
 /** Landscape paper sizes in millimetres. */
@@ -50,7 +51,10 @@ const LEVEL_ROOM = 36;
 const PLAN_PAD = 12;
 
 /** Line weights on paper, in millimetres. */
-export const PEN = { thin: 0.18, heavy: 0.5, cut: 0.35, ground: 0.6, frame: 0.5, fine: 0.13 } as const;
+export const PEN = { thin: 0.18, heavy: 0.5, cut: 0.35, ground: 0.6, frame: 0.5, fine: 0.13, natural: 0.25 } as const;
+
+/** The natural ground's dashes, where the finished ground differs from it (paper mm). */
+export const NATURAL_DASH = [2, 1];
 
 /** What a sheet needs to know about the plan's drawings. */
 export interface SheetSource {
@@ -93,6 +97,7 @@ function drawingSize(src: SheetSource, ref: DrawingRef, scale: number): { w: num
 function sideExtent(d: SideDrawing) {
   const b = d.bounds ?? { minU: -1, maxU: 1, minV: 0, maxV: 1 };
   const vs = d.levels.map((l) => l.v);
+  if (d.profile) for (const p of [...d.profile.finished, ...d.profile.natural.flat()]) vs.push(p[1]);
   return {
     minU: Math.min(b.minU, d.ground.u0),
     maxU: Math.max(b.maxU, d.ground.u1),
@@ -213,17 +218,32 @@ export function sidePrims(d: SideDrawing, scale: number, x: number, y: number): 
     prims.push({ t: 'fill', rings });
     for (const r of rings) r.forEach((p, i) => prims.push({ t: 'line', a: p, b: r[(i + 1) % r.length], w: PEN.cut }));
   }
-  // The ground line, with earth hatching under it (not under a basement that is cut).
+  // The ground line (or the finished ground, and the natural ground dashed where they differ), with
+  // earth hatching under it (not under a basement that is cut).
   const g0 = X(d.ground.u0);
   const g1 = X(d.ground.u1);
-  const gy = Y(0);
-  prims.push({ t: 'line', a: [g0, gy], b: [g1, gy], w: PEN.ground });
+  const profile = d.profile?.finished.length ? d.profile.finished : null;
+  const gyAt = (px: number) => (profile ? Y(groundAt(profile, e.minU + (px - x) / k)) : Y(0));
+  if (profile)
+    profile.forEach((p, i) => {
+      const q = profile[i + 1];
+      if (q) prims.push({ t: 'line', a: [X(p[0]), Y(p[1])], b: [X(q[0]), Y(q[1])], w: PEN.ground });
+    });
+  else prims.push({ t: 'line', a: [g0, Y(0)], b: [g1, Y(0)], w: PEN.ground });
+  for (const run of d.profile?.natural ?? [])
+    run.forEach((p, i) => {
+      const q = run[i + 1];
+      if (q)
+        prims.push({ t: 'line', a: [X(p[0]), Y(p[1])], b: [X(q[0]), Y(q[1])], w: PEN.natural, dash: NATURAL_DASH });
+    });
   const below = d.cut
     .filter((poly) => poly[0]?.some((p) => p[1] < -0.01))
     .map((poly) => [Math.min(...poly[0].map((p) => X(p[0]))), Math.max(...poly[0].map((p) => X(p[0])))]);
   for (let hx = g0 + 1; hx + 2 < g1; hx += 2.5)
-    if (!below.some(([lo, hi]) => hx + 2 > lo && hx < hi))
+    if (!below.some(([lo, hi]) => hx + 2 > lo && hx < hi)) {
+      const gy = gyAt(hx + 1);
       prims.push({ t: 'line', a: [hx + 2, gy + 0.4], b: [hx, gy + 2.4], w: PEN.fine });
+    }
   // Level marks to the right: a leader from the drawing, a marker, the height and the name.
   const right = X(e.maxU) + 3;
   let lastY = Infinity;

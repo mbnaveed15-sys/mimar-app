@@ -47,6 +47,7 @@ import { formatLength } from '../lib/units';
 import { basementOf, levelWallMm, slabMm } from '../lib/levels';
 import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
+import { groundOf, roundLevel } from '../lib/terrain/ground';
 import type { Built } from '../lib/layoutBuild';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
 import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from '../lib/layers';
@@ -57,6 +58,8 @@ import { applyTheme, type ThemeId } from '../theme/themes';
 import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
 import type {
   Block,
+  ContextItem,
+  GroundSettings,
   DoorKind,
   Opening,
   ShapeKind,
@@ -130,6 +133,8 @@ export interface SiteSpec {
   treadMm: number;
   /** A stair climbs a full floor; a ramp or plinth steps climb the plinth. */
   climb: 'floor' | 'plinth';
+  /** Height of new spot levels and contour lines, mm above the datum (the road level). */
+  groundMm: number;
 }
 
 /** Heights of boundary walls (7') and parapets (3'). */
@@ -151,6 +156,7 @@ export const DEFAULT_SITE: SiteSpec = {
   stairWidthMm: 914.4,
   treadMm: 254,
   climb: 'floor',
+  groundMm: 0,
 };
 
 /** A copy of an object without one key. */
@@ -229,6 +235,26 @@ export interface PlannerState {
   /** Make walls (current thickness) along the selected layout lines, and remove the lines. */
   linesToWalls: () => void;
   addSlab: (points: Point[]) => void;
+  /** A spot level of the natural ground (on the ground floor), mm above the datum. */
+  addSpotLevel: (p: Point, zMm: number) => void;
+  /** A contour line of the natural ground (on the ground floor). */
+  addContour: (points: Point[], zMm: number) => void;
+  /** A levelled area; at the natural ground's height at its middle (rounded) unless given. */
+  addPad: (points: Point[], zMm?: number) => void;
+  /** A levelled area under the house (its outside walls, 3' or 1 m round), at the natural ground's height there. */
+  padUnderHouse: () => boolean;
+  /** How the ground is finished and drawn. */
+  setGround: (patch: Partial<GroundSettings>) => void;
+  /** Add a survey's levels and contour lines as one step, grouped and selected so they can be lined up. */
+  importSurvey: (levels: { x: number; y: number; zMm: number }[], contours: { points: Point[]; zMm: number }[]) => void;
+  /** Remove the surveyed spot levels and contour lines (not the satellite levels). */
+  clearSurvey: () => void;
+  /** Where the site is on the map (none clears it). */
+  setLocation: (at: { lat: number; lon: number } | null) => void;
+  /** Replace the surroundings with these (fetched from OpenStreetMap). */
+  setContext: (items: Omit<ContextItem, 'id' | 'type'>[]) => void;
+  /** Replace the satellite levels with these. */
+  setSatelliteLevels: (levels: { x: number; y: number; zMm: number }[]) => void;
   /** Where each tool bar is docked; moving one keeps the order of the rest. */
   toolbars: ToolbarLayout;
   dockToolbar: (id: ToolbarId, area: DockArea, index?: number) => void;
@@ -749,7 +775,7 @@ export function createPlannerStore(
         get().endBatch();
         // Drawing a plot corner by corner, undo takes back the last corner.
         const drawing = get().draft;
-        if (drawing?.type === 'plotPoly') {
+        if (drawing?.type === 'plotPoly' || drawing?.type === 'contour') {
           const points = drawing.points.slice(0, -1);
           set({ draft: points.length ? { ...drawing, points } : null });
           return;
@@ -1561,6 +1587,86 @@ export function createPlannerStore(
         const slab: PlanElement = { id: newId(), type: 'slab', points, thickness: get().structure.slabThickness };
         updateElements((els) => [...els, onActive(slab)]);
       },
+      addSpotLevel: (p, zMm) => updateElements((els) => [...els, { id: newId(), type: 'level', x: p.x, y: p.y, zMm }]),
+      addContour: (points, zMm) => {
+        if (points.length < 2) return;
+        updateElements((els) => [...els, { id: newId(), type: 'contour', points, zMm }]);
+      },
+      addPad: (points, zMm) => {
+        if (points.length < 3) return;
+        const c = points.reduce((m, p) => ({ x: m.x + p.x / points.length, y: m.y + p.y / points.length }), {
+          x: 0,
+          y: 0,
+        });
+        const metric = get().units === 'metric';
+        const z = zMm ?? roundLevel(groundOf(get().doc).naturalAt(c.x, c.y), metric);
+        const pad: PlanElement = { id: newId(), type: 'pad', points, zMm: z };
+        updateElements((els) => [...els, pad]);
+        get().select(pad.id);
+      },
+      padUnderHouse: () => {
+        const walls = get().doc.elements.filter(
+          (el): el is Wall => el.type === 'wall' && !el.kind && levelOf(el) === GROUND_LEVEL,
+        );
+        const outline = walls.length ? outsideOutline(walls) : null;
+        if (!outline || outline.length < 3) {
+          get().setWarning('Draw the house’s walls on the ground floor first: the levelled area goes round them.');
+          return false;
+        }
+        const margin = (get().units === 'metric' ? 1000 : 914.4) / MM_PER_UNIT;
+        const grown = insetPolygon(
+          outline,
+          outline.map(() => -margin),
+        ).points;
+        get().addPad(grown.length >= 3 ? grown : outline);
+        return true;
+      },
+      setGround: (patch) =>
+        get().commit((doc) => {
+          const ground: GroundSettings = { ...doc.ground, ...patch };
+          if (ground.grade === 'level') delete ground.grade;
+          if (!ground.levelMm) delete ground.levelMm;
+          if (ground.cutFill !== false) delete ground.cutFill;
+          if (ground.contourMm === undefined) delete ground.contourMm;
+          const next: PlanDoc = { ...doc, ground };
+          if (!Object.keys(ground).length) delete next.ground;
+          return next;
+        }),
+      importSurvey: (levels, contours) => {
+        const items: PlanElement[] = [
+          ...levels.map((l): PlanElement => ({ id: newId(), type: 'level', x: l.x, y: l.y, zMm: l.zMm })),
+          ...contours
+            .filter((c) => c.points.length >= 2)
+            .map((c): PlanElement => ({ id: newId(), type: 'contour', points: c.points, zMm: c.zMm })),
+        ];
+        if (!items.length) return;
+        if (get().activeLevel !== GROUND_LEVEL) get().setActiveLevel(GROUND_LEVEL);
+        const ids = items.map((el) => el.id);
+        get().beginBatch();
+        updateElements((els) => [...els, ...items]);
+        get().setSelection(ids);
+        if (ids.length > 1) get().groupSelected();
+        get().endBatch();
+        get().setSelection(ids);
+      },
+      clearSurvey: () =>
+        updateElements((els) => els.filter((el) => !(el.type === 'contour' || (el.type === 'level' && !el.approx)))),
+      setLocation: (at) =>
+        get().commit((doc) => {
+          const next: PlanDoc = { ...doc, ...(at ? { location: at } : {}) };
+          if (!at) delete next.location;
+          return next;
+        }),
+      setContext: (items) =>
+        updateElements((els) => [
+          ...els.filter((el) => el.type !== 'context'),
+          ...items.map((it): PlanElement => ({ ...it, id: newId(), type: 'context' })),
+        ]),
+      setSatelliteLevels: (levels) =>
+        updateElements((els) => [
+          ...els.filter((el) => !(el.type === 'level' && el.approx)),
+          ...levels.map((l): PlanElement => ({ id: newId(), type: 'level', x: l.x, y: l.y, zMm: l.zMm, approx: true })),
+        ]),
       shapeKind: 'rect',
       setShapeKind: (shapeKind) => set({ shapeKind }),
       addFloorShape: (points, kind, on = {}) => {

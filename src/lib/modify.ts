@@ -350,6 +350,8 @@ export function mirrorItems(
       mirrored.set(el.id, { ...el, ...fresh, id, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
     } else if (hasPoints(el)) {
       mirrored.set(el.id, { ...mapOutline(el, (p) => reflect(p, a, b), true), ...fresh, id });
+    } else if (el.type === 'level') {
+      mirrored.set(el.id, { ...el, ...fresh, id, ...reflect(el, a, b) });
     } else {
       const p = reflect(el, a, b);
       mirrored.set(el.id, {
@@ -510,7 +512,7 @@ export function stretchItems(
       walls.set(w.id, w);
       return w;
     }
-    if (el.type === 'furniture' || el.type === 'column' || el.type === 'stair')
+    if (el.type === 'furniture' || el.type === 'column' || el.type === 'stair' || el.type === 'level')
       return inBox(el, box) ? { ...el, x: el.x + dx, y: el.y + dy } : el;
     if (el.type === 'beam' || el.type === 'line' || el.type === 'section') {
       const p1 = move({ x: el.x1, y: el.y1 });

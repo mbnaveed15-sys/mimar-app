@@ -221,8 +221,38 @@ function buildMeshes(model: Model3D): THREE.Group {
     group.add(mesh);
   }
 
+  for (const t of model.terrain ?? []) {
+    if (!t.indices.length) continue;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(t.positions, 3));
+    // Patterns (the lawn's grass) laid flat in metres.
+    const uv: number[] = [];
+    for (let i = 0; i < t.positions.length; i += 3) uv.push(t.positions[i], t.positions[i + 2]);
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geometry.setIndex(t.indices);
+    geometry.computeVertexNormals();
+    let mat = material(t.color, t.opacity ?? 1, t.finish);
+    if (t.kind === 'road') {
+      // A road lies just over the ground: keep it in front of it from afar.
+      const key = `${t.color}/road`;
+      let road = materials.get(key);
+      if (!road) {
+        road = keep(mat.clone());
+        road.polygonOffset = true;
+        road.polygonOffsetFactor = -2;
+        road.polygonOffsetUnits = -2;
+        materials.set(key, road);
+      }
+      mat = road;
+    }
+    const mesh = new THREE.Mesh(geometry, mat);
+    mesh.receiveShadow = true;
+    mesh.userData = { id: t.id, level: t.level };
+    group.add(mesh);
+  }
+
   for (const guide of model.guides ?? []) {
-    const pts = guide.points.map(([x, z]) => new THREE.Vector3(x, guide.y, z));
+    const pts = guide.points.map(([x, z], i) => new THREE.Vector3(x, guide.ys?.[i] ?? guide.y, z));
     const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), GUIDE_MATERIAL);
     line.computeLineDistances();
     line.userData = { level: guide.level };
@@ -246,7 +276,7 @@ function buildMeshes(model: Model3D): THREE.Group {
     group.add(lines);
   };
 
-  for (const slab of [...model.slabs, ...model.blocks]) {
+  for (const slab of [...model.slabs, ...model.blocks, ...(model.context ?? [])]) {
     if (slab.points.length < 3) continue;
     // Shapes are drawn in x/y; turning them flat maps shape y to -z, so flip z here.
     const geometry = new THREE.ExtrudeGeometry(shapeOf(slab.points, slab.holes, true), {
@@ -523,7 +553,7 @@ function drawOverlay(stage: Stage, s: PlannerState, pxMetres: number, hitY: numb
     const ghost = buildMeshes(
       buildModel(
         { ...s.doc, elements: temps, rooms: [], masks: [] },
-        { wallHeightMm: s.wallHeightMm, showFurniture: false },
+        { wallHeightMm: s.wallHeightMm, showFurniture: false, terrain: false },
       ),
     );
     ghost.traverse((obj) => {
@@ -877,7 +907,8 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
 
     const s = model.size;
     stage.ground.scale.set(s * 6, 1, s * 6);
-    stage.ground.position.set(model.centre.x, 0, model.centre.z);
+    // Under the lowest ground, so it never shows through a slope.
+    stage.ground.position.set(model.centre.x, model.groundY ?? 0, model.centre.z);
     stage.sun.position.set(model.centre.x - s * 0.6, s * 1.4 + 6, model.centre.z + s * 0.9);
     stage.sun.target.position.set(model.centre.x, 0, model.centre.z);
     const cam = stage.sun.shadow.camera;
@@ -909,6 +940,10 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       model.blocks.filter((b) => b.role === 'shape').length + model.panels.filter((p) => p.role === 'shape').length,
     );
     host.dataset.panels = String(model.panels.filter((p) => p.role === 'wall').length);
+    host.dataset.terrain = String(model.terrain?.filter((t) => t.kind !== 'road').length ?? 0);
+    host.dataset.context = String(
+      (model.context?.length ?? 0) + (model.terrain?.filter((t) => t.kind === 'road').length ?? 0),
+    );
     stage.render();
     lastBuildMs = performance.now() - started;
   }, [doc, wallHeightMm, showFurniture]);

@@ -84,6 +84,58 @@ describe('3D export', () => {
     expect(dae).toContain('<up_axis>Y_UP</up_axis>');
     expect(dae).toContain('House &amp; garden');
   });
+
+  it('exports the ground, the neighbours and the roads', () => {
+    const site: PlanDoc = {
+      ...emptyDoc(),
+      ground: { grade: 'natural' },
+      elements: [
+        {
+          id: 'p',
+          type: 'plot',
+          front: 0,
+          setbacks: { front: 0, rear: 0, sides: 0 },
+          points: [
+            { x: 0, y: 0 },
+            { x: 1000, y: 0 },
+            { x: 1000, y: 1000 },
+            { x: 0, y: 1000 },
+          ],
+        },
+        { id: 'l1', type: 'level', x: -200, y: 0, zMm: 0 },
+        { id: 'l2', type: 'level', x: 1200, y: 0, zMm: 1400 },
+        { id: 'l3', type: 'level', x: 500, y: 1200, zMm: 700 },
+        {
+          id: 'nb',
+          type: 'context',
+          kind: 'building',
+          points: [
+            { x: 1200, y: 0 },
+            { x: 1400, y: 0 },
+            { x: 1400, y: 300 },
+          ],
+        },
+        {
+          id: 'rd',
+          type: 'context',
+          kind: 'road',
+          points: [
+            { x: 0, y: -400 },
+            { x: 1000, y: -400 },
+          ],
+        },
+      ],
+    };
+    const out = modelMeshes(buildModel(site, { wallHeightMm: DEFAULT_WALL_HEIGHT_MM, showFurniture: true }));
+    const names = out.map((m) => m.name);
+    for (const kind of ['ground_lawn', 'ground_natural', 'road', 'context'])
+      expect(names.some((n) => n.startsWith(kind))).toBe(true);
+    const lawn = out.find((m) => m.name.startsWith('ground_lawn'))!;
+    expect(lawn.normals).toHaveLength(lawn.positions.length);
+    // The ground faces up.
+    for (let i = 1; i < lawn.normals.length; i += 3) expect(lawn.normals[i]).toBeGreaterThan(0.9);
+    expect(volume(out.find((m) => m.name.startsWith('context'))!)).toBeGreaterThan(0);
+  });
 });
 
 describe('zip', () => {

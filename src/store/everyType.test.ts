@@ -141,6 +141,52 @@ const ELEMENTS: PlanElement[] = [
     w: 294.64,
     h: 294.64,
   },
+  { id: 'lv', type: 'level', x: 650, y: 650, zMm: -300 },
+  { id: 'lv2', type: 'level', x: -50, y: -50, zMm: 900, approx: true },
+  {
+    id: 'ct',
+    type: 'contour',
+    zMm: 600,
+    points: [
+      { x: -100, y: 600 },
+      { x: 300, y: 620 },
+      { x: 700, y: 600 },
+    ],
+  },
+  {
+    id: 'pd',
+    type: 'pad',
+    zMm: 150,
+    points: [
+      { x: 520, y: 420 },
+      { x: 680, y: 420 },
+      { x: 680, y: 680 },
+      { x: 520, y: 680 },
+    ],
+  },
+  {
+    id: 'cb',
+    type: 'context',
+    kind: 'building',
+    heightMm: 9000,
+    name: 'Next door',
+    points: [
+      { x: 800, y: -100 },
+      { x: 1400, y: -100 },
+      { x: 1400, y: 500 },
+      { x: 800, y: 500 },
+    ],
+  },
+  {
+    id: 'cr',
+    type: 'context',
+    kind: 'road',
+    widthMm: 9000,
+    points: [
+      { x: -500, y: 900 },
+      { x: 1500, y: 900 },
+    ],
+  },
 ];
 
 const doc = (): PlanDoc => ({
@@ -207,6 +253,12 @@ describe('every kind of item', () => {
       'A-FLOR-BLCK',
       'A-WALL-PROJ',
       'A-ANNO-SECT',
+      'C-TOPO-MAJR',
+      'C-TOPO-MINR',
+      'C-TOPO-SPOT',
+      'C-TOPO-GRAD',
+      'C-CTXT-BLDG',
+      'C-CTXT-ROAD',
     ])
       expect(dxf).toContain(`\r\n8\r\n${layer}\r\n`);
     // Round and arched openings are cut out of wall panels; the arch has glass; the flat shape is a skin.

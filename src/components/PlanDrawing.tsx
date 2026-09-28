@@ -16,6 +16,8 @@ import { SketchLineShape } from './shapes/SketchLineShape';
 import { BeamShape, BlockShape, ColumnShape, SlabShape } from './shapes/StructureShapes';
 import { WallDimension } from './shapes/WallDimension';
 import { WallsLayer } from './shapes/WallsLayer';
+import { ContextShape, ContourShape, GroundOverlay, PadShape, SpotLevelShape } from './shapes/TerrainShapes';
+import type { GroundOnPlan } from '../lib/terrain/groundView';
 
 export interface PlanDrawingProps {
   doc: PlanDoc;
@@ -31,6 +33,8 @@ export interface PlanDrawingProps {
   k: number;
   /** Selected furniture shows its use zone sized for a wheelchair user (ADA), where that differs. */
   accessibleZones?: boolean;
+  /** The ground worked out from the levels (contour lines, cut and fill), on the ground floor. */
+  ground?: GroundOnPlan | null;
 }
 
 /**
@@ -51,7 +55,15 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
   return (
     <>
       {doc.elements.map((el) =>
+        el.type === 'context' ? <ContextShape key={el.id} item={el} selected={selected.has(el.id)} k={k} /> : null,
+      )}
+
+      {doc.elements.map((el) =>
         el.type === 'plot' ? <PlotShape key={el.id} plot={el} selected={selected.has(el.id)} k={k} /> : null,
+      )}
+
+      {props.ground && (
+        <GroundOverlay contours={props.ground.contours} cutFill={props.ground.cutFill} units={units} k={k} />
       )}
 
       {doc.rooms.map((r) => (
@@ -130,6 +142,14 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
       {doc.elements.map((el) =>
         el.type === 'section' ? <SectionShape key={el.id} line={el} selected={selected.has(el.id)} k={k} /> : null,
       )}
+
+      {doc.elements.map((el) => {
+        const on = selected.has(el.id);
+        if (el.type === 'pad') return <PadShape key={el.id} pad={el} selected={on} units={units} k={k} />;
+        if (el.type === 'contour') return <ContourShape key={el.id} contour={el} selected={on} units={units} k={k} />;
+        if (el.type === 'level') return <SpotLevelShape key={el.id} level={el} selected={on} units={units} k={k} />;
+        return null;
+      })}
 
       {/* Room names and sizes sit on top of furniture, as on a drawing. */}
       {doc.rooms.map((r) => (

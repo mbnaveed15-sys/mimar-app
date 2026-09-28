@@ -1,5 +1,5 @@
 import { ShapeUtils, Vector2 } from 'three';
-import type { Finish, Model3D, Panel, Sides, Slab3D, Solid } from '../three/model';
+import type { Finish, Model3D, Panel, Sides, Slab3D, Solid, TerrainMesh } from '../three/model';
 
 /** One mesh of triangles, all in one material, in metres with y up. */
 export interface ExportMesh {
@@ -176,6 +176,27 @@ function addFlat(mesh: ExportMesh, points: Ring, y: number) {
   }
 }
 
+/** A piece of ground: its triangles as they are, each corner's normal the average of its triangles'. */
+function addTerrain(mesh: ExportMesh, t: TerrainMesh) {
+  const start = mesh.positions.length / 3;
+  const p = t.positions;
+  const normals = new Array<number>(p.length).fill(0);
+  for (let i = 0; i < t.indices.length; i += 3) {
+    const [a, b, c] = [t.indices[i], t.indices[i + 1], t.indices[i + 2]];
+    const u = [p[3 * b] - p[3 * a], p[3 * b + 1] - p[3 * a + 1], p[3 * b + 2] - p[3 * a + 2]];
+    const v = [p[3 * c] - p[3 * a], p[3 * c + 1] - p[3 * a + 1], p[3 * c + 2] - p[3 * a + 2]];
+    // Weighted by the triangle's size (the cross product's length is twice its area).
+    const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    for (const k of [a, b, c]) for (let j = 0; j < 3; j++) normals[3 * k + j] += n[j];
+  }
+  for (let i = 0; i < p.length; i += 3) {
+    const len = Math.hypot(normals[i], normals[i + 1], normals[i + 2]) || 1;
+    mesh.normals.push(normals[i] / len, normals[i + 1] / len, normals[i + 2] / len);
+  }
+  for (const x of p) mesh.positions.push(x); // not push(...p): a big ground has too many to spread
+  for (const k of t.indices) mesh.indices.push(start + k);
+}
+
 /** An outline (less its holes) extruded upward: a slab or a block. */
 function addPrism(mesh: ExportMesh, s: Slab3D) {
   addExtrusion(
@@ -226,6 +247,12 @@ export function modelMeshes(model: Model3D): ExportMesh[] {
   for (const s of [...model.slabs, ...model.blocks])
     if (s.points.length >= 3 && s.role !== 'shape') addPrism(set.mesh(s.role ?? 'slab', s.color, 1, s.finish?.name), s);
   for (const p of model.panels) if (p.outline.length >= 3 && p.role !== 'shape') addPanel(meshFor(p), p);
+  // The site: the ground by what it is, and the neighbours' buildings.
+  for (const t of model.terrain ?? [])
+    if (t.indices.length)
+      addTerrain(set.mesh(t.kind === 'road' ? 'road' : `ground_${t.kind}`, t.color, 1, t.finish?.name), t);
+  for (const c of model.context ?? [])
+    if (c.points.length >= 3) addPrism(set.mesh('context', c.color, 1, c.finish?.name), c);
   return set.list().filter((m) => m.indices.length > 0);
 }
 
