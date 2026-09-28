@@ -81,6 +81,8 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
   const setView3d = usePlanner((s) => s.setView3d);
   const split = usePlanner((s) => s.split);
   const setSplit = usePlanner((s) => s.setSplit);
+  const drawing = usePlanner((s) => s.drawing);
+  const showDrawing = usePlanner((s) => s.showDrawing);
 
   useEffect(() => {
     if (!open) return;
@@ -175,14 +177,17 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
           { id: '2d', label: '2D plan', icon: 'view-2d' as const, keys: 'Ctrl+1' },
           { id: 'split', label: 'Split', icon: 'view-split' as const, keys: 'Ctrl+3' },
           { id: '3d', label: '3D view', icon: 'view-3d' as const, keys: 'Ctrl+2' },
+          { id: 'drawings', label: 'Drawings', icon: 'view-drawings' as const, keys: 'Ctrl+4' },
         ].map((v) => (
           <button
             key={v.id}
             role="radio"
-            aria-checked={split ? v.id === 'split' : v.id === (view3d ? '3d' : '2d')}
+            aria-checked={drawing ? v.id === 'drawings' : split ? v.id === 'split' : v.id === (view3d ? '3d' : '2d')}
             aria-label={v.label}
             title={`${v.label} (${showKeys(v.keys)})`}
-            onClick={() => (v.id === 'split' ? setSplit(true) : setView3d(v.id === '3d'))}
+            onClick={() =>
+              v.id === 'drawings' ? showDrawing() : v.id === 'split' ? setSplit(true) : setView3d(v.id === '3d')
+            }
           >
             <Icon name={v.icon} size={16} />
             <span className="hidden xl:inline">{v.label}</span>

@@ -26,6 +26,11 @@ export const ICONS = {
   orbit:
     "<circle cx='12' cy='12' r='3'/><path d='M20.8 10.5C21.6 13 17.6 16 12 16S2.4 13.5 3.2 11c.7-2.2 4.4-3.8 8.8-3.8'/><path d='m9.8 5 2.4 2.2L9.9 9.5'/>",
   'view-3d': "<path d='m12 3 8 4.5v9L12 21l-8-4.5v-9z'/><path d='m4 7.5 8 4.5 8-4.5M12 12v9'/>",
+  section:
+    "<path d='M6 12h12' stroke-dasharray='3 2'/><circle cx='4' cy='12' r='2.2'/><circle cx='20' cy='12' r='2.2'/><path d='M4 14.2V19m-2-2 2 2 2-2M20 14.2V19m-2-2 2 2 2-2'/>",
+  'view-drawings':
+    "<path d='M3 20h18'/><path d='M5 20V9l7-5 7 5v11'/><rect x='9' y='12' width='6' height='8'/><path d='M5 9h14'/>",
+  sheet: "<rect x='3' y='5' width='18' height='14' rx='0.5'/><path d='M14 19v-4h7M14 17h7'/><path d='M6 8h6v6H6z'/>",
   'view-2d': "<rect x='3.5' y='3.5' width='17' height='17' rx='0.5'/><path d='M3.5 12H11v8.5M15 3.5V9'/>",
   'view-split':
     "<rect x='3' y='4' width='18' height='16' rx='0.5'/><path d='M12 4v16'/><path d='M5.5 12H9M5.5 8h3.5'/><path d='m16.5 8.5 2.5 1.4v3l-2.5 1.4-2.5-1.4v-3z'/>",

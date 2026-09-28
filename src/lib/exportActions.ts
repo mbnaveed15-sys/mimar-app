@@ -6,7 +6,9 @@ import { builtAreaSqFt, planCheck } from './planCheck';
 import { shows } from './project';
 import { planHints } from './planHints';
 import { downloadUrl, exportPng } from './exportPng';
-import { planToDxf } from './exportDxf';
+import { planToDxf, sideDrawingsToDxf } from './exportDxf';
+import { sideDrawingRefs } from './drawings/refs';
+import type { SideDrawing } from './drawings/views';
 import { modelMeshes, toDae, toGlb, toObj } from './export3d';
 import { zip } from './zip';
 import { costCsv, costPdf, costReport } from './costReport';
@@ -27,7 +29,10 @@ function exportContent() {
   const shown = s.shownDoc();
   const onLevel = <T extends { levelId?: string }>(it: T) => levelOf(it) === s.activeLevel;
   // Layout lines are for planning, so they stay out of drawings unless asked for.
-  const elements = shown.elements.filter((el) => onLevel(el) && (s.exportLines || el.type !== 'line'));
+  // Section lines cut through every floor, so each floor's plan shows them all.
+  const elements = shown.elements.filter(
+    (el) => (onLevel(el) || el.type === 'section') && (s.exportLines || el.type !== 'line'),
+  );
   const doc = { ...shown, elements, rooms: shown.rooms.filter(onLevel) };
   const { units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills } = s;
   return { doc, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills };
@@ -47,7 +52,7 @@ function exportName() {
 function emptyFloor(): boolean {
   const { doc } = exportContent();
   const s = plannerStore.getState();
-  if (doc.elements.length || doc.rooms.length || s.doc.masks.length) return false;
+  if (doc.elements.some((el) => el.type !== 'section') || doc.rooms.length || s.doc.masks.length) return false;
   const others = s.doc.levels.length > 1 && s.doc.elements.length > 0;
   s.setWarning(
     others
@@ -68,25 +73,15 @@ export function exportPlanPng() {
 }
 
 /** Download a print-ready PDF at a true scale. */
-export function exportPlanPdf() {
-  if (emptyFloor()) return;
-  const { paper, units, marlaSqFt, setWarning, pdfCheck, doc, wallHeightMm } = plannerStore.getState();
+/** The plan check, the hints and the cost estimate, as asked for in the PDF settings. */
+function pdfExtras() {
+  const { units, pdfCheck, doc, wallHeightMm, fileName } = plannerStore.getState();
   const { showHints, pdfHints, openingGapMm: gapMm, accessibleZones: accessible } = plannerStore.getState();
   const check = planCheck(doc, { wallHeightMm, units });
   const skipSizes = new Set(check?.rows.find((r) => r.id === 'rooms')?.ids ?? []);
   const hints = showHints && pdfHints ? planHints(doc, { units, skipSizes, gapMm, accessible }).map((h) => h.text) : [];
-  const name = exportName();
-  // The same covered area as the plan check: to the walls' outer faces, without open-air rooms.
-  const covered = builtAreaSqFt(doc, plannerStore.getState().activeLevel) * SQ_MM_PER_SQ_FT;
-  exportPdf(exportContent(), exportArea(), {
-    title: name,
-    paper,
-    unitsNote: `Dimensions in ${UNIT_LABELS[units].toLowerCase()}`,
-    areaNote: covered ? `Covered area: ${formatArea(covered, units)}  ·  ${formatMarla(covered, marlaSqFt)}` : '',
-    version: __APP_VERSION__,
-    filename: `${name}.pdf`,
-    northDeg: doc.northDeg ?? 0,
-    checkTitle: baseName(plannerStore.getState().fileName),
+  return {
+    checkTitle: baseName(fileName),
     hints,
     cost:
       costStore.getState().pdfCost && shows(doc, 'cost')
@@ -104,7 +99,74 @@ export function exportPlanPdf() {
               'Indicative only: measured from the drawing (areas and heights are approximate). Check with the authority before submitting.',
           }
         : undefined,
+  };
+}
+
+export function exportPlanPdf() {
+  if (emptyFloor()) return;
+  const { paper, units, marlaSqFt, setWarning, doc } = plannerStore.getState();
+  const name = exportName();
+  // The same covered area as the plan check: to the walls' outer faces, without open-air rooms.
+  const covered = builtAreaSqFt(doc, plannerStore.getState().activeLevel) * SQ_MM_PER_SQ_FT;
+  exportPdf(exportContent(), exportArea(), {
+    title: name,
+    // The quick one-page plan stays on A4 or A3 (A1 is for drawing sheets).
+    paper: paper === 'A1' ? 'A3' : paper,
+    unitsNote: `Dimensions in ${UNIT_LABELS[units].toLowerCase()}`,
+    areaNote: covered ? `Covered area: ${formatArea(covered, units)}  ·  ${formatMarla(covered, marlaSqFt)}` : '',
+    version: __APP_VERSION__,
+    filename: `${name}.pdf`,
+    northDeg: doc.northDeg ?? 0,
+    ...pdfExtras(),
   }).catch((e) => setWarning(`The PDF could not be created. ${String(e)}`));
+}
+
+/** Print the drawing sheets (plans, sections and elevations with title blocks) to one PDF. */
+export function exportSheetsPdf() {
+  const s = plannerStore.getState();
+  if (!s.doc.elements.some((el) => el.type !== 'section') && !s.doc.rooms.length) {
+    s.setWarning('The plan is empty, so there is nothing to print yet. Draw some walls or rooms first.');
+    return;
+  }
+  const shown = s.shownDoc();
+  // The drawing code only loads when it is first needed.
+  Promise.all([import('./exportSheets'), import('./drawings/source'), import('./drawings/sheet')])
+    .then(([{ exportSheets }, { drawingSource, levelContent }, { sheetsOf }]) => {
+      const src = drawingSource(s, shown);
+      return exportSheets(
+        src,
+        sheetsOf(src),
+        (levelId) => levelContent(s, shown, levelId),
+        pdfExtras(),
+        `${baseName(s.fileName)} - Drawings.pdf`,
+      );
+    })
+    .then((overflow) => {
+      if (overflow.length)
+        s.setWarning(
+          `Some drawings don’t fit on ${overflow.join(', ')}: pick a smaller scale or bigger paper in the Drawings view.`,
+        );
+    })
+    .catch((e) => s.setWarning(`The PDF could not be created. ${String(e)}`));
+}
+
+/** Download every section and elevation as one AutoCAD DXF, side by side at true size. */
+export async function exportDrawingsDxf() {
+  const s = plannerStore.getState();
+  const { drawingSource } = await import('./drawings/source');
+  const src = drawingSource(s);
+  const drawings = sideDrawingRefs(src.doc)
+    .map((ref) => src.side(ref))
+    .filter((d): d is SideDrawing => !!d?.bounds);
+  if (!drawings.length) {
+    s.setWarning('There is nothing to draw yet: draw some walls first.');
+    return;
+  }
+  try {
+    saveBlob(sideDrawingsToDxf(drawings), 'application/dxf', `${baseName(s.fileName)} - Sections and elevations.dxf`);
+  } catch (e) {
+    s.setWarning(`The DXF could not be created. ${String(e)}`);
+  }
 }
 
 function saveBlob(data: BlobPart, type: string, filename: string) {

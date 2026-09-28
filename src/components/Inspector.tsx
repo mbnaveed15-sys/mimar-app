@@ -57,6 +57,7 @@ function itemName(el: PlanElement): string {
     return (el.depthMm ?? 0) < 0 ? 'niche' : (el.depthMm ?? 0) > 0 ? 'projection' : 'shape on a wall';
   if (el.type === 'window' && el.shape) return el.open ? `${el.shape} opening` : `${el.shape} window`;
   if (el.type === 'window' && el.open) return 'opening';
+  if (el.type === 'section') return `section line ${el.label}–${el.label}`;
   return el.type;
 }
 
@@ -123,6 +124,7 @@ export function Inspector() {
   const addParapetAround = usePlanner((s) => s.addParapetAround);
   const plinthMm = usePlanner((s) => s.doc.plinthMm);
   const wallHeightMm = usePlanner((s) => s.wallHeightMm);
+  const showDrawing = usePlanner((s) => s.showDrawing);
 
   const multi = usePlanner((s) => s.selectedIds.length > 1 || s.selectedGroup() !== null);
   const el = doc.elements.find((e) => e.id === selectedId);
@@ -557,7 +559,36 @@ export function Inspector() {
               </>
             )}
 
-            {el.type !== 'door' && el.type !== 'window' && el.type !== 'plot' && (
+            {el.type === 'section' && (
+              <>
+                <div className="flex flex-col gap-0.5">
+                  <label htmlFor="section-label" className="text-muted">
+                    Letter
+                  </label>
+                  <input
+                    key={el.label}
+                    id="section-label"
+                    defaultValue={el.label}
+                    maxLength={3}
+                    onBlur={(e) => {
+                      const label = e.currentTarget.value.trim().toUpperCase();
+                      if (label && label !== el.label) updateElement({ ...el, label });
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                    className="w-16 rounded-sm border p-1"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button className={btn} onClick={() => updateElement({ ...el, flip: !el.flip || undefined })}>
+                    Look the other way
+                  </button>
+                  <button className={btn} onClick={() => showDrawing(`section:${el.id}`)}>
+                    Show the section
+                  </button>
+                </div>
+              </>
+            )}
+            {el.type !== 'door' && el.type !== 'window' && el.type !== 'plot' && el.type !== 'section' && (
               <LengthField
                 id="elevation"
                 label="Height above floor"
@@ -567,12 +598,14 @@ export function Inspector() {
                 onCommit={(mm) => updateElement({ ...el, elevMm: Math.min(mm, 30000) || undefined })}
               />
             )}
-            <div>Material: {materialName(el.material) ?? '—'}</div>
+            {el.type !== 'section' && <div>Material: {materialName(el.material) ?? '—'}</div>}
             {el.type === 'wall' && <WallSides wall={el} materialName={materialName} />}
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => applyMaterial(el.id)} className={btn}>
-                Apply selected material
-              </button>
+              {el.type !== 'section' && (
+                <button onClick={() => applyMaterial(el.id)} className={btn}>
+                  Apply selected material
+                </button>
+              )}
               <button onClick={() => deleteElement(el.id)} className={`${btn} m-btn-danger`}>
                 Delete
               </button>

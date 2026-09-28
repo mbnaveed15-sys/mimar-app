@@ -8,6 +8,8 @@ import { MM_PER_UNIT } from './scale';
 import { outlinePoints, plotSides, sideOutward } from './plot';
 import { buildableArea, stairLayout } from './site';
 import { formatArea, formatLength, formatMarla } from './units';
+import { sectionLook } from './drawings/refs';
+import type { SideDrawing } from './drawings/views';
 
 /** Layers, with AutoCAD colour numbers and line types, named the usual way (AIA style). */
 const LAYERS = {
@@ -28,6 +30,13 @@ const LAYERS = {
   'A-FLOR-BLCK': { color: 8, ltype: 'CONTINUOUS' },
   'A-WALL-PROJ': { color: 7, ltype: 'DASHED' },
   'S-WALL-RETN': { color: 1, ltype: 'CONTINUOUS' },
+  'A-ANNO-SECT': { color: 2, ltype: 'DASHED' },
+  'A-SECT-CUT': { color: 7, ltype: 'CONTINUOUS' },
+  'A-SECT-OUTL': { color: 7, ltype: 'CONTINUOUS' },
+  'A-SECT-BYND': { color: 8, ltype: 'CONTINUOUS' },
+  'A-SECT-GRND': { color: 32, ltype: 'CONTINUOUS' },
+  'A-ANNO-LEVL': { color: 2, ltype: 'CONTINUOUS' },
+  'A-ANNO-TTLB': { color: 7, ltype: 'CONTINUOUS' },
 } as const;
 type Layer = keyof typeof LAYERS;
 
@@ -136,6 +145,17 @@ class Dxf {
     }
     this.pair(0, 'SEQEND');
     this.pair(8, layer);
+  }
+
+  /** A filled four-sided area (R12's SOLID), corners in order round it. */
+  solid(layer: Layer, [a, b, c, d]: Point[]) {
+    this.pair(0, 'SOLID');
+    this.pair(8, layer);
+    this.xy(a);
+    this.xy(b, 11);
+    // SOLID takes its third and fourth corners crosswise.
+    this.xy(d, 12);
+    this.xy(c, 13);
   }
 
   circle(layer: Layer, c: Point, r: number) {
@@ -333,6 +353,20 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       case 'line':
         dxf.line('A-ANNO-LAYT', { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 });
         break;
+      case 'section': {
+        // The cut line, with its letter past each end on the side it looks to.
+        dxf.line('A-ANNO-SECT', { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 });
+        const look = sectionLook(el);
+        const off = 600 / MM_PER_UNIT;
+        for (const p of [
+          { x: el.x1, y: el.y1 },
+          { x: el.x2, y: el.y2 },
+        ]) {
+          dxf.line('A-ANNO-SECT', p, { x: p.x + look.x * off, y: p.y + look.z * off });
+          dxf.text('A-ANNO-SECT', { x: p.x + look.x * off * 1.6, y: p.y + look.z * off * 1.6 }, el.label, 0, 300);
+        }
+        break;
+      }
       case 'stair': {
         const layout = stairLayout(el);
         const world = (p: Point) => fromFurnitureLocal(el, p);
@@ -416,4 +450,53 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
     min: { x: b.minX * MM_PER_UNIT, y: -b.maxY * MM_PER_UNIT },
     max: { x: b.maxX * MM_PER_UNIT, y: -b.minY * MM_PER_UNIT },
   });
+}
+
+/** Space between drawings laid side by side in a DXF, in millimetres. */
+const DRAWING_GAP_MM = 4000;
+
+/**
+ * Sections and elevations as an AutoCAD DXF (R12, millimetres, true size), laid side by side:
+ * what is cut filled solid, the lines beyond, outlines, the ground, the level marks and each
+ * drawing's name underneath.
+ */
+export function sideDrawingsToDxf(drawings: SideDrawing[]): string {
+  // Drawing millimetres, with y given downward as the writer expects of a plan.
+  const dxf = new Dxf(1);
+  const P = (x: number, v: number): Point => ({ x, y: -v });
+  let x0 = 0;
+  let minV = 0;
+  let maxV = 0;
+  for (const d of drawings) {
+    const b = d.bounds ?? { minU: -1, maxU: 1, minV: 0, maxV: 1 };
+    const left = Math.min(b.minU, d.ground.u0);
+    const at = (u: number, v: number) => P(x0 + (u - left) * 1000, v * 1000);
+    for (const poly of d.cut) {
+      for (const ring of poly)
+        dxf.poly(
+          'A-SECT-CUT',
+          ring.map(([u, v]) => at(u, v)),
+        );
+      // Fill rectangles (most of a cut); other shapes keep just their outline.
+      if (poly.length === 1 && poly[0].length === 4)
+        dxf.solid(
+          'A-SECT-CUT',
+          poly[0].map(([u, v]) => at(u, v)),
+        );
+    }
+    for (const l of d.lines) dxf.line(l.heavy ? 'A-SECT-OUTL' : 'A-SECT-BYND', at(...l.a), at(...l.b));
+    dxf.line('A-SECT-GRND', at(d.ground.u0, 0), at(d.ground.u1, 0));
+    const right = Math.max(b.maxU, d.ground.u1);
+    for (const m of d.levels) {
+      const p = at(right + 0.4, m.v);
+      dxf.line('A-ANNO-LEVL', at(right, m.v), at(right + 1.2, m.v));
+      dxf.text('A-ANNO-LEVL', { x: p.x + 1800, y: p.y - 150 }, `${m.label} ${m.name}`, 0, 150);
+    }
+    const bottom = Math.min(b.minV, 0) - 0.9;
+    dxf.text('A-ANNO-TTLB', at((left + right) / 2, bottom), d.title.toUpperCase(), 0, 300);
+    minV = Math.min(minV, bottom);
+    maxV = Math.max(maxV, b.maxV);
+    x0 += (right + 3.5 - left) * 1000 + DRAWING_GAP_MM;
+  }
+  return dxf.build({ min: { x: 0, y: minV * 1000 }, max: { x: Math.max(x0, 1000), y: maxV * 1000 } });
 }

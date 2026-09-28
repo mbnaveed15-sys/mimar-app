@@ -283,4 +283,47 @@ describe('storage', () => {
     };
     expect(savePlan(emptyDoc(), full)).toBe(false);
   });
+
+  it('keeps section lines and drawing sheets, dropping what is not sound', () => {
+    const doc = normaliseDoc({
+      ...emptyDoc(),
+      elements: [
+        { id: 's', type: 'section', x1: 0, y1: 0, x2: 100, y2: 0, label: ' Bxyz ', flip: true },
+        { id: 't', type: 'section', x1: 0, y1: 0, x2: 100, y2: 0 },
+        { id: 'bad', type: 'section', x1: 'x', y1: 0, x2: 100, y2: 0, label: 'C' },
+      ],
+      sheets: [
+        {
+          id: 'a',
+          name: '',
+          paper: 'A2',
+          items: [
+            { drawing: { kind: 'section', id: 's' }, scale: 50 },
+            { drawing: { kind: 'elevation', side: 'up' }, scale: 100 },
+            { drawing: { kind: 'plan', levelId: 'ground' }, scale: 75 },
+          ],
+        },
+        'nonsense',
+      ],
+    });
+    expect(doc.elements).toEqual([
+      { id: 's', type: 'section', x1: 0, y1: 0, x2: 100, y2: 0, label: 'Bxy', flip: true },
+      { id: 't', type: 'section', x1: 0, y1: 0, x2: 100, y2: 0, label: 'A' },
+    ]);
+    expect(doc.sheets).toEqual([
+      {
+        id: 'a',
+        name: 'Sheet 1',
+        paper: 'A3',
+        items: [
+          { drawing: { kind: 'section', id: 's' }, scale: 50 },
+          { drawing: { kind: 'plan', levelId: 'ground' }, scale: 100 },
+        ],
+      },
+    ]);
+    // A plan with no sheets of its own gets the suggested ones; an emptied list stays empty.
+    expect(normaliseDoc(emptyDoc()).sheets).toBeUndefined();
+    expect(normaliseDoc({ ...emptyDoc(), sheets: [] }).sheets).toEqual([]);
+    expect(CURRENT_VERSION).toBe(9);
+  });
 });

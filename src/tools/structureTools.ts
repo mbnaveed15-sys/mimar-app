@@ -12,7 +12,7 @@ interface Store {
   getState: () => PlannerState;
 }
 
-export const STRUCTURE_TOOLS: Tool[] = ['column', 'beam', 'slab', 'plot', 'stairs'];
+export const STRUCTURE_TOOLS: Tool[] = ['column', 'beam', 'slab', 'plot', 'stairs', 'section'];
 
 /** Default wall half-thickness (4½"), how far a slab reaches past a room's inner faces to the wall centres. */
 const SLAB_OVERHANG = (4.5 * 25.4) / MM_PER_UNIT;
@@ -93,7 +93,22 @@ export function structurePress(store: Store, inf: Inference) {
     case 'stairs':
       s.addStair(p);
       return;
+    case 'section':
+      if (d?.type !== 'section')
+        return s.setDraft({ type: 'section', x1: p.x, y1: p.y, x2: p.x, y2: p.y, placed: false, flip: false });
+      if (!d.placed) {
+        if (Math.hypot(p.x - d.x1, p.y - d.y1) <= 1) return;
+        return s.setDraft({ ...d, x2: p.x, y2: p.y, placed: true });
+      }
+      s.addSection({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 }, d.flip);
+      return s.setDraft(null);
   }
+}
+
+/** Whether a point is on the left of a section line going from its start to its end (it then looks left). */
+function onLeft(d: { x1: number; y1: number; x2: number; y2: number }, p: Point): boolean {
+  // With y pointing down the page, (-dy, dx) points to the right-hand side.
+  return -(d.y2 - d.y1) * (p.x - d.x1) + (d.x2 - d.x1) * (p.y - d.y1) < 0;
 }
 
 export function structureHover(store: Store, inf: Inference) {
@@ -102,6 +117,10 @@ export function structureHover(store: Store, inf: Inference) {
   if (d?.type === 'beam' || d?.type === 'slab' || d?.type === 'plot')
     s.setDraft({ ...d, x2: inf.point.x, y2: inf.point.y });
   if (d?.type === 'plotPoly') s.setDraft({ ...d, cursor: inf.point });
+  if (d?.type === 'section') {
+    if (!d.placed) s.setDraft({ ...d, x2: inf.point.x, y2: inf.point.y });
+    else if (onLeft(d, inf.point) !== d.flip) s.setDraft({ ...d, flip: !d.flip });
+  }
 }
 
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -178,6 +197,11 @@ export function structureRelease(store: Store, dragged: boolean) {
     if (Math.abs(d.cursor.x - a.x) > 1 && Math.abs(d.cursor.y - a.y) > 1) s.addPlot(plotRect(a, d.cursor));
     return s.setDraft(null);
   }
+  // A section line dragged out: its ends are down, and the next click picks the side it looks to.
+  if (s.tool === 'section' && d?.type === 'section' && !d.placed && dragged) {
+    if (Math.hypot(d.x2 - d.x1, d.y2 - d.y1) > 1) s.setDraft({ ...d, placed: true });
+    return;
+  }
   if (s.tool === 'plot' && d?.type === 'plot' && dragged) {
     if (Math.abs(d.x2 - d.x1) > 1 && Math.abs(d.y2 - d.y1) > 1)
       s.addPlot(plotRect({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 }));
@@ -251,6 +275,7 @@ export function structureMeasure(store: Store, m: Measure): string | null {
     return null;
   }
   if (s.tool === 'stairs') return 'Stairs are placed by clicking; set their shape and width on the right.';
+  if (s.tool === 'section') return 'Click the two ends of the section line, then click the side it looks to.';
   return 'Columns are placed by clicking; set their size on the right.';
 }
 
@@ -259,6 +284,8 @@ export function structureReadout(s: PlannerState): { label: string; value: strin
   const len = (u: number) => formatLength(u * MM_PER_UNIT, s.units);
   if (s.tool === 'beam')
     return { label: 'Length', value: d?.type === 'beam' ? len(Math.hypot(d.x2 - d.x1, d.y2 - d.y1)) : '' };
+  if (s.tool === 'section')
+    return { label: 'Length', value: d?.type === 'section' ? len(Math.hypot(d.x2 - d.x1, d.y2 - d.y1)) : '' };
   if (s.tool === 'stairs') {
     const { site } = s;
     if (site.stairShape === 'ramp') return { label: 'Ramp', value: `1 in 12` };
@@ -312,6 +339,12 @@ export function structureHint(s: PlannerState): string {
           : 'Click or drag the plot, or pick a size on the right. Setbacks and a boundary wall are added for you.';
     case 'stairs':
       return 'Click to place a stair. Pick straight, L, U or a ramp on the right; risers are worked out for you.';
+    case 'section':
+      if (d?.type === 'section' && d.placed)
+        return 'Click on the side the section looks to (the arrows show which way).';
+      return d?.type === 'section'
+        ? 'Click the other end of the section line, across the building.'
+        : 'Click one end of a section line, then the other, across the building. Its drawing is in the Drawings view.';
     default:
       return '';
   }

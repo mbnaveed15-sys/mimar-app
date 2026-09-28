@@ -1,3 +1,4 @@
+import { SectionShape } from './shapes/SectionShape';
 import { SNAP_LABELS, type Inference } from '../lib/inference';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT } from '../store/plannerStore';
@@ -193,6 +194,16 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
           style={{ stroke: PLAN.draft }}
           strokeWidth={1.5 * k}
           strokeLinecap="round"
+        />
+      )}
+
+      {d?.type === 'section' && (
+        <SectionShape
+          line={{ id: 'draft', x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, label: '', flip: d.flip }}
+          selected={false}
+          k={k}
+          ghost={!d.placed}
+          testId="section-draft"
         />
       )}
 

@@ -187,12 +187,36 @@ autosaves to local storage on every change.
   side panel's `UseZoneNote` gives the figures and source. The preference `accessibleZones` (Settings) picks the
   ADA zones. Figures are public-domain ADA 2010 values or marked "General practice": never copy from copyrighted
   handbooks (the owner's Architectural Graphic Standards disc is encrypted and not to be used).
-- Materials: `src/lib/materials.ts` (library), `patterns.ts` (procedural textures for 3D and swatches).
+- Sections, elevations and sheets (1.35), in `src/lib/drawings/` (pure, tested):
+  - `refs.ts` (light, used by the store and plan): drawing keys (`section:<id>`, `elevation:front`, `plan:<levelId>`,
+    and `sheet:<id>` for `store.drawing`), titles, the next section letter, `sectionLook` (the right of the line
+    from its start to its end, (−dy, dx), or the left when `flip`).
+  - `hiddenLines.ts`: turns prisms (an outline with holes pushed along a vector, in scene metres) into a drawing
+    seen along a level direction: u to the viewer's right (`rightOf`), v up, d the depth. Sections clip the faces at
+    d ≥ 0 and cut each prism along the plane (`cut`: polygons with holes); every face edge is split where it crosses
+    other faces' outlines or depths, and each piece is kept, hidden, left out as a joint (two flush faces facing the
+    same way) or marked heavy (against empty space) by looking just to each side of it (`classify`, via `FaceGrid`).
+    `mergeLines` joins pieces in line.
+  - `views.ts`: `sideDrawing(doc, ref, opts)` builds the model (`buildModel` with `closedDoors` and no furniture),
+    adds the floor and roof slabs a plan leaves understood (`impliedSlabs`, from the building's outside outline),
+    leaves boundary walls and their gates out of elevations (clipped at the ground, `minV`), and adds `levelMarks`;
+    `frontLook` is from the plot's road side (`sideOutward`), else up the page. `sideCache` works each out once.
+  - `sheet.ts`: sheets as paper-millimetre primitives (`Prim`: line, fill, tri, rect, circle, text and a `plan`
+    box the plan renderer fills), shared by the Drawings view (`SheetSvg.tsx`) and the PDF (`exportSheets.ts`,
+    which rasterises plans as the plan PDF does, up to 200 DPI). `layoutSheet` packs the drawings in rows (`pack`),
+    captions them, adds the north arrow and the title block; `suggestedSheets` / `sheetsOf` give the suggested set
+    when `doc.sheets` is missing (an empty array means the owner cleared them). `source.ts` ties them to the store.
+  - `src/components/DrawingsView.tsx` (loaded when first opened) lists them and edits sheets (`setSheets`);
+    `store.drawing` (the key shown) is set by `showDrawing` and cleared by 2D/3D/Split and by drawing tools.
+  - The Section tool is in `structureTools.ts` (draft `section`: two ends, then the side); section lines are
+    `SectionLine` elements (`type: 'section'`, `label`, `flip`) drawn by `SectionShape.tsx` on every floor.
+
 
 ## Exports
 
-`src/lib/exportActions.ts` (entry points), `exportDxf.ts` (R12, mm, AIA layers), `export3d.ts` (GLB, DAE, OBJ,
-written directly; `zip.ts` for OBJ+MTL), `exportPdf.ts` / `exportPng.ts`.
+`src/lib/exportActions.ts` (entry points), `exportDxf.ts` (R12, mm, AIA layers; `sideDrawingsToDxf` for sections
+and elevations), `export3d.ts` (GLB, DAE, OBJ, written directly; `zip.ts` for OBJ+MTL), `exportPdf.ts` /
+`exportPng.ts`, `exportSheets.ts` (drawing sheets, loaded when first used).
 
 ## Desktop, web and branding
 

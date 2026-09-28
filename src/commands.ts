@@ -1,7 +1,15 @@
 import { getViewControls, isParallel, requestView, toggleParallel } from './three/viewControls';
 import { aliasesFor } from './lib/aliases';
 import { shows } from './lib/project';
-import { exportCostCsv, exportModel, exportPlanDxf, exportPlanPdf, exportPlanPng } from './lib/exportActions';
+import {
+  exportCostCsv,
+  exportDrawingsDxf,
+  exportModel,
+  exportPlanDxf,
+  exportPlanPdf,
+  exportPlanPng,
+  exportSheetsPdf,
+} from './lib/exportActions';
 import { plannerStore, type PlannerState } from './store/plannerStore';
 import { THEMES } from './theme/themes';
 import { pasteToPlace } from './tools/controller';
@@ -115,6 +123,21 @@ export function buildCommands(ctx: CommandContext): Command[] {
     { id: 'file.save', label: 'Save', menu: 'file', group: 1, keys: ['Ctrl+S'], run: () => ctx.save() },
     { id: 'file.saveAs', label: 'Save as…', menu: 'file', group: 1, keys: ['Ctrl+Shift+S'], run: () => ctx.save(true) },
     { id: 'file.pdf', label: 'Export PDF', menu: 'file', group: 2, keys: ['Ctrl+P'], run: exportPlanPdf },
+    {
+      id: 'file.sheets',
+      label: 'Export drawing sheets (PDF)',
+      menu: 'file',
+      group: 2,
+      keys: ['Ctrl+Shift+P'],
+      run: exportSheetsPdf,
+    },
+    {
+      id: 'file.drawingsDxf',
+      label: 'Export sections and elevations (DXF)',
+      menu: 'file',
+      group: 2,
+      run: exportDrawingsDxf,
+    },
     { id: 'file.png', label: 'Export PNG', menu: 'file', group: 2, run: exportPlanPng },
     { id: 'file.dxf', label: 'Export DXF (AutoCAD)', menu: 'file', group: 2, run: exportPlanDxf },
     { id: 'file.cost', label: 'Export quantities and cost (CSV)', menu: 'file', group: 2, run: () => exportCostCsv() },
@@ -348,7 +371,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       keys: ['Ctrl+1'],
       run: () => st().setView3d(false),
       kind: 'radio',
-      checked: (s) => !s.split && !s.view3d,
+      checked: (s) => !s.split && !s.view3d && !s.drawing,
     },
     {
       id: 'view.3d',
@@ -358,7 +381,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       keys: ['Ctrl+2'],
       run: () => st().setView3d(true),
       kind: 'radio',
-      checked: (s) => !s.split && s.view3d,
+      checked: (s) => !s.split && s.view3d && !s.drawing,
     },
     {
       id: 'view.split',
@@ -368,7 +391,17 @@ export function buildCommands(ctx: CommandContext): Command[] {
       keys: ['Ctrl+3'],
       run: () => st().setSplit(true),
       kind: 'radio',
-      checked: (s) => s.split,
+      checked: (s) => s.split && !s.drawing,
+    },
+    {
+      id: 'view.drawings',
+      label: 'Drawings (sections, elevations, sheets)',
+      menu: 'view',
+      group: 0,
+      keys: ['Ctrl+4'],
+      run: () => st().showDrawing(),
+      kind: 'radio',
+      checked: (s) => !!s.drawing,
     },
     {
       id: 'view.levelUp',

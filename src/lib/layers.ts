@@ -14,6 +14,7 @@ export const LAYERS = [
   { id: 'stairs', label: 'Stairs & ramps' },
   { id: 'plot', label: 'Plot & setbacks' },
   { id: 'lines', label: 'Layout lines' },
+  { id: 'sections', label: 'Section lines' },
 ] as const;
 
 export type LayerId = (typeof LAYERS)[number]['id'];
@@ -37,6 +38,7 @@ const BY_TYPE: Record<PlanElement['type'], LayerId> = {
   stair: 'stairs',
   plot: 'plot',
   line: 'lines',
+  section: 'sections',
 };
 
 export const layerOf = (item: PlanElement | Room): LayerId => ('type' in item ? BY_TYPE[item.type] : 'rooms');

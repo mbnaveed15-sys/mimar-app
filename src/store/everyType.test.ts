@@ -5,6 +5,7 @@ import { DEFAULT_PREFS } from '../lib/prefs';
 import { emptyDoc, normaliseDoc } from '../lib/storage';
 import { buildModel } from '../three/model';
 import { pushPull } from '../lib/pushPull';
+import { sideDrawing } from '../lib/drawings/views';
 import type { PlanDoc, PlanElement, PushFace } from '../types';
 import { createPlannerStore } from './plannerStore';
 
@@ -126,6 +127,7 @@ const ELEMENTS: PlanElement[] = [
       { x: 80, y: 120 },
     ],
   },
+  { id: 'sec', type: 'section', x1: -50, y1: 200, x2: 550, y2: 200, label: 'A' },
   {
     id: 'st',
     type: 'stair',
@@ -204,6 +206,7 @@ describe('every kind of item', () => {
       'A-FLOR-STRS',
       'A-FLOR-BLCK',
       'A-WALL-PROJ',
+      'A-ANNO-SECT',
     ])
       expect(dxf).toContain(`\r\n8\r\n${layer}\r\n`);
     // Round and arched openings are cut out of wall panels; the arch has glass; the flat shape is a skin.
@@ -216,6 +219,13 @@ describe('every kind of item', () => {
     // Flat shapes aren't built, so they aren't exported.
     expect(meshes.some((m) => m.name.startsWith('block'))).toBe(true);
     expect(meshes.some((m) => m.name.startsWith('shape'))).toBe(false);
+    // Section lines aren't built; they cut the section, and every item shows in it and the elevations.
+    expect(JSON.stringify(model)).not.toContain('"sec"');
+    const opts = { wallHeightMm: 3048, units: 'imperial' as const };
+    const section = sideDrawing(doc(), { kind: 'section', id: 'sec' }, opts)!;
+    expect(section.cut.length).toBeGreaterThan(0);
+    for (const side of ['front', 'back', 'left', 'right'] as const)
+      expect(sideDrawing(doc(), { kind: 'elevation', side }, opts)!.lines.length).toBeGreaterThan(4);
   });
 
   it('pushes and pulls every face of every kind of item', () => {
