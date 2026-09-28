@@ -48,11 +48,12 @@ Windows desktop app (Electron) and a web app (GitHub Pages, installable, works o
 | 1.10–1.11 | Selection, groups and components; Modify tools (offset, mirror, trim, extend, break, join, fillet, chamfer, stretch, scale) |
 | earlier | 2D drawing, rooms and marla areas, doors and windows, furniture, PDF/PNG export, themes, auto-update |
 
-## Checks at 1.36.0
+## Checks at 1.37.0
 
-515 unit tests (Vitest, including `src/lib/terrain/*.test.ts` for the ground surface, survey import, map data and
-cut and fill, and `src/tools/groundTools.test.ts`) and 86 browser tests (Playwright, including `e2e/terrain.spec.ts`)
-pass; `npm run check` (types, lint, format, unit tests, build) is green.
+555 unit tests (Vitest, including `src/lib/arc.test.ts` for curved walls, `src/lib/voids.test.ts` for double-height
+rooms, `src/lib/curtain.test.ts` for curtain walls, and `src/lib/roof/skeleton.test.ts` and `roof.test.ts` for roofs)
+and 87 browser tests (Playwright, including `e2e/freeform.spec.ts`) pass; `npm run check` (types, lint, format, unit
+tests, build) is green.
 
 ## Things the owner has decided
 
