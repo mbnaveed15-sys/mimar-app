@@ -95,12 +95,23 @@ export function elevationLook(doc: PlanDoc, side: ElevationSide): { x: number; z
 const buildingWalls = (doc: PlanDoc, levelId: Id) =>
   doc.elements.filter((el): el is Wall => el.type === 'wall' && isBuildingWall(el) && levelOf(el) === levelId);
 
+/** A floor or roof slab the plan leaves to be understood: its outline and holes (plan units), bottom and thickness (m). */
+export interface ImpliedSlab {
+  level: Id;
+  /** Under the level's floor, or over its walls. */
+  kind: 'floor' | 'roof';
+  outline: Point[];
+  holes: Point[][];
+  y: number;
+  h: number;
+}
+
 /**
  * Floor and roof slabs the plan leaves to be understood: under each floor, and over each floor with
  * no slab drawn on it, across the outside of its walls. Where slabs are drawn, those are used.
  */
-function impliedSlabs(doc: PlanDoc, wallHeightMm: number): Prism[] {
-  const out: Prism[] = [];
+export function impliedSlabList(doc: PlanDoc, wallHeightMm: number): ImpliedSlab[] {
+  const out: ImpliedSlab[] = [];
   const slab = slabMm(doc) / 1000;
   const drawn = (id: Id) => doc.elements.some((el) => el.type === 'slab' && levelOf(el) === id);
   // A roof over a floor takes the place of its slab.
@@ -109,22 +120,28 @@ function impliedSlabs(doc: PlanDoc, wallHeightMm: number): Prism[] {
     const outline = outsideOutline(buildingWalls(doc, level.id));
     if (!outline) return;
     const base = levelBaseM(doc, level.id, wallHeightMm);
-    const ring = (y: number, pts: Point[] = outline): V3[] => pts.map((p) => [p.x * M_PER_UNIT, y, p.y * M_PER_UNIT]);
     // Double-height rooms leave the slab over them open.
     const voids = (pts: Point[][]) => pts.filter((v) => within(v, outline));
     const below = doc.levels[i - 1];
     if (!below || !drawn(below.id)) {
-      const y = base - slab;
       const holes = voids(voidsOver(doc, level.id).map((r) => r.points));
-      out.push({ rings: [ring(y), ...holes.map((h) => ring(y, h))], extrude: [0, slab, 0] });
+      out.push({ level: level.id, kind: 'floor', outline, holes, y: base - slab, h: slab });
     }
     if (!drawn(level.id) && !roofed(level.id)) {
       const top = base + levelWallMm(doc, level.id, wallHeightMm) / 1000;
       const holes = voids(openRooms(doc, level.id).map((r) => r.points));
-      out.push({ rings: [ring(top), ...holes.map((h) => ring(top, h))], extrude: [0, slab, 0] });
+      out.push({ level: level.id, kind: 'roof', outline, holes, y: top, h: slab });
     }
   });
   return out;
+}
+
+/** The implied slabs as prisms. */
+function impliedSlabs(doc: PlanDoc, wallHeightMm: number): Prism[] {
+  return impliedSlabList(doc, wallHeightMm).map((s) => {
+    const ring = (pts: Point[]): V3[] => pts.map((p) => [p.x * M_PER_UNIT, s.y, p.y * M_PER_UNIT]);
+    return { rings: [ring(s.outline), ...s.holes.map(ring)], extrude: [0, s.h, 0] };
+  });
 }
 
 /** The model's pieces as prisms, leaving out any whose id is in `skip`. */

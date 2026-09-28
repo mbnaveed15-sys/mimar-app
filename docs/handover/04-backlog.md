@@ -29,13 +29,12 @@ spot levels, contours, survey import, levelled plot and pads, cut and fill, Open
 freer form: curved walls, double-height rooms, glass curtain walls and pitched roofs (1.37).
 
 Planned next (the roadmap agreed with the owner for all kinds of work; plan each with the owner first):
-1.38 3D speed and IFC export; 1.39 checks for non-residential buildings (each moved up one when furniture use
-zones took 1.34).
+1.39 checks for non-residential buildings (1.38, 3D speed and IFC export, is done).
 First-floor plans from a room list are a later idea.
 
 Left from sections and elevations for later: dimension strings on sections (only level marks now); each section and
 elevation is worked out whole (about 0.5 s at 576 walls, 3 s at 2,500), and the suggested sheets need them all, so the
-Drawings view opens slowly on very big plans, as 3D does;
+Drawings view opens slowly on very big plans;
 stair openings aren't cut in the floor slabs the drawings assume (a drawn slab with a void is); a stepped section
 line (it is straight); hatching for materials (cut is solid black); the DXF fills only rectangular cuts (others are
 outlined); plans on sheets are pictures at up to 200 DPI in the PDF (as the plan PDF); furniture or shading as
@@ -82,15 +81,20 @@ Left from the cost estimate for later: rates for other cities; contingencies and
 percentage; woodwork, kitchens and wardrobes; footings drawn rather than assumed; metric units in the table (it
 uses cft and sqft, as Pakistani estimates do).
 
-Left from the 3D review for later: section cuts and X-ray (the owner chose to skip them in 1.25); 3D first open and
-orbiting on big plans are still slow (one mesh and edge set per part: merging or instancing them is the fix); a wall
+Left from the 3D review for later: section cuts and X-ray (the owner chose to skip them in 1.25); a wall
 side's own material isn't shown in 2D, the PDF or DXF.
+
+Left from 3D speed and IFC for later: an edit still rebuilds and re-merges the whole 3D model (about half a second at 1,000
+walls on software graphics); glass is merged too, so panes behind panes aren't sorted back to front. IFC: IFC4
+only (no IFC2x3 option); walls are their 3D pieces (not one extruded wall with an axis), so Revit and ArchiCAD
+import them as fixed shapes, not editable walls; no furniture, terrain, neighbours or plot; no property sets
+beyond space quantities; stairs are one element (no flights and landings); not yet opened in Revit or ArchiCAD
+themselves (checked with IfcOpenShell only).
 
 ## Known rough edges
 
-- 3D on very big plans is slow to open and orbit (1,984 walls: about 6 s to open, 1 s per orbit step on the test
-  machine's software graphics; real graphics cards do much better). Merging meshes would fix it; typical houses
-  (under 300 walls) are fine.
+- 3D on very big plans opens in about 1 s at 1,000 walls on the test machine's software graphics (orbiting is
+  smooth since 1.38); real graphics cards do better.
 - The welcome's sample house shows three size hints (master bedroom, drawing room, bath slightly small); they are
   advice, and the sample shows how hints look.
 

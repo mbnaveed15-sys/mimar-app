@@ -4,6 +4,7 @@ import { shows } from './lib/project';
 import {
   exportCostCsv,
   exportDrawingsDxf,
+  exportIfc,
   exportModel,
   exportPlanDxf,
   exportPlanPdf,
@@ -150,6 +151,13 @@ export function buildCommands(ctx: CommandContext): Command[] {
     },
     { id: 'file.dae', label: 'Export 3D: DAE (SketchUp)', menu: 'file', group: 3, run: () => exportModel('dae') },
     { id: 'file.obj', label: 'Export 3D: OBJ (other 3D apps)', menu: 'file', group: 3, run: () => exportModel('obj') },
+    {
+      id: 'file.ifc',
+      label: 'Export 3D: IFC (Revit, ArchiCAD)',
+      menu: 'file',
+      group: 3,
+      run: exportIfc,
+    },
 
     // Edit
     {

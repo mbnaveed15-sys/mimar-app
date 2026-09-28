@@ -146,6 +146,14 @@ autosaves to local storage on every change.
   `viewControls.ts` lets menu commands reach the 3D camera (zoom, extents, standard view, parallel); a view asked
   for before 3D opens is kept until it does. Materials are cached for the session by look (`MATERIALS`, with their
   faded/lit/red variants), one `WebGLRenderer` is reused across opens, and anything in `KEPT` is never disposed.
+  Since 1.38 `buildMeshes` still makes a mesh per part, and `mergeParts` (`src/three/merge.ts`, tested) then merges
+  meshes sharing a material, floor and shadow settings into one (in scene coordinates), keeping each part's index
+  range, id and box in `userData.ranges`, and all edge lines of a floor into one `LineSegments` (not hit-tested).
+  A merged mesh hit-tests part by part (only parts whose box the ray crosses, via `drawRange`); `partAt` turns a
+  hit's `faceIndex` into the part, `idOf`/`partOf` in `Plan3DView.tsx` use it for picking, face highlights and
+  Push/Pull extents, and `styleMeshes` draws selected/erased parts through geometry groups (`lookRuns`: materials
+  0 base, 1 lit, 2 red) and a floor above as a whole faded mesh. Solids' edges are a shared unit box's
+  (`BOX_EDGES`) scaled, not `EdgesGeometry`. The draft preview (ghost) is not merged.
   A wall's two sides (`materialA` on its left normal (-dy, dx), `materialB` the other) become `sides` on its
   solids and panels: box faces +z/−z and the panel caps (split by `splitCaps`) take their own material, in the view
   and in `export3d.ts`.
@@ -275,6 +283,23 @@ autosaves to local storage on every change.
 `src/lib/exportActions.ts` (entry points), `exportDxf.ts` (R12, mm, AIA layers; `sideDrawingsToDxf` for sections
 and elevations), `export3d.ts` (GLB, DAE, OBJ, written directly; `zip.ts` for OBJ+MTL), `exportPdf.ts` /
 `exportPng.ts`, `exportSheets.ts` (drawing sheets, loaded when first used).
+
+IFC (1.38): `src/lib/exportIfc.ts` `planToIfc(doc, opts)` writes IFC4 STEP text directly (Design Transfer View;
+metres, z up, IFC x = scene x, IFC y = −scene z so north is up the page). It builds the 3D model
+(`closedDoors`, no furniture) and groups its parts by the plan item they came from: walls (`IFCWALL`, parapets
+`.PARAPET.`; curtain walls `IFCCURTAINWALL`; flat projections and niches join their wall; a roof's gable panels
+become one "Gable wall"), doors and windows (`IFCDOOR`/`IFCWINDOW` with size and operation), columns, beams,
+stairs, drawn slabs, blocks (proxies) and roofs (`IFCROOF` with its shape as PredefinedType, body an
+`IFCTRIANGULATEDFACESET` from `roofMesh`). Boxes are `IFCRECTANGLEPROFILEDEF` extrusions, panels and slabs
+`IFCARBITRARY(CLOSED)PROFILEDEF(WITHVOIDS)` extrusions. Implied floor and roof slabs come from
+`impliedSlabList` (`drawings/views.ts`). Each door or window gets an `IFCOPENINGELEMENT` (its outline through the
+wall, 0.1 m thicker) with `IFCRELVOIDSELEMENT`/`IFCRELFILLSELEMENT`; the wall's own pieces already have the hole.
+Rooms are `IFCSPACE`s (floor to ceiling) with `Qto_SpaceBaseQuantities` (NetFloorArea, Height). Every element sits
+in its storey (`IFCBUILDINGSTOREY` at `levelBaseM`, geometry relative to it); colours are `IFCSURFACESTYLE`s,
+materials `IFCMATERIAL` (the chosen material's name, else a default per class). GlobalIds are `ifcGuid` of the
+file name and element id (stable; the project, storeys, implied slabs and relations also mix in the plan's first
+item's id, so two plans with the same file name don't share them). Plain entities (points, directions, placements) are written once (`Step.add`).
+Checked with IfcOpenShell: `pip install ifcopenshell pytest`, then `python3 -m ifcopenshell.validate --rules f.ifc`.
 
 ## Desktop, web and branding
 
