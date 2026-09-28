@@ -145,6 +145,8 @@ export interface Model3D {
 export interface ModelOptions {
   wallHeightMm: number;
   showFurniture: boolean;
+  /** Doors shut in their openings (for sections and elevations), rather than standing open. */
+  closedDoors?: boolean;
 }
 
 const WALL_COLOR = '#eceae4';
@@ -436,6 +438,28 @@ function doorLeaves(door: Opening, heightMm: number, thicknessM = 0.23): Solid[]
     }));
   }
   return [doorLeaf(door, heightMm)];
+}
+
+/** A door shut in its opening: a leaf (or two, with a small gap between) across it, as drawn in elevation. */
+function closedDoor(door: Opening, heightMm: number): Solid[] {
+  const kind = doorKindOf(door);
+  if (kind === 'opening') return [];
+  const head = Math.min(mmToM(DOOR_HEAD_MM), mmToM(heightMm)) - 0.01;
+  const rotY = (-door.angle * Math.PI) / 180;
+  const leaf = (a: number, b: number): Solid => ({
+    ...toScene(door, door.angle, { x: (a + b) / 2, y: 0 }),
+    y0: 0,
+    h: head,
+    w: m(b - a),
+    d: 0.04,
+    rotY,
+    color: kind === 'shutter' ? SHUTTER_COLOR : DOOR_COLOR,
+    role: 'door',
+  });
+  const half = door.width / 2;
+  const gap = 0.3; // plan units (3 mm)
+  const pair = kind === 'double' || kind === 'sliding' || kind === 'folding' || door.gate;
+  return pair ? [leaf(-half, -gap), leaf(gap, half)] : [leaf(-half, half)];
 }
 
 function doorLeaf(door: Opening, heightMm: number): Solid {
@@ -825,7 +849,11 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
     for (const door of openings) {
       const host = walls.find((w) => w.id === door.wallId);
       if (door.type !== 'door' || !host) continue;
-      const leaves = doorLeaves(door, host.heightMm ?? levelMm, m(thicknessOf(host))).map(raise(host));
+      const leaves = (
+        options.closedDoors
+          ? closedDoor(door, host.heightMm ?? levelMm)
+          : doorLeaves(door, host.heightMm ?? levelMm, m(thicknessOf(host)))
+      ).map(raise(host));
       solids.push(...(host.kind === 'boundary' && ground ? leaves : leaves.map(lift)).map(from(door.id)));
     }
     for (const el of els) {

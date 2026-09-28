@@ -1,3 +1,4 @@
+import { SectionShape } from './shapes/SectionShape';
 import { useEffect, useMemo, type RefObject } from 'react';
 import { useStore } from 'zustand';
 import { elementOutline, fromFurnitureLocal } from '../geometry';
@@ -7,7 +8,7 @@ import { plannerStore, usePlanner } from '../store/plannerStore';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { PLAN } from '../theme/plan';
 import { selectionBounds } from '../lib/selection';
-import type { Furniture, PlanElement, Point } from '../types';
+import { levelOf, type Furniture, type PlanElement, type Point, type SectionLine } from '../types';
 import { wallPolygon, wallsOf } from '../walls';
 import { DrawingOverlay } from './DrawingOverlay';
 import { CheckMarks } from './CheckMarks';
@@ -41,8 +42,28 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   // The floor below, drawn faintly so the walls above can be traced over it.
   const below = useLevelDoc(-1);
   const belowWalls = useMemo(
-    () => (below ? { ...below, rooms: [], elements: below.elements.filter((el) => el.type !== 'furniture') } : null),
+    () =>
+      below
+        ? {
+            ...below,
+            rooms: [],
+            elements: below.elements.filter((el) => el.type !== 'furniture' && el.type !== 'section'),
+          }
+        : null,
     [below],
+  );
+  // Section lines cut through every floor, so those drawn on other floors show here too, faintly.
+  const allElements = usePlanner((s) => s.doc.elements);
+  const activeLevel = usePlanner((s) => s.activeLevel);
+  const layers = usePlanner((s) => s.doc.layers);
+  const otherSections = useMemo(
+    () =>
+      layers?.sections?.hidden
+        ? []
+        : allElements.filter(
+            (el): el is SectionLine => el.type === 'section' && !el.hidden && levelOf(el) !== activeLevel,
+          ),
+    [allElements, activeLevel, layers],
   );
   const draft = usePlanner((s) => s.draft);
   const inference = usePlanner((s) => s.inference);
@@ -214,6 +235,10 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         k={k}
         accessibleZones={accessibleZones}
       />
+
+      {otherSections.map((line) => (
+        <SectionShape key={line.id} line={line} selected={false} k={k} ghost testId="section-other-floor" />
+      ))}
 
       <CheckMarks elements={doc.elements} rooms={doc.rooms} k={k} />
 

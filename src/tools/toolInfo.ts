@@ -21,6 +21,7 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
   furniture: { label: 'Furniture', icon: 'furniture', key: 'K' },
   shape: { label: 'Shape', icon: 'shape', key: 'Shift+R' },
   pushpull: { label: 'Push/Pull', icon: 'pushpull', key: 'P' },
+  section: { label: 'Section', icon: 'section', key: 'Shift+E' },
   move: { label: 'Move', icon: 'move', key: 'M' },
   rotate: { label: 'Rotate', icon: 'rotate', key: 'Q' },
   tape: { label: 'Tape measure', icon: 'tape', key: 'T' },
@@ -55,5 +56,6 @@ export const DRAW_TOOLS: Tool[] = [
   'window',
   'furniture',
   'shape',
+  'section',
   'mask',
 ];

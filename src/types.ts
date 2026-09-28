@@ -280,7 +280,26 @@ export interface Block extends Grouped {
   material?: Id;
 }
 
-export type PlanElement = Wall | Opening | Furniture | Column | Beam | Slab | Plot | Stair | SketchLine | Block;
+/**
+ * A section line: where the building is cut for a section drawing, and which way it looks. It is
+ * drawn on the plan of every floor, with its letter and an arrow at each end.
+ */
+export interface SectionLine extends Grouped {
+  id: Id;
+  type: 'section';
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  /** Its letter, at both ends and in the drawing's name (A for "Section A–A"). */
+  label: string;
+  /** Looks to the left of the line going from its start to its end (to the right when missing). */
+  flip?: boolean;
+  material?: Id;
+}
+
+export type PlanElement =
+  Wall | Opening | Furniture | Column | Beam | Slab | Plot | Stair | SketchLine | Block | SectionLine;
 
 /** Items outlined by a list of points. */
 export const hasPoints = (el: PlanElement): el is Slab | Plot | Block =>
@@ -361,6 +380,31 @@ export interface PlanDoc {
   layers?: LayerState;
   /** What kind of project this is, and its own settings (a house on a plot, as before 1.33, when missing). */
   project?: ProjectSettings;
+  /** The drawing sheets printed to PDF; the suggested set (worked out from the plan) when missing. */
+  sheets?: Sheet[];
+}
+
+/** An elevation: the building seen from one side (the front is the plot's road side). */
+export type ElevationSide = 'front' | 'back' | 'left' | 'right';
+
+/** A drawing that can go on a sheet: a floor plan, a section or an elevation. */
+export type DrawingRef =
+  { kind: 'plan'; levelId: Id } | { kind: 'section'; id: Id } | { kind: 'elevation'; side: ElevationSide };
+
+/** The scales a drawing can be printed at on a sheet (1:50, 1:100, 1:200). */
+export type SheetScale = 50 | 100 | 200;
+
+export interface SheetItem {
+  drawing: DrawingRef;
+  scale: SheetScale;
+}
+
+/** A printed sheet: its paper, the drawings on it, and its name in the title block. */
+export interface Sheet {
+  id: Id;
+  name: string;
+  paper: PaperSize;
+  items: SheetItem[];
 }
 
 /** A house on a plot (with bylaws and marla), a free project (studio work, no rules), or a non-residential building. */
@@ -418,7 +462,8 @@ export type Tool =
   | 'stairs'
   | 'line'
   | 'shape'
-  | 'pushpull';
+  | 'pushpull'
+  | 'section';
 
 /** Every tool, in tool-rail order. */
 export const TOOLS: Tool[] = [
@@ -440,6 +485,7 @@ export const TOOLS: Tool[] = [
   'furniture',
   'shape',
   'pushpull',
+  'section',
   'move',
   'rotate',
   'tape',
@@ -475,6 +521,8 @@ export type Draft =
   | { type: 'rectangle'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'beam'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'line'; x1: number; y1: number; x2: number; y2: number; chain?: boolean }
+  /** A section line: its two ends, then (once both are down) the side it looks to, from the pointer. */
+  | { type: 'section'; x1: number; y1: number; x2: number; y2: number; placed: boolean; flip: boolean }
   | { type: 'slab'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'plot'; x1: number; y1: number; x2: number; y2: number }
   /** A plot drawn corner by corner: the corners so far, and where the pointer is. */
@@ -606,7 +654,7 @@ export const MODIFY_TOOLS: Tool[] = [
 
 export const SIMPLE_TOOLS: Tool[] = TOOLS.filter((t) => t !== 'brush' && t !== 'mask' && !MODIFY_TOOLS.includes(t));
 
-export type PaperSize = 'A4' | 'A3';
+export type PaperSize = 'A4' | 'A3' | 'A1';
 
 /** Size of one marla in square feet: 225 (LDA and most societies) or 272.25 (traditional). */
 export type MarlaSqFt = 225 | 272.25;

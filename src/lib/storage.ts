@@ -23,6 +23,12 @@ import {
   type DoorKind,
   type WindowKind,
   type WallKind,
+  type DrawingRef,
+  type ElevationSide,
+  type PaperSize,
+  type Sheet,
+  type SheetItem,
+  type SheetScale,
 } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
 import { authorityById, type AuthorityId } from './bylaws';
@@ -31,8 +37,8 @@ import { defaultMaterials, PATTERNS } from './materials';
 import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
 
 export const STORAGE_KEY = 'mimar.plan';
-/** 4 added groups and components; 5 added levels, columns, beams and slabs. */
-export const CURRENT_VERSION = 8;
+/** 4 added groups and components; 5 added levels, columns, beams and slabs; 9 section lines and sheets. */
+export const CURRENT_VERSION = 9;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -228,6 +234,19 @@ function normaliseElement(raw: unknown): PlanElement | null {
     }
     case 'line': {
       const el = { ...base, type: 'line' as const, x1: num('x1'), y1: num('y1'), x2: num('x2'), y2: num('y2') };
+      return [el.x1, el.y1, el.x2, el.y2].every(Number.isFinite) ? el : null;
+    }
+    case 'section': {
+      const el = {
+        ...base,
+        type: 'section' as const,
+        x1: num('x1'),
+        y1: num('y1'),
+        x2: num('x2'),
+        y2: num('y2'),
+        label: (typeof raw.label === 'string' && cleanText(raw.label).trim().slice(0, 3)) || 'A',
+        ...(raw.flip === true ? { flip: true } : {}),
+      };
       return [el.x1, el.y1, el.x2, el.y2].every(Number.isFinite) ? el : null;
     }
     case 'beam': {
@@ -486,7 +505,40 @@ export function normaliseDoc(raw: unknown): PlanDoc {
     ...(typeof obj.northDeg === 'number' && Number.isFinite(obj.northDeg) && obj.northDeg % 360 !== 0
       ? { northDeg: ((obj.northDeg % 360) + 360) % 360 }
       : {}),
+    ...(Array.isArray(obj.sheets) ? { sheets: normaliseSheets(obj.sheets) } : {}),
   };
+}
+
+const PAPERS: PaperSize[] = ['A4', 'A3', 'A1'];
+const SCALES: SheetScale[] = [50, 100, 200];
+const SIDES: ElevationSide[] = ['front', 'back', 'left', 'right'];
+
+function normaliseDrawingRef(raw: unknown): DrawingRef | null {
+  if (!isObject(raw)) return null;
+  if (raw.kind === 'plan' && raw.levelId !== undefined) return { kind: 'plan', levelId: String(raw.levelId) };
+  if (raw.kind === 'section' && raw.id !== undefined) return { kind: 'section', id: String(raw.id) };
+  if (raw.kind === 'elevation' && SIDES.includes(raw.side as ElevationSide))
+    return { kind: 'elevation', side: raw.side as ElevationSide };
+  return null;
+}
+
+/** Drawing sheets, keeping only sound ones (an empty list stays: the owner cleared the sheets). */
+function normaliseSheets(raw: unknown[]): Sheet[] {
+  return raw
+    .filter((s): s is Record<string, unknown> => isObject(s) && s.id !== undefined)
+    .map((s, i) => ({
+      id: String(s.id),
+      name: nameOf(s.name, '').trim() || `Sheet ${i + 1}`,
+      paper: PAPERS.includes(s.paper as PaperSize) ? (s.paper as PaperSize) : 'A3',
+      items: (Array.isArray(s.items) ? s.items : []).flatMap((item): SheetItem[] => {
+        const drawing = isObject(item) ? normaliseDrawingRef(item.drawing) : null;
+        if (!drawing) return [];
+        const scale = SCALES.includes((item as Record<string, unknown>).scale as SheetScale)
+          ? ((item as Record<string, unknown>).scale as SheetScale)
+          : 100;
+        return [{ drawing, scale }];
+      }),
+    }));
 }
 
 function readLegacy(storage: KeyValueStore): PlanDoc | null {

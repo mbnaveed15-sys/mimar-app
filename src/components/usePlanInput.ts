@@ -360,7 +360,7 @@ export function usePlanInput(
             s.updateElement(slide.opening);
           } else {
             const anchor =
-              orig.type === 'wall' || orig.type === 'beam' || orig.type === 'line'
+              orig.type === 'wall' || orig.type === 'beam' || orig.type === 'line' || orig.type === 'section'
                 ? { x: orig.x1, y: orig.y1 }
                 : hasPoints(orig)
                   ? orig.points[0]

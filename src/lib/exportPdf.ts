@@ -7,6 +7,7 @@ import { MM_PER_UNIT } from './scale';
 export const PAPER_MM: Record<PaperSize, { w: number; h: number }> = {
   A4: { w: 297, h: 210 },
   A3: { w: 420, h: 297 },
+  A1: { w: 841, h: 594 },
 };
 
 /** Architectural scales, from most to least detailed. */
@@ -63,16 +64,17 @@ export interface PdfDetails {
   };
 }
 
-type Pdf = InstanceType<typeof import('jspdf').jsPDF>;
+export type Pdf = InstanceType<typeof import('jspdf').jsPDF>;
 
 /** Text for the PDF's built-in font, which lacks some characters. */
-const pdfText = (s: string) => s.replace(/⅓/g, '1/3').replace(/⅔/g, '2/3').replace(/≤/g, '<=').replace(/≥/g, '>=');
+export const pdfText = (s: string) =>
+  s.replace(/⅓/g, '1/3').replace(/⅔/g, '2/3').replace(/≤/g, '<=').replace(/≥/g, '>=');
 
 /**
  * The plan check on a page of its own: a row per rule, with what's needed, what the plan has, and
  * the clause; then the plan hints, if any.
  */
-function checkPage(pdf: Pdf, check: PdfDetails['check'], hints: string[], title: string) {
+export function checkPage(pdf: Pdf, check: PdfDetails['check'], hints: string[], title: string) {
   pdf.addPage('a4', 'portrait');
   const w = 210;
   let y = 20;
@@ -145,7 +147,7 @@ function checkRows(pdf: Pdf, check: NonNullable<PdfDetails['check']>, top: numbe
 }
 
 /** The bill of quantities: an item per row with its quantity, rate and amount; the materials; the quick check. */
-function costPage(pdf: Pdf, cost: NonNullable<PdfDetails['cost']>, title: string) {
+export function costPage(pdf: Pdf, cost: NonNullable<PdfDetails['cost']>, title: string) {
   pdf.addPage('a4', 'portrait');
   const w = 210;
   let y = 20;

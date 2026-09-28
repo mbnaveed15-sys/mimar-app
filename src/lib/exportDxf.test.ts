@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Opening, PlanDoc, Wall } from '../types';
-import { dxfText, planToDxf, wallPieces } from './exportDxf';
+import { dxfText, planToDxf, sideDrawingsToDxf, wallPieces } from './exportDxf';
+import type { SideDrawing } from './drawings/views';
 import { emptyDoc } from './storage';
 
 const wall: Wall = { id: 'w', type: 'wall', x1: 0, y1: 0, x2: 500, y2: 0, thickness: 20 };
@@ -63,5 +64,47 @@ describe('DXF export', () => {
     const walls: Wall[] = Array.from({ length: 3000 }, (_, i) => ({ ...wall, id: `w${i}`, y1: i * 30, y2: i * 30 }));
     const doc: PlanDoc = { ...emptyDoc(), elements: walls };
     expect(() => planToDxf(doc, opts)).not.toThrow();
+  });
+
+  it('marks section lines on the plan', () => {
+    const doc: PlanDoc = {
+      ...emptyDoc(),
+      elements: [wall, { id: 's', type: 'section', x1: 0, y1: -50, x2: 0, y2: 50, label: 'B' }],
+    };
+    const dxf = planToDxf(doc, opts);
+    expect(dxf).toContain('\r\n8\r\nA-ANNO-SECT\r\n');
+    expect(dxf).toContain('\r\n1\r\nB\r\n');
+  });
+
+  it('writes sections and elevations side by side, true size, on their own layers', () => {
+    const d: SideDrawing = {
+      title: 'Section A–A',
+      cut: [
+        [
+          [
+            [0, 0],
+            [0.23, 0],
+            [0.23, 3],
+            [0, 3],
+          ],
+        ],
+      ],
+      lines: [
+        { a: [1, 0], b: [1, 3], heavy: true },
+        { a: [0.5, 1], b: [0.9, 1] },
+      ],
+      bounds: { minU: 0, maxU: 1, minV: 0, maxV: 3 },
+      ground: { u0: -1, u1: 2 },
+      levels: [{ v: 0, name: 'Natural ground', label: '+/-0.000' }],
+    };
+    const dxf = sideDrawingsToDxf([d, { ...d, title: 'Front elevation', cut: [] }]);
+    for (const layer of ['A-SECT-CUT', 'A-SECT-OUTL', 'A-SECT-BYND', 'A-SECT-GRND', 'A-ANNO-LEVL', 'A-ANNO-TTLB'])
+      expect(dxf).toContain(`\r\n8\r\n${layer}\r\n`);
+    expect(dxf).toContain('\r\n0\r\nSOLID\r\n');
+    expect(dxf).toContain('SECTION A-A');
+    expect(dxf).toContain('FRONT ELEVATION');
+    // A 3 m wall is 3000 mm tall.
+    expect(dxf).toContain('\r\n20\r\n3000\r\n');
+    expect([...dxf].every((ch) => ch.charCodeAt(0) < 128)).toBe(true);
   });
 });

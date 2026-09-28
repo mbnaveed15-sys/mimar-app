@@ -1,3 +1,4 @@
+import { drawingKey, nextSectionLabel, sideDrawingRefs } from '../lib/drawings/refs';
 import { cleanText } from '../lib/text';
 import { createStore, useStore } from 'zustand';
 import {
@@ -67,6 +68,7 @@ import type {
   ProjectSettings,
   ProjectType,
   SketchLine,
+  Sheet,
   Slab,
   Stair,
   Draft,
@@ -222,6 +224,8 @@ export interface PlannerState {
   addBeam: (a: Point, b: Point) => void;
   /** A layout (drafting) line on the floor being drawn. */
   addLine: (a: Point, b: Point) => void;
+  /** A section line from a to b, looking to its right (or left when flipped), with the next free letter. */
+  addSection: (a: Point, b: Point, flip: boolean) => void;
   /** Make walls (current thickness) along the selected layout lines, and remove the lines. */
   linesToWalls: () => void;
   addSlab: (points: Point[]) => void;
@@ -301,6 +305,15 @@ export interface PlannerState {
   view3d: boolean;
   /** Split view: the 2D plan and the 3D view side by side, both editable. */
   split: boolean;
+  /**
+   * The Drawings view: the section, elevation or sheet shown (a drawing key such as "section:<id>"
+   * or "elevation:front", or "sheet:<id>"), in place of the plan; null when the plan or 3D is shown.
+   */
+  drawing: string | null;
+  /** Open the Drawings view on a drawing or sheet (the first one when missing). */
+  showDrawing: (key?: string) => void;
+  /** Keep these drawing sheets in the plan (none: go back to the suggested set). */
+  setSheets: (sheets: Sheet[] | undefined) => void;
   /** Text typed into the Measurements box, not yet applied. */
   measureText: string;
   /** What the pointer snapped to, shown as a coloured marker. */
@@ -673,6 +686,7 @@ export function createPlannerStore(
       wallHeightMm: initial.project?.wallHeightMm ?? prefs.wallHeightMm,
       view3d: false,
       split: false,
+      drawing: null,
       measureText: '',
       inference: null,
       axisLock: null,
@@ -785,6 +799,8 @@ export function createPlannerStore(
           shiftLock: null,
           lastCopy: null,
           hoverEdge: null,
+          // Picking a tool goes back to the plan from the Drawings view (Select, Pan and Zoom work there).
+          ...(!['select', 'pan', 'zoom'].includes(tool) && { drawing: null }),
         }));
         // Orbit only turns the 3D view, so it opens it.
         if (tool === 'orbit' && !get().view3d && !get().split) get().setView3d(true);
@@ -1497,6 +1513,20 @@ export function createPlannerStore(
         const line: PlanElement = { id: newId(), type: 'line', x1: a.x, y1: a.y, x2: b.x, y2: b.y };
         updateElements((els) => [...els, onActive(line)]);
       },
+      addSection: (a, b, flip) => {
+        if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
+        const line: PlanElement = {
+          id: newId(),
+          type: 'section',
+          x1: a.x,
+          y1: a.y,
+          x2: b.x,
+          y2: b.y,
+          label: nextSectionLabel(get().doc),
+          ...(flip && { flip: true }),
+        };
+        updateElements((els) => [...els, onActive(line)]);
+      },
       linesToWalls: () => {
         const { doc, selectedIds } = get();
         const lines = doc.elements.filter((el): el is SketchLine => el.type === 'line' && selectedIds.includes(el.id));
@@ -1879,14 +1909,46 @@ export function createPlannerStore(
       },
       setView3d: (view3d) => {
         abandonDraft();
-        set({ view3d, split: false, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
+        set({
+          view3d,
+          split: false,
+          drawing: null,
+          draft: null,
+          inference: null,
+          measureText: '',
+          axisLock: null,
+          shiftLock: null,
+        });
         setActivePicker(view3d);
         if (!view3d && get().tool === 'orbit') get().setTool('select');
       },
       setSplit: (split) => {
-        if (split === get().split) return;
+        if (split === get().split && !get().drawing) return;
         abandonDraft();
-        set({ split, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
+        set({ split, drawing: null, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
+      },
+      setSheets: (sheets) =>
+        get().commit((doc) => {
+          const next: PlanDoc = { ...doc, sheets };
+          if (!sheets) delete next.sheets;
+          return next;
+        }),
+      showDrawing: (key) => {
+        abandonDraft();
+        // Drawings are looked at, not drawn on: put the drawing tool down.
+        if (!['select', 'pan', 'zoom'].includes(get().tool)) get().setTool('select');
+        const first = sideDrawingRefs(get().doc)[0];
+        set({
+          drawing: key ?? get().drawing ?? drawingKey(first),
+          view3d: false,
+          split: false,
+          draft: null,
+          inference: null,
+          measureText: '',
+          axisLock: null,
+          shiftLock: null,
+        });
+        setActivePicker(false);
       },
       setActivePane: (is3d) => {
         if (!get().split || get().view3d === is3d) return;

@@ -26,6 +26,7 @@ import { Welcome } from './Welcome';
 
 // three.js is large, so the 3D view loads the first time it is opened.
 const Plan3DView = lazy(() => import('../three/Plan3DView'));
+const DrawingsView = lazy(() => import('./DrawingsView').then((m) => ({ default: m.DrawingsView })));
 
 type Dialog = 'search' | 'shortcuts' | 'welcome' | 'newProject' | null;
 
@@ -34,6 +35,7 @@ export default function PlannerApp() {
   const svgRef = useRef<SVGSVGElement>(null);
   const view3d = usePlanner((s) => s.view3d);
   const split = usePlanner((s) => s.split);
+  const drawing = usePlanner((s) => s.drawing);
   const warnings = usePlanner((s) => s.warnings);
   const setWarning = usePlanner((s) => s.setWarning);
   const fileName = usePlanner((s) => s.fileName);
@@ -118,7 +120,19 @@ export default function PlannerApp() {
       <div className="flex min-h-0 flex-1">
         <ToolDock area="left" />
         <main className="relative min-w-0 flex-1 overflow-hidden bg-canvas">
-          {split ? <SplitView plan={plan2d} model={model3d} /> : view3d ? model3d : plan2d}
+          {drawing ? (
+            <Suspense
+              fallback={<div className="flex h-full items-center justify-center text-muted">Loading drawings…</div>}
+            >
+              <DrawingsView />
+            </Suspense>
+          ) : split ? (
+            <SplitView plan={plan2d} model={model3d} />
+          ) : view3d ? (
+            model3d
+          ) : (
+            plan2d
+          )}
           {warnings.length > 0 && (
             <div className="pointer-events-none absolute inset-x-0 top-3 flex flex-col items-center gap-2">
               {warnings.map((w) => (

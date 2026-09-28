@@ -11,6 +11,7 @@ import { MaskShape } from './shapes/MaskShape';
 import { OpeningShape } from './shapes/OpeningShape';
 import { RoomShape } from './shapes/RoomShape';
 import { PlotShape, StairShape } from './shapes/SiteShapes';
+import { SectionShape } from './shapes/SectionShape';
 import { SketchLineShape } from './shapes/SketchLineShape';
 import { BeamShape, BlockShape, ColumnShape, SlabShape } from './shapes/StructureShapes';
 import { WallDimension } from './shapes/WallDimension';
@@ -124,6 +125,10 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
 
       {doc.elements.map((el) =>
         el.type === 'slab' ? <SlabShape key={el.id} slab={el} selected={selected.has(el.id)} k={k} /> : null,
+      )}
+
+      {doc.elements.map((el) =>
+        el.type === 'section' ? <SectionShape key={el.id} line={el} selected={selected.has(el.id)} k={k} /> : null,
       )}
 
       {/* Room names and sizes sit on top of furniture, as on a drawing. */}
