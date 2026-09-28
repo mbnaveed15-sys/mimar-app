@@ -4,7 +4,8 @@ import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
 import type { MarlaSqFt, Opening, PlanDoc, Point, Room, Units, Wall } from '../types';
 import { placeWallDimension, thicknessOf, wallExtensions, wallPolygon, wallsOf } from '../walls';
-import { arcOf, directionAlong, isArc, paramAlong, pointAlong } from './arc';
+import { arcOf, directionAlong, isArc, paramAlong, pointAlong, wallPath } from './arc';
+import { isCurtain, metricProject, mullionStops } from './curtain';
 import { MM_PER_UNIT } from './scale';
 import { outlinePoints, plotSides, sideOutward } from './plot';
 import { buildableArea, stairLayout } from './site';
@@ -19,6 +20,7 @@ const LAYERS = {
   'A-WALL': { color: 7, ltype: 'CONTINUOUS' },
   'A-DOOR': { color: 3, ltype: 'CONTINUOUS' },
   'A-GLAZ': { color: 4, ltype: 'CONTINUOUS' },
+  'A-GLAZ-CURT': { color: 4, ltype: 'CONTINUOUS' },
   'A-FURN': { color: 8, ltype: 'CONTINUOUS' },
   'A-FLOR-STRS': { color: 30, ltype: 'CONTINUOUS' },
   'A-AREA': { color: 6, ltype: 'CONTINUOUS' },
@@ -370,9 +372,24 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
     }
 
   for (const wall of walls) {
-    // A basement's retaining walls are RCC: on the structure layers.
-    const layer = wall.kind === 'retaining' ? 'S-WALL-RETN' : 'A-WALL';
+    // A basement's retaining walls are RCC: on the structure layers; glass walls on the glazing ones.
+    const curtain = isCurtain(wall);
+    const layer = wall.kind === 'retaining' ? 'S-WALL-RETN' : curtain ? 'A-GLAZ-CURT' : 'A-WALL';
     const own = openings.filter((o) => o.wallId === wall.id);
+    if (curtain) {
+      // The glass down its middle, and a line across it at each mullion.
+      dxf.poly('A-GLAZ-CURT', wallPath(wall), false);
+      const half = thicknessOf(wall) / 2;
+      for (const t of mullionStops(wall, metricProject(doc))) {
+        const p = pointAlong(wall, t);
+        const d = directionAlong(wall, t);
+        dxf.line(
+          'A-GLAZ-CURT',
+          { x: p.x - d.y * half, y: p.y + d.x * half },
+          { x: p.x + d.y * half, y: p.y - d.x * half },
+        );
+      }
+    }
     // A curved wall's faces are true arcs.
     if (isArc(wall))
       for (const piece of arcWallOutlines(wall, walls, own)) dxf.poly(layer, piece.points, true, piece.bulges);

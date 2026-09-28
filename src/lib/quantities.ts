@@ -6,6 +6,7 @@
 import { pointInPolygon, wallLength } from '../geometry';
 import { directionAlong, pointAlong } from './arc';
 import { openRooms, within } from './voids';
+import { isCurtain } from './curtain';
 import { polygonArea } from '../rooms';
 import { outsideOutline } from './outline';
 import { DOOR_HEAD_MM, WINDOW_HEAD_MM, WINDOW_SILL_MM } from '../three/model';
@@ -71,6 +72,10 @@ export interface FloorQuantities {
   /** Levelling the site (ground floor): earth dug out above the finished ground, and filled in below it, cft. */
   cutCft: number;
   fillCft: number;
+  /** Glass curtain walls: their face less any doors in them, sqft. */
+  glazingSqft: number;
+  /** Pitched roofs: the sloping area of their covering, sqft. */
+  roofSqft: number;
 }
 
 /** A basement floor (raft) assumed 12" thick. */
@@ -119,6 +124,8 @@ function emptyFloor(levelId: string, name: string): FloorQuantities {
     waterproofSqft: 0,
     cutCft: 0,
     fillCft: 0,
+    glazingSqft: 0,
+    roofSqft: 0,
   };
 }
 
@@ -182,6 +189,14 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       const centre = pointAlong(wall, 0.5);
       const under = ground ? site.finishedAt(centre.x, centre.y) : 0;
       const plinth = ground && !wall.kind && !wall.elevMm ? Math.max(0, mmFt(doc.plinthMm - under)) : 0;
+      // A glass curtain wall is glazing, standing on a brick plinth like the other walls.
+      if (isCurtain(wall)) {
+        const doorsSqft = own.filter((o) => o.type === 'door' && !o.flat).reduce((s, o) => s + openingSqft(o, H), 0);
+        q.glazingSqft += Math.max(0, L * H - doorsSqft);
+        q.brickworkCft += L * t * plinth;
+        if (ground && !wall.elevMm) q.foundationRft += L;
+        continue;
+      }
       // Beside a double-height room it carries on up through where the slab would be.
       const u0 = directionAlong(wall, 0.5);
       const probe = (sign: number) => ({

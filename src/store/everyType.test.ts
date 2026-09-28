@@ -6,7 +6,13 @@ import { emptyDoc, normaliseDoc } from '../lib/storage';
 import { buildModel } from '../three/model';
 import { pushPull } from '../lib/pushPull';
 import { sideDrawing } from '../lib/drawings/views';
-import type { PlanDoc, PlanElement, PushFace } from '../types';
+import type { PlanDoc, PlanElement, PushFace, Wall } from '../types';
+import { placeOnArc } from '../lib/arc';
+
+/** A curved wall across the back, bowing out, with a door flat across its curve. */
+const curved: Wall = { id: 'wa', type: 'wall', x1: 500, y1: 400, x2: 0, y2: 400, bow: -60, thickness: 23 };
+/** A glass curtain wall in front, with a door in it. */
+const glass: Wall = { id: 'wc', type: 'wall', x1: 0, y1: -150, x2: 500, y2: -150, thickness: 10, kind: 'curtain' };
 import { createPlannerStore } from './plannerStore';
 
 /** One of every kind of item, so no feature can forget one. */
@@ -141,6 +147,10 @@ const ELEMENTS: PlanElement[] = [
     w: 294.64,
     h: 294.64,
   },
+  curved,
+  { id: 'da', type: 'door', wallId: 'wa', ...placeOnArc(curved, { x: 250, y: 460 }, 91)! },
+  glass,
+  { id: 'dc', type: 'door', wallId: 'wc', x: 250, y: -150, width: 91, angle: 0 },
   { id: 'lv', type: 'level', x: 650, y: 650, zMm: -300 },
   { id: 'lv2', type: 'level', x: -50, y: -50, zMm: 900, approx: true },
   {
@@ -244,6 +254,7 @@ describe('every kind of item', () => {
       'A-WALL',
       'A-DOOR',
       'A-GLAZ',
+      'A-GLAZ-CURT',
       'A-FURN',
       'S-COLS',
       'S-BEAM',

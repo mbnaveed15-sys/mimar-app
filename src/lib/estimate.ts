@@ -23,6 +23,10 @@ export interface Rates {
   paintOutside: number;
   door: number;
   window: number;
+  /** Glass curtain walls (aluminium frame and glass), per sqft. */
+  glazing: number;
+  /** Pitched roofs' covering (tiles on a sloping slab or frame), per sqft of sloping area. */
+  roof: number;
   /** Basement waterproofing (membrane and protection), per sqft. */
   waterproofing: number;
   /** Per sqft of covered area. */
@@ -82,6 +86,8 @@ export const STARTER_RATES: Rates = {
   paintOutside: 75,
   door: 45000,
   window: 1500,
+  glazing: 2400,
+  roof: 650,
   waterproofing: 140,
   electrical: 380,
   plumbing: 450,
@@ -198,6 +204,8 @@ export function estimate(q: FloorQuantities, rates: Rates, ratios: Ratios): Esti
   add('floor-none', 'Floors with no finish chosen', q.flooring.none ?? 0, 'sqft', 'flooring.other');
   add('doors', 'Doors (frame, shutter and fittings)', q.doors, 'no', 'door');
   add('windows', 'Windows (aluminium and glass)', q.windowSqft, 'sqft', 'window');
+  add('glazing', 'Glass curtain walls (aluminium frame and glass)', q.glazingSqft, 'sqft', 'glazing');
+  add('roof', 'Pitched roof covering (sloping area)', q.roofSqft, 'sqft', 'roof');
   add('electrical', 'Electrical wiring and fittings (per sqft covered)', q.coveredSqft, 'sqft', 'electrical', true);
   add('plumbing', 'Plumbing and sanitary fittings (per sqft covered)', q.coveredSqft, 'sqft', 'plumbing', true);
 

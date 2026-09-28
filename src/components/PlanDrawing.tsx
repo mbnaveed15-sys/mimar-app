@@ -5,6 +5,7 @@ import { formatLength } from '../lib/units';
 import { PLAN } from '../theme/plan';
 import type { MarlaSqFt, PlanDoc, Room, Units } from '../types';
 import { labelPoint, wallFaces } from '../rooms';
+import { metricProject } from '../lib/curtain';
 import { DEFAULT_WALL_THICKNESS, openingCover, placeWallDimension, wallsOf } from '../walls';
 import { FurnitureShape } from './shapes/FurnitureShape';
 import { MaskShape } from './shapes/MaskShape';
@@ -95,7 +96,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
         el.type === 'line' ? <SketchLineShape key={el.id} line={el} selected={selected.has(el.id)} k={k} /> : null,
       )}
 
-      <WallsLayer walls={walls} colorOf={colorOf} selected={selected} k={k} />
+      <WallsLayer walls={walls} colorOf={colorOf} selected={selected} k={k} metric={metricProject(doc)} />
 
       {doc.elements.map((el) => {
         const isSelected = selected.has(el.id);

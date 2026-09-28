@@ -23,7 +23,8 @@ import {
   type Wall,
 } from '../types';
 import { isBuildingWall, thicknessOf, wallExtensions, wallsOf } from '../walls';
-import { straightPieces } from '../lib/arc';
+import { paramAlong, pointAlong, straightPieces } from '../lib/arc';
+import { FRAME_MM, isCurtain, metricProject, mullionStops, transomMm } from '../lib/curtain';
 import { groundBeside, lowestAlong, lowestUnder, siteOf, stepOnGround, type TerrainMesh } from './terrain3d';
 
 export type { TerrainKind, TerrainMesh } from './terrain3d';
@@ -217,6 +218,87 @@ function curvedWallParts(wall: Wall, walls: Wall[], openings: Opening[], heightM
     out.panels.push(...parts.panels);
   }
   return out;
+}
+
+/**
+ * A glass curtain wall: a flat pane of glass between each pair of mullions (so a curved one is flat
+ * panes round the curve), in a frame of mullions, a rail at the foot and head, and a transom. Over a
+ * door, the glass starts at the door's head.
+ */
+function curtainParts(wall: Wall, openings: Opening[], heightMm: number, metric: boolean): WallParts {
+  const L = wallLength(wall);
+  if (!L) return { solids: [], panels: [] };
+  const top = mmToM(heightMm);
+  const frame = FRAME_MM / MM_PER_UNIT;
+  const depth = m(thicknessOf(wall));
+  const rail = mmToM(FRAME_MM);
+  const transom = transomMm(wall, heightMm);
+  const doors = openings
+    .filter((o) => o.type === 'door' && !o.flat)
+    .map((o) => {
+      const s = paramAlong(wall, o) * L;
+      return [s - o.width / 2, s + o.width / 2] as const;
+    });
+  const head = mmToM(DOOR_HEAD_MM);
+  const solids: Solid[] = [];
+  const stops = mullionStops(wall, metric);
+  stops.forEach((t0, i) => {
+    const a = pointAlong(wall, t0);
+    // Each mullion stands square to the pane after it (the last to the pane before it).
+    const [p0, p1] = i + 1 < stops.length ? [t0, stops[i + 1]] : [stops[i - 1], t0];
+    const pa = pointAlong(wall, p0);
+    const pb = pointAlong(wall, p1);
+    const angle = (Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180) / Math.PI;
+    const rotY = (-angle * Math.PI) / 180;
+    const box = (origin: Point, s0: number, s1: number, y0: number, y1: number, role: Solid['role'], d = depth) => ({
+      ...toScene(origin, angle, { x: (s0 + s1) / 2, y: 0 }),
+      y0,
+      h: y1 - y0,
+      w: m(s1 - s0),
+      d,
+      rotY,
+      color: role === 'glass' ? GLASS_COLOR : FRAME_COLOR,
+      ...(role === 'glass' && { opacity: 0.35 }),
+      role,
+    });
+    solids.push(box(a, -frame / 2, frame / 2, 0, top, 'wall'));
+    if (i + 1 >= stops.length) return;
+    // The pane from this mullion to the next, flat between them.
+    const span = Math.hypot(pb.x - pa.x, pb.y - pa.y);
+    const run = (stops[i + 1] - t0) * L;
+    const [s0, s1] = [frame / 2, span - frame / 2];
+    if (s1 <= s0) return;
+    // Doors in it, along the pane: the glass and the foot rail stop there, up to the door's head.
+    const cut = doors
+      .map(([d0, d1]) => [((d0 - t0 * L) / run) * span, ((d1 - t0 * L) / run) * span] as const)
+      .filter(([d0, d1]) => d1 > s0 && d0 < s1)
+      .map(([d0, d1]) => [Math.max(s0, d0), Math.min(s1, d1)] as const)
+      .sort((x, y) => x[0] - y[0]);
+    const clear: [number, number][] = [];
+    let at = s0;
+    for (const [d0, d1] of cut) {
+      if (d0 > at) clear.push([at, d0]);
+      at = Math.max(at, d1);
+    }
+    if (at < s1) clear.push([at, s1]);
+    solids.push(box(pa, s0, s1, top - rail, top, 'wall'));
+    for (const [c0, c1] of clear) solids.push(box(pa, c0, c1, 0, rail, 'wall'));
+    if (transom !== null) solids.push(box(pa, s0, s1, mmToM(transom) - rail / 2, mmToM(transom) + rail / 2, 'wall'));
+    const glass = (c0: number, c1: number, y0: number, y1: number) => {
+      if (y1 - y0 > 0.001 && c1 - c0 > 0.001) solids.push(box(pa, c0, c1, y0, y1, 'glass', 0.012));
+    };
+    // The glass, split at the transom; over a door, only above its head.
+    const bands = (y0: number, y1: number) =>
+      transom !== null && mmToM(transom) > y0 && mmToM(transom) < y1
+        ? [
+            [y0, mmToM(transom) - rail / 2],
+            [mmToM(transom) + rail / 2, y1],
+          ]
+        : [[y0, y1]];
+    for (const [c0, c1] of clear) for (const [y0, y1] of bands(rail, top - rail)) glass(c0, c1, y0, y1);
+    for (const [d0, d1] of cut) for (const [y0, y1] of bands(head, top - rail)) glass(d0, d1, y0, y1);
+  });
+  return { solids, panels: [] };
 }
 
 function wallParts(
@@ -811,6 +893,8 @@ export function levelBaseM(doc: PlanDoc, levelId: string, wallHeightMm: number):
  * storey is the wall height plus a slab. Ground-floor walls also run down through the plinth.
  */
 export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
+  // Curtain walls' mullions default to 4' in a house, 1.2 m in a metric project.
+  const metric = metricProject(doc);
   const colorOf = (id?: string) => doc.materials.find((mat) => mat.id === id)?.color;
   const finishOf = (id?: string, fallback?: Pattern): Finish | undefined => {
     const mat = doc.materials.find((x) => x.id === id);
@@ -893,7 +977,9 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       // A boundary wall stands on the natural ground, not on the plinth.
       const onGround = wall.kind === 'boundary' && ground;
       const place = <T extends Part>(s: T): T => from(wall.id)(raise(wall)(onGround ? s : lift(s)));
-      const parts = curvedWallParts(wall, walls, own, height);
+      const parts = isCurtain(wall)
+        ? curtainParts(wall, own, height, metric)
+        : curvedWallParts(wall, walls, own, height);
       // On sloping or levelled ground it steps down the slope; parts of it over openings rise with the ground.
       const stepped = onGround && terrain ? parts.solids.flatMap((s) => stepOnGround(s, terrain)) : parts.solids;
       const panelsOf =

@@ -25,6 +25,7 @@ import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KIND
 import { CURTAIN_MM, thicknessOf } from '../walls';
 import { bowForRadius, isArc, radiusOf } from '../lib/arc';
 import { levelAbove } from '../lib/voids';
+import { metricProject, mullionSpacingMm, TRANSOM_MM } from '../lib/curtain';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { LengthField } from './LengthField';
 import { PlotBylawsPanel } from './PlotBylaws';
@@ -244,6 +245,26 @@ export function Inspector() {
                     {label}
                   </button>
                 ))}
+              </div>
+            )}
+            {el.type === 'wall' && el.kind === 'curtain' && (
+              <div className="grid grid-cols-2 gap-2" data-testid="curtain-fields">
+                <LengthField
+                  id="curtain-mullions"
+                  label="Mullions at most"
+                  mm={mullionSpacingMm(el, metricProject(doc))}
+                  units={units}
+                  min={300}
+                  onCommit={(mm) => updateElement({ ...el, mullionMm: Math.min(mm, 6000) })}
+                />
+                <LengthField
+                  id="curtain-transom"
+                  label="Transom height (0: none)"
+                  mm={el.transomMm ?? TRANSOM_MM}
+                  units={units}
+                  min={0}
+                  onCommit={(mm) => updateElement({ ...el, transomMm: Math.min(mm, 10000) })}
+                />
               </div>
             )}
             {el.type === 'wall' && (
