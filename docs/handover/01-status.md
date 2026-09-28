@@ -49,7 +49,7 @@ Windows desktop app (Electron) and a web app (GitHub Pages, installable, works o
 ## Checks at 1.35.0
 
 435 unit tests (Vitest, including `src/lib/drawings/*.test.ts` for hidden lines, sections, elevations, levels and
-sheets) and E2E_COUNT browser tests (Playwright, including `e2e/drawings.spec.ts`) pass;
+sheets) and 84 browser tests (Playwright, including `e2e/drawings.spec.ts`) pass;
 `npm run check` (types, lint, format, unit tests, build) is green.
 
 ## Things the owner has decided
