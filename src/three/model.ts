@@ -7,6 +7,7 @@ import { buildableArea, stairLayout } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
 import { basementOf, groundIndex, levelWallMm, slabMm } from '../lib/levels';
 import { outsideOutline } from '../lib/outline';
+import { openRooms, voidsOver, within } from '../lib/voids';
 import {
   GROUND_LEVEL,
   levelOf,
@@ -1008,10 +1009,15 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           id: el.id,
           level: level.id,
         });
-      if (el.type === 'slab')
+      if (el.type === 'slab') {
+        // Double-height rooms under it leave it open over them.
+        const open = openRooms(doc, level.id)
+          .map((r) => r.points)
+          .filter((pts) => within(pts, el.points));
+        const holes = [...(el.holes ?? []), ...open];
         slabs.push({
           points: el.points.map(toXZ),
-          ...(el.holes?.length ? { holes: el.holes.map((h) => h.map(toXZ)) } : {}),
+          ...(holes.length ? { holes: holes.map((h) => h.map(toXZ)) } : {}),
           y0: base + wallTop + mmToM(el.elevMm ?? 0),
           h: m(el.thickness),
           color: colorOf(el.material) ?? CONCRETE,
@@ -1020,6 +1026,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           level: level.id,
           role: 'slab',
         });
+      }
       if (el.type === 'block') {
         // On a slab it stands on the slab's top; otherwise on the floor.
         const host = el.slabId ? els.find((x): x is Slab => x.type === 'slab' && x.id === el.slabId) : undefined;
@@ -1038,9 +1045,14 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         });
       }
     }
+    const voids = voidsOver(doc, level.id).map((v) => v.points);
     for (const r of doc.rooms.filter((room) => levelOf(room) === level.id)) {
+      // No floor over a double-height room below.
+      if (voids.some((v) => within(r.points, v))) continue;
+      const holes = voids.filter((v) => within(v, r.points));
       floors.push({
         points: r.points.map((p) => [m(p.x), m(p.y)] as [number, number]),
+        ...(holes.length ? { holes: holes.map((h) => h.map((p) => [m(p.x), m(p.y)] as [number, number])) } : {}),
         y: base,
         color: colorOf(r.material) ?? DEFAULT_FLOOR,
         finish: finishOf(r.material),

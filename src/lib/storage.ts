@@ -471,6 +471,7 @@ function normaliseRoom(raw: unknown, index: number): Room | null {
     groupId: idOf(obj.groupId),
     defKey: idOf(obj.defKey),
     levelId: idOf(obj.levelId),
+    ...(obj.openAbove === true && { openAbove: true }),
     ...flagsOf(obj),
   };
 }

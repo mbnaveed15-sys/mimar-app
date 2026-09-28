@@ -427,6 +427,8 @@ export interface Room extends Grouped {
   name: string;
   points: Point[];
   material?: Id;
+  /** A double-height room: the floor above is left open over it. */
+  openAbove?: boolean;
 }
 
 /**

@@ -5,6 +5,7 @@
  */
 import { pointInPolygon, wallLength } from '../geometry';
 import { directionAlong, pointAlong } from './arc';
+import { openRooms, within } from './voids';
 import { polygonArea } from '../rooms';
 import { outsideOutline } from './outline';
 import { DOOR_HEAD_MM, WINDOW_HEAD_MM, WINDOW_SILL_MM } from '../three/model';
@@ -161,6 +162,10 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
     const onWall = new Map<string, Opening[]>();
     for (const o of openings) onWall.set(o.wallId, [...(onWall.get(o.wallId) ?? []), o]);
     const wallById = new Map(walls.map((w) => [w.id, w]));
+    // Double-height rooms: no slab over them, and the walls beside them rise through the slab's depth.
+    const open = openRooms(doc, level.id);
+    const openSqft = open.reduce((s, r) => s + areaSqft(r.points), 0);
+    const slabFt = mmFt(slabMm(doc));
 
     for (const wall of walls) {
       const L = wallLength(wall) * FT;
@@ -177,7 +182,15 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       const centre = pointAlong(wall, 0.5);
       const under = ground ? site.finishedAt(centre.x, centre.y) : 0;
       const plinth = ground && !wall.kind && !wall.elevMm ? Math.max(0, mmFt(doc.plinthMm - under)) : 0;
-      const volume = Math.max(0, L * t * (H + plinth) - holes * t + shaped);
+      // Beside a double-height room it carries on up through where the slab would be.
+      const u0 = directionAlong(wall, 0.5);
+      const probe = (sign: number) => ({
+        x: centre.x - u0.y * (thicknessOf(wall) / 2 + 5) * sign,
+        y: centre.y + u0.x * (thicknessOf(wall) / 2 + 5) * sign,
+      });
+      const byVoid = open.some((r) => pointInPolygon(probe(1), r.points) || pointInPolygon(probe(-1), r.points));
+      const up = byVoid && !wall.kind ? slabFt : 0;
+      const volume = Math.max(0, L * t * (H + plinth + up) - holes * t + shaped);
       if (wall.kind === 'retaining') q.retainingCft += volume;
       else if (wall.kind) q.boundaryCft += volume;
       else q.brickworkCft += volume;
@@ -209,9 +222,12 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
 
     for (const el of els) {
       switch (el.type) {
-        case 'slab':
-          q.slabCft += areaSqft(el.points, el.holes) * el.thickness * FT;
+        case 'slab': {
+          // Less the double-height rooms under it.
+          const voids = open.map((r) => r.points).filter((v) => within(v, el.points));
+          q.slabCft += areaSqft(el.points, [...(el.holes ?? []), ...voids]) * el.thickness * FT;
           break;
+        }
         case 'beam':
           q.beamCft += Math.hypot(el.x2 - el.x1, el.y2 - el.y1) * FT * el.width * FT * el.depth * FT;
           break;
@@ -245,7 +261,8 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       q.cutCft = earth.cutM3 * CFT_PER_M3;
       q.fillCft = earth.fillM3 * CFT_PER_M3;
     }
-    if (!els.some((el) => el.type === 'slab')) q.slabEstimateCft = q.coveredSqft * ESTIMATED_SLAB_FT;
+    if (!els.some((el) => el.type === 'slab'))
+      q.slabEstimateCft = Math.max(0, q.coveredSqft - openSqft) * ESTIMATED_SLAB_FT;
     for (const r of rooms) {
       const kind = floorKind(r);
       q.flooring[kind] = (q.flooring[kind] ?? 0) + areaSqft(r.points);

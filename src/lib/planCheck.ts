@@ -28,6 +28,8 @@ import {
   type Wall,
 } from '../types';
 import { isBuildingWall, thicknessOf } from '../walls';
+import { directionAlong, pointAlong, runLength } from './arc';
+import { voidsOver } from './voids';
 
 export type CheckStatus = 'ok' | 'fail' | 'check';
 
@@ -99,14 +101,16 @@ export function builtAreaSqFt(doc: PlanDoc, levelId: string): number {
   // Walls: the half outside the enclosed areas counts too (both halves of a free-standing wall),
   // piece by piece, as a long wall can run past several areas.
   for (const w of walls) {
-    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+    const L = runLength(w);
     if (!L) continue;
     const d = thicknessOf(w) / 2 + 1;
-    const n = { x: (-(w.y2 - w.y1) / L) * d, y: ((w.x2 - w.x1) / L) * d };
     const steps = Math.min(64, Math.max(1, Math.ceil(L / 30)));
     for (let i = 0; i < steps; i++) {
       const t = (i + 0.5) / steps;
-      const mid = { x: w.x1 + (w.x2 - w.x1) * t, y: w.y1 + (w.y2 - w.y1) * t };
+      // Along the curve, for a curved wall.
+      const mid = pointAlong(w, t);
+      const u = directionAlong(w, t);
+      const n = { x: -u.y * d, y: u.x * d };
       const open = [
         { x: mid.x + n.x, y: mid.y + n.y },
         { x: mid.x - n.x, y: mid.y - n.y },
@@ -117,7 +121,9 @@ export function builtAreaSqFt(doc: PlanDoc, levelId: string): number {
   // Rooms not enclosed by walls (a porch drawn on its own, say).
   for (const r of rooms)
     if (!OPEN_AIR.test(r.name) && !inCovered(labelPoint(r.points))) units2 += polygonArea(r.points);
-  return (units2 * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
+  // A double-height room below leaves this floor open over it: counted once, on its own floor.
+  for (const v of voidsOver(doc, levelId)) if (inCovered(labelPoint(v.points))) units2 -= polygonArea(v.points);
+  return (Math.max(0, units2) * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
 }
 
 /** Rooms named as a mumty (stair tower), and floor names that mean the roof. */

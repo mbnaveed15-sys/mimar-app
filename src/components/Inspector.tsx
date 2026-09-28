@@ -24,6 +24,7 @@ import {
 import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
 import { CURTAIN_MM, thicknessOf } from '../walls';
 import { bowForRadius, isArc, radiusOf } from '../lib/arc';
+import { levelAbove } from '../lib/voids';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { LengthField } from './LengthField';
 import { PlotBylawsPanel } from './PlotBylaws';
@@ -141,6 +142,8 @@ export function Inspector() {
   const multi = usePlanner((s) => s.selectedIds.length > 1 || s.selectedGroup() !== null);
   const el = doc.elements.find((e) => e.id === selectedId);
   const room = doc.rooms.find((r) => r.id === selectedId);
+  // A room can be left open to the floor above only when there is one.
+  const hasFloorAbove = usePlanner((s) => !!room && !!levelAbove(s.doc, levelOf(room)));
   const coveredArea = doc.rooms.reduce((sum, r) => sum + roomAreaSqMm(r), 0);
   const toUnits = (mm: number) => mm / MM_PER_UNIT;
   const materialName = (id?: string) => doc.materials.find((m) => m.id === id)?.name;
@@ -741,6 +744,16 @@ export function Inspector() {
               {house && ` · ${formatMarla(roomAreaSqMm(room), marlaSqFt)}`}
             </div>
             <div>Floor: {materialName(room.material) ?? '—'}</div>
+            {hasFloorAbove && (
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={!!room.openAbove}
+                  onChange={(e) => updateRoom({ ...room, openAbove: e.target.checked || undefined })}
+                />
+                Open to above (double height)
+              </label>
+            )}
             <div className="flex flex-wrap gap-2">
               <button onClick={() => applyMaterial(room.id)} className={btn}>
                 Apply selected material

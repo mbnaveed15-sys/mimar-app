@@ -2,7 +2,7 @@ import { elementOutline, fromFurnitureLocal, planBounds, wallLength, wallParam }
 import { openingSymbol } from './openingKinds';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
-import type { MarlaSqFt, Opening, PlanDoc, Point, Units, Wall } from '../types';
+import type { MarlaSqFt, Opening, PlanDoc, Point, Room, Units, Wall } from '../types';
 import { placeWallDimension, thicknessOf, wallExtensions, wallPolygon, wallsOf } from '../walls';
 import { arcOf, directionAlong, isArc, paramAlong, pointAlong } from './arc';
 import { MM_PER_UNIT } from './scale';
@@ -46,6 +46,7 @@ const LAYERS = {
   'C-CTXT-BLDG': { color: 8, ltype: 'CONTINUOUS' },
   'C-CTXT-ROAD': { color: 9, ltype: 'CONTINUOUS' },
   'A-ANNO-LEVL': { color: 2, ltype: 'CONTINUOUS' },
+  'A-FLOR-OPEN': { color: 8, ltype: 'DASHED' },
   'A-ANNO-TTLB': { color: 7, ltype: 'CONTINUOUS' },
 } as const;
 type Layer = keyof typeof LAYERS;
@@ -61,6 +62,8 @@ export interface DxfOptions {
    * none). Worked out from the plan given when missing.
    */
   ground?: GroundOnPlan | null;
+  /** Double-height rooms on the floor below: drawn open to below. */
+  voids?: Room[];
 }
 
 /** Text height on paper-like scale: 150 mm reads well at 1:100. */
@@ -340,6 +343,16 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
   const walls = wallsOf(doc.elements);
   // Shapes only drawn on a wall's face don't cut it (and aren't built), so they're left out.
   const openings = doc.elements.filter((el): el is Opening => (el.type === 'door' || el.type === 'window') && !el.flat);
+
+  // Open to below: the double-height rooms under this floor, dashed and crossed through.
+  for (const v of opts.voids ?? []) {
+    const pts = v.points;
+    const n = pts.length;
+    dxf.poly('A-FLOR-OPEN', pts);
+    dxf.line('A-FLOR-OPEN', pts[0], pts[Math.floor(n / 2)]);
+    dxf.line('A-FLOR-OPEN', pts[Math.floor(n / 4)], pts[Math.floor((3 * n) / 4)]);
+    dxf.text('A-FLOR-OPEN', labelPoint(pts), 'OPEN TO BELOW');
+  }
 
   for (const el of doc.elements)
     if (el.type === 'plot') {

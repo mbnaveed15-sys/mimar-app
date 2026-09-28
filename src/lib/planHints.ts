@@ -24,6 +24,7 @@ import {
   type Wall,
 } from '../types';
 import { isBuildingWall, thicknessOf, wallPolygon } from '../walls';
+import { overlaps, voidsOver } from './voids';
 import { DEFAULT_OPENING_GAP_MM, openingFits } from './openingPlace';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { sideName, toPlan, zoneOf, zoneRects, zoneSamples, type ZoneSide } from '../furniture/useZones';
@@ -217,6 +218,18 @@ export function planHints(
       ids: [item.id],
     });
   }
+
+  // A room drawn over a double-height space: the floor is open there.
+  for (const level of doc.levels)
+    for (const v of voidsOver(doc, level.id))
+      for (const r of doc.rooms)
+        if (!r.hidden && levelOf(r) === level.id && overlaps(r.points, v.points))
+          hints.push({
+            id: `over-void-${r.id}-${v.id}`,
+            kind: 'layout',
+            text: `${level.name}: ${r.name} is drawn over the double-height ${v.name} below, where the floor is open.`,
+            ids: [r.id],
+          });
 
   // Doors and windows closer than the gap to a corner or to each other (drawn before it was kept).
   const gapMm = ctx.gapMm ?? DEFAULT_OPENING_GAP_MM;

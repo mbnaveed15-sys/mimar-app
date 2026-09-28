@@ -3,8 +3,8 @@ import { projectOf } from '../lib/project';
 import { elementOutline, planBounds } from '../geometry';
 import { formatLength } from '../lib/units';
 import { PLAN } from '../theme/plan';
-import type { MarlaSqFt, PlanDoc, Units } from '../types';
-import { wallFaces } from '../rooms';
+import type { MarlaSqFt, PlanDoc, Room, Units } from '../types';
+import { labelPoint, wallFaces } from '../rooms';
 import { DEFAULT_WALL_THICKNESS, openingCover, placeWallDimension, wallsOf } from '../walls';
 import { FurnitureShape } from './shapes/FurnitureShape';
 import { MaskShape } from './shapes/MaskShape';
@@ -35,6 +35,8 @@ export interface PlanDrawingProps {
   accessibleZones?: boolean;
   /** The ground worked out from the levels (contour lines, cut and fill), on the ground floor. */
   ground?: GroundOnPlan | null;
+  /** Double-height rooms on the floor below: the floor is open over them. */
+  voids?: Room[];
 }
 
 /**
@@ -65,6 +67,10 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
       {props.ground && (
         <GroundOverlay contours={props.ground.contours} cutFill={props.ground.cutFill} units={units} k={k} />
       )}
+
+      {props.voids?.map((v) => (
+        <VoidShape key={`void-${v.id}`} room={v} k={k} />
+      ))}
 
       {doc.rooms.map((r) => (
         <RoomShape
@@ -204,3 +210,35 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
     </>
   );
 });
+
+/** A double-height space seen from the floor above: its outline dashed, crossed through, marked open to below. */
+function VoidShape({ room, k }: { room: Room; k: number }) {
+  const pts = room.points;
+  const n = pts.length;
+  const at = labelPoint(pts);
+  // Corner to opposite corner, twice (the two diagonals of a rectangle).
+  const cross = [
+    [pts[0], pts[Math.floor(n / 2)]],
+    [pts[Math.floor(n / 4)], pts[Math.floor((3 * n) / 4)]],
+  ];
+  return (
+    <g data-testid="open-to-below" pointerEvents="none" style={{ stroke: PLAN.inkMuted }} strokeWidth={k}>
+      <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" strokeDasharray={`${6 * k} ${4 * k}`} />
+      {cross.map(([a, b], i) => (
+        <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
+      ))}
+      <text
+        x={at.x}
+        y={at.y}
+        fontSize={11 * k}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        style={{ fill: PLAN.inkMuted, stroke: PLAN.paper }}
+        strokeWidth={3 * k}
+        paintOrder="stroke"
+      >
+        Open to below
+      </text>
+    </g>
+  );
+}

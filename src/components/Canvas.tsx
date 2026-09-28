@@ -11,6 +11,7 @@ import { selectionBounds } from '../lib/selection';
 import { GROUND_LEVEL, levelOf, type Furniture, type PlanElement, type Point, type SectionLine } from '../types';
 import { wallPolygon, wallsOf } from '../walls';
 import { pointAlong } from '../lib/arc';
+import { voidsOver } from '../lib/voids';
 import { DrawingOverlay } from './DrawingOverlay';
 import { CheckMarks } from './CheckMarks';
 import { faceAt2D } from '../lib/faces2d';
@@ -74,6 +75,8 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     () => (activeLevel === GROUND_LEVEL ? groundOnPlan(fullDoc, metric) : null),
     [fullDoc, activeLevel, metric],
   );
+  // Double-height rooms on the floor below leave this floor open over them.
+  const voids = useMemo(() => voidsOver(fullDoc, activeLevel), [fullDoc, activeLevel]);
   const draft = usePlanner((s) => s.draft);
   const inference = usePlanner((s) => s.inference);
   const axisLock = usePlanner((s) => s.axisLock);
@@ -244,6 +247,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         k={k}
         accessibleZones={accessibleZones}
         ground={ground}
+        voids={voids}
       />
 
       {otherSections.map((line) => (

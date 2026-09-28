@@ -6,6 +6,7 @@ import { buildModel, levelBaseM, M_PER_UNIT, type Model3D } from '../../three/mo
 import { levelWallMm, slabMm } from '../levels';
 import { outsideOutline } from '../outline';
 import { isBuildingWall } from '../../walls';
+import { openRooms, voidsOver, within } from '../voids';
 import { sideOutward } from '../plot';
 import { groundOf, type Ground } from '../terrain/ground';
 import { profileAlong } from '../terrain/surface';
@@ -104,12 +105,19 @@ function impliedSlabs(doc: PlanDoc, wallHeightMm: number): Prism[] {
     const outline = outsideOutline(buildingWalls(doc, level.id));
     if (!outline) return;
     const base = levelBaseM(doc, level.id, wallHeightMm);
-    const ring = (y: number): V3[] => outline.map((p) => [p.x * M_PER_UNIT, y, p.y * M_PER_UNIT]);
+    const ring = (y: number, pts: Point[] = outline): V3[] => pts.map((p) => [p.x * M_PER_UNIT, y, p.y * M_PER_UNIT]);
+    // Double-height rooms leave the slab over them open.
+    const voids = (pts: Point[][]) => pts.filter((v) => within(v, outline));
     const below = doc.levels[i - 1];
-    if (!below || !drawn(below.id)) out.push({ rings: [ring(base - slab)], extrude: [0, slab, 0] });
+    if (!below || !drawn(below.id)) {
+      const y = base - slab;
+      const holes = voids(voidsOver(doc, level.id).map((r) => r.points));
+      out.push({ rings: [ring(y), ...holes.map((h) => ring(y, h))], extrude: [0, slab, 0] });
+    }
     if (!drawn(level.id)) {
       const top = base + levelWallMm(doc, level.id, wallHeightMm) / 1000;
-      out.push({ rings: [ring(top)], extrude: [0, slab, 0] });
+      const holes = voids(openRooms(doc, level.id).map((r) => r.points));
+      out.push({ rings: [ring(top), ...holes.map((h) => ring(top, h))], extrude: [0, slab, 0] });
     }
   });
   return out;
