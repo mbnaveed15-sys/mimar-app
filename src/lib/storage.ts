@@ -18,6 +18,7 @@ import {
   type ShapeKind,
   type DoorKind,
   type WindowKind,
+  type WallKind,
 } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
 import { authorityById, type AuthorityId } from './bylaws';
@@ -27,7 +28,7 @@ import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
 
 export const STORAGE_KEY = 'mimar.plan';
 /** 4 added groups and components; 5 added levels, columns, beams and slabs. */
-export const CURRENT_VERSION = 6;
+export const CURRENT_VERSION = 7;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -157,7 +158,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
         x2: num('x2'),
         y2: num('y2'),
         thickness: thickness > 0 ? thickness : undefined,
-        kind: raw.kind === 'boundary' || raw.kind === 'parapet' ? (raw.kind as 'boundary' | 'parapet') : undefined,
+        kind: ['boundary', 'parapet', 'retaining'].includes(raw.kind as string) ? (raw.kind as WallKind) : undefined,
         heightMm: num('heightMm') > 0 ? num('heightMm') : undefined,
         materialA: idOf(raw.materialA),
         materialB: idOf(raw.materialB),
@@ -340,10 +341,17 @@ function readPoints(raw: unknown): Point[] {
 function normaliseLevels(raw: unknown): Level[] {
   const levels = (Array.isArray(raw) ? raw : [])
     .filter((l): l is Record<string, unknown> => isObject(l) && l.id !== undefined)
-    .map((l) => ({ id: String(l.id), name: nameOf(l.name, 'Floor') }));
-  // The ground floor always exists and comes first.
+    .map((l): Level => ({
+      id: String(l.id),
+      name: nameOf(l.name, 'Floor'),
+      ...(l.basement === true && l.id !== GROUND_LEVEL ? { basement: true } : {}),
+      ...(l.basement === true && inRange(l.heightMm, 1800, 9000) ? { heightMm: l.heightMm } : {}),
+    }));
+  // The ground floor always exists; one basement (if any) comes before it, the other floors after.
   const ground = levels.find((l) => l.id === GROUND_LEVEL) ?? defaultLevels()[0];
-  return [ground, ...levels.filter((l) => l.id !== GROUND_LEVEL)];
+  const basement = levels.find((l) => l.basement);
+  const above = levels.filter((l) => l.id !== GROUND_LEVEL && l !== basement).map((l) => ({ id: l.id, name: l.name }));
+  return [...(basement ? [basement] : []), ground, ...above];
 }
 
 function normaliseMask(raw: unknown, index: number): Mask | null {

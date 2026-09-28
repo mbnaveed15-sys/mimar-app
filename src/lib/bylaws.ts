@@ -77,6 +77,11 @@ export interface Authority {
   projection?: { maxMm: number; clause: string };
   /** The mumty (stair tower) on the roof: its largest area, height and width. */
   mumty?: MumtyRule;
+  /**
+   * A basement: under the ground floor only ('house') or anywhere inside the building line
+   * ('building'), and its clear height (least and most).
+   */
+  basement?: { extent: 'house' | 'building'; clearMm?: [number, number]; clause: string };
   /** The largest car porch for a plot size (width × depth, in feet, including the side setback). */
   carPorch?: { sizes: { sqyd: [number, number?]; w: number; d: number }[]; clause: string; note?: string };
   /** Plot sizes to start from, in feet (width along the road × depth). */
@@ -241,6 +246,7 @@ export const AUTHORITIES: Authority[] = [
     boundaryWall: { minMm: ft(3), maxMm: ft(7), clause: '4.1.1' },
     rooms: { rules: CDA_ROOMS, clause: 'Schedule-2' },
     projection: { maxMm: ft(3), clause: 'Schedule-4' },
+    basement: { extent: 'house', clearMm: [ft(8, 6), ft(12)], clause: 'Schedule-I' },
     mumty: {
       area: {
         maxSqFt: ({ plotSqFt, buildableSqFt }) => buildableSqFt / (plotSqFt / 9 <= 200.5 ? 3 : 4),
@@ -354,6 +360,7 @@ export const AUTHORITIES: Authority[] = [
     boundaryWall: { minMm: ft(5, 6), maxMm: ft(7, 6), clause: '8.62.3–8.62.5' },
     rooms: { rules: [{ names: HABITABLE, label: 'Habitable room', minSqFt: 80 }], clause: '8.56.1' },
     minTotalSqFt: { value: 2000, clause: '8.56.5.5' },
+    basement: { extent: 'building', clause: '8.56.5.3' },
     mumty: {
       area: {
         maxSqFt: ({ plotSqFt }) => {
@@ -422,6 +429,7 @@ export const AUTHORITIES: Authority[] = [
       },
     ],
     height: { maxMm: ft(35), clause: 'summary', note: 'From the road crown.' },
+    basement: { extent: 'building', clause: 'summary' },
     boundaryWall: { maxMm: ft(7), clause: 'summary' },
     rooms: { rules: [{ names: HABITABLE, label: 'Room', minSqFt: 100 }], clause: 'summary' },
     presets: [

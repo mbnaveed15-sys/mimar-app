@@ -46,6 +46,7 @@ const RATIO_FIELDS: [keyof Ratios, string][] = [
   ['steelBeam', 'Steel in beams, kg per cft'],
   ['steelColumn', 'Steel in columns, kg per cft'],
   ['steelStair', 'Steel in stairs, kg per cft'],
+  ['steelRetaining', 'Steel in retaining walls, kg per cft'],
   ['footingWidthFt', 'Foundation trench width, ft'],
   ['footingDepthFt', 'Foundation trench depth, ft'],
   ['pccFt', 'PCC bed under foundations, ft'],

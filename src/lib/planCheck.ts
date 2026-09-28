@@ -7,11 +7,15 @@ import { plotRule, plotSetbacks, roomRuleFor, type Authority, type PlotRule } fr
 import { MM_PER_UNIT } from './scale';
 import { isCornerPlot, outlinePoints, plotSides, sideSetbacks, SIDE_KIND_NAMES } from './plot';
 import { buildableArea } from './site';
+import { basementOf, groundIndex } from './levels';
+import { outsideOutline } from './outline';
 import { formatLength, MM_PER_FOOT } from './units';
 import { boxOf, cellFor, GridIndex } from './spatial';
 import { labelPoint, polygonArea, roomAreaSqMm, wallFaces } from '../rooms';
 import { levelBaseM, SLAB_MM } from '../three/model';
 import {
+  BASEMENT_HEIGHT_MM,
+  GROUND_LEVEL,
   levelOf,
   type Id,
   type PlanDoc,
@@ -49,7 +53,7 @@ export interface PlanCheck {
 
 const SQ_MM_PER_SQ_FT = 92903.04;
 const TOLERANCE = 1; // plan units (10 mm)
-const BUILT_KINDS = (w: Wall) => !w.kind;
+const BUILT_KINDS = (w: Wall) => !w.kind || w.kind === 'retaining';
 
 /** A wall's four corners, thickness included. */
 function wallCorners(w: Wall): Point[] {
@@ -125,7 +129,7 @@ export const PORCH_ROOM = /porch|garage/i;
 export function mumtyLevelIds(doc: PlanDoc): Set<string> {
   return new Set(
     doc.levels
-      .slice(1)
+      .slice(groundIndex(doc) + 1)
       .filter((l) => MUMTY_LEVEL.test(l.name) || doc.rooms.some((r) => levelOf(r) === l.id && MUMTY_ROOM.test(r.name)))
       .map((l) => l.id),
   );
@@ -236,7 +240,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       });
 
     const plotSqFt = plotAreaSqFt(plot);
-    const ground = doc.levels[0]?.id ?? 'ground';
+    const ground = GROUND_LEVEL;
     const groundSqFt = builtAreaSqFt(doc, ground);
     if (rule.coveragePct !== undefined && groundSqFt > 0) {
       const cover = (groundSqFt / plotSqFt) * 100;
@@ -249,7 +253,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
         clause: clause(authority.setbackClause),
       });
     }
-    const first = doc.levels.slice(1).find((l) => !mumtyLevelIds(doc).has(l.id))?.id;
+    const first = doc.levels.slice(groundIndex(doc) + 1).find((l) => !mumtyLevelIds(doc).has(l.id))?.id;
     const firstSqFt = first ? builtAreaSqFt(doc, first) : 0;
     if (rule.firstFloorPct !== undefined && firstSqFt > 0 && groundSqFt > 0) {
       const share = (firstSqFt / groundSqFt) * 100;
@@ -276,8 +280,12 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
   // Storeys and height: floors that have ordinary walls, and the top of everything built.
   const built = doc.elements.filter((el) => !el.hidden && el.type !== 'plot' && el.type !== 'line');
   const mumtys = mumtyLevelIds(doc);
+  // A basement isn't a storey.
   const storeyLevels = doc.levels.filter(
-    (l) => !mumtys.has(l.id) && built.some((el) => el.type === 'wall' && BUILT_KINDS(el) && levelOf(el) === l.id),
+    (l) =>
+      !l.basement &&
+      !mumtys.has(l.id) &&
+      built.some((el) => el.type === 'wall' && BUILT_KINDS(el) && levelOf(el) === l.id),
   );
   if (authority.storeys && storeyLevels.length)
     rows.push({
@@ -288,6 +296,61 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       status: storeyLevels.length <= authority.storeys.max ? 'ok' : 'fail',
       clause: clause(authority.storeys.clause),
     });
+  // A basement: where it may go (under the house, or inside the building line) and its clear height.
+  const basement = basementOf(doc);
+  const basementWalls = basement
+    ? doc.elements.filter((el): el is Wall => el.type === 'wall' && !el.hidden && levelOf(el) === basement.id)
+    : [];
+  if (basement && basementWalls.length) {
+    const br = authority.basement;
+    if (!br)
+      rows.push({
+        id: 'basement',
+        label: 'Basement',
+        required: 'Not in Mimar’s tables for this authority yet',
+        actual: 'Drawn',
+        status: 'check',
+        clause: clause(authority.setbackClause),
+      });
+    else {
+      const groundWalls = doc.elements.filter(
+        (el): el is Wall => el.type === 'wall' && !el.hidden && !el.kind && levelOf(el) === GROUND_LEVEL,
+      );
+      const area =
+        br.extent === 'house'
+          ? outsideOutline(groundWalls)
+          : buildableArea(rule ? { ...plot, setbacks: plotSetbacks(rule) } : plot);
+      const out = area ? basementWalls.filter((w) => wallCorners(w).some((p) => !inside(p, area))) : [];
+      rows.push({
+        id: 'basement-extent',
+        label: 'Basement extent',
+        required: br.extent === 'house' ? 'Under the ground floor only' : 'Inside the building line',
+        actual: !area
+          ? 'Draw the ground floor to check'
+          : out.length
+            ? `${out.length} ${out.length === 1 ? 'wall reaches' : 'walls reach'} beyond it`
+            : br.extent === 'house'
+              ? 'Under the ground floor'
+              : 'Inside the building line',
+        status: !area ? 'check' : out.length ? 'fail' : 'ok',
+        clause: clause(br.clause),
+        ids: out.map((w) => w.id),
+      });
+      if (br.clearMm) {
+        const h = basement.heightMm ?? BASEMENT_HEIGHT_MM;
+        const [lo, hi] = br.clearMm;
+        rows.push({
+          id: 'basement-height',
+          label: 'Basement clear height',
+          required: `${len(lo)} to ${len(hi)}`,
+          actual: len(h),
+          status: h >= lo - 1 && h <= hi + 1 ? 'ok' : 'fail',
+          clause: clause(br.clause),
+        });
+      }
+    }
+  }
+
   const withMumty = authority.height?.withMumty !== false;
   const topMm = buildingTopMm(
     doc,
@@ -418,7 +481,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
 
   // Car porches, by the rooms named so on the ground floor.
   if (authority.carPorch) {
-    const ground = doc.levels[0]?.id ?? 'ground';
+    const ground = GROUND_LEVEL;
     const porches = doc.rooms.filter((r) => !r.hidden && levelOf(r) === ground && PORCH_ROOM.test(r.name));
     const sqyd = plotAreaSqFt(plot) / 9;
     const size = authority.carPorch.sizes.find(
@@ -536,11 +599,9 @@ function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: number)
     if (el.type === 'slab') top = Math.max(top, base + wallHeightMm + el.thickness * MM_PER_UNIT);
     if (el.type === 'block' && el.heightMm > 0) top = Math.max(top, base + el.heightMm);
   }
-  // A floor with walls carries a slab over it even when none is drawn.
-  const floors = doc.levels.filter((l) =>
-    built.some((el) => el.type === 'wall' && !el.kind && levelOf(el) === l.id),
-  ).length;
-  if (floors)
-    top = Math.max(top, levelBaseM(doc, doc.levels[floors - 1].id, wallHeightMm) * 1000 + wallHeightMm + SLAB_MM);
+  // A floor with walls carries a slab over it even when none is drawn (a basement's is below the ground).
+  for (const l of doc.levels)
+    if (!l.basement && built.some((el) => el.type === 'wall' && !el.kind && levelOf(el) === l.id))
+      top = Math.max(top, levelBaseM(doc, l.id, wallHeightMm) * 1000 + wallHeightMm + SLAB_MM);
   return top;
 }

@@ -25,6 +25,7 @@ export type RoomKind =
   | 'servant'
   | 'stair'
   | 'powder'
+  | 'gym'
   | 'passage';
 
 /** Kinds of room with a size the owner can set. */
@@ -53,6 +54,7 @@ export const DEFAULT_SIZES: Record<SizedKind, RoomSize> = {
   servant: { w: 9, d: 10, minW: 8 },
   stair: { w: 7.5, d: 11, minW: 6.5 },
   powder: { w: 5, d: 7, minW: 4.5 },
+  gym: { w: 12, d: 14, minW: 10 },
 };
 
 export const ROOM_NAMES: Record<RoomKind, string> = {
@@ -70,6 +72,7 @@ export const ROOM_NAMES: Record<RoomKind, string> = {
   servant: 'Servant room',
   stair: 'Stair',
   powder: 'Guest bath',
+  gym: 'Gym',
   passage: 'Passage',
 };
 
@@ -87,6 +90,12 @@ export interface Program {
   servant: boolean;
   stair: boolean;
   powder: boolean;
+  /**
+   * A basement's list instead: a hall (in place of the lounge), a gym, the servant room with its own
+   * bath, store, laundry, guest bath and stair; no kitchen, porch or daylight.
+   */
+  basement?: boolean;
+  gym?: boolean;
   /** Sizes that differ from the usual ones. */
   sizes?: Partial<Record<SizedKind, { w: number; d: number }>>;
 }
@@ -161,6 +170,14 @@ export function sizeOf(program: Program, kind: SizedKind): RoomSize {
 /** The rooms a program asks for, bedrooms (the master first) with their attached baths. */
 function roomsOf(program: Program): { kind: SizedKind; name: string; bath?: boolean }[] {
   const out: { kind: SizedKind; name: string; bath?: boolean }[] = [];
+  if (program.basement) {
+    out.push({ kind: 'lounge', name: 'Hall' });
+    if (program.gym) out.push({ kind: 'gym', name: ROOM_NAMES.gym });
+    if (program.servant) out.push({ kind: 'servant', name: ROOM_NAMES.servant, bath: true });
+    for (const k of ['store', 'laundry', 'powder', 'stair'] as const)
+      if (program[k]) out.push({ kind: k, name: ROOM_NAMES[k] });
+    return out;
+  }
   const beds = Math.max(0, Math.min(8, Math.round(program.bedrooms)));
   for (let i = 0; i < beds; i++)
     out.push({
@@ -208,6 +225,7 @@ const BANDS: Record<SizedKind, ('front' | 'middle' | 'back')[]> = {
   laundry: ['middle', 'back'],
   powder: ['middle', 'front'],
   servant: ['back', 'front', 'middle'],
+  gym: ['back', 'middle', 'front'],
 };
 
 /** How readily a room takes spare width. */
@@ -417,7 +435,12 @@ function candidate(program: Program, W: number, D: number, rand: () => number): 
         const index = rooms.length;
         if (it.bath) {
           const b = sizeOf(program, 'bath');
-          const bathName = it.kind === 'master' ? 'Master bath' : `Bath ${it.name.replace(/\D+/g, '') || index}`;
+          const bathName =
+            it.kind === 'master'
+              ? 'Master bath'
+              : it.kind === 'servant'
+                ? 'Servant bath'
+                : `Bath ${it.name.replace(/\D+/g, '') || index}`;
           const left = rand() < 0.5;
           const atFar = name !== 'front';
           const bw = Math.max(ft(b.minW), Math.min(ft(b.w), rw(cell)));
@@ -488,6 +511,7 @@ const ENTERED_FROM: Record<RoomKind, RoomKind[]> = {
   powder: ['lounge', 'passage', 'stair', 'drawing', 'dining'],
   servant: ['kitchen', 'passage', 'lounge'],
   porch: [],
+  gym: ['lounge', 'passage', 'stair'],
 };
 
 /** Rooms nobody should have to walk through. */
@@ -501,6 +525,7 @@ const THROUGH_NOT = new Set<RoomKind>([
   'laundry',
   'prayer',
   'servant',
+  'gym',
 ]);
 
 const DOOR_FT: Partial<Record<RoomKind, number>> = { bath: 2.5, store: 2.5, powder: 2.5, laundry: 2.5 };
@@ -520,11 +545,15 @@ function scorePlan(plan: Layout, program: Program): Layout {
   const porch = idx('porch');
   const need = (w: number) => ft(w + 2);
 
-  // The main entrance: from the porch, or the road side, into the lounge; failing that, through the drawing room.
+  // The main entrance: from the porch, or the road side, into the lounge; failing that, through the
+  // drawing room. A basement is entered by its stair, which opens onto its hall.
   const drawing = idx('drawing');
+  const basement = !!program.basement;
   const roadSide = (i: number) => outside(rooms[i], W, D, { front: true, back: false, ends: false });
   let viaDrawing = false;
-  if (porch >= 0 && shared(rooms[porch], rooms[lounge]) >= need(3.5))
+  if (basement) {
+    // No way in from outside to find.
+  } else if (porch >= 0 && shared(rooms[porch], rooms[lounge]) >= need(3.5))
     doors.push({ a: lounge, b: porch, widthFt: 3.5, main: true });
   else if (roadSide(lounge) >= need(3.5)) doors.push({ a: lounge, b: 'out', widthFt: 3.5, main: true });
   else if (drawing >= 0 && shared(rooms[drawing], rooms[lounge]) >= need(3)) {
@@ -564,6 +593,7 @@ function scorePlan(plan: Layout, program: Program): Layout {
     'store',
     'laundry',
     'servant',
+    'gym',
   ];
   const pending = rooms.map((_, i) => i).filter((i) => i !== lounge && i !== porch && rooms[i].kind !== 'bath');
   pending.sort((a, b) => order.indexOf(rooms[a].kind) - order.indexOf(rooms[b].kind));
@@ -637,8 +667,8 @@ function scorePlan(plan: Layout, program: Program): Layout {
     if (long / Math.max(narrow, 1) > 2.2 && r.kind !== 'porch' && r.kind !== 'stair')
       score += (long / narrow - 2.2) * 3;
   }
-  // Daylight: rooms that want it on an outside wall (not onto the porch).
-  for (const r of rooms) {
+  // Daylight: rooms that want it on an outside wall (not onto the porch). None in a basement.
+  for (const r of basement ? [] : rooms) {
     const weight = DAYLIGHT[r.kind];
     if (!weight) continue;
     if (outside(r, W, D) < ft(4)) {
@@ -649,10 +679,10 @@ function scorePlan(plan: Layout, program: Program): Layout {
   // The kitchen by the dining room or lounge.
   const kitchen = idx('kitchen');
   const dining = idx('dining');
-  if (!(
-    (dining >= 0 && shared(rooms[kitchen], rooms[dining]) > ft(2)) ||
-    shared(rooms[kitchen], rooms[lounge]) > ft(2)
-  )) {
+  if (
+    kitchen >= 0 &&
+    !((dining >= 0 && shared(rooms[kitchen], rooms[dining]) > ft(2)) || shared(rooms[kitchen], rooms[lounge]) > ft(2))
+  ) {
     score += 4;
     notes.push('The kitchen isn’t next to the dining room or lounge.');
   }

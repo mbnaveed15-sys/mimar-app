@@ -211,6 +211,7 @@ function buildMeshes(model: Model3D): THREE.Group {
     if (floor.points.length < 3) continue;
     // Shapes are drawn in x/y; turning them flat maps shape y to -z, so flip z here.
     const shape = new THREE.Shape(floor.points.map(([x, z]) => new THREE.Vector2(x, -z)));
+    for (const h of floor.holes ?? []) shape.holes.push(new THREE.Path(h.map(([x, z]) => new THREE.Vector2(x, -z))));
     const geometry = new THREE.ShapeGeometry(shape);
     geometry.rotateX(-Math.PI / 2);
     const mesh = new THREE.Mesh(geometry, material(floor.color, floor.opacity ?? 1, floor.finish));

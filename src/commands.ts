@@ -388,6 +388,14 @@ export function buildCommands(ctx: CommandContext): Command[] {
       enabled: (s) => s.doc.levels.findIndex((l) => l.id === s.activeLevel) > 0,
     },
     { id: 'view.addLevel', label: 'Add floor above', menu: 'view', group: 0, run: () => st().addLevel() },
+    {
+      id: 'view.addBasement',
+      label: 'Add basement below',
+      menu: 'view',
+      group: 0,
+      run: () => st().addBasement(),
+      enabled: (s) => !s.doc.levels.some((l) => l.basement),
+    },
     // In 3D these move the camera; in the plan, the 2D view.
     {
       id: 'view.zoomIn',

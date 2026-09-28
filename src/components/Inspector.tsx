@@ -169,6 +169,7 @@ export function Inspector() {
                     [undefined, 'Wall'],
                     ['boundary', 'Boundary'],
                     ['parapet', 'Parapet'],
+                    ['retaining', 'Retaining'],
                   ] as const
                 ).map(([kind, label]) => (
                   <button

@@ -5,7 +5,10 @@ import { doorKindOf } from '../lib/openingKinds';
 import { openingProfileMm } from '../lib/shapes';
 import { buildableArea, stairLayout } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
+import { basementOf, groundIndex, levelWallMm } from '../lib/levels';
+import { outsideOutline } from '../lib/outline';
 import {
+  GROUND_LEVEL,
   levelOf,
   type Beam,
   type Column,
@@ -103,6 +106,8 @@ export interface Floor {
   finish?: Finish;
   /** Less than 1 to let the drawing grid show through (the plot's grass). */
   opacity?: number;
+  /** Openings in it (the lawn over a basement). */
+  holes?: [number, number][][];
   id?: string;
   level?: string;
 }
@@ -719,13 +724,18 @@ type Part = { y0: number; id?: string; level?: string };
 
 const toXZ = (p: Point): [number, number] => [m(p.x), m(p.y)];
 
-/** Height (metres) of a floor's finished level: the plinth plus a storey (walls and slab) per floor below. */
+/**
+ * Height (metres) of a floor's finished level: the plinth plus a storey (walls and slab) per floor
+ * between it and the ground floor; a basement is below the ground floor by its slab and its height.
+ */
 export function levelBaseM(doc: PlanDoc, levelId: string, wallHeightMm: number): number {
-  const i = Math.max(
-    0,
-    doc.levels.findIndex((l) => l.id === levelId),
-  );
-  return mmToM(doc.plinthMm) + i * mmToM(wallHeightMm + SLAB_MM);
+  const g = groundIndex(doc);
+  const found = doc.levels.findIndex((l) => l.id === levelId);
+  const i = found < 0 ? g : found;
+  if (i >= g) return mmToM(doc.plinthMm) + (i - g) * mmToM(wallHeightMm + SLAB_MM);
+  let base = mmToM(doc.plinthMm);
+  for (let k = g - 1; k >= i; k--) base -= mmToM(SLAB_MM + levelWallMm(doc, doc.levels[k].id, wallHeightMm));
+  return base;
 }
 
 /**
@@ -754,12 +764,22 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const blocks: Slab3D[] = [];
   const panels: Panel[] = [];
   const plinth = mmToM(doc.plinthMm);
-  const wallTop = mmToM(options.wallHeightMm);
-  const storey = mmToM(options.wallHeightMm + SLAB_MM);
   const levels = doc.levels.length ? doc.levels : [{ id: 'ground', name: 'Ground floor' }];
+  // The lawn opens over the basement, round the outside of its walls.
+  const basement = basementOf(doc);
+  const pitOutline = basement
+    ? outsideOutline(
+        doc.elements.filter((el): el is Wall => el.type === 'wall' && !el.hidden && levelOf(el) === basement.id),
+      )
+    : null;
+  const pit = pitOutline ? [pitOutline.map((p) => [m(p.x), m(p.y)] as [number, number])] : [];
 
-  levels.forEach((level, i) => {
-    const base = plinth + i * storey;
+  levels.forEach((level) => {
+    const base = doc.levels.length ? levelBaseM(doc, level.id, options.wallHeightMm) : plinth;
+    const ground = level.id === GROUND_LEVEL;
+    // A basement's walls, columns and slab over it go to its own height.
+    const levelMm = levelWallMm(doc, level.id, options.wallHeightMm);
+    const wallTop = mmToM(levelMm);
     const lift = <T extends Part>(s: T): T => ({ ...s, y0: s.y0 + base });
     /** Raise an item's parts by its height above the floor. */
     const raise =
@@ -776,8 +796,10 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
 
     for (const wall of walls) {
       const own = openings.filter((o) => o.wallId === wall.id);
-      const color = colorOf(wall.material);
-      const finish = finishOf(wall.material);
+      // A retaining wall looks like concrete until it is painted.
+      const retaining = wall.kind === 'retaining';
+      const color = colorOf(wall.material) ?? (retaining ? CONCRETE : undefined);
+      const finish = finishOf(wall.material, retaining ? 'concrete' : undefined);
       const look = (id?: string): Look | undefined => {
         const c = colorOf(id);
         return c ? { color: c, finish: finishOf(id) } : undefined;
@@ -786,23 +808,23 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       const sides: Sides | undefined = a || b ? { plus: a, minus: b } : undefined;
       const paint = <T extends Solid | Panel>(s: T): T =>
         s.role === 'wall' && (color || sides) ? { ...s, ...(color && { color, finish }), ...(sides && { sides }) } : s;
-      const height = wall.heightMm ?? options.wallHeightMm;
+      const height = wall.heightMm ?? levelMm;
       // A boundary wall stands on the natural ground, not on the plinth.
-      const onGround = wall.kind === 'boundary' && i === 0;
+      const onGround = wall.kind === 'boundary' && ground;
       const place = <T extends Part>(s: T): T => from(wall.id)(raise(wall)(onGround ? s : lift(s)));
       const parts = wallParts(wall, walls, own, height);
       solids.push(...parts.solids.map(paint).map(place));
       panels.push(...parts.panels.map(paint).map(place));
       if (wall.kind) continue;
       // The plinth: ground-floor walls carry on down to the ground (not under a raised wall).
-      if (i === 0 && plinth > 0 && !wall.elevMm)
+      if (ground && plinth > 0 && !wall.elevMm)
         solids.push(...wallParts(wall, walls, [], doc.plinthMm).solids.map(paint).map(from(wall.id)));
     }
     for (const door of openings) {
       const host = walls.find((w) => w.id === door.wallId);
       if (door.type !== 'door' || !host) continue;
-      const leaves = doorLeaves(door, host.heightMm ?? options.wallHeightMm, m(thicknessOf(host))).map(raise(host));
-      solids.push(...(host.kind === 'boundary' && i === 0 ? leaves : leaves.map(lift)).map(from(door.id)));
+      const leaves = doorLeaves(door, host.heightMm ?? levelMm, m(thicknessOf(host))).map(raise(host));
+      solids.push(...(host.kind === 'boundary' && ground ? leaves : leaves.map(lift)).map(from(door.id)));
     }
     for (const el of els) {
       if (el.type === 'furniture' && options.showFurniture)
@@ -832,21 +854,22 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       }
       if (el.type === 'stair') {
         // Steps up the plinth start from the natural ground; others from the floor they are on.
-        const fromGround = i === 0 && Math.abs(el.riseMm - doc.plinthMm) < 1 && !el.elevMm;
+        const fromGround = ground && Math.abs(el.riseMm - doc.plinthMm) < 1 && !el.elevMm;
         const parts = stairSolids(el, colorOf(el.material)).map(withFinish(el.material, 'concrete'));
         solids.push(...(fromGround ? parts : parts.map(lift)).map(raise(el)).map(from(el.id)));
       }
-      if (el.type === 'plot' && i === 0) {
+      if (el.type === 'plot' && ground) {
         const line = buildableArea(el);
         if (line.length >= 3) guides.push({ points: line.map((p) => [m(p.x), m(p.y)]), y: 0.012, level: level.id });
       }
-      if (el.type === 'plot' && i === 0)
+      if (el.type === 'plot' && ground)
         floors.push({
           points: outlinePoints(el).map((p) => [m(p.x), m(p.y)] as [number, number]),
           y: 0,
           color: colorOf(el.material) ?? LAWN,
           finish: finishOf(el.material, 'grass'),
           opacity: 0.82,
+          ...(pit.length ? { holes: pit } : {}),
           id: el.id,
           level: level.id,
         });

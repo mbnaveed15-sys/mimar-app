@@ -213,7 +213,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
     // Where you arrive on this floor: outside on the ground floor, the stairs above it.
     let starts: Id[];
     let from = 'the entrance';
-    if (index === 0) {
+    if (level.id === GROUND_LEVEL) {
       starts = ['out'];
       if (links.length && !links.some((l) => l.a === 'out' || l.b === 'out')) {
         hints.push({
@@ -295,8 +295,16 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
         });
       }
 
+    // A basement gets no daylight: it needs air brought in instead.
+    if (level.basement && indoor.length)
+      hints.push({
+        id: `basement-air-${level.id}`,
+        kind: 'daylight',
+        text: `${level.name}: give it fresh air, with an air shaft or light well, or exhaust fans (it has no outside windows).`,
+        ids: [],
+      });
     // Daylight: an outside wall, a window in it, and window area of a tenth of the floor.
-    if (!mumtys.has(level.id)) {
+    if (!mumtys.has(level.id) && !level.basement) {
       const faces = wallFaces(walls);
       const faceBoxes = faces.map(boxOf);
       const faceIndex = new GridIndex<Point[]>(cellFor(faceBoxes));

@@ -22,9 +22,14 @@ From the 1.23 QA pass (six testers; full reports in the git-ignored `.qa/<tester
 Done: bylaws, plot presets and the plan check (1.22); plan hints, the mumty, car porches and the north arrow (1.23);
 AutoCAD-style 2D (1.24); SketchUp-style 3D (1.25); interface polish (1.26); split view (1.27); quantities and cost (1.28);
 door and window types, plants and garden items (1.29); door and window placing with gaps, and snapping guides (1.29.1); custom plots:
-any shape, per-side types, setbacks and walls, corner plots (1.30); layouts from a room list (1.31).
+any shape, per-side types, setbacks and walls, corner plots (1.30); layouts from a room list (1.31); basements (1.32).
 
-Planned next: **1.32 basements**.
+Planned next: nothing agreed yet; ask the owner (candidates: first-floor plans from the room list, the 2D items
+still open above, and the 3D speed-ups).
+
+Left from basements for later: more than one basement; sloping sites; footings and columns drawn for the
+basement; ramps down for cars; air shafts or light wells drawn for you; basement figures for CDA private schemes,
+Bahria and LDA (the check says "check").
 
 Left from layouts for later: first-floor plans from the same list (over the ground floor's stair); L-shaped and
 irregular plots used fully (plans go in the largest rectangle); furniture placed in the rooms; a lawn or courtyard
