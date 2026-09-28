@@ -24,6 +24,7 @@ import {
 } from '../types';
 import { thicknessOf } from '../walls';
 import { DEFAULT_OPENING_GAP_MM, openingFits } from './openingPlace';
+import { daylightRooms, projectOf, shows } from './project';
 
 export type HintKind = 'reach' | 'daylight' | 'size' | 'layout';
 
@@ -133,6 +134,11 @@ export function tightOpenings(doc: PlanDoc, gap: number): Id[] {
 
 /** Hints for the whole plan. Rooms in `skipSizes` (already too small for the bylaws) get no size hint. */
 export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>; gapMm?: number }): Hint[] {
+  if (!shows(doc, 'hints')) return [];
+  // A house gets every hint; a building its own daylight rooms; a free project only reach and gaps.
+  const type = projectOf(doc).type;
+  const house = type === 'house';
+  const light = daylightRooms(doc) ?? DAYLIGHT;
   const hints: Hint[] = [];
   const len = (mm: number) => formatLength(mm, ctx.units);
 
@@ -253,7 +259,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
           });
           continue;
         }
-        if (!MAIN_ROOM.test(r.name)) continue;
+        if (!house || !MAIN_ROOM.test(r.name)) continue;
         // Reached only by walking through a bedroom?
         const around = walk(starts, (id) => id !== r.id && BEDROOM.test(name(id)));
         if (around.has(r.id)) continue;
@@ -268,7 +274,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
     }
 
     // Prayer rooms opening onto a bath or kitchen.
-    for (const l of links) {
+    for (const l of house ? links : []) {
       const [p, other] = PRAYER.test(name(l.a)) ? [l.a, l.b] : PRAYER.test(name(l.b)) ? [l.b, l.a] : [null, null];
       if (p && other && WET.test(name(other)))
         hints.push({
@@ -282,7 +288,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
     // Kitchens next to the dining room or lounge (a shared wall or a door).
     const sitting = indoor.filter((r) => SITTING.test(r.name) && !KITCHEN.test(r.name));
     const gap = Math.max(0, ...walls.map(thicknessOf)) + REACH * 2;
-    if (sitting.length)
+    if (house && sitting.length)
       for (const k of indoor.filter((r) => KITCHEN.test(r.name) && !SITTING.test(r.name))) {
         const byDoor = neighbours(k.id).some((n) => sitting.some((s) => s.id === n));
         if (byDoor || sitting.some((s) => touches(k.points, s.points, gap) || touches(s.points, k.points, gap)))
@@ -296,7 +302,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
       }
 
     // A basement gets no daylight: it needs air brought in instead.
-    if (level.basement && indoor.length)
+    if (type !== 'free' && level.basement && indoor.length)
       hints.push({
         id: `basement-air-${level.id}`,
         kind: 'daylight',
@@ -304,7 +310,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
         ids: [],
       });
     // Daylight: an outside wall, a window in it, and window area of a tenth of the floor.
-    if (!mumtys.has(level.id) && !level.basement) {
+    if (type !== 'free' && !mumtys.has(level.id) && !level.basement) {
       const faces = wallFaces(walls);
       const faceBoxes = faces.map(boxOf);
       const faceIndex = new GridIndex<Point[]>(cellFor(faceBoxes));
@@ -342,7 +348,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
           if (r && outside(other)) glass.set(r.id, (glass.get(r.id) ?? 0) + sqMm);
         }
       }
-      for (const r of indoor.filter((x) => DAYLIGHT.test(x.name))) {
+      for (const r of indoor.filter((x) => light.test(x.name))) {
         const outerWall = outer.has(r.id);
         const glassSqMm = glass.get(r.id) ?? 0;
         const floor = roomAreaSqMm(r);
@@ -373,7 +379,7 @@ export function planHints(doc: PlanDoc, ctx: { units: Units; skipSizes?: Set<Id>
     }
 
     // Good-practice sizes.
-    for (const r of rooms) {
+    for (const r of house ? rooms : []) {
       if (ctx.skipSizes?.has(r.id)) continue;
       const g = GOOD_SIZES.find((s) => s.names.test(r.name));
       if (!g) continue;

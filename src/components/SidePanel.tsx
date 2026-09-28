@@ -16,6 +16,8 @@ import { ThemePicker } from './ThemePicker';
 import { UpdatePanel } from './UpdatePanel';
 import type { SectionId, useOpenSections } from './useOpenSections';
 import { LayoutPanel } from './LayoutPanel';
+import { ProjectPanel } from './ProjectPanel';
+import { shows } from '../lib/project';
 import { WallThicknessPicker } from './WallThicknessPicker';
 import { CostPanel } from './CostPanel';
 
@@ -92,6 +94,10 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
   const tool = usePlanner((s) => s.tool);
   const hasSelection = usePlanner((s) => s.selectedIds.length > 0);
   const { open, set } = sections;
+  // The sections the project shows.
+  const roomList = usePlanner((s) => shows(s.doc, 'roomList'));
+  const checks = usePlanner((s) => shows(s.doc, 'bylaws') || shows(s.doc, 'hints'));
+  const cost = usePlanner((s) => shows(s.doc, 'cost'));
   const section = (id: SectionId, title: string, children: ReactNode) => (
     <Section id={id} title={title} open={open.includes(id)} onToggle={(on) => set(id, on)}>
       {children}
@@ -109,9 +115,10 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
         {(!hasSelection || tool === 'shape') && <ToolOptions />}
         <Inspector />
       </div>
-      {section('layout', 'Layout from a room list', open.includes('layout') ? <LayoutPanel /> : null)}
-      {section('check', 'Plan check', <PlanCheckPanel />)}
-      {section('cost', 'Quantities & cost', open.includes('cost') ? <CostPanel /> : null)}
+      {section('project', 'Project', open.includes('project') ? <ProjectPanel /> : null)}
+      {roomList && section('layout', 'Layout from a room list', open.includes('layout') ? <LayoutPanel /> : null)}
+      {checks && section('check', 'Plan check', <PlanCheckPanel />)}
+      {cost && section('cost', 'Quantities & cost', open.includes('cost') ? <CostPanel /> : null)}
       {section('materials', 'Materials', <MaterialsPanel />)}
       {section('components', 'Components', <ComponentsPanel />)}
       {section('layers', 'Layers', <LayersPanel />)}

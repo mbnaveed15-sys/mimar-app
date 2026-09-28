@@ -86,6 +86,9 @@ test('save a plan to a file, start a new one, and open it again', async ({ page 
 
   await menu(page, 'File', 'New');
   expect(await page.locator('[data-type="wall"]').count()).toBe(0);
+  // Esc on "What are you making?" keeps a blank house.
+  await expect(page.getByRole('dialog', { name: 'New project' })).toBeVisible();
+  await page.keyboard.press('Escape');
 
   const chooser = page.waitForEvent('filechooser');
   await menu(page, 'File', 'Open…');
@@ -115,6 +118,7 @@ test('asks before discarding unsaved changes, even after a reload', async ({ pag
   await page.keyboard.press('Enter');
   expect((await download).suggestedFilename()).toBe('Untitled.mimar');
   await expect(page.locator('[data-type="wall"]')).toHaveCount(0);
+  await page.getByRole('dialog', { name: 'New project' }).getByRole('button', { name: 'Cancel' }).click();
   // Don't save throws the changes away.
   await tool(page, 'wall');
   await drag(page, [304.8, 304.8], [609.6, 304.8]);

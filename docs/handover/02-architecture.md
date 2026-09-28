@@ -103,6 +103,15 @@ autosaves to local storage on every change.
   `steelRetaining`. Bylaws: `Authority.basement` (`extent`, `clearMm`); plan check rows `basement-extent`,
   `basement-height`, `basement`. Layouts: `Program.basement`/`gym`, `basementOutline`, `buildLayout` options
   `outer`, `noWindows`, `stairAt`; `placeLayout(built, true)` replaces retaining walls too.
+- Projects (1.33): `PlanDoc.project` (`ProjectSettings`: `type` house/free/building, `use`, `units`, `wallHeightMm`,
+  `slabMm`, `panels`); no `project` means a house. `src/lib/project.ts`: `projectOf`, `shows(doc, panel)` (the
+  project's switch, else the type's usual), `unitsFor`, `ROOM_TYPES` per use, `daylightRooms`. `planCheck` returns
+  null and `planHints` [] when switched off, so the panel, marks and PDF all follow; hints drop the house rules
+  (through-bedroom, prayer, kitchen, sizes) for other types, and free projects skip daylight. Store: `newProject`,
+  `setProject` (one undo step), `applyProject` (units, grid, wall height follow the doc, also on undo/open);
+  `setUnits`/`setWallHeightMm` write into the project when there is one. Heights: any floor's `Level.heightMm`
+  (`setLevelHeight`), `levelWallMm`, `slabMm(doc)` (was the `SLAB_MM` constant) and `levelBaseM` sums each floor.
+  UI: `NewProjectDialog` (Dialogs.tsx, after File › New clears the plan), `ProjectPanel.tsx` (section `project`).
 - `src/lib/spatial.ts`: `GridIndex` (buckets for point lookups) and `boxOf`, used by the hints and the covered
   area so they scale to thousands of rooms. `src/store/usePlanCheck.ts` keeps one shared result per change and uses
   the plan from before a drag (`batchBase`) until it is let go. `src/lib/text.ts` `cleanText` strips control

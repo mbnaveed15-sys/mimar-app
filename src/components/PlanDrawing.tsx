@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { projectOf } from '../lib/project';
 import { elementOutline, planBounds } from '../geometry';
 import { formatLength } from '../lib/units';
 import { PLAN } from '../theme/plan';
@@ -35,6 +36,7 @@ export interface PlanDrawingProps {
  */
 export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
   const { doc, selectedIds, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, k } = props;
+  const marla = projectOf(doc).type === 'house' ? marlaSqFt : undefined;
   const walls = wallsOf(doc.elements);
   const wallById = new Map(walls.map((w) => [w.id, w] as const));
   const selected = new Set(selectedIds);
@@ -56,7 +58,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
           color={colorOf(r.material)}
           selected={selected.has(r.id)}
           units={units}
-          marlaSqFt={marlaSqFt}
+          marlaSqFt={marla}
           showLabel={showRoomLabels}
           showFill={showRoomFills}
           k={k}
@@ -121,7 +123,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
           color={colorOf(r.material)}
           selected={selected.has(r.id)}
           units={units}
-          marlaSqFt={marlaSqFt}
+          marlaSqFt={marla}
           showLabel={showRoomLabels}
           showFill={showRoomFills}
           k={k}

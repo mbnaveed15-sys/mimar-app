@@ -43,12 +43,12 @@ import { plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
 import { guessSideKinds, insetPolygon, orientOutline, outlineProblem, plotSides, signedArea2 } from '../lib/plot';
 import { boundaryWallsAlong, buildPlotWalls, syncPlotWalls } from '../lib/plotWalls';
 import { formatLength } from '../lib/units';
-import { basementOf, levelWallMm } from '../lib/levels';
+import { basementOf, levelWallMm, slabMm } from '../lib/levels';
+import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
 import type { Built } from '../lib/layoutBuild';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
 import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from '../lib/layers';
-import { SLAB_MM } from '../three/model';
 import { clampGap, type Hand } from '../lib/openingPlace';
 import { besideOpening, loneOpenings, nounOf, openingAt, refitOpening, tidy } from './openingAt';
 import { setActivePicker } from '../three/picker';
@@ -63,6 +63,9 @@ import type {
   WallKind,
   Plot,
   PlotSide,
+  BuildingUse,
+  ProjectSettings,
+  ProjectType,
   SketchLine,
   Slab,
   Stair,
@@ -506,6 +509,14 @@ export interface PlannerState {
   rotateSelected: (degrees: number) => void;
 
   newPlan: () => void;
+  /** Start a new project of a type (and, for a building, its use), in the units it starts with. */
+  newProject: (type: ProjectType, use?: BuildingUse) => void;
+  /** Change the project's type or settings (one undo step). */
+  setProject: (patch: Partial<ProjectSettings>) => void;
+  /** Take on the project's own units and wall height (after opening or starting one). */
+  applyProject: () => void;
+  /** A floor's own wall height in millimetres (the usual one when undefined). */
+  setLevelHeight: (id: Id, mm: number | undefined) => void;
   loadDocument: (doc: PlanDoc, file: { name: string; path?: string }) => void;
   markSaved: (file: { name: string; path?: string }) => void;
 }
@@ -570,7 +581,7 @@ export function createPlannerStore(
         return {
           kind,
           thickness: RETAINING_MM / MM_PER_UNIT,
-          heightMm: levelWallMm(get().doc, get().activeLevel, get().wallHeightMm) + SLAB_MM,
+          heightMm: levelWallMm(get().doc, get().activeLevel, get().wallHeightMm) + slabMm(get().doc),
         };
       return { kind, heightMm: KIND_HEIGHT_MM[kind] };
     };
@@ -622,12 +633,13 @@ export function createPlannerStore(
       openGroupId: null,
       activeLevel: GROUND_LEVEL,
       brushSize: 24,
-      gridPx: gridFor(prefs.grid, prefs.units),
+      gridPx: gridFor(prefs.grid, initial.project?.units ?? prefs.units),
       scaleMMperPx: MM_PER_UNIT,
       warnings: initialWarning ? [initialWarning] : [],
       draft: null,
 
-      units: prefs.units,
+      // A project's own units and wall height win over the app's.
+      units: initial.project?.units ?? prefs.units,
       showDimensions: prefs.showDimensions,
       showFurniture: prefs.showFurniture,
       showRoomLabels: prefs.showRoomLabels,
@@ -646,7 +658,7 @@ export function createPlannerStore(
         set({ openingStamp, stampQueue: queue && openingStamp.length > 0 }),
       marlaSqFt: prefs.marlaSqFt,
       paper: prefs.paper,
-      wallHeightMm: prefs.wallHeightMm,
+      wallHeightMm: initial.project?.wallHeightMm ?? prefs.wallHeightMm,
       view3d: false,
       split: false,
       measureText: '',
@@ -732,6 +744,7 @@ export function createPlannerStore(
         }
         set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], draft });
         refreshSelection();
+        get().applyProject();
       },
       redo: () => {
         get().endBatch();
@@ -739,6 +752,7 @@ export function createPlannerStore(
         if (!future.length) return;
         set({ doc: future[0], past: [...past, doc], future: future.slice(1), draft: null });
         refreshSelection();
+        get().applyProject();
       },
 
       setTool: (tool) => {
@@ -1228,6 +1242,9 @@ export function createPlannerStore(
       setUnits: (units) => {
         set({ units, gridPx: gridFor(get().grid, units) });
         persistPrefs();
+        // A project keeps its own units.
+        const { doc } = get();
+        if (doc.project && doc.project.units !== units) set({ doc: { ...doc, project: { ...doc.project, units } } });
       },
       setShowDimensions: (showDimensions) => {
         set({ showDimensions });
@@ -1397,7 +1414,7 @@ export function createPlannerStore(
           outline,
           outline.map(() => t / 2),
         ).points;
-        const heightMm = (basement.heightMm ?? BASEMENT_HEIGHT_MM) + SLAB_MM;
+        const heightMm = (basement.heightMm ?? BASEMENT_HEIGHT_MM) + slabMm(doc);
         const walls: Wall[] = line.map((a, i) => {
           const b = line[(i + 1) % line.length];
           return {
@@ -1428,12 +1445,10 @@ export function createPlannerStore(
         get().setWarning(null);
         return true;
       },
-      setBasementHeight: (mm) =>
-        get().commit((doc) => {
-          const b = basementOf(doc);
-          if (!b || Math.abs((b.heightMm ?? BASEMENT_HEIGHT_MM) - mm) < 0.5) return doc;
-          return { ...doc, levels: doc.levels.map((l) => (l === b ? { ...l, heightMm: mm } : l)) };
-        }),
+      setBasementHeight: (mm) => {
+        const b = basementOf(get().doc);
+        if (b && Math.abs((b.heightMm ?? BASEMENT_HEIGHT_MM) - mm) >= 0.5) get().setLevelHeight(b.id, mm);
+      },
       renameLevel: (id, name) =>
         get().commit((doc) =>
           cleanText(name).trim() && doc.levels.some((l) => l.id === id && l.name !== name)
@@ -1742,7 +1757,8 @@ export function createPlannerStore(
       addStair: (p) => {
         const { site, doc, wallHeightMm, activeLevel } = get();
         // A full floor: this floor's height and the slab over it (a basement's own height).
-        const riseMm = site.climb === 'plinth' ? doc.plinthMm : levelWallMm(doc, activeLevel, wallHeightMm) + SLAB_MM;
+        const riseMm =
+          site.climb === 'plinth' ? doc.plinthMm : levelWallMm(doc, activeLevel, wallHeightMm) + slabMm(doc);
         const spec = { shape: site.stairShape, width: site.stairWidthMm / MM_PER_UNIT, riseMm, treadMm: site.treadMm };
         const layout = stairLayout(spec);
         const stair: PlanElement = {
@@ -1819,9 +1835,13 @@ export function createPlannerStore(
         set({ paper });
         persistPrefs();
       },
-      setWallHeightMm: (wallHeightMm) => {
-        set({ wallHeightMm: Math.min(6000, Math.max(2000, wallHeightMm)) });
+      setWallHeightMm: (mm) => {
+        const wallHeightMm = Math.min(6000, Math.max(2000, mm));
+        set({ wallHeightMm });
         persistPrefs();
+        const { doc } = get();
+        if (doc.project && doc.project.wallHeightMm !== wallHeightMm)
+          set({ doc: { ...doc, project: { ...doc.project, wallHeightMm } } });
       },
       setTheme: (theme) => {
         set({ theme });
@@ -2020,8 +2040,45 @@ export function createPlannerStore(
         set({ doc, savedDoc: doc, fileName: DEFAULT_FILE_NAME, filePath: undefined, ...resetHistory });
         get().fitToPlan();
       },
+      newProject: (type, use) => {
+        const units = unitsFor(type);
+        // Free projects and buildings start round: 3 m walls, 200 mm thick.
+        const project: ProjectSettings = {
+          type,
+          ...(type === 'building' ? { use: use ?? 'other' } : {}),
+          units,
+          ...(type !== 'house' ? { wallHeightMm: 3000 } : {}),
+        };
+        const doc = { ...emptyDoc(), project };
+        set({ doc, savedDoc: doc, fileName: DEFAULT_FILE_NAME, filePath: undefined, ...resetHistory });
+        get().applyProject();
+        // A house starts from the bylaws picked before; other projects have none unless asked.
+        if (type !== 'house') {
+          get().setSite({ authority: undefined });
+          get().setWallThicknessMm(200);
+        }
+        get().fitToPlan();
+      },
+      setProject: (patch) => {
+        get().commit((doc) => ({ ...doc, project: { ...projectOf(doc), ...patch } }));
+        get().applyProject();
+      },
+      applyProject: () => {
+        const p = get().doc.project;
+        if (p?.units && p.units !== get().units) set({ units: p.units, gridPx: gridFor(get().grid, p.units) });
+        if (p?.wallHeightMm && p.wallHeightMm !== get().wallHeightMm) set({ wallHeightMm: p.wallHeightMm });
+      },
+      setLevelHeight: (id, mm) =>
+        get().commit((doc) => {
+          const level = doc.levels.find((l) => l.id === id);
+          if (!level || level.heightMm === mm) return doc;
+          const next = { ...level, ...(mm === undefined ? {} : { heightMm: mm }) };
+          if (mm === undefined) delete next.heightMm;
+          return { ...doc, levels: doc.levels.map((l) => (l === level ? next : l)) };
+        }),
       loadDocument: (doc, file) => {
         set({ doc, savedDoc: doc, fileName: file.name, filePath: file.path, ...resetHistory });
+        get().applyProject();
         if (!doc.materials.some((m) => m.id === get().selectedMat)) set({ selectedMat: doc.materials[0]?.id ?? '' });
         get().fitToPlan();
       },

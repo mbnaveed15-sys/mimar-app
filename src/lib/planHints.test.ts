@@ -178,3 +178,31 @@ describe('plan hints', () => {
     expect(performance.now() - start).toBeLessThan(2000);
   });
 });
+
+describe('plan hints by kind of project', () => {
+  it('a free project gets only reach and gap hints: no house rules, sizes or daylight', () => {
+    const doc = { ...docOf(HOUSE, [...ROOMS, room('k', 'Kitchen', 40, 0, 6, 8)]), project: { type: 'free' as const } };
+    const t = texts(doc);
+    expect(t.some((x) => /only reached through|window|small for/.test(x))).toBe(false);
+    expect(texts({ ...doc, elements: HOUSE.filter((el) => el.id !== 'd2') })).toContain('Bedroom 2 has no door.');
+  });
+
+  it("a building's daylight follows its use's room types, and it skips the house's rules", () => {
+    const office = (names: [string, string, string]): PlanDoc => ({
+      ...docOf(
+        HOUSE,
+        ROOMS.map((r, i) => ({ ...r, name: names[i] })),
+      ),
+      project: { type: 'building', use: 'office' },
+    });
+    const t = texts(office(['Open office', 'Store', 'Meeting room']));
+    expect(t).toContain('Meeting room has an outside wall but no window.');
+    expect(t.some((x) => /only reached through|Store/.test(x))).toBe(false);
+    // A bedroom means nothing special in an office.
+    expect(texts(office(['Open office', 'Store', 'Bedroom 2'])).some((x) => /Bedroom 2/.test(x))).toBe(false);
+  });
+
+  it('none at all when the project turns plan hints off', () => {
+    expect(hints({ ...docOf(HOUSE, ROOMS), project: { type: 'house', panels: { hints: false } } })).toEqual([]);
+  });
+});

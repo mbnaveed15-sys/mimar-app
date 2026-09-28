@@ -9,6 +9,7 @@ export function LevelSwitcher() {
   const levels = usePlanner((s) => s.doc.levels);
   const active = usePlanner((s) => s.activeLevel);
   const units = usePlanner((s) => s.units);
+  const wallHeightMm = usePlanner((s) => s.wallHeightMm);
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -71,6 +72,26 @@ export function LevelSwitcher() {
               <span className="w-3" />
               Add basement below
             </button>
+          )}
+          {!current.basement && (
+            <div className="px-2 py-1">
+              <LengthField
+                id="floor-height"
+                label={`Wall height of the ${current.name.toLowerCase()}`}
+                mm={current.heightMm ?? wallHeightMm}
+                units={units}
+                min={2000}
+                onCommit={(mm) => s.setLevelHeight(current.id, Math.min(mm, 9000))}
+              />
+              {current.heightMm !== undefined && (
+                <button
+                  className="m-btn mt-1 px-2 py-0.5 text-xs"
+                  onClick={() => s.setLevelHeight(current.id, undefined)}
+                >
+                  Use the usual height
+                </button>
+              )}
+            </div>
           )}
           {current.basement && (
             <div className="px-2 py-1">
