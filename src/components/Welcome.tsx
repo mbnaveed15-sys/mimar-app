@@ -41,7 +41,7 @@ const STEPS: Step[] = [
   {
     target: '[role="menubar"]',
     title: 'Save, print and share',
-    body: 'File has Save, a PDF to scale, DXF for AutoCAD, and 3D models for SketchUp and Twinmotion. Help › Getting started brings this tour back.',
+    body: 'File has Save, a PDF to scale, DXF for AutoCAD, 3D models for SketchUp and Twinmotion, and IFC for Revit and ArchiCAD. Help › Getting started brings this tour back.',
   },
 ];
 

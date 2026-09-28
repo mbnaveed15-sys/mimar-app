@@ -12,6 +12,7 @@ import { planToDxf, sideDrawingsToDxf } from './exportDxf';
 import { sideDrawingRefs } from './drawings/refs';
 import type { SideDrawing } from './drawings/views';
 import { modelMeshes, toDae, toGlb, toObj } from './export3d';
+import { planToIfc } from './exportIfc';
 import { zip } from './zip';
 import { costCsv, costPdf, costReport } from './costReport';
 import { costStore } from '../store/costStore';
@@ -239,5 +240,22 @@ export function exportModel(format: ModelFormat) {
     }
   } catch (e) {
     s.setWarning(`The 3D model could not be created. ${String(e)}`);
+  }
+}
+
+/** Download the whole building (every floor) as an IFC model for Revit, ArchiCAD and other BIM apps. */
+export function exportIfc() {
+  const s = plannerStore.getState();
+  const doc = s.shownDoc();
+  if (!doc.elements.some((el) => el.type === 'wall' || el.type === 'slab' || el.type === 'column')) {
+    s.setWarning('There is nothing to export yet. Draw some walls first.');
+    return;
+  }
+  const name = baseName(s.fileName);
+  try {
+    const ifc = planToIfc(doc, { wallHeightMm: s.wallHeightMm, name, app: `Mimar ${__APP_VERSION__}` });
+    saveBlob(ifc, 'application/x-step', `${name}.ifc`);
+  } catch (e) {
+    s.setWarning(`The IFC model could not be created. ${String(e)}`);
   }
 }

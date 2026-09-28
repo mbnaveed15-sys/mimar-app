@@ -43,7 +43,7 @@ test('picks materials from the library and paints with them', async ({ page }) =
   await expect(page.getByTestId('plan-3d')).toHaveAttribute('data-floors', '1');
 });
 
-test('exports DXF for AutoCAD and 3D models for SketchUp and Twinmotion', async ({ page }) => {
+test('exports DXF for AutoCAD, 3D models for SketchUp and Twinmotion, and IFC for Revit', async ({ page }) => {
   await drawRoom(page);
   const save = async (item: string) => {
     const [download] = await Promise.all([page.waitForEvent('download'), menu(page, 'File', item)]);
@@ -59,4 +59,10 @@ test('exports DXF for AutoCAD and 3D models for SketchUp and Twinmotion', async 
   const obj = await save('Export 3D: OBJ (other 3D apps)');
   expect(obj.name).toBe('Untitled (OBJ).zip');
   expect(obj.data.readUInt32LE(0)).toBe(0x04034b50);
+  const ifc = await save('Export 3D: IFC (Revit, ArchiCAD)');
+  expect(ifc.name).toBe('Untitled.ifc');
+  const text = ifc.data.toString();
+  expect(text).toContain("FILE_SCHEMA(('IFC4'));");
+  expect(text.match(/=IFCWALL\(/g)).toHaveLength(4);
+  expect(text).toContain('=IFCSPACE(');
 });

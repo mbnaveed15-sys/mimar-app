@@ -20,6 +20,7 @@ import { shapeDraftScene } from '../tools/shapeTools';
 import { clearPicker, getPointer, setPicker, type FaceHit, type Picker3D } from './picker';
 import type { StandardView } from './cameraRig';
 import { isParallel, requestView, setViewControls, toggleParallel } from './viewControls';
+import { lookRuns, mergeParts, partAt, type PartRange } from './merge';
 import { buildModel, levelBaseM, M_PER_UNIT, roofMesh, type Finish, type Model3D, type Sides } from './model';
 
 function hasWebGL(): boolean {
@@ -58,6 +59,8 @@ const keep = <T extends THREE.Material>(m: T): T => {
   return m;
 };
 const EDGE_MATERIAL = keep(new THREE.LineBasicMaterial({ color: '#57534e', transparent: true, opacity: 0.35 }));
+/** The edges of a box one metre each way. */
+const BOX_EDGES = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
 /** A plot's setback line on the ground, dashed as on the plan. */
 const GUIDE_MATERIAL = keep(new THREE.LineDashedMaterial({ color: '#44403c', dashSize: 0.3, gapSize: 0.2 }));
 /** Each mesh's box in the scene, worked out once (the model's meshes don't move once built). */
@@ -199,7 +202,9 @@ function buildMeshes(model: Model3D): THREE.Group {
     mesh.userData = { id: s.id, level: s.level };
     group.add(mesh);
     if (s.role !== 'glass') {
-      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMaterial);
+      // A box's twelve edges, sized to the box (quicker than finding them from its faces).
+      const edges = new THREE.LineSegments(BOX_EDGES.clone(), edgeMaterial);
+      edges.scale.set(geometry.parameters.width, geometry.parameters.height, geometry.parameters.depth);
       edges.position.copy(mesh.position);
       edges.rotation.copy(mesh.rotation);
       edges.userData = { level: s.level };
@@ -427,6 +432,19 @@ function styleMeshes(stage: Stage, s: PlannerState) {
     }
     return m;
   };
+  const fade = (m: THREE.MeshStandardMaterial) => {
+    m.transparent = true;
+    m.opacity = 0.12;
+    m.depthWrite = false;
+  };
+  const redden = (m: THREE.MeshStandardMaterial) => {
+    m.emissive = new THREE.Color('#dc2626');
+    m.emissiveIntensity = 0.6;
+  };
+  const light = (m: THREE.MeshStandardMaterial) => {
+    m.emissive = new THREE.Color('#2563eb');
+    m.emissiveIntensity = 0.45;
+  };
   stage.model.traverse((obj) => {
     const above = levelIndex(s, obj.userData.level) > active;
     if (obj instanceof THREE.LineSegments) {
@@ -434,27 +452,33 @@ function styleMeshes(stage: Stage, s: PlannerState) {
       return;
     }
     if (!(obj instanceof THREE.Mesh)) return;
+    const ranges: PartRange[] | undefined = obj.userData.ranges;
+    if (ranges) {
+      // Merged parts: the selected and erased ones are drawn in their own look through the mesh's groups.
+      const base = obj.userData.base as THREE.Material;
+      const geometry = obj.geometry as THREE.BufferGeometry;
+      obj.userData.pickable = !above && ranges.some((r) => r.id);
+      obj.castShadow = !above && obj.userData.cast;
+      geometry.clearGroups();
+      if (above) obj.material = variant(faded, base, fade);
+      else {
+        const runs = lookRuns(ranges, (id) => (id && erasing.has(id) ? 2 : id && selected.has(id) ? 1 : 0));
+        if (runs.length === 1 && runs[0].look === 0) obj.material = base;
+        else {
+          obj.material = [base, variant(lit, base, light), variant(red, base, redden)];
+          for (const r of runs) geometry.addGroup(r.start, r.count, r.look);
+        }
+      }
+      return;
+    }
     const base: THREE.Material | THREE.Material[] = (obj.userData.base ??= obj.material);
     // A wall with a material per side has a list of them: each gets the look.
     const each = (looks: Map<THREE.Material, THREE.Material>, make: (m: THREE.MeshStandardMaterial) => void) =>
       Array.isArray(base) ? base.map((b) => variant(looks, b, make)) : variant(looks, base, make);
     obj.userData.pickable = !!obj.userData.id && !above;
-    if (above)
-      obj.material = each(faded, (m) => {
-        m.transparent = true;
-        m.opacity = 0.12;
-        m.depthWrite = false;
-      });
-    else if (obj.userData.id && erasing.has(obj.userData.id))
-      obj.material = each(red, (m) => {
-        m.emissive = new THREE.Color('#dc2626');
-        m.emissiveIntensity = 0.6;
-      });
-    else if (obj.userData.id && selected.has(obj.userData.id))
-      obj.material = each(lit, (m) => {
-        m.emissive = new THREE.Color('#2563eb');
-        m.emissiveIntensity = 0.45;
-      });
+    if (above) obj.material = each(faded, fade);
+    else if (obj.userData.id && erasing.has(obj.userData.id)) obj.material = each(red, redden);
+    else if (obj.userData.id && selected.has(obj.userData.id)) obj.material = each(lit, light);
     else obj.material = base;
     obj.castShadow = !above;
   });
@@ -485,6 +509,8 @@ function clearHighlight(stage: Stage) {
  */
 function faceGeometry(mesh: THREE.Mesh, hit: THREE.Intersection): THREE.BufferGeometry | null {
   if (!hit.face) return null;
+  // In merged parts, only the part that was hit.
+  const part = partOf(hit);
   const pos = mesh.geometry.getAttribute('position');
   const index = mesh.geometry.getIndex();
   const n = hit.face.normal.clone().normalize();
@@ -493,8 +519,8 @@ function faceGeometry(mesh: THREE.Mesh, hit: THREE.Intersection): THREE.BufferGe
   const tri = new THREE.Triangle();
   const faceN = new THREE.Vector3();
   const out: number[] = [];
-  const count = index ? index.count : pos.count;
-  for (let i = 0; i + 2 < count; i += 3) {
+  const count = part ? part.start + part.count : index ? index.count : pos.count;
+  for (let i = part?.start ?? 0; i + 2 < count; i += 3) {
     const [ia, ib, ic] = index ? [index.getX(i), index.getX(i + 1), index.getX(i + 2)] : [i, i + 1, i + 2];
     a.fromBufferAttribute(pos, ia);
     b.fromBufferAttribute(pos, ib);
@@ -507,6 +533,19 @@ function faceGeometry(mesh: THREE.Mesh, hit: THREE.Intersection): THREE.BufferGe
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(out, 3));
   return geometry.applyMatrix4(mesh.matrixWorld);
 }
+
+/** The merged part a hit landed on, if the mesh holds merged parts. */
+function partOf(hit: THREE.Intersection): PartRange | undefined {
+  const ranges: PartRange[] | undefined = hit.object.userData.ranges;
+  return ranges && hit.faceIndex != null ? partAt(ranges, hit.faceIndex) : undefined;
+}
+
+/** The item a hit landed on. */
+const idOf = (hit: THREE.Intersection): string | undefined => hit.object.userData.id ?? partOf(hit)?.id;
+
+/** A hit on something that can be picked: an item (not a part with no item) on a floor that isn't faded. */
+const pickable = (hit: THREE.Intersection) =>
+  hit.object instanceof THREE.Mesh && !!hit.object.userData.pickable && (!hit.object.userData.ranges || !!idOf(hit));
 
 const GHOST = new THREE.MeshStandardMaterial({
   color: '#2563eb',
@@ -921,7 +960,8 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     clearHighlight(stage);
     stage.scene.remove(stage.model);
     disposeGroup(stage.model);
-    stage.model = buildMeshes(model);
+    // One mesh per material and floor (and one set of edges per floor): a big plan draws in a few calls.
+    stage.model = mergeParts(buildMeshes(model));
     stage.model.add(layoutLines(shown, wallHeightMm));
     stage.scene.add(stage.model);
     stage.last = model;
@@ -1018,13 +1058,12 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         const stage = aim(clientX, clientY);
         if (!stage) return null;
         const s = plannerStore.getState();
-        const hit = stage.raycaster
-          .intersectObjects(stage.model.children, false)
-          .find((h) => h.object instanceof THREE.Mesh && h.object.userData.pickable);
-        if (!hit?.face || (hit.object.userData.level ?? 'ground') !== s.activeLevel) return null;
+        const hit = stage.raycaster.intersectObjects(stage.model.children, false).find(pickable);
+        const id = hit && idOf(hit);
+        if (!hit?.face || !id || (hit.object.userData.level ?? 'ground') !== s.activeLevel) return null;
         const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
         const face: FaceHit = {
-          id: hit.object.userData.id,
+          id,
           point: [hit.point.x, hit.point.y, hit.point.z],
           normal: [n.x, n.y, n.z],
         };
@@ -1056,7 +1095,13 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         const out: number[] = [0]; // the ground
         const key = (['x', 'y', 'z'] as const)[axis];
         for (const obj of stage.model.children) {
-          if (!(obj instanceof THREE.Mesh) || !obj.userData.pickable || obj.userData.id === exceptId) continue;
+          if (!(obj instanceof THREE.Mesh) || !obj.userData.pickable) continue;
+          const ranges: PartRange[] | undefined = obj.userData.ranges;
+          if (ranges) {
+            for (const r of ranges) if (r.id !== exceptId) out.push(r.box[axis], r.box[axis + 3]);
+            continue;
+          }
+          if (obj.userData.id === exceptId) continue;
           const box = boxOf(obj);
           out.push(box.min[key], box.max[key]);
         }
@@ -1085,16 +1130,14 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     stage.raycaster.setFromCamera(ndc, stage.rig.active);
     const s = plannerStore.getState();
     const base = levelBaseM(s.doc, s.activeLevel, s.wallHeightMm);
-    const hit = stage.raycaster
-      .intersectObjects(stage.model.children, false)
-      .find((h) => h.object instanceof THREE.Mesh && h.object.userData.pickable);
+    const hit = stage.raycaster.intersectObjects(stage.model.children, false).find(pickable);
     let world: THREE.Vector3 | null;
     let id: string | null = null;
     // A hit on the floor being drawn gives the point on it (a wall face, a floor, a table top);
     // anything else (open space, a floor below) lands on the floor's level.
     if (hit && (hit.object.userData.level ?? 'ground') === s.activeLevel) {
       world = hit.point.clone();
-      id = hit.object.userData.id ?? null;
+      id = idOf(hit) ?? null;
     } else {
       world = stage.raycaster.ray.intersectPlane(
         new THREE.Plane(new THREE.Vector3(0, 1, 0), -base),
