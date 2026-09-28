@@ -1,6 +1,7 @@
 import { snap } from '../geometry';
 import type { Point, Wall } from '../types';
 import { thicknessOf } from '../walls';
+import { directionAlong, isArc, pointAlong, projectOnWall } from './arc';
 import { clearAlong, wallPieces } from './openingPlace';
 
 /** What a drawing point snapped to, like SketchUp's inference and AutoCAD's object snaps. */
@@ -148,7 +149,10 @@ type Kind = 'on-wall' | 'on-face' | 'on-line' | 'building-line';
 export function infer(raw: Point, opts: InferOptions): Inference {
   const { walls, tolerance, from, grid, lock, ignoreIds } = opts;
   const keep = <T extends { id: string }>(list: T[]) => (ignoreIds ? list.filter((w) => !ignoreIds.has(w.id)) : list);
-  const others = keep(walls);
+  const kept = keep(walls);
+  // Curved walls snap by their own rules (below); everything else here treats walls as straight.
+  const arcs = kept.filter(isArc);
+  const others = arcs.length ? kept.filter((w) => !isArc(w)) : kept;
   const lines = keep(opts.lines ?? []);
   const guides = opts.guides ?? [];
 
@@ -217,6 +221,11 @@ export function infer(raw: Point, opts: InferOptions): Inference {
         consider({ x: seg.x1 + (seg.x2 - seg.x1) * t, y: seg.y1 + (seg.y2 - seg.y1) * t }, 'midpoint');
       }
     }
+  for (const w of arcs) {
+    consider({ x: w.x1, y: w.y1 }, 'endpoint');
+    consider({ x: w.x2, y: w.y2 }, 'endpoint');
+    consider(pointAlong(w, 0.5), 'midpoint');
+  }
   for (const g of guides) {
     consider({ x: g.x1, y: g.y1 }, 'building-line');
     consider({ x: g.x2, y: g.y2 }, 'building-line');
@@ -246,6 +255,17 @@ export function infer(raw: Point, opts: InferOptions): Inference {
     }
   if (best) return best;
 
+  // A curved wall: on its centre line or a face, nearest the pointer.
+  for (const w of arcs) {
+    const on = projectOnWall(w, raw);
+    if (on.dist > tolerance + thicknessOf(w)) continue;
+    consider(on.point, 'on-wall');
+    const d = directionAlong(w, on.t);
+    const h = thicknessOf(w) / 2;
+    for (const side of [1, -1]) consider({ x: on.point.x - d.y * h * side, y: on.point.y + d.x * h * side }, 'on-face');
+  }
+  if (best) return best;
+
   // 2. On the building line, at the grid step nearest the pointer: ahead of a grid point on the line itself.
   for (const { seg, kind } of near)
     if (kind === 'building-line')
@@ -262,7 +282,7 @@ export function infer(raw: Point, opts: InferOptions): Inference {
   const under = new Set(near.map(({ seg, kind }) => (kind === 'on-face' ? wallIdOf(seg) : seg.id)));
   const align = alignments(
     raw,
-    [...others, ...lines].filter((seg) => !under.has(seg.id)),
+    [...kept, ...lines].filter((seg) => !under.has(seg.id)),
     from,
     tolerance,
   );

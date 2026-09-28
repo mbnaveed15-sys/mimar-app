@@ -7,6 +7,7 @@ import { MM_PER_UNIT } from './scale';
 import { signedArea } from './shapes';
 import type { Block, Column, Id, Opening, PlanDoc, PlanElement, Point, PushFace, Slab, Vec3, Wall } from '../types';
 import { thicknessOf } from '../walls';
+import { isArc } from './arc';
 
 /** Plan units per scene metre (scene metres are x, z; plan units are 10 mm). */
 const UNITS_PER_M = 1000 / MM_PER_UNIT;
@@ -29,6 +30,8 @@ export function faceOf(el: PlanElement, normal: Vec3, point: Vec3): PushFace | n
     case 'beam': {
       if (up) return el.type === 'wall' ? { part: 'top' } : null;
       if (down) return el.type === 'beam' ? { part: 'bottom' } : null;
+      // A curved wall is pushed and pulled only by its top (its radius is set in the side panel).
+      if (el.type === 'wall' && isArc(el)) return null;
       const len = Math.hypot(el.x2 - el.x1, el.y2 - el.y1) || 1;
       const [ux, uy] = [(el.x2 - el.x1) / len, (el.y2 - el.y1) / len];
       const along = nx * ux + nz * uy;

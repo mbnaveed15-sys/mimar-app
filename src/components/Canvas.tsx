@@ -10,6 +10,8 @@ import { PLAN } from '../theme/plan';
 import { selectionBounds } from '../lib/selection';
 import { GROUND_LEVEL, levelOf, type Furniture, type PlanElement, type Point, type SectionLine } from '../types';
 import { wallPolygon, wallsOf } from '../walls';
+import { pointAlong } from '../lib/arc';
+import { voidsOver } from '../lib/voids';
 import { DrawingOverlay } from './DrawingOverlay';
 import { CheckMarks } from './CheckMarks';
 import { faceAt2D } from '../lib/faces2d';
@@ -73,6 +75,8 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     () => (activeLevel === GROUND_LEVEL ? groundOnPlan(fullDoc, metric) : null),
     [fullDoc, activeLevel, metric],
   );
+  // Double-height rooms on the floor below leave this floor open over them.
+  const voids = useMemo(() => voidsOver(fullDoc, activeLevel), [fullDoc, activeLevel]);
   const draft = usePlanner((s) => s.draft);
   const inference = usePlanner((s) => s.inference);
   const axisLock = usePlanner((s) => s.axisLock);
@@ -243,6 +247,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         k={k}
         accessibleZones={accessibleZones}
         ground={ground}
+        voids={voids}
       />
 
       {otherSections.map((line) => (
@@ -284,6 +289,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
           <>
             <Handle name="wall-start" p={{ x: selected.x1, y: selected.y1 }} k={hk} />
             <Handle name="wall-end" p={{ x: selected.x2, y: selected.y2 }} k={hk} />
+            {!selected.plotId && <Handle name="wall-bend" p={pointAlong(selected, 0.5)} k={hk} />}
           </>
         )}
         {tool === 'select' &&

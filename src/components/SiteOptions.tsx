@@ -20,6 +20,7 @@ const WALL_KINDS: { id: SiteSpec['wallKind']; label: string }[] = [
   { id: 'boundary', label: 'Boundary 7′' },
   { id: 'parapet', label: 'Parapet 3′' },
   { id: 'retaining', label: 'Retaining (basement)' },
+  { id: 'curtain', label: 'Glass (curtain wall)' },
 ];
 
 const STAIR_SHAPES: { id: SiteSpec['stairShape']; label: string }[] = [
@@ -28,6 +29,25 @@ const STAIR_SHAPES: { id: SiteSpec['stairShape']; label: string }[] = [
   { id: 'U', label: 'U-shaped' },
   { id: 'ramp', label: 'Ramp' },
 ];
+
+/** The Wall tool draws straight walls, or arcs (start, end, then a point the curve passes through). */
+export function WallShapePicker() {
+  const arc = usePlanner((s) => s.site.wallArc);
+  const setSite = usePlanner((s) => s.setSite);
+  return (
+    <div className={box}>
+      <div className="font-medium">Draw</div>
+      <div className="flex flex-wrap gap-1">
+        <button className="m-btn px-2 py-0.5" aria-pressed={!arc} onClick={() => setSite({ wallArc: false })}>
+          Straight wall
+        </button>
+        <button className="m-btn px-2 py-0.5" aria-pressed={arc} onClick={() => setSite({ wallArc: true })}>
+          Arc wall
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /** Type of new walls: ordinary, a boundary wall or a parapet. */
 export function WallKindPicker() {

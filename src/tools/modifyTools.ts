@@ -73,7 +73,18 @@ function offsetDraft(s: PlannerState, wall: Wall, side: Point, d?: number) {
   let distance = d ?? distanceToLine(wall, side);
   if (d === undefined && s.grid.snap) distance = Math.max(s.gridPx, Math.round(distance / s.gridPx) * s.gridPx);
   const w = offsetWall(wall, distance, side);
-  return { type: 'offset' as const, wallId: wall.id, side, dist: distance, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 };
+  const bow = 'bow' in w ? w.bow : undefined;
+  return {
+    type: 'offset' as const,
+    wallId: wall.id,
+    side,
+    dist: distance,
+    x1: w.x1,
+    y1: w.y1,
+    x2: w.x2,
+    y2: w.y2,
+    ...(bow && { bow }),
+  };
 }
 
 /** Stretch only reaches what can be picked: the floor shown, nothing hidden or locked. */

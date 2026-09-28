@@ -1,5 +1,7 @@
 import type { Wall } from '../../types';
-import { wallPolygon } from '../../walls';
+import { thicknessOf, wallPolygon } from '../../walls';
+import { directionAlong, pointAlong, wallPath } from '../../lib/arc';
+import { isCurtain, mullionStops } from '../../lib/curtain';
 import { PLAN } from '../../theme/plan';
 
 interface Props {
@@ -8,6 +10,8 @@ interface Props {
   selected: ReadonlySet<string>;
   /** Plan units per screen pixel. */
   k: number;
+  /** Metric project: curtain walls' mullions default to 1.2 m rather than 4'. */
+  metric?: boolean;
 }
 
 const points = (pts: { x: number; y: number }[]) => pts.map((p) => `${p.x},${p.y}`).join(' ');
@@ -16,7 +20,7 @@ const points = (pts: { x: number; y: number }[]) => pts.map((p) => `${p.x},${p.y
  * All walls, drawn in two passes: outlines first, then fills on top. Where walls meet, the fills
  * cover the outlines between them, so joined walls read as one continuous shape.
  */
-export function WallsLayer({ walls, colorOf, selected, k }: Props) {
+export function WallsLayer({ walls, colorOf, selected, k, metric = false }: Props) {
   const polys = walls.map((w) => ({ wall: w, pts: points(wallPolygon(w, walls)) }));
   return (
     <g>
@@ -38,10 +42,45 @@ export function WallsLayer({ walls, colorOf, selected, k }: Props) {
             data-type="wall"
             data-id={wall.id}
             points={pts}
-            style={{ fill: selected.has(wall.id) ? PLAN.selectedWall : (colorOf(wall.material) ?? PLAN.wall) }}
+            style={{
+              fill: selected.has(wall.id)
+                ? PLAN.selectedWall
+                : isCurtain(wall)
+                  ? PLAN.paper
+                  : (colorOf(wall.material) ?? PLAN.wall),
+            }}
           />
         ))}
       </g>
+      {walls.filter(isCurtain).map((w) => (
+        <CurtainMarks key={`cw-${w.id}`} wall={w} k={k} metric={metric} />
+      ))}
+    </g>
+  );
+}
+
+/** A glass curtain wall on the plan: the glass down its middle, and a mark across it at each mullion. */
+function CurtainMarks({ wall, k, metric }: { wall: Wall; k: number; metric: boolean }) {
+  const half = thicknessOf(wall) / 2;
+  return (
+    <g data-testid="curtain-wall" pointerEvents="none">
+      <polyline points={points(wallPath(wall))} fill="none" style={{ stroke: PLAN.glass }} strokeWidth={1.5 * k} />
+      {mullionStops(wall, metric).map((t) => {
+        const p = pointAlong(wall, t);
+        const d = directionAlong(wall, t);
+        return (
+          <line
+            key={t}
+            data-testid="mullion"
+            x1={p.x - d.y * half}
+            y1={p.y + d.x * half}
+            x2={p.x + d.y * half}
+            y2={p.y - d.x * half}
+            style={{ stroke: PLAN.wallEdge }}
+            strokeWidth={3 * k}
+          />
+        );
+      })}
     </g>
   );
 }

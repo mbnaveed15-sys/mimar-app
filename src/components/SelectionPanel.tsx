@@ -21,6 +21,7 @@ const NAMES: Record<PlanElement['type'] | 'room', [string, string]> = {
   contour: ['contour line', 'contour lines'],
   pad: ['levelled area', 'levelled areas'],
   context: ['surrounding', 'surroundings'],
+  roof: ['roof', 'roofs'],
   room: ['room', 'rooms'],
 };
 

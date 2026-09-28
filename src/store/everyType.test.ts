@@ -6,7 +6,13 @@ import { emptyDoc, normaliseDoc } from '../lib/storage';
 import { buildModel } from '../three/model';
 import { pushPull } from '../lib/pushPull';
 import { sideDrawing } from '../lib/drawings/views';
-import type { PlanDoc, PlanElement, PushFace } from '../types';
+import type { PlanDoc, PlanElement, PushFace, Wall } from '../types';
+import { placeOnArc } from '../lib/arc';
+
+/** A curved wall across the back, bowing out, with a door flat across its curve. */
+const curved: Wall = { id: 'wa', type: 'wall', x1: 500, y1: 400, x2: 0, y2: 400, bow: -60, thickness: 23 };
+/** A glass curtain wall in front, with a door in it. */
+const glass: Wall = { id: 'wc', type: 'wall', x1: 0, y1: -150, x2: 500, y2: -150, thickness: 10, kind: 'curtain' };
 import { createPlannerStore } from './plannerStore';
 
 /** One of every kind of item, so no feature can forget one. */
@@ -141,6 +147,10 @@ const ELEMENTS: PlanElement[] = [
     w: 294.64,
     h: 294.64,
   },
+  curved,
+  { id: 'da', type: 'door', wallId: 'wa', ...placeOnArc(curved, { x: 250, y: 460 }, 91)! },
+  glass,
+  { id: 'dc', type: 'door', wallId: 'wc', x: 250, y: -150, width: 91, angle: 0 },
   { id: 'lv', type: 'level', x: 650, y: 650, zMm: -300 },
   { id: 'lv2', type: 'level', x: -50, y: -50, zMm: 900, approx: true },
   {
@@ -162,6 +172,20 @@ const ELEMENTS: PlanElement[] = [
       { x: 680, y: 420 },
       { x: 680, y: 680 },
       { x: 520, y: 680 },
+    ],
+  },
+  {
+    id: 'rf',
+    type: 'roof',
+    shape: 'gable',
+    pitchDeg: 30,
+    overhangMm: 457.2,
+    thicknessMm: 152.4,
+    points: [
+      { x: -46, y: -46 },
+      { x: 546, y: -46 },
+      { x: 546, y: 446 },
+      { x: -46, y: 446 },
     ],
   },
   {
@@ -244,6 +268,7 @@ describe('every kind of item', () => {
       'A-WALL',
       'A-DOOR',
       'A-GLAZ',
+      'A-GLAZ-CURT',
       'A-FURN',
       'S-COLS',
       'S-BEAM',
@@ -259,11 +284,15 @@ describe('every kind of item', () => {
       'C-TOPO-GRAD',
       'C-CTXT-BLDG',
       'C-CTXT-ROAD',
+      'A-ROOF',
+      'A-ROOF-OTLN',
     ])
       expect(dxf).toContain(`\r\n8\r\n${layer}\r\n`);
     // Round and arched openings are cut out of wall panels; the arch has glass; the flat shape is a skin.
-    // …plus two for the niche (the wall behind it, and the cut layer) and one for the ledge.
-    expect(model.panels.filter((p) => p.role === 'wall')).toHaveLength(5);
+    // …plus two for the niche (the wall behind it, and the cut layer) and one for the ledge, and the roof's two gables.
+    expect(model.panels.filter((p) => p.role === 'wall')).toHaveLength(7);
+    expect(model.roofs).toHaveLength(1);
+    expect(meshes.some((m) => m.name.startsWith('roof'))).toBe(true);
     expect(model.panels.filter((p) => p.role === 'glass')).toHaveLength(1);
     expect(model.panels.filter((p) => p.role === 'shape')).toHaveLength(1);
     expect(model.blocks.map((b) => b.role)).toEqual(['block', 'shape']);

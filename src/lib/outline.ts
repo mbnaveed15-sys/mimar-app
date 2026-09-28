@@ -1,7 +1,7 @@
 /** The outside of a building's walls, for basements under it. Pure. */
-import { pointToSegmentDistance } from '../geometry';
 import { polygonArea, wallFaces } from '../rooms';
 import { thicknessOf } from '../walls';
+import { distanceToWall } from './arc';
 import { insetPolygon } from './plot';
 import type { Point, Wall } from '../types';
 
@@ -15,7 +15,7 @@ export function outsideOutline(walls: Wall[]): Point[] | null {
   const half = loop.map((a, i) => {
     const b = loop[(i + 1) % loop.length];
     const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const wall = walls.find((w) => pointToSegmentDistance(mid, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }) < 0.5);
+    const wall = walls.find((w) => distanceToWall(w, mid) < 0.5);
     return wall ? thicknessOf(wall) / 2 : 0;
   });
   // A negative set-in moves the sides out.

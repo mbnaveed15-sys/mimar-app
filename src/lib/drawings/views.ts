@@ -5,6 +5,9 @@
 import { buildModel, levelBaseM, M_PER_UNIT, type Model3D } from '../../three/model';
 import { levelWallMm, slabMm } from '../levels';
 import { outsideOutline } from '../outline';
+import { isBuildingWall } from '../../walls';
+import { openRooms, voidsOver, within } from '../voids';
+import { roofTopMm } from '../roof/roof';
 import { sideOutward } from '../plot';
 import { groundOf, type Ground } from '../terrain/ground';
 import { profileAlong } from '../terrain/surface';
@@ -21,6 +24,7 @@ import {
   type PlanDoc,
   type Plot,
   type Point,
+  type Roof,
   type Units,
   type Wall,
 } from '../../types';
@@ -87,9 +91,9 @@ export function elevationLook(doc: PlanDoc, side: ElevationSide): { x: number; z
   }
 }
 
-/** Walls that make up the building (not boundary walls, parapets or retaining walls). */
+/** Walls that make up the building (glass ones too; not boundary walls, parapets or retaining walls). */
 const buildingWalls = (doc: PlanDoc, levelId: Id) =>
-  doc.elements.filter((el): el is Wall => el.type === 'wall' && !el.kind && levelOf(el) === levelId);
+  doc.elements.filter((el): el is Wall => el.type === 'wall' && isBuildingWall(el) && levelOf(el) === levelId);
 
 /**
  * Floor and roof slabs the plan leaves to be understood: under each floor, and over each floor with
@@ -99,16 +103,25 @@ function impliedSlabs(doc: PlanDoc, wallHeightMm: number): Prism[] {
   const out: Prism[] = [];
   const slab = slabMm(doc) / 1000;
   const drawn = (id: Id) => doc.elements.some((el) => el.type === 'slab' && levelOf(el) === id);
+  // A roof over a floor takes the place of its slab.
+  const roofed = (id: Id) => doc.elements.some((el) => el.type === 'roof' && levelOf(el) === id);
   doc.levels.forEach((level, i) => {
     const outline = outsideOutline(buildingWalls(doc, level.id));
     if (!outline) return;
     const base = levelBaseM(doc, level.id, wallHeightMm);
-    const ring = (y: number): V3[] => outline.map((p) => [p.x * M_PER_UNIT, y, p.y * M_PER_UNIT]);
+    const ring = (y: number, pts: Point[] = outline): V3[] => pts.map((p) => [p.x * M_PER_UNIT, y, p.y * M_PER_UNIT]);
+    // Double-height rooms leave the slab over them open.
+    const voids = (pts: Point[][]) => pts.filter((v) => within(v, outline));
     const below = doc.levels[i - 1];
-    if (!below || !drawn(below.id)) out.push({ rings: [ring(base - slab)], extrude: [0, slab, 0] });
-    if (!drawn(level.id)) {
+    if (!below || !drawn(below.id)) {
+      const y = base - slab;
+      const holes = voids(voidsOver(doc, level.id).map((r) => r.points));
+      out.push({ rings: [ring(y), ...holes.map((h) => ring(y, h))], extrude: [0, slab, 0] });
+    }
+    if (!drawn(level.id) && !roofed(level.id)) {
       const top = base + levelWallMm(doc, level.id, wallHeightMm) / 1000;
-      out.push({ rings: [ring(top)], extrude: [0, slab, 0] });
+      const holes = voids(openRooms(doc, level.id).map((r) => r.points));
+      out.push({ rings: [ring(top), ...holes.map((h) => ring(top, h))], extrude: [0, slab, 0] });
     }
   });
   return out;
@@ -143,6 +156,11 @@ export function modelPrisms(model: Model3D, skip: Set<Id> = new Set()): Prism[] 
       extrude: [az.x * p.depth, 0, az.z * p.depth],
     });
   }
+  // A roof: each sloped face pushed straight up through the roof's thickness.
+  for (const r of model.roofs ?? []) {
+    if (!keep(r.id)) continue;
+    for (const face of r.faces) if (face.length >= 3) out.push({ rings: [face], extrude: [0, r.h, 0] });
+  }
   for (const s of [...model.slabs, ...model.blocks]) {
     if (s.role === 'shape' || !keep(s.id) || s.h <= 0 || s.points.length < 3) continue;
     const ring = (pts: [number, number][]) => pts.map(([x, z]): V3 => [x, s.y0, z]);
@@ -167,7 +185,8 @@ export const hasTerrain = (g: Ground) => g.shaped || g.graded || g.levelMm !== 0
 /**
  * Levels to mark: natural ground (or, when the plan has a ground, the datum and the level the plot is
  * finished to), each floor (the ground floor at the plinth), the top of the roof slab over the highest
- * floor with walls, and the top of the highest parapet.
+ * floor with walls (or, under a pitched roof, the top of its walls and the ridge), and the top of the
+ * highest parapet.
  */
 export function levelMarks(doc: PlanDoc, opts: DrawingOptions): LevelMark[] {
   const marks: LevelMark[] = [];
@@ -185,16 +204,23 @@ export function levelMarks(doc: PlanDoc, opts: DrawingOptions): LevelMark[] {
   const slab = slabMm(doc) / 1000;
   let roof: number | null = null;
   let parapet: number | null = null;
+  let eaves: number | null = null;
+  let ridge: { v: number; name: string } | null = null;
   for (const level of doc.levels) {
     const base = levelBaseM(doc, level.id, opts.wallHeightMm);
     const els = doc.elements.filter((el) => levelOf(el) === level.id);
     const walls = els.filter((el): el is Wall => el.type === 'wall');
-    const built = walls.some((w) => !w.kind);
+    const built = walls.some(isBuildingWall);
     if (built || level.id === GROUND_LEVEL || level.basement)
       add(base, level.id === GROUND_LEVEL && doc.plinthMm > 0 ? `${level.name} (plinth)` : level.name);
-    if (built) {
-      const top = base + levelWallMm(doc, level.id, opts.wallHeightMm) / 1000 + slab;
-      roof = Math.max(roof ?? -Infinity, top);
+    // A roof over the floor: the tops of its walls, and its ridge (or its top, when flat).
+    const roofs = els.filter((el): el is Roof => el.type === 'roof');
+    const wallTopMm = levelWallMm(doc, level.id, opts.wallHeightMm);
+    if (built && !roofs.length) roof = Math.max(roof ?? -Infinity, base + wallTopMm / 1000 + slab);
+    if (roofs.length) eaves = Math.max(eaves ?? -Infinity, base + wallTopMm / 1000);
+    for (const r of roofs) {
+      const v = base + roofTopMm(r, wallTopMm) / 1000;
+      if (!ridge || v > ridge.v) ridge = { v, name: r.shape === 'flat' ? 'Top of roof' : 'Ridge' };
     }
     for (const w of walls)
       if (w.kind === 'parapet') {
@@ -204,6 +230,8 @@ export function levelMarks(doc: PlanDoc, opts: DrawingOptions): LevelMark[] {
   }
   // The roof is only marked when no floor sits on it (a floor above is marked by its own name).
   if (roof !== null && !marks.some((m) => Math.abs(m.v - roof!) < 0.001)) add(roof, 'Top of roof slab');
+  if (eaves !== null && !marks.some((m) => Math.abs(m.v - eaves!) < 0.001)) add(eaves, 'Top of walls');
+  if (ridge) add(ridge.v, ridge.name);
   if (parapet !== null) add(parapet, 'Top of parapet');
   return marks.sort((a, b) => a.v - b.v);
 }

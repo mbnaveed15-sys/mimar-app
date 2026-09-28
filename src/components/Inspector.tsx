@@ -9,7 +9,7 @@ import { WINDOW_HEIGHT_MM } from '../lib/shapes';
 import { withShapeDepth } from '../lib/pushPull';
 import { projectOf, ROOM_TYPES } from '../lib/project';
 import { roomAreaSqMm } from '../rooms';
-import { KIND_HEIGHT_MM, MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
+import { kindHeightMm, MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
 import {
   isSiteItem,
   levelOf,
@@ -22,8 +22,12 @@ import {
   type WindowKind,
 } from '../types';
 import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
-import { thicknessOf } from '../walls';
+import { CURTAIN_MM, thicknessOf } from '../walls';
+import { bowForRadius, isArc, radiusOf } from '../lib/arc';
+import { levelAbove } from '../lib/voids';
+import { metricProject, mullionSpacingMm, TRANSOM_MM } from '../lib/curtain';
 import { useLevelDoc } from '../store/useLevelDoc';
+import { RoofFields } from './RoofOptions';
 import { LengthField } from './LengthField';
 import { PlotBylawsPanel } from './PlotBylaws';
 import { PlotSidesPanel } from './PlotSides';
@@ -68,6 +72,7 @@ function itemName(el: PlanElement): string {
   if (el.type === 'level') return el.approx ? 'approximate level' : 'spot level';
   if (el.type === 'contour') return 'contour line';
   if (el.type === 'pad') return 'levelled area';
+  if (el.type === 'roof') return `${el.shape} roof`;
   if (el.type === 'context') return el.kind === 'road' ? 'road (surroundings)' : 'building (surroundings)';
   return el.type;
 }
@@ -140,6 +145,8 @@ export function Inspector() {
   const multi = usePlanner((s) => s.selectedIds.length > 1 || s.selectedGroup() !== null);
   const el = doc.elements.find((e) => e.id === selectedId);
   const room = doc.rooms.find((r) => r.id === selectedId);
+  // A room can be left open to the floor above only when there is one.
+  const hasFloorAbove = usePlanner((s) => !!room && !!levelAbove(s.doc, levelOf(room)));
   const coveredArea = doc.rooms.reduce((sum, r) => sum + roomAreaSqMm(r), 0);
   const toUnits = (mm: number) => mm / MM_PER_UNIT;
   const materialName = (id?: string) => doc.materials.find((m) => m.id === id)?.name;
@@ -179,6 +186,28 @@ export function Inspector() {
                 onCommit={(mm) => updateElement(withWallLength(el, toUnits(mm)))}
               />
             )}
+            {el.type === 'wall' && isArc(el) && (
+              <div className="flex items-end gap-2">
+                <LengthField
+                  id="wall-radius"
+                  label="Radius"
+                  mm={radiusOf(el)! * MM_PER_UNIT}
+                  units={units}
+                  min={(Math.hypot(el.x2 - el.x1, el.y2 - el.y1) / 2) * MM_PER_UNIT - 0.5}
+                  onCommit={(mm) => updateElement({ ...el, bow: bowForRadius(el, toUnits(mm)) })}
+                />
+                <button
+                  className={btn}
+                  onClick={() => {
+                    const next = { ...el };
+                    delete next.bow;
+                    updateElement(next);
+                  }}
+                >
+                  Make straight
+                </button>
+              </div>
+            )}
             {el.type === 'wall' && (
               <LengthField
                 id="wall-thickness"
@@ -197,24 +226,54 @@ export function Inspector() {
                     ['boundary', 'Boundary'],
                     ['parapet', 'Parapet'],
                     ['retaining', 'Retaining'],
+                    ['curtain', 'Glass'],
                   ] as const
                 ).map(([kind, label]) => (
                   <button
                     key={label}
                     className="m-btn px-2 py-0.5"
                     aria-pressed={el.kind === kind}
-                    onClick={() => updateElement({ ...el, kind, heightMm: kind ? KIND_HEIGHT_MM[kind] : undefined })}
+                    onClick={() =>
+                      updateElement({
+                        ...el,
+                        kind,
+                        heightMm: kindHeightMm(kind),
+                        // Glass is a thin frame; back to brick, it is 9" again.
+                        ...(kind === 'curtain' && { thickness: CURTAIN_MM / MM_PER_UNIT }),
+                        ...(el.kind === 'curtain' && kind !== 'curtain' && { thickness: undefined }),
+                      })
+                    }
                   >
                     {label}
                   </button>
                 ))}
               </div>
             )}
+            {el.type === 'wall' && el.kind === 'curtain' && (
+              <div className="grid grid-cols-2 gap-2" data-testid="curtain-fields">
+                <LengthField
+                  id="curtain-mullions"
+                  label="Mullions at most"
+                  mm={mullionSpacingMm(el, metricProject(doc))}
+                  units={units}
+                  min={300}
+                  onCommit={(mm) => updateElement({ ...el, mullionMm: Math.min(mm, 6000) })}
+                />
+                <LengthField
+                  id="curtain-transom"
+                  label="Transom height (0: none)"
+                  mm={el.transomMm ?? TRANSOM_MM}
+                  units={units}
+                  min={0}
+                  onCommit={(mm) => updateElement({ ...el, transomMm: Math.min(mm, 10000) })}
+                />
+              </div>
+            )}
             {el.type === 'wall' && (
               <LengthField
                 id="wall-height-edit"
                 label="Height"
-                mm={el.heightMm ?? (el.kind ? KIND_HEIGHT_MM[el.kind] : wallHeightMm)}
+                mm={el.heightMm ?? kindHeightMm(el.kind) ?? wallHeightMm}
                 units={units}
                 min={100}
                 onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 10000) })}
@@ -397,6 +456,7 @@ export function Inspector() {
                 />
               </div>
             )}
+            {el.type === 'roof' && <RoofFields roof={el} />}
             {el.type === 'slab' && (
               <LengthField
                 id="slab-thickness-edit"
@@ -708,6 +768,16 @@ export function Inspector() {
               {house && ` · ${formatMarla(roomAreaSqMm(room), marlaSqFt)}`}
             </div>
             <div>Floor: {materialName(room.material) ?? '—'}</div>
+            {hasFloorAbove && (
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={!!room.openAbove}
+                  onChange={(e) => updateRoom({ ...room, openAbove: e.target.checked || undefined })}
+                />
+                Open to above (double height)
+              </label>
+            )}
             <div className="flex flex-wrap gap-2">
               <button onClick={() => applyMaterial(room.id)} className={btn}>
                 Apply selected material

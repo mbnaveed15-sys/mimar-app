@@ -7,6 +7,7 @@
  */
 import type { Id, Opening, Point, Wall } from '../types';
 import { thicknessOf } from '../walls';
+import { isArc, paramAlong, placeOnArc, pointAlong, projectOnWall, runLength, wallSegments } from './arc';
 
 /** The gap kept between a door or window and a corner, when not set: 6". */
 export const DEFAULT_OPENING_GAP_MM = 152.4;
@@ -44,6 +45,15 @@ function frameOf(w: Pick<Wall, 'x1' | 'y1' | 'x2' | 'y2'>): Frame {
   const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
   const u = len ? { x: (w.x2 - w.x1) / len, y: (w.y2 - w.y1) / len } : { x: 1, y: 0 };
   return { a: { x: w.x1, y: w.y1 }, u, n: { x: -u.y, y: u.x }, len };
+}
+
+/** Distance along a wall (along the curve for a curved one) of the point nearest p, not clamped. */
+function alongWall(w: Wall, p: Point): number {
+  if (!isArc(w)) {
+    const f = frameOf(w);
+    return dot(sub(p, f.a), f.u);
+  }
+  return paramAlong(w, p) * runLength(w);
 }
 
 /**
@@ -171,8 +181,50 @@ function carriesOn(wall: Wall, end: Point, walls: Wall[]): boolean {
   });
 }
 
+/**
+ * The pieces of a curved wall between the walls that meet or cross it: each wall whose centre line
+ * meets the curve blocks the curve for its own thickness either side.
+ */
+function arcPieces(wall: Wall, walls: Wall[]): WallPiece[] {
+  const len = runLength(wall);
+  const blocked: [number, number][] = [];
+  for (const w of walls) {
+    if (w.id === wall.id) continue;
+    const half = thicknessOf(w) / 2 + thicknessOf(wall) / 2;
+    const hits: number[] = [];
+    // Its ends on the curve, and where its pieces cross the curve's pieces.
+    for (const end of [
+      { x: w.x1, y: w.y1 },
+      { x: w.x2, y: w.y2 },
+    ]) {
+      const pr = projectOnWall(wall, end);
+      if (pr.dist <= half) hits.push(pr.t * len);
+    }
+    for (const [a, b] of wallSegments(w))
+      for (const [c, d] of wallSegments(wall)) {
+        const x = crossAt(a, b, c, d);
+        if (x) hits.push(projectOnWall(wall, x).t * len);
+      }
+    const reach = thicknessOf(w) / 2;
+    for (const at of hits) blocked.push([Math.max(0, at - reach), Math.min(len, at + reach)]);
+  }
+  return clearOf(len, merge(blocked)).map(([a, b]) => ({ a, b, gapA: true, gapB: true }));
+}
+
+/** Where segments a–b and c–d cross, if they do. */
+function crossAt(a: Point, b: Point, c: Point, d: Point): Point | null {
+  const r = sub(b, a);
+  const q = sub(d, c);
+  const den = r.x * q.y - r.y * q.x;
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((c.x - a.x) * q.y - (c.y - a.y) * q.x) / den;
+  const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? { x: a.x + r.x * t, y: a.y + r.y * t } : null;
+}
+
 /** The pieces of a wall between the walls that meet or cross it (either face counts). */
 export function wallPieces(wall: Wall, walls: Wall[]): WallPiece[] {
+  if (isArc(wall)) return arcPieces(wall, walls);
   const f = frameOf(wall);
   if (!f.len) return [];
   // Where either face runs into another wall, projected onto the centre line.
@@ -248,14 +300,13 @@ export type Placement =
 
 /** Where the centre of an opening can go in a piece, leaving the gaps: [lo, hi] less the other openings. */
 function allowedRanges(wall: Wall, piece: WallPiece, width: number, ctx: PlaceContext): [number, number][] {
-  const f = frameOf(wall);
   const lo = piece.a + (piece.gapA ? ctx.gap : 0) + width / 2;
   const hi = piece.b - (piece.gapB ? ctx.gap : 0) - width / 2;
   if (lo > hi + EPS) return [];
   const taken: [number, number][] = ctx.openings
     .filter((o) => o.wallId === wall.id && o.id !== ctx.ignoreId && !o.flat)
     .map((o) => {
-      const s = dot(sub(o, f.a), f.u);
+      const s = alongWall(wall, o);
       const reach = o.width / 2 + ctx.gap + width / 2;
       return [s - reach, s + reach];
     });
@@ -289,12 +340,14 @@ const inRanges = (ranges: [number, number][], s: number) => ranges.some(([a, b])
 
 function placed(wall: Wall, piece: WallPiece, s: number, width: number, snap: OpeningSnap | null): Placement {
   const f = frameOf(wall);
+  // On a curved wall it lies flat across the curve, its ends on the arc.
+  const onArc = isArc(wall) ? placeOnArc(wall, pointAlong(wall, s / runLength(wall)), width) : null;
   return {
     ok: true,
     s,
-    x: f.a.x + f.u.x * s,
-    y: f.a.y + f.u.y * s,
-    angle: (Math.atan2(f.u.y, f.u.x) * 180) / Math.PI,
+    x: onArc?.x ?? f.a.x + f.u.x * s,
+    y: onArc?.y ?? f.a.y + f.u.y * s,
+    angle: onArc?.angle ?? (Math.atan2(f.u.y, f.u.x) * 180) / Math.PI,
     width,
     snap,
     piece,
@@ -320,9 +373,9 @@ function noRoom(piece: WallPiece, width: number, ctx: PlaceContext): Placement {
  * nearer corner, and pushed clear of the corners and the other openings.
  */
 export function placeOnWallPiece(wall: Wall, p: Point, width: number, ctx: PlaceContext): Placement {
-  const f = frameOf(wall);
-  if (!f.len) return { ok: false, error: `This wall has no length.`, piece: null };
-  const raw = Math.min(f.len, Math.max(0, dot(sub(p, f.a), f.u)));
+  const full = runLength(wall);
+  if (!full) return { ok: false, error: `This wall has no length.`, piece: null };
+  const raw = Math.min(full, Math.max(0, alongWall(wall, p)));
   const piece = pieceAt(wallPieces(wall, ctx.walls), raw);
   if (!piece) return { ok: false, error: `There is no clear piece of this wall for a ${ctx.noun}.`, piece: null };
   const ranges = allowedRanges(wall, piece, width, ctx);
@@ -376,8 +429,7 @@ export function placeOnWallPiece(wall: Wall, p: Point, width: number, ctx: Place
  * face to the opening's edge), in the piece p is in.
  */
 export function placeAtDistance(wall: Wall, p: Point, width: number, dist: number, ctx: PlaceContext): Placement {
-  const f = frameOf(wall);
-  const raw = Math.min(f.len, Math.max(0, dot(sub(p, f.a), f.u)));
+  const raw = Math.min(runLength(wall), Math.max(0, alongWall(wall, p)));
   const piece = pieceAt(wallPieces(wall, ctx.walls), raw);
   if (!piece) return { ok: false, error: `There is no clear piece of this wall for a ${ctx.noun}.`, piece: null };
   const fromA = raw - piece.a <= piece.b - raw;
@@ -402,8 +454,7 @@ export function placeAtDistance(wall: Wall, p: Point, width: number, dist: numbe
 
 /** Where a door or window stands now: in its piece, and whether it keeps its gaps. */
 export function openingFits(o: Opening, wall: Wall, ctx: Omit<PlaceContext, 'ignoreId'>): boolean {
-  const f = frameOf(wall);
-  const s = dot(sub(o, f.a), f.u);
+  const s = alongWall(wall, o);
   const piece = pieceAt(wallPieces(wall, ctx.walls), s);
   if (!piece) return false;
   return inRanges(allowedRanges(wall, piece, o.width, { ...ctx, ignoreId: o.id }), s);

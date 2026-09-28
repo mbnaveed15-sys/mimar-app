@@ -56,7 +56,7 @@ export interface Grouped {
 }
 
 /** Walls other than ordinary ones. */
-export type WallKind = 'boundary' | 'parapet' | 'retaining';
+export type WallKind = 'boundary' | 'parapet' | 'retaining' | 'curtain';
 
 export interface Wall extends Grouped {
   id: Id;
@@ -65,15 +65,25 @@ export interface Wall extends Grouped {
   y1: number;
   x2: number;
   y2: number;
+  /**
+   * A curved wall: how far the middle of the arc bows out from the straight line between its ends,
+   * towards side A (negative: side B), in plan units. Missing for a straight wall.
+   */
+  bow?: number;
   /** Wall thickness in plan units; the default (9") is used when missing. */
   thickness?: number;
   /**
    * A boundary wall stands on natural ground (7' tall); a parapet runs round a roof (3'); a
-   * retaining wall is a basement's RCC outside wall, holding back the earth (up to the ground floor).
+   * retaining wall is a basement's RCC outside wall, holding back the earth (up to the ground floor); a
+   * curtain wall is glass in a frame of mullions and transoms.
    */
   kind?: WallKind;
   /** Height in millimetres, when it differs from the usual wall height (e.g. a boundary wall). */
   heightMm?: number;
+  /** A glass curtain wall: the spacing of its mullions (upright frames), mm; 4' (1.2 m metric) when missing. */
+  mullionMm?: number;
+  /** A glass curtain wall: the height of its transom (cross frame) above the floor, mm; door height when missing, 0 for none. */
+  transomMm?: number;
   /** Its material: both sides, the top and the ends (unless a side has its own). */
   material?: Id;
   /**
@@ -187,6 +197,31 @@ export interface Slab extends Grouped {
   thickness: number;
   /** Voids through it (stair openings, skylights, shafts): outlines in plan units. */
   holes?: Point[][];
+  material?: Id;
+}
+
+/** How a roof is shaped: sloping on every side, with gable ends, one slope, or flat. */
+export type RoofKind = 'hip' | 'gable' | 'shed' | 'flat';
+
+/**
+ * A roof over the top of its level's walls. Its outline is the eaves' line in plan (the walls' line plus the
+ * overhang); its slopes pass over the walls' line at the top of the walls.
+ */
+export interface Roof extends Grouped {
+  id: Id;
+  type: 'roof';
+  points: Point[];
+  shape: RoofKind;
+  /** The slope, degrees from level. */
+  pitchDeg: number;
+  /** A gabled roof's gable ends: edges (points[i] to points[i+1]) that rise as walls; the two short ends when missing. */
+  gables?: number[];
+  /** A shed roof's low side (an edge index); the longest edge when missing. */
+  lowEdge?: number;
+  /** How far the eaves reach past the walls, mm. */
+  overhangMm: number;
+  /** The roof's thickness (deck, insulation and covering), mm. */
+  thicknessMm: number;
   material?: Id;
 }
 
@@ -364,10 +399,11 @@ export type PlanElement =
   | SpotLevel
   | Contour
   | Pad
-  | ContextItem;
+  | ContextItem
+  | Roof;
 
 /** Items outlined (or, for contours and roads, drawn) by a list of points. */
-export type PointsElement = Slab | Plot | Block | Contour | Pad | ContextItem;
+export type PointsElement = Slab | Plot | Block | Contour | Pad | ContextItem | Roof;
 
 /** Items outlined (or, for contours and roads, drawn) by a list of points. */
 export const hasPoints = (el: PlanElement): el is PointsElement =>
@@ -376,7 +412,8 @@ export const hasPoints = (el: PlanElement): el is PointsElement =>
   el.type === 'block' ||
   el.type === 'contour' ||
   el.type === 'pad' ||
-  el.type === 'context';
+  el.type === 'context' ||
+  el.type === 'roof';
 
 /** Ground items: spot levels, contours, finished-ground pads and the surroundings (always on the ground floor). */
 export const isSiteItem = (el: PlanElement): el is SpotLevel | Contour | Pad | ContextItem =>
@@ -417,6 +454,8 @@ export interface Room extends Grouped {
   name: string;
   points: Point[];
   material?: Id;
+  /** A double-height room: the floor above is left open over it. */
+  openAbove?: boolean;
 }
 
 /**
@@ -559,7 +598,8 @@ export type Tool =
   | 'section'
   | 'level'
   | 'contour'
-  | 'pad';
+  | 'pad'
+  | 'roof';
 
 /** Every tool, in tool-rail order. */
 export const TOOLS: Tool[] = [
@@ -574,6 +614,7 @@ export const TOOLS: Tool[] = [
   'column',
   'beam',
   'slab',
+  'roof',
   'plot',
   'stairs',
   'door',
@@ -616,6 +657,9 @@ export type Draft =
       chain?: boolean;
       /** Where the chain began; clicking it again closes the loop. */
       chainStart?: Point;
+      /** An arc wall with both ends down: the pointer bends it (its bow, as on Wall). */
+      bend?: boolean;
+      bow?: number;
     }
   | { type: 'rectangle'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'beam'; x1: number; y1: number; x2: number; y2: number }
@@ -628,6 +672,8 @@ export type Draft =
   | { type: 'plotPoly'; points: Point[]; cursor: Point }
   /** A contour line drawn click by click: its points so far, and where the pointer is. */
   | { type: 'contour'; points: Point[]; cursor: Point }
+  /** A roof drawn corner by corner round the walls: the corners so far, and where the pointer is. */
+  | { type: 'roof'; points: Point[]; cursor: Point }
   /** A levelled area (pad) dragged or clicked out as a rectangle. */
   | { type: 'pad'; x1: number; y1: number; x2: number; y2: number }
   | {
@@ -659,7 +705,18 @@ export type Draft =
     }
   | { type: 'rotate'; ids: Id[]; center: Point; start?: Point; angle: number }
   /** Offset: a parallel copy of a wall follows the pointer. */
-  | { type: 'offset'; wallId: Id; side: Point; dist: number; x1: number; y1: number; x2: number; y2: number }
+  | {
+      type: 'offset';
+      wallId: Id;
+      side: Point;
+      dist: number;
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      /** Offsetting a curved wall: the copy's bow. */
+      bow?: number;
+    }
   /** Mirror line from a to b; flip turns the originals over instead of copying them. */
   | { type: 'mirror'; ids: Id[]; a: Point; b: Point; flip: boolean }
   /** The first wall picked by Join, Fillet, Chamfer or Break, and where it was clicked. */

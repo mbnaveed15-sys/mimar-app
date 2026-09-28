@@ -1,9 +1,12 @@
 import { elementOutline, fromFurnitureLocal, planBounds, wallLength, wallParam } from '../geometry';
+import { formatPitch, roofShape } from './roof/roof';
 import { openingSymbol } from './openingKinds';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
-import type { MarlaSqFt, Opening, PlanDoc, Point, Units, Wall } from '../types';
-import { placeWallDimension, thicknessOf, wallPolygon, wallsOf } from '../walls';
+import type { MarlaSqFt, Opening, PlanDoc, Point, Room, Units, Wall } from '../types';
+import { placeWallDimension, thicknessOf, wallExtensions, wallPolygon, wallsOf } from '../walls';
+import { arcOf, directionAlong, isArc, paramAlong, pointAlong, wallPath } from './arc';
+import { isCurtain, metricProject, mullionStops } from './curtain';
 import { MM_PER_UNIT } from './scale';
 import { outlinePoints, plotSides, sideOutward } from './plot';
 import { buildableArea, stairLayout } from './site';
@@ -18,6 +21,7 @@ const LAYERS = {
   'A-WALL': { color: 7, ltype: 'CONTINUOUS' },
   'A-DOOR': { color: 3, ltype: 'CONTINUOUS' },
   'A-GLAZ': { color: 4, ltype: 'CONTINUOUS' },
+  'A-GLAZ-CURT': { color: 4, ltype: 'CONTINUOUS' },
   'A-FURN': { color: 8, ltype: 'CONTINUOUS' },
   'A-FLOR-STRS': { color: 30, ltype: 'CONTINUOUS' },
   'A-AREA': { color: 6, ltype: 'CONTINUOUS' },
@@ -45,6 +49,9 @@ const LAYERS = {
   'C-CTXT-BLDG': { color: 8, ltype: 'CONTINUOUS' },
   'C-CTXT-ROAD': { color: 9, ltype: 'CONTINUOUS' },
   'A-ANNO-LEVL': { color: 2, ltype: 'CONTINUOUS' },
+  'A-FLOR-OPEN': { color: 8, ltype: 'DASHED' },
+  'A-ROOF-OTLN': { color: 4, ltype: 'DASHED' },
+  'A-ROOF': { color: 4, ltype: 'CONTINUOUS' },
   'A-ANNO-TTLB': { color: 7, ltype: 'CONTINUOUS' },
 } as const;
 type Layer = keyof typeof LAYERS;
@@ -60,6 +67,8 @@ export interface DxfOptions {
    * none). Worked out from the plan given when missing.
    */
   ground?: GroundOnPlan | null;
+  /** Double-height rooms on the floor below: drawn open to below. */
+  voids?: Room[];
 }
 
 /** Text height on paper-like scale: 150 mm reads well at 1:100. */
@@ -108,6 +117,67 @@ export function wallPieces(wall: Wall, walls: Wall[], openings: Opening[]): Poin
   return pieces;
 }
 
+/** A closed outline whose sides may be arcs: bulges[i] bends the side from points[i] to the next (DXF's bulge). */
+export interface BulgedOutline {
+  points: Point[];
+  bulges: number[];
+}
+
+/**
+ * A curved wall's outline, cut where doors and windows go through it, as outlines whose faces are
+ * true arcs (bulges on the drawing, where y points up).
+ */
+export function arcWallOutlines(wall: Wall, walls: Wall[], openings: Opening[]): BulgedOutline[] {
+  const arc = arcOf(wall);
+  if (!arc) return [];
+  const size = Math.abs(arc.sweep);
+  const half = thicknessOf(wall) / 2;
+  const ext = wallExtensions(wall, walls);
+  const gaps = openings
+    .map((o) => {
+      const t = Math.max(0, Math.min(1, paramAlong(wall, o)));
+      const h = Math.asin(Math.min(1, o.width / 2 / arc.r)) / size;
+      return [t - h, t + h] as const;
+    })
+    .sort((a, b) => a[0] - b[0]);
+  const spans: [number, number][] = [];
+  let from = 0;
+  for (const [a, b] of gaps) {
+    if (a > from + 1e-9) spans.push([from, a]);
+    from = Math.max(from, b);
+  }
+  if (from < 1 - 1e-9) spans.push([from, 1]);
+  /** A point on a face (side 1 = side A), at a fraction along. */
+  const on = (t: number, side: number, reach = 0): Point => {
+    const p = pointAlong(wall, t);
+    const d = directionAlong(wall, t);
+    return { x: p.x - d.y * half * side + d.x * reach, y: p.y + d.x * half * side + d.y * reach };
+  };
+  // Along the arc from start to end bends clockwise on the drawing when the sweep is positive (y down on the plan).
+  const bend = (t0: number, t1: number) => -Math.sign(arc.sweep) * Math.tan((size * (t1 - t0)) / 4);
+  return spans.map(([t0, t1]) => {
+    const pts: Point[] = [];
+    const bulges: number[] = [];
+    const add = (p: Point, b = 0) => {
+      pts.push(p);
+      bulges.push(b);
+    };
+    const s0 = t0 === 0 ? ext.start : 0;
+    const s1 = t1 === 1 ? ext.end : 0;
+    if (s0) add(on(t0, 1, -s0));
+    add(on(t0, 1), bend(t0, t1));
+    add(on(t1, 1));
+    if (s1) {
+      add(on(t1, 1, s1));
+      add(on(t1, -1, s1));
+    }
+    add(on(t1, -1), -bend(t0, t1));
+    add(on(t0, -1));
+    if (s0) add(on(t0, -1, -s0));
+    return { points: pts, bulges };
+  });
+}
+
 /** Common symbols in plain text, which every CAD program shows. */
 const ASCII: Record<string, string> = { '·': '-', '²': '2', '′': "'", '″': '"', '×': 'x', '–': '-', '—': '-' };
 
@@ -143,7 +213,7 @@ class Dxf {
     this.xy(b, 11);
   }
 
-  poly(layer: Layer, pts: Point[], closed = true) {
+  poly(layer: Layer, pts: Point[], closed = true, bulges?: number[]) {
     if (pts.length < 2) return;
     this.pair(0, 'POLYLINE');
     this.pair(8, layer);
@@ -152,11 +222,12 @@ class Dxf {
     this.pair(20, 0);
     this.pair(30, 0);
     this.pair(70, closed ? 1 : 0);
-    for (const p of pts) {
+    pts.forEach((p, i) => {
       this.pair(0, 'VERTEX');
       this.pair(8, layer);
       this.xy(p);
-    }
+      if (bulges?.[i]) this.pair(42, bulges[i]);
+    });
     this.pair(0, 'SEQEND');
     this.pair(8, layer);
   }
@@ -170,6 +241,19 @@ class Dxf {
     // SOLID takes its third and fourth corners crosswise.
     this.xy(d, 12);
     this.xy(c, 13);
+  }
+
+  /** An arc round c from plan angle a0 (radians, y down) through `sweep`. */
+  arc(layer: Layer, c: Point, r: number, a0: number, sweep: number) {
+    // On the drawing y points up, so angles turn the other way; DXF arcs run anticlockwise.
+    const [from, to] = sweep > 0 ? [-(a0 + sweep), -a0] : [-a0, -(a0 + sweep)];
+    const deg = (a: number) => ((((a * 180) / Math.PI) % 360) + 360) % 360;
+    this.pair(0, 'ARC');
+    this.pair(8, layer);
+    this.xy(c);
+    this.pair(40, r * this.scale);
+    this.pair(50, deg(from));
+    this.pair(51, deg(to));
   }
 
   circle(layer: Layer, c: Point, r: number) {
@@ -265,6 +349,16 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
   // Shapes only drawn on a wall's face don't cut it (and aren't built), so they're left out.
   const openings = doc.elements.filter((el): el is Opening => (el.type === 'door' || el.type === 'window') && !el.flat);
 
+  // Open to below: the double-height rooms under this floor, dashed and crossed through.
+  for (const v of opts.voids ?? []) {
+    const pts = v.points;
+    const n = pts.length;
+    dxf.poly('A-FLOR-OPEN', pts);
+    dxf.line('A-FLOR-OPEN', pts[0], pts[Math.floor(n / 2)]);
+    dxf.line('A-FLOR-OPEN', pts[Math.floor(n / 4)], pts[Math.floor((3 * n) / 4)]);
+    dxf.text('A-FLOR-OPEN', labelPoint(pts), 'OPEN TO BELOW');
+  }
+
   for (const el of doc.elements)
     if (el.type === 'plot') {
       dxf.poly('C-PROP', outlinePoints(el));
@@ -280,14 +374,30 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       });
     }
 
-  for (const wall of walls)
-    for (const piece of wallPieces(
-      wall,
-      walls,
-      openings.filter((o) => o.wallId === wall.id),
-    ))
-      // A basement's retaining walls are RCC: on the structure layers.
-      dxf.poly(wall.kind === 'retaining' ? 'S-WALL-RETN' : 'A-WALL', piece);
+  for (const wall of walls) {
+    // A basement's retaining walls are RCC: on the structure layers; glass walls on the glazing ones.
+    const curtain = isCurtain(wall);
+    const layer = wall.kind === 'retaining' ? 'S-WALL-RETN' : curtain ? 'A-GLAZ-CURT' : 'A-WALL';
+    const own = openings.filter((o) => o.wallId === wall.id);
+    if (curtain) {
+      // The glass down its middle, and a line across it at each mullion.
+      dxf.poly('A-GLAZ-CURT', wallPath(wall), false);
+      const half = thicknessOf(wall) / 2;
+      for (const t of mullionStops(wall, metricProject(doc))) {
+        const p = pointAlong(wall, t);
+        const d = directionAlong(wall, t);
+        dxf.line(
+          'A-GLAZ-CURT',
+          { x: p.x - d.y * half, y: p.y + d.x * half },
+          { x: p.x + d.y * half, y: p.y - d.x * half },
+        );
+      }
+    }
+    // A curved wall's faces are true arcs.
+    if (isArc(wall))
+      for (const piece of arcWallOutlines(wall, walls, own)) dxf.poly(layer, piece.points, true, piece.bulges);
+    else for (const piece of wallPieces(wall, walls, own)) dxf.poly(layer, piece);
+  }
 
   // Niches and projections: their outline on the face they're on.
   for (const o of doc.elements) {
@@ -360,6 +470,21 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
         dxf.poly('S-SLAB', el.points);
         for (const h of el.holes ?? []) dxf.poly('S-SLAB', h);
         break;
+      case 'roof': {
+        // The eaves dashed (above the cut); ridges, hips and valleys, and the pitch.
+        dxf.poly('A-ROOF-OTLN', el.points);
+        if (el.shape === 'flat') break;
+        for (const l of roofShape(el).lines)
+          if (l.kind === 'ridge' || l.kind === 'hip' || l.kind === 'valley') dxf.line('A-ROOF', l.a, l.b);
+        dxf.text(
+          'A-ROOF',
+          labelPoint(el.points),
+          `${el.shape.toUpperCase()} ROOF ${formatPitch(el.pitchDeg).replace('°', '%%d')}`,
+          0,
+          TEXT_MM * 0.8,
+        );
+        break;
+      }
       case 'block':
         // Flat shapes are drafting aids, not built: only blocks with a height go out.
         if (el.heightMm > 0) dxf.poly('A-FLOR-BLCK', el.points);
@@ -430,6 +555,21 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       if (!exterior) continue;
       const len = wallLength(w);
       if (!len) continue;
+      const arc = arcOf(w);
+      if (arc) {
+        // Round the curve, its length along it at the middle.
+        const d = thicknessOf(w) / 2 + off;
+        const r = arc.r - Math.sign(w.bow ?? 0) * side * d;
+        dxf.arc('A-ANNO-DIMS', { x: arc.cx, y: arc.cy }, r, arc.a0, arc.sweep);
+        const u = directionAlong(w, 0.5);
+        const m = pointAlong(w, 0.5);
+        const n = { x: u.y * side, y: -u.x * side };
+        let angle = (-Math.atan2(u.y, u.x) * 180) / Math.PI;
+        if (angle > 90 || angle <= -90) angle += 180;
+        const at = { x: m.x + n.x * (d + tick * 1.5), y: m.y + n.y * (d + tick * 1.5) };
+        dxf.text('A-ANNO-DIMS', at, formatLength(len * MM_PER_UNIT, opts.units), angle, TEXT_MM * 0.8);
+        continue;
+      }
       const ux = (w.x2 - w.x1) / len;
       const uy = (w.y2 - w.y1) / len;
       const nx = uy * side;

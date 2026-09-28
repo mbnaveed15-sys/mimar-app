@@ -4,6 +4,10 @@
  * lines (the usual centre-line method), with doors and windows taken out.
  */
 import { pointInPolygon, wallLength } from '../geometry';
+import { directionAlong, pointAlong } from './arc';
+import { openRooms, within } from './voids';
+import { isCurtain } from './curtain';
+import { gableArea, GABLE_WALL_MM, slopedArea } from './roof/roof';
 import { polygonArea } from '../rooms';
 import { outsideOutline } from './outline';
 import { DOOR_HEAD_MM, WINDOW_HEAD_MM, WINDOW_SILL_MM } from '../three/model';
@@ -69,6 +73,10 @@ export interface FloorQuantities {
   /** Levelling the site (ground floor): earth dug out above the finished ground, and filled in below it, cft. */
   cutCft: number;
   fillCft: number;
+  /** Glass curtain walls: their face less any doors in them, sqft. */
+  glazingSqft: number;
+  /** Pitched roofs: the sloping area of their covering, sqft. */
+  roofSqft: number;
 }
 
 /** A basement floor (raft) assumed 12" thick. */
@@ -117,6 +125,8 @@ function emptyFloor(levelId: string, name: string): FloorQuantities {
     waterproofSqft: 0,
     cutCft: 0,
     fillCft: 0,
+    glazingSqft: 0,
+    roofSqft: 0,
   };
 }
 
@@ -160,6 +170,10 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
     const onWall = new Map<string, Opening[]>();
     for (const o of openings) onWall.set(o.wallId, [...(onWall.get(o.wallId) ?? []), o]);
     const wallById = new Map(walls.map((w) => [w.id, w]));
+    // Double-height rooms: no slab over them, and the walls beside them rise through the slab's depth.
+    const open = openRooms(doc, level.id);
+    const openSqft = open.reduce((s, r) => s + areaSqft(r.points), 0);
+    const slabFt = mmFt(slabMm(doc));
 
     for (const wall of walls) {
       const L = wallLength(wall) * FT;
@@ -173,9 +187,26 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
         .filter((o) => o.flat && o.depthMm)
         .reduce((s, o) => s + (polygonArea(openingProfileMm(o)) / MM_PER_FT ** 2) * mmFt(o.depthMm!), 0);
       // The plinth rises from the finished ground under the wall (±0 on flat ground).
-      const under = ground ? site.finishedAt((wall.x1 + wall.x2) / 2, (wall.y1 + wall.y2) / 2) : 0;
+      const centre = pointAlong(wall, 0.5);
+      const under = ground ? site.finishedAt(centre.x, centre.y) : 0;
       const plinth = ground && !wall.kind && !wall.elevMm ? Math.max(0, mmFt(doc.plinthMm - under)) : 0;
-      const volume = Math.max(0, L * t * (H + plinth) - holes * t + shaped);
+      // A glass curtain wall is glazing, standing on a brick plinth like the other walls.
+      if (isCurtain(wall)) {
+        const doorsSqft = own.filter((o) => o.type === 'door' && !o.flat).reduce((s, o) => s + openingSqft(o, H), 0);
+        q.glazingSqft += Math.max(0, L * H - doorsSqft);
+        q.brickworkCft += L * t * plinth;
+        if (ground && !wall.elevMm) q.foundationRft += L;
+        continue;
+      }
+      // Beside a double-height room it carries on up through where the slab would be.
+      const u0 = directionAlong(wall, 0.5);
+      const probe = (sign: number) => ({
+        x: centre.x - u0.y * (thicknessOf(wall) / 2 + 5) * sign,
+        y: centre.y + u0.x * (thicknessOf(wall) / 2 + 5) * sign,
+      });
+      const byVoid = open.some((r) => pointInPolygon(probe(1), r.points) || pointInPolygon(probe(-1), r.points));
+      const up = byVoid && !wall.kind ? slabFt : 0;
+      const volume = Math.max(0, L * t * (H + plinth + up) - holes * t + shaped);
       if (wall.kind === 'retaining') q.retainingCft += volume;
       else if (wall.kind) q.boundaryCft += volume;
       else q.brickworkCft += volume;
@@ -185,11 +216,8 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       const face = Math.max(0, L * H - holes);
       for (const sign of [1, -1]) {
         const off = (thicknessOf(wall) / 2 + 5) * sign;
-        const len = wallLength(wall);
-        const mid = {
-          x: (wall.x1 + wall.x2) / 2 + (-(wall.y2 - wall.y1) / len) * off,
-          y: (wall.y1 + wall.y2) / 2 + ((wall.x2 - wall.x1) / len) * off,
-        };
+        const u = directionAlong(wall, 0.5);
+        const mid = { x: centre.x - u.y * off, y: centre.y + u.x * off };
         const room = (!wall.kind || wall.kind === 'retaining') && inRoom(mid);
         if (room) q.insideFaceSqft += face;
         // A retaining wall's earth side is waterproofed, not plastered.
@@ -210,9 +238,12 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
 
     for (const el of els) {
       switch (el.type) {
-        case 'slab':
-          q.slabCft += areaSqft(el.points, el.holes) * el.thickness * FT;
+        case 'slab': {
+          // Less the double-height rooms under it.
+          const voids = open.map((r) => r.points).filter((v) => within(v, el.points));
+          q.slabCft += areaSqft(el.points, [...(el.holes ?? []), ...voids]) * el.thickness * FT;
           break;
+        }
         case 'beam':
           q.beamCft += Math.hypot(el.x2 - el.x1, el.y2 - el.y1) * FT * el.width * FT * el.depth * FT;
           break;
@@ -228,6 +259,18 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
         case 'block':
           if (el.heightMm > 0) q.blockCft += areaSqft(el.points) * mmFt(el.heightMm);
           break;
+        case 'roof': {
+          // A flat roof is a slab; a pitched one a sloping slab, covered along its slopes.
+          const sqft = el.shape === 'flat' ? areaSqft(el.points) : slopedArea(el) * FT * FT;
+          q.slabCft += sqft * mmFt(el.thicknessMm);
+          if (el.shape !== 'flat') q.roofSqft += sqft;
+          // The gable walls up to it, plastered both sides.
+          const gable = gableArea(el) * FT * FT;
+          q.brickworkCft += gable * mmFt(GABLE_WALL_MM);
+          q.insideFaceSqft += gable;
+          q.outsideFaceSqft += gable;
+          break;
+        }
       }
     }
 
@@ -246,7 +289,8 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       q.cutCft = earth.cutM3 * CFT_PER_M3;
       q.fillCft = earth.fillM3 * CFT_PER_M3;
     }
-    if (!els.some((el) => el.type === 'slab')) q.slabEstimateCft = q.coveredSqft * ESTIMATED_SLAB_FT;
+    if (!els.some((el) => el.type === 'slab' || el.type === 'roof'))
+      q.slabEstimateCft = Math.max(0, q.coveredSqft - openSqft) * ESTIMATED_SLAB_FT;
     for (const r of rooms) {
       const kind = floorKind(r);
       q.flooring[kind] = (q.flooring[kind] ?? 0) + areaSqft(r.points);

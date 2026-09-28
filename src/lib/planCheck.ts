@@ -3,6 +3,7 @@
  * plan in, rows out. It is indicative only; the authority's own check is what counts.
  */
 import { elementOutline, pointInPolygon, pointToSegmentDistance } from '../geometry';
+import { roofTopMm } from './roof/roof';
 import { plotRule, plotSetbacks, roomRuleFor, type Authority, type PlotRule } from './bylaws';
 import { MM_PER_UNIT } from './scale';
 import { isCornerPlot, outlinePoints, plotSides, sideSetbacks, SIDE_KIND_NAMES } from './plot';
@@ -27,7 +28,9 @@ import {
   type Units,
   type Wall,
 } from '../types';
-import { thicknessOf } from '../walls';
+import { isBuildingWall, thicknessOf } from '../walls';
+import { directionAlong, pointAlong, runLength } from './arc';
+import { voidsOver } from './voids';
 
 export type CheckStatus = 'ok' | 'fail' | 'check';
 
@@ -54,7 +57,7 @@ export interface PlanCheck {
 
 const SQ_MM_PER_SQ_FT = 92903.04;
 const TOLERANCE = 1; // plan units (10 mm)
-const BUILT_KINDS = (w: Wall) => !w.kind || w.kind === 'retaining';
+const BUILT_KINDS = (w: Wall) => isBuildingWall(w) || w.kind === 'retaining';
 
 /** A wall's four corners, thickness included. */
 function wallCorners(w: Wall): Point[] {
@@ -99,14 +102,16 @@ export function builtAreaSqFt(doc: PlanDoc, levelId: string): number {
   // Walls: the half outside the enclosed areas counts too (both halves of a free-standing wall),
   // piece by piece, as a long wall can run past several areas.
   for (const w of walls) {
-    const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+    const L = runLength(w);
     if (!L) continue;
     const d = thicknessOf(w) / 2 + 1;
-    const n = { x: (-(w.y2 - w.y1) / L) * d, y: ((w.x2 - w.x1) / L) * d };
     const steps = Math.min(64, Math.max(1, Math.ceil(L / 30)));
     for (let i = 0; i < steps; i++) {
       const t = (i + 0.5) / steps;
-      const mid = { x: w.x1 + (w.x2 - w.x1) * t, y: w.y1 + (w.y2 - w.y1) * t };
+      // Along the curve, for a curved wall.
+      const mid = pointAlong(w, t);
+      const u = directionAlong(w, t);
+      const n = { x: -u.y * d, y: u.x * d };
       const open = [
         { x: mid.x + n.x, y: mid.y + n.y },
         { x: mid.x - n.x, y: mid.y - n.y },
@@ -117,7 +122,9 @@ export function builtAreaSqFt(doc: PlanDoc, levelId: string): number {
   // Rooms not enclosed by walls (a porch drawn on its own, say).
   for (const r of rooms)
     if (!OPEN_AIR.test(r.name) && !inCovered(labelPoint(r.points))) units2 += polygonArea(r.points);
-  return (units2 * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
+  // A double-height room below leaves this floor open over it: counted once, on its own floor.
+  for (const v of voidsOver(doc, levelId)) if (inCovered(labelPoint(v.points))) units2 -= polygonArea(v.points);
+  return (Math.max(0, units2) * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
 }
 
 /** Rooms named as a mumty (stair tower), and floor names that mean the roof. */
@@ -317,7 +324,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       });
     else {
       const groundWalls = doc.elements.filter(
-        (el): el is Wall => el.type === 'wall' && !el.hidden && !el.kind && levelOf(el) === GROUND_LEVEL,
+        (el): el is Wall => el.type === 'wall' && !el.hidden && isBuildingWall(el) && levelOf(el) === GROUND_LEVEL,
       );
       const area =
         br.extent === 'house'
@@ -602,10 +609,16 @@ function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: number)
     if (el.type === 'wall' && el.kind !== 'boundary') top = Math.max(top, base + (el.heightMm ?? wallHeightMm));
     if (el.type === 'slab') top = Math.max(top, base + wallHeightMm + el.thickness * MM_PER_UNIT);
     if (el.type === 'block' && el.heightMm > 0) top = Math.max(top, base + el.heightMm);
+    // A pitched roof to its ridge.
+    if (el.type === 'roof')
+      top = Math.max(
+        top,
+        levelBaseM(doc, levelOf(el), wallHeightMm) * 1000 + roofTopMm(el, levelWallMm(doc, levelOf(el), wallHeightMm)),
+      );
   }
   // A floor with walls carries a slab over it even when none is drawn (a basement's is below the ground).
   for (const l of doc.levels)
-    if (!l.basement && built.some((el) => el.type === 'wall' && !el.kind && levelOf(el) === l.id))
+    if (!l.basement && built.some((el) => el.type === 'wall' && isBuildingWall(el) && levelOf(el) === l.id))
       top = Math.max(
         top,
         levelBaseM(doc, l.id, wallHeightMm) * 1000 + levelWallMm(doc, l.id, wallHeightMm) + slabMm(doc),

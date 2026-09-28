@@ -7,6 +7,7 @@ import { buildableArea, stairLayout } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
 import { basementOf, groundIndex, levelWallMm, slabMm } from '../lib/levels';
 import { outsideOutline } from '../lib/outline';
+import { openRooms, voidsOver, within } from '../lib/voids';
 import {
   GROUND_LEVEL,
   levelOf,
@@ -17,11 +18,15 @@ import {
   type Pattern,
   type PlanDoc,
   type Point,
+  type Roof,
   type Slab,
   type Stair,
   type Wall,
 } from '../types';
-import { thicknessOf, wallExtensions, wallsOf } from '../walls';
+import { isBuildingWall, thicknessOf, wallExtensions, wallsOf } from '../walls';
+import { paramAlong, pointAlong, straightPieces } from '../lib/arc';
+import { FRAME_MM, isCurtain, metricProject, mullionStops, transomMm } from '../lib/curtain';
+import { eaveMm, gableWalls, GABLE_WALL_MM, slopedFaces, thicknessUpMm, triangulate } from '../lib/roof/roof';
 import { groundBeside, lowestAlong, lowestUnder, siteOf, stepOnGround, type TerrainMesh } from './terrain3d';
 
 export type { TerrainKind, TerrainMesh } from './terrain3d';
@@ -130,14 +135,26 @@ export interface Slab3D {
   role?: 'slab' | 'block' | 'shape';
 }
 
+/** A roof: its sloped faces (the underside, as [x, y, z] points in metres), thickened straight up by h. */
+export interface Roof3D {
+  faces: [number, number, number][][];
+  h: number;
+  color: string;
+  finish?: Finish;
+  id?: string;
+  level?: string;
+}
+
 export interface Model3D {
   solids: Solid[];
   floors: Floor[];
   slabs: Slab3D[];
   /** Blocks, and flat shapes on floors (role 'shape'). */
   blocks: Slab3D[];
-  /** Pieces of wall round shaped openings, their glass, and flat shapes on walls. */
+  /** Pieces of wall round shaped openings, their glass, flat shapes on walls, and gable walls. */
   panels: Panel[];
+  /** Pitched and flat roofs. */
+  roofs?: Roof3D[];
   /**
    * Lines drawn on the ground (a plot's setback line), as closed outlines of [x, z] points, at
    * height y, or at each point's own height in `ys` when they follow the ground.
@@ -202,7 +219,109 @@ interface WallParts {
 const PANEL_PAD = 2; // plan units (20 mm)
 const PANEL_EDGE_M = 0.005;
 
-function wallParts(wall: Wall, walls: Wall[], openings: Opening[], heightMm: number): WallParts {
+/**
+ * The parts of a wall: a curved wall is built as short straight pieces (each door or window in a
+ * piece of its own, flat on the curve), joined so the outside of the bend is closed.
+ */
+function curvedWallParts(wall: Wall, walls: Wall[], openings: Opening[], heightMm: number): WallParts {
+  const pieces = straightPieces(wall, openings, thicknessOf(wall) / 2);
+  const out: WallParts = { solids: [], panels: [] };
+  for (const p of pieces) {
+    const parts = wallParts(p.wall, walls, p.openings, heightMm, p);
+    out.solids.push(...parts.solids);
+    out.panels.push(...parts.panels);
+  }
+  return out;
+}
+
+/**
+ * A glass curtain wall: a flat pane of glass between each pair of mullions (so a curved one is flat
+ * panes round the curve), in a frame of mullions, a rail at the foot and head, and a transom. Over a
+ * door, the glass starts at the door's head.
+ */
+function curtainParts(wall: Wall, openings: Opening[], heightMm: number, metric: boolean): WallParts {
+  const L = wallLength(wall);
+  if (!L) return { solids: [], panels: [] };
+  const top = mmToM(heightMm);
+  const frame = FRAME_MM / MM_PER_UNIT;
+  const depth = m(thicknessOf(wall));
+  const rail = mmToM(FRAME_MM);
+  const transom = transomMm(wall, heightMm);
+  const doors = openings
+    .filter((o) => o.type === 'door' && !o.flat)
+    .map((o) => {
+      const s = paramAlong(wall, o) * L;
+      return [s - o.width / 2, s + o.width / 2] as const;
+    });
+  const head = mmToM(DOOR_HEAD_MM);
+  const solids: Solid[] = [];
+  const stops = mullionStops(wall, metric);
+  stops.forEach((t0, i) => {
+    const a = pointAlong(wall, t0);
+    // Each mullion stands square to the pane after it (the last to the pane before it).
+    const [p0, p1] = i + 1 < stops.length ? [t0, stops[i + 1]] : [stops[i - 1], t0];
+    const pa = pointAlong(wall, p0);
+    const pb = pointAlong(wall, p1);
+    const angle = (Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180) / Math.PI;
+    const rotY = (-angle * Math.PI) / 180;
+    const box = (origin: Point, s0: number, s1: number, y0: number, y1: number, role: Solid['role'], d = depth) => ({
+      ...toScene(origin, angle, { x: (s0 + s1) / 2, y: 0 }),
+      y0,
+      h: y1 - y0,
+      w: m(s1 - s0),
+      d,
+      rotY,
+      color: role === 'glass' ? GLASS_COLOR : FRAME_COLOR,
+      ...(role === 'glass' && { opacity: 0.35 }),
+      role,
+    });
+    solids.push(box(a, -frame / 2, frame / 2, 0, top, 'wall'));
+    if (i + 1 >= stops.length) return;
+    // The pane from this mullion to the next, flat between them.
+    const span = Math.hypot(pb.x - pa.x, pb.y - pa.y);
+    const run = (stops[i + 1] - t0) * L;
+    const [s0, s1] = [frame / 2, span - frame / 2];
+    if (s1 <= s0) return;
+    // Doors in it, along the pane: the glass and the foot rail stop there, up to the door's head.
+    const cut = doors
+      .map(([d0, d1]) => [((d0 - t0 * L) / run) * span, ((d1 - t0 * L) / run) * span] as const)
+      .filter(([d0, d1]) => d1 > s0 && d0 < s1)
+      .map(([d0, d1]) => [Math.max(s0, d0), Math.min(s1, d1)] as const)
+      .sort((x, y) => x[0] - y[0]);
+    const clear: [number, number][] = [];
+    let at = s0;
+    for (const [d0, d1] of cut) {
+      if (d0 > at) clear.push([at, d0]);
+      at = Math.max(at, d1);
+    }
+    if (at < s1) clear.push([at, s1]);
+    solids.push(box(pa, s0, s1, top - rail, top, 'wall'));
+    for (const [c0, c1] of clear) solids.push(box(pa, c0, c1, 0, rail, 'wall'));
+    if (transom !== null) solids.push(box(pa, s0, s1, mmToM(transom) - rail / 2, mmToM(transom) + rail / 2, 'wall'));
+    const glass = (c0: number, c1: number, y0: number, y1: number) => {
+      if (y1 - y0 > 0.001 && c1 - c0 > 0.001) solids.push(box(pa, c0, c1, y0, y1, 'glass', 0.012));
+    };
+    // The glass, split at the transom; over a door, only above its head.
+    const bands = (y0: number, y1: number) =>
+      transom !== null && mmToM(transom) > y0 && mmToM(transom) < y1
+        ? [
+            [y0, mmToM(transom) - rail / 2],
+            [mmToM(transom) + rail / 2, y1],
+          ]
+        : [[y0, y1]];
+    for (const [c0, c1] of clear) for (const [y0, y1] of bands(rail, top - rail)) glass(c0, c1, y0, y1);
+    for (const [d0, d1] of cut) for (const [y0, y1] of bands(head, top - rail)) glass(d0, d1, y0, y1);
+  });
+  return { solids, panels: [] };
+}
+
+function wallParts(
+  wall: Wall,
+  walls: Wall[],
+  openings: Opening[],
+  heightMm: number,
+  ends: { start?: number; end?: number } = {},
+): WallParts {
   const len = wallLength(wall);
   if (len === 0) return { solids: [], panels: [] };
   const angle = (Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1) * 180) / Math.PI;
@@ -210,7 +329,9 @@ function wallParts(wall: Wall, walls: Wall[], openings: Opening[], heightMm: num
   const origin = { x: wall.x1, y: wall.y1 };
   const thickness = m(thicknessOf(wall));
   const top = mmToM(heightMm);
-  const { start, end } = wallExtensions(wall, walls);
+  const joins = wallExtensions(wall, walls);
+  const start = ends.start ?? joins.start;
+  const end = ends.end ?? joins.end;
 
   /** A piece of wall from s0 to s1 along it (plan units), between two heights (metres). */
   const piece = (s0: number, s1: number, y0: number, y1: number, role: Solid['role'] = 'wall', depth = thickness) => {
@@ -786,6 +907,8 @@ export function levelBaseM(doc: PlanDoc, levelId: string, wallHeightMm: number):
  * storey is the wall height plus a slab. Ground-floor walls also run down through the plinth.
  */
 export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
+  // Curtain walls' mullions default to 4' in a house, 1.2 m in a metric project.
+  const metric = metricProject(doc);
   const colorOf = (id?: string) => doc.materials.find((mat) => mat.id === id)?.color;
   const finishOf = (id?: string, fallback?: Pattern): Finish | undefined => {
     const mat = doc.materials.find((x) => x.id === id);
@@ -806,6 +929,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const slabs: Slab3D[] = [];
   const blocks: Slab3D[] = [];
   const panels: Panel[] = [];
+  const roofs: Roof3D[] = [];
   const plinth = mmToM(doc.plinthMm);
   const levels = doc.levels.length ? doc.levels : [{ id: 'ground', name: 'Ground floor' }];
   // The lawn opens over the basement, round the outside of its walls.
@@ -868,7 +992,9 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       // A boundary wall stands on the natural ground, not on the plinth.
       const onGround = wall.kind === 'boundary' && ground;
       const place = <T extends Part>(s: T): T => from(wall.id)(raise(wall)(onGround ? s : lift(s)));
-      const parts = wallParts(wall, walls, own, height);
+      const parts = isCurtain(wall)
+        ? curtainParts(wall, own, height, metric)
+        : curvedWallParts(wall, walls, own, height);
       // On sloping or levelled ground it steps down the slope; parts of it over openings rise with the ground.
       const stepped = onGround && terrain ? parts.solids.flatMap((s) => stepOnGround(s, terrain)) : parts.solids;
       const panelsOf =
@@ -888,14 +1014,14 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           : parts.panels;
       solids.push(...stepped.map(paint).map(place));
       panels.push(...panelsOf.map(paint).map(place));
-      if (wall.kind) continue;
+      if (!isBuildingWall(wall)) continue;
       // The plinth: ground-floor walls carry on down to the ground (not under a raised wall), to the
       // lowest finished ground along them.
       const footMm =
         ground && terrain ? lowestAlong(terrain, { x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 }) : 0;
       if (ground && doc.plinthMm - footMm > 0.5 && !wall.elevMm)
         solids.push(
-          ...wallParts(wall, walls, [], doc.plinthMm - footMm)
+          ...curvedWallParts(wall, walls, [], doc.plinthMm - footMm)
             .solids.map((s) => (footMm ? { ...s, y0: s.y0 + mmToM(footMm) } : s))
             .map(paint)
             .map(from(wall.id)),
@@ -984,10 +1110,15 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           id: el.id,
           level: level.id,
         });
-      if (el.type === 'slab')
+      if (el.type === 'slab') {
+        // Double-height rooms under it leave it open over them.
+        const open = openRooms(doc, level.id)
+          .map((r) => r.points)
+          .filter((pts) => within(pts, el.points));
+        const holes = [...(el.holes ?? []), ...open];
         slabs.push({
           points: el.points.map(toXZ),
-          ...(el.holes?.length ? { holes: el.holes.map((h) => h.map(toXZ)) } : {}),
+          ...(holes.length ? { holes: holes.map((h) => h.map(toXZ)) } : {}),
           y0: base + wallTop + mmToM(el.elevMm ?? 0),
           h: m(el.thickness),
           color: colorOf(el.material) ?? CONCRETE,
@@ -996,6 +1127,12 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           level: level.id,
           role: 'slab',
         });
+      }
+      if (el.type === 'roof') {
+        const built = roofParts(el, base, levelMm, colorOf(el.material) ?? ROOF_COLOR, finishOf(el.material));
+        roofs.push({ ...built.roof, level: level.id });
+        panels.push(...built.gables.map((g) => ({ ...g, level: level.id })));
+      }
       if (el.type === 'block') {
         // On a slab it stands on the slab's top; otherwise on the floor.
         const host = el.slabId ? els.find((x): x is Slab => x.type === 'slab' && x.id === el.slabId) : undefined;
@@ -1014,9 +1151,14 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         });
       }
     }
+    const voids = voidsOver(doc, level.id).map((v) => v.points);
     for (const r of doc.rooms.filter((room) => levelOf(room) === level.id)) {
+      // No floor over a double-height room below.
+      if (voids.some((v) => within(r.points, v))) continue;
+      const holes = voids.filter((v) => within(v, r.points));
       floors.push({
         points: r.points.map((p) => [m(p.x), m(p.y)] as [number, number]),
+        ...(holes.length ? { holes: holes.map((h) => h.map((p) => [m(p.x), m(p.y)] as [number, number])) } : {}),
         y: base,
         color: colorOf(r.material) ?? DEFAULT_FLOOR,
         finish: finishOf(r.material),
@@ -1026,7 +1168,10 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
     }
   });
 
-  const flat = [...floors, ...slabs, ...blocks].flatMap((f) => f.points);
+  const flat = [
+    ...[...floors, ...slabs, ...blocks].flatMap((f) => f.points),
+    ...roofs.flatMap((r) => r.faces.flat().map(([x, , z]): [number, number] => [x, z])),
+  ];
   const xs = [...solids.map((s) => s.x), ...flat.map((p) => p[0])];
   const zs = [...solids.map((s) => s.z), ...flat.map((p) => p[1])];
   // Not Math.min(...xs): a big plan has too many values to spread into one call.
@@ -1034,9 +1179,93 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const hi = (v: number[]) => v.reduce((m, x) => (x > m ? x : m), -Infinity);
   const centre = xs.length ? { x: (lo(xs) + hi(xs)) / 2, z: (lo(zs) + hi(zs)) / 2 } : { x: 8, z: 5 };
   const size = xs.length ? Math.max(hi(xs) - lo(xs), hi(zs) - lo(zs), 4) : 16;
-  const model: Model3D = { solids, floors, slabs, blocks, panels, guides, centre, size };
+  const model: Model3D = { solids, floors, slabs, blocks, panels, roofs, guides, centre, size };
   if (!site) return model;
   return { ...model, terrain: site.terrain, context: site.context, groundY: site.groundY };
+}
+
+const ROOF_COLOR = '#9a4a3a';
+
+/** A roof's sloped faces over its floor (base, m) and the gable walls rising from the top of the walls to it. */
+function roofParts(
+  roof: Roof,
+  base: number,
+  wallTopMm: number,
+  color: string,
+  finish?: Finish,
+): { roof: Roof3D; gables: Panel[] } {
+  const eave = base + mmToM(eaveMm(roof, wallTopMm));
+  const faces = slopedFaces(roof).map((f) =>
+    f.points.map((p): [number, number, number] => [m(p.x), eave + m(p.z), m(p.y)]),
+  );
+  const gables = gableWalls(roof).map((g): Panel => ({
+    outline: g.outline.map(([s, z]) => [m(s), m(z)]),
+    x: m(g.at.x),
+    z: m(g.at.y),
+    y0: base + mmToM(wallTopMm + (roof.elevMm ?? 0)),
+    rotY: Math.atan2(-g.dir.y, g.dir.x),
+    depth: mmToM(GABLE_WALL_MM),
+    color: WALL_COLOR,
+    id: roof.id,
+    role: 'wall',
+  }));
+  return { roof: { faces, h: mmToM(thicknessUpMm(roof)), color, ...(finish && { finish }), id: roof.id }, gables };
+}
+
+/**
+ * A roof as triangles: each face's underside and top (h above it), and the edges round the roof closed.
+ * Corners are not shared between faces, so each face stays flat when lit.
+ */
+export function roofMesh(r: Roof3D): { positions: number[]; indices: number[] } {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  type V = [number, number, number];
+  const add = (v: V) => {
+    positions.push(v[0], v[1], v[2]);
+    return positions.length / 3 - 1;
+  };
+  const normalY = (a: V, b: V, c: V) => (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+  const key = (v: V) => `${v[0].toFixed(4)},${v[1].toFixed(4)},${v[2].toFixed(4)}`;
+  const uses = new Map<string, { a: V; b: V; centre: V; n: number }>();
+  for (const face of r.faces) {
+    if (face.length < 3) continue;
+    const up = face.map((p): V => [p[0], p[1] + r.h, p[2]]);
+    const tris = triangulate(face.map(([x, , z]) => ({ x, y: z })));
+    const centre = face
+      .reduce((s, p) => [s[0] + p[0], s[1] + p[1], s[2] + p[2]] as V, [0, 0, 0] as V)
+      .map((c) => c / face.length) as V;
+    for (const [surface, facing] of [
+      [face, -1],
+      [up, 1],
+    ] as const) {
+      const ids = surface.map(add);
+      for (const [i, j, k] of tris) {
+        // The top faces up, the underside down.
+        const flip = normalY(surface[i], surface[j], surface[k]) * facing < 0;
+        indices.push(ids[i], ...(flip ? [ids[k], ids[j]] : [ids[j], ids[k]]));
+      }
+    }
+    face.forEach((a, i) => {
+      const b = face[(i + 1) % face.length];
+      const k = [key(a), key(b)].sort().join('|');
+      const seen = uses.get(k);
+      if (seen) seen.n++;
+      else uses.set(k, { a, b, centre, n: 1 });
+    });
+  }
+  // Edges only one face has are the roof's edges: close them with an upright strip facing out.
+  for (const { a, b, centre, n } of uses.values()) {
+    if (n !== 1) continue;
+    const quad: V[] = [a, b, [b[0], b[1] + r.h, b[2]], [a[0], a[1] + r.h, a[2]]];
+    const ids = quad.map(add);
+    const ex = b[0] - a[0];
+    const ez = b[2] - a[2];
+    // (ez, -ex) points out of the face when it faces away from its middle.
+    const out = ez * ((a[0] + b[0]) / 2 - centre[0]) - ex * ((a[2] + b[2]) / 2 - centre[2]) > 0;
+    const tri = out ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+    indices.push(...tri.map((t) => ids[t]));
+  }
+  return { positions, indices };
 }
 
 /** A closed outline with points added so none are more than `step` apart. */

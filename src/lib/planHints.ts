@@ -23,7 +23,10 @@ import {
   type Units,
   type Wall,
 } from '../types';
-import { thicknessOf, wallPolygon } from '../walls';
+import { isBuildingWall, thicknessOf, wallPolygon } from '../walls';
+import { overlaps, voidsOver } from './voids';
+import { directionAlong, pointAlong, projectOnWall, runLength } from './arc';
+import { isCurtain, TRANSOM_MM } from './curtain';
 import { DEFAULT_OPENING_GAP_MM, openingFits } from './openingPlace';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { sideName, toPlan, zoneOf, zoneRects, zoneSamples, type ZoneSide } from '../furniture/useZones';
@@ -92,9 +95,10 @@ function boxSides(pts: Point[]): [number, number] {
 
 /** The points just past each face of a wall, at a point p on it. */
 function sidesAt(w: Wall, p: Point): [Point, Point] {
-  const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1) || 1;
+  // Square to the wall where p is (along a curved wall, square to the curve there).
+  const u = directionAlong(w, projectOnWall(w, p).t);
   const d = thicknessOf(w) / 2 + REACH;
-  const n = { x: (-(w.y2 - w.y1) / len) * d, y: ((w.x2 - w.x1) / len) * d };
+  const n = { x: -u.y * d, y: u.x * d };
   return [
     { x: p.x + n.x, y: p.y + n.y },
     { x: p.x - n.x, y: p.y - n.y },
@@ -218,6 +222,18 @@ export function planHints(
     });
   }
 
+  // A room drawn over a double-height space: the floor is open there.
+  for (const level of doc.levels)
+    for (const v of voidsOver(doc, level.id))
+      for (const r of doc.rooms)
+        if (!r.hidden && levelOf(r) === level.id && overlaps(r.points, v.points))
+          hints.push({
+            id: `over-void-${r.id}-${v.id}`,
+            kind: 'layout',
+            text: `${level.name}: ${r.name} is drawn over the double-height ${v.name} below, where the floor is open.`,
+            ids: [r.id],
+          });
+
   // Doors and windows closer than the gap to a corner or to each other (drawn before it was kept).
   const gapMm = ctx.gapMm ?? DEFAULT_OPENING_GAP_MM;
   const tight = tightOpenings(doc, gapMm / MM_PER_UNIT);
@@ -241,7 +257,7 @@ export function planHints(
     if (!rooms.length) return;
     const indoor = rooms.filter((r) => !OUTDOOR.test(r.name));
     const walls = doc.elements.filter(
-      (el): el is Wall => el.type === 'wall' && !el.hidden && !el.kind && levelOf(el) === level.id,
+      (el): el is Wall => el.type === 'wall' && !el.hidden && isBuildingWall(el) && levelOf(el) === level.id,
     );
     const openings = doc.elements.filter(
       (el): el is Opening =>
@@ -399,11 +415,11 @@ export function planHints(
       // Rooms with an outside wall, and the glass opening each room onto the outside: found once for all.
       const outer = new Set<Id>();
       for (const w of walls) {
-        const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);
+        const L = runLength(w);
         const steps = Math.min(MAX_SAMPLES, Math.max(2, Math.ceil(L / 30)));
         for (let i = 1; i < steps; i++) {
           const t = i / steps;
-          const [p, q] = sidesAt(w, { x: w.x1 + (w.x2 - w.x1) * t, y: w.y1 + (w.y2 - w.y1) * t });
+          const [p, q] = sidesAt(w, pointAlong(w, t));
           const rp = roomAt(p);
           const rq = roomAt(q);
           if (rp && outside(q)) outer.add(rp.id);
@@ -416,6 +432,18 @@ export function planHints(
         if (o.type !== 'window' || !w || (o.flat && !o.open)) continue;
         const [p, q] = sidesAt(w, o);
         const sqMm = o.width * MM_PER_UNIT * (o.heightMm ?? WINDOW_MM) * (o.shape === 'circle' ? Math.PI / 4 : 1);
+        for (const [inner, other] of [
+          [p, q],
+          [q, p],
+        ]) {
+          const r = roomAt(inner);
+          if (r && outside(other)) glass.set(r.id, (glass.get(r.id) ?? 0) + sqMm);
+        }
+      }
+      // A glass curtain wall lights the room it faces, up to door height.
+      for (const w of walls.filter(isCurtain)) {
+        const [p, q] = sidesAt(w, pointAlong(w, 0.5));
+        const sqMm = runLength(w) * MM_PER_UNIT * TRANSOM_MM;
         for (const [inner, other] of [
           [p, q],
           [q, p],
