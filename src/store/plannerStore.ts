@@ -14,6 +14,7 @@ import {
 import { DEFAULT_FILE_NAME } from '../lib/files';
 import { newId } from '../lib/ids';
 import { GRID_MAX_MM, GRID_MIN_MM, loadPrefs, savePrefs, type GridPrefs, type Prefs } from '../lib/prefs';
+import { DEFAULT_PANELS, clampPanelWidth, movePanel, type PanelLayout, type SectionId } from '../lib/panels';
 import { DEFAULT_TOOLBARS, moveToolbar, type DockArea, type ToolbarId, type ToolbarLayout } from '../lib/toolbars';
 import { emptyDoc, loadFileInfo, loadPlan, saveFileInfo, savePlan, STORAGE_KEY, type FileInfo } from '../lib/storage';
 import { MM_PER_UNIT } from '../lib/scale';
@@ -278,6 +279,12 @@ export interface PlannerState {
   toolbars: ToolbarLayout;
   dockToolbar: (id: ToolbarId, area: DockArea, index?: number) => void;
   resetToolbars: () => void;
+  /** The side panel's layout (kept between sessions). */
+  panels: PanelLayout;
+  setPanels: (patch: Partial<PanelLayout>) => void;
+  /** Move a section of the side panel before the one at `index`. */
+  movePanel: (id: SectionId, index: number) => void;
+  resetPanels: () => void;
   /** What the Shape tool draws. */
   shapeKind: ShapeKind;
   setShapeKind: (kind: ShapeKind) => void;
@@ -608,7 +615,8 @@ export function createPlannerStore(
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
       const { showHints, pdfHints, accessibleZones } = get();
-      const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm } = get();
+      const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } =
+        get();
       savePrefs({
         units,
         showDimensions,
@@ -629,6 +637,7 @@ export function createPlannerStore(
         theme,
         grid,
         toolbars,
+        panels,
       });
     };
     const resetHistory = {
@@ -754,6 +763,20 @@ export function createPlannerStore(
       },
       resetToolbars: () => {
         set({ toolbars: DEFAULT_TOOLBARS });
+        persistPrefs();
+      },
+      panels: prefs.panels,
+      setPanels: (patch) => {
+        const next = { ...get().panels, ...patch };
+        set({ panels: { ...next, width: clampPanelWidth(next.width) } });
+        persistPrefs();
+      },
+      movePanel: (id, index) => {
+        set({ panels: { ...get().panels, order: movePanel(get().panels.order, id, index) } });
+        persistPrefs();
+      },
+      resetPanels: () => {
+        set({ panels: DEFAULT_PANELS });
         persistPrefs();
       },
       view: { x: 0, y: 0, zoom: 1 },

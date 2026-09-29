@@ -4,6 +4,7 @@ import { clampGap, DEFAULT_OPENING_GAP_MM } from './openingPlace';
 import { browserStorage } from './storage';
 import { GRID_MM } from './units';
 import { DEFAULT_TOOLBARS, readToolbars, type ToolbarLayout } from './toolbars';
+import { DEFAULT_PANELS, readPanels, type PanelLayout } from './panels';
 
 export interface GridPrefs {
   /** Show the grid on the plan (it still snaps when hidden, if snap is on). */
@@ -69,6 +70,8 @@ export interface Prefs {
   grid: GridPrefs;
   /** Where each tool bar is docked. */
   toolbars: ToolbarLayout;
+  /** How the side panel is laid out. */
+  panels: PanelLayout;
 }
 
 const PREFS_KEY = 'mimar.prefs';
@@ -92,6 +95,7 @@ export const DEFAULT_PREFS: Prefs = {
   theme: DEFAULT_THEME,
   grid: DEFAULT_GRID,
   toolbars: DEFAULT_TOOLBARS,
+  panels: DEFAULT_PANELS,
 };
 
 const spacingOk = (mm: unknown): mm is number => typeof mm === 'number' && mm >= GRID_MIN_MM && mm <= GRID_MAX_MM;
@@ -161,6 +165,7 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       theme: isThemeId(raw?.theme) ? raw.theme : DEFAULT_THEME,
       grid: readGrid(raw?.grid),
       toolbars: readToolbars(raw?.toolbars),
+      panels: readPanels(raw?.panels),
     };
   } catch {
     return DEFAULT_PREFS;

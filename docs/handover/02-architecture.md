@@ -132,6 +132,12 @@ autosaves to local storage on every change.
   library (`src/lib/modify.ts`) treats walls and layout lines alike (`type Wall = WallItem | SketchLine` there).
 - Tool bars: `src/lib/toolbars.ts` (the bars, the saved layout in prefs, `moveToolbar`, `packColumns` which
   wraps bars into columns) and `src/components/ToolDocks.tsx` (the four docks, grips, drag and drop, grip menu).
+- Side panel: `src/lib/panels.ts` (the sections, the saved `PanelLayout` in prefs: order, stacked or tabs, side,
+  width, open tab, folded; `readPanels`, `movePanel`), `src/components/SidePanel.tsx` (stacked sections, the tabs
+  view, the resize edge; docked left with CSS `order-first`) and `src/components/PanelMoves.tsx` (section grips and
+  tabs, the panel heading with its Stacked/Tabs switch and dock button, drag and drop, the section menu). Which
+  stacked sections are open stays in `useOpenSections` (`mimar.panels`). `showSection` opens a section's tab in the
+  tabs view.
 - `src/commands.ts`: every menu item, shortcut and Ctrl+K palette entry in one registry.
 
 ## Drawing
