@@ -19,6 +19,8 @@ CHECKS (the same ones GitHub runs on every pull request)
 UPDATES (free, from GitHub Releases)
 - Merging a pull request that raises "version" in package.json publishes a GitHub Release
   (v<version>) with the installer and portable app. Merges without a version change only build.
+- The release's description comes from docs/release-notes: about.md (what Mimar does) with
+  <version>.md (what is new) in it. Add <version>.md with each version change.
 - The installed app checks for a newer release at start and every 6 hours, downloads it in the
   background and shows "Restart to update" in the left panel.
 - The portable app shows "Mimar <version> is available" with a Download button, since it

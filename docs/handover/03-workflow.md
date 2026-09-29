@@ -19,6 +19,10 @@
 - Don't push new work onto a branch whose pull request is still open for a different release; keep it local until
   that one is merged.
 - Version: `npm version X.Y.Z --no-git-tag-version` in each release pull request; the release workflow tags it.
+- **Release description:** each release pull request adds `docs/release-notes/X.Y.Z.md` (a `## New in X.Y.Z: …` heading
+  and short bullets in plain words) and updates `docs/release-notes/about.md` ("What Mimar does") when a feature is
+  added or changed. The release build writes the GitHub release's description from them
+  (`node scripts/release-notes.mjs` shows it); a unit test fails if the note for the version in `package.json` is missing.
 
 ## Releases
 
