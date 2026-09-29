@@ -26,10 +26,12 @@ any shape, per-side types, setbacks and walls, corner plots (1.30); layouts from
 project types: free projects, buildings, per-floor heights, metric (1.33);
 furniture use zones with ADA wheelchair spaces (1.34); sections, elevations and drawing sheets (1.35); terrain and site:
 spot levels, contours, survey import, levelled plot and pads, cut and fill, OpenStreetMap surroundings and satellite levels (1.36);
-freer form: curved walls, double-height rooms, glass curtain walls and pitched roofs (1.37).
+freer form: curved walls, double-height rooms, glass curtain walls and pitched roofs (1.37); faster 3D and IFC export (1.38);
+movable side panels: reorder, tabs, dock left or right, resize (1.39).
 
 Planned next (the roadmap agreed with the owner for all kinds of work; plan each with the owner first):
-1.39 checks for non-residential buildings (1.38, 3D speed and IFC export, is done).
+1.40 checks for non-residential buildings (1.39 went to movable side panels, asked for by the owner).
+Floating side panels were assessed with 1.39 and left out; revisit only if the owner still wants them.
 First-floor plans from a room list are a later idea.
 
 Left from sections and elevations for later: dimension strings on sections (only level marks now); each section and

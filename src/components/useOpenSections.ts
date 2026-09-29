@@ -1,18 +1,8 @@
 import { useState } from 'react';
+import type { SectionId } from '../lib/panels';
 import { browserStorage } from '../lib/storage';
 
-export type SectionId =
-  | 'project'
-  | 'ground'
-  | 'layout'
-  | 'check'
-  | 'cost'
-  | 'materials'
-  | 'components'
-  | 'layers'
-  | 'grid'
-  | 'theme'
-  | 'settings';
+export type { SectionId };
 
 const OPEN_KEY = 'mimar.panels';
 const DEFAULT_OPEN: SectionId[] = ['check', 'materials', 'layers'];

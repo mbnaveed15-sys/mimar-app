@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildCommands } from '../commands';
 import { baseName } from '../lib/files';
-import { usePlanner } from '../store/plannerStore';
+import { plannerStore, usePlanner } from '../store/plannerStore';
 import { Canvas } from './Canvas';
 import {
   CommandPalette,
@@ -13,6 +13,7 @@ import {
 } from './Dialogs';
 import { Icon } from './Icon';
 import { MenuBar } from './MenuBar';
+import { PanelMovesOverlay } from './PanelMoves';
 import { SidePanel } from './SidePanel';
 import { SplitView } from './SplitView';
 import { StatusBar } from './StatusBar';
@@ -64,6 +65,9 @@ export default function PlannerApp() {
   const showSection = useCallback(
     (id: string) => {
       setSection(id as SectionId, true);
+      // In the tabs view, the section's tab opens instead.
+      const { panels, setPanels } = plannerStore.getState();
+      if (panels.view === 'tabs') setPanels({ tab: id as SectionId, folded: false });
       requestAnimationFrame(() => document.getElementById(`section-${id}`)?.scrollIntoView({ block: 'nearest' }));
     },
     [setSection],
@@ -107,6 +111,8 @@ export default function PlannerApp() {
   );
 
   function focusProperties() {
+    const { panels, setPanels } = plannerStore.getState();
+    if (panels.view === 'tabs') setPanels({ tab: 'properties', folded: false });
     requestAnimationFrame(() => {
       const field = document.querySelector<HTMLElement>('aside[aria-label="Properties"] input');
       field?.focus();
@@ -156,6 +162,7 @@ export default function PlannerApp() {
       <ToolDock area="bottom" />
       <StatusBar />
       <ToolDockOverlay />
+      <PanelMovesOverlay />
 
       {menuAt && <ContextMenu at={menuAt} onClose={() => setMenuAt(null)} onProperties={focusProperties} />}
       {dialog === 'search' && <CommandPalette commands={commands} onClose={() => setDialog(null)} />}
