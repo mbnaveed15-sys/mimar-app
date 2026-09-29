@@ -81,7 +81,7 @@ test('draws a section, shows it with the elevations and sheets, and exports them
   expect(text).toContain('RIGHT SIDE ELEVATION');
 
   // A drawing tool goes back to the plan.
-  await page.keyboard.press('w');
+  await page.keyboard.press('Shift+W');
   await expect(page.getByTestId('drawings-view')).toHaveCount(0);
   await expect(page.getByTestId('plan-canvas')).toBeVisible();
 });

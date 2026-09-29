@@ -25,7 +25,7 @@ test('door and window types: pick one to place, change it in the side panel', as
   await expect(page.locator('[data-type="door"]')).toHaveAttribute('data-kind', 'double');
 
   // A ventilator from the Window tool's options: small and high.
-  await page.keyboard.press('w');
+  await page.keyboard.press('Shift+W');
   await page.getByRole('group', { name: 'Window type' }).getByRole('button', { name: 'Ventilator' }).click();
   await page.mouse.click(...(await at(page, ...P(22, 4))));
   await expect(page.locator('[data-type="window"]')).toHaveAttribute('data-kind', 'vent');

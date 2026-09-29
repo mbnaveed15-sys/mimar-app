@@ -16,7 +16,7 @@ const STEPS: Step[] = [
   {
     target: 'nav[aria-label="Tools"]',
     title: 'Your tools',
-    body: 'Walls (L), rooms (A), doors (D), windows (W), furniture (K), columns, slabs, stairs and more. Hover a tool to see its key.',
+    body: 'Walls (W), rooms (A), doors (D), windows (Shift+W), furniture (K), columns, slabs, stairs and more. Hover a tool to see its key.',
   },
   {
     target: '[data-testid="plan-canvas"], [data-testid="plan-3d"]',

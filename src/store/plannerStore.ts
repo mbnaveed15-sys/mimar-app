@@ -20,7 +20,7 @@ import { emptyDoc, loadFileInfo, loadPlan, saveFileInfo, savePlan, STORAGE_KEY, 
 import { MM_PER_UNIT } from '../lib/scale';
 import { DEFAULT_AREA, fitView, zoomAt, type Size } from '../lib/view';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
-import { detectRoom } from '../rooms';
+import { detectRoom, openWallEnds } from '../rooms';
 import type { Inference } from '../lib/inference';
 import {
   boundsCentre,
@@ -337,6 +337,8 @@ export interface PlannerState {
   gridPx: number;
   scaleMMperPx: number;
   warnings: string[];
+  /** Wall ends joined to nothing, circled while the warning about a room not closed shows. */
+  gapEnds: Point[];
   draft: Draft;
 
   units: Units;
@@ -649,6 +651,7 @@ export function createPlannerStore(
       selectedIds: [],
       openGroupId: null,
       warnings: [],
+      gapEnds: [],
       lastCopy: null,
       activeLevel: GROUND_LEVEL,
     };
@@ -717,6 +720,7 @@ export function createPlannerStore(
       gridPx: gridFor(prefs.grid, initial.project?.units ?? prefs.units),
       scaleMMperPx: MM_PER_UNIT,
       warnings: initialWarning ? [initialWarning] : [],
+      gapEnds: [],
       draft: null,
 
       // A project's own units and wall height win over the app's.
@@ -1021,7 +1025,7 @@ export function createPlannerStore(
         }),
       setBrushSize: (px) => set({ brushSize: px }),
       setDraft: (draft) => set({ draft }),
-      setWarning: (message) => set({ warnings: message ? [message] : [] }),
+      setWarning: (message) => set({ warnings: message ? [message] : [], gapEnds: [] }),
       setMeasureText: (measureText) => set({ measureText }),
       setInference: (inference) => set({ inference }),
       setAxisLock: (axisLock) => set({ axisLock }),
@@ -2164,7 +2168,15 @@ export function createPlannerStore(
         }
         const points = detectRoom(get().levelElements(), p);
         if (!points) {
-          get().setWarning('Click inside an area that is closed on all sides by walls.');
+          const gapEnds = openWallEnds(get().levelElements());
+          if (gapEnds.length)
+            set({
+              warnings: [
+                'These walls are not closed on all sides. The circled wall ends are not joined: drag an end onto the wall it should meet, then click inside again.',
+              ],
+              gapEnds,
+            });
+          else get().setWarning('Click inside an area that is closed on all sides by walls.');
           return;
         }
         const room = onActive<Room>({ id: newId(), name: `Room ${get().levelRooms().length + 1}`, points });
