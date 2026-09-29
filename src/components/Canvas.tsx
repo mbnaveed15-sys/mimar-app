@@ -80,6 +80,8 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const draft = usePlanner((s) => s.draft);
   const inference = usePlanner((s) => s.inference);
   const axisLock = usePlanner((s) => s.axisLock);
+  const warnings = usePlanner((s) => s.warnings);
+  const gapEnds = usePlanner((s) => s.gapEnds);
   const hoverEdge = usePlanner((s) => s.hoverEdge);
   const selectedIds = usePlanner((s) => s.selectedIds);
   const openGroupId = usePlanner((s) => s.openGroupId);
@@ -255,6 +257,23 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
       ))}
 
       <CheckMarks elements={doc.elements} rooms={doc.rooms} k={k} />
+
+      {warnings.length > 0 && (
+        <g pointerEvents="none">
+          {gapEnds.map((p, i) => (
+            <circle
+              key={i}
+              data-testid="gap-mark"
+              cx={p.x}
+              cy={p.y}
+              r={12 * k}
+              fill="none"
+              style={{ stroke: 'var(--danger)' }}
+              strokeWidth={2.5 * k}
+            />
+          ))}
+        </g>
+      )}
 
       <g pointerEvents="none">
         {groupBoxes.map(({ g, box, open }) => (

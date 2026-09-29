@@ -93,3 +93,50 @@ test('exports a PDF', async ({ page }) => {
   expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
   expect(bytes.toString('latin1')).toContain('Scale 1:50 on A4');
 });
+
+test('on a plot, W draws walls, a wall closed on a face corner makes a room, and an open house shows its gap', async ({
+  page,
+}) => {
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.keyboard.press('Shift+P');
+  await wall(page, [0, 0], [30, 60]);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Shift+Z');
+
+  // W is the Wall tool (Shift+W the Window tool). The last click lands on the first wall's face
+  // corner, 4½" short of its centre line.
+  await page.keyboard.press('w');
+  for (const [x, y] of [
+    [5, 10],
+    [25, 10],
+    [25, 40],
+    [5, 40],
+    [5, 10.375],
+  ] as const)
+    await page.mouse.click(...(await at(page, x, y)));
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-type="wall"]')).toHaveCount(8);
+
+  await tool(page, 'room');
+  await page.mouse.click(...(await at(page, 15, 20)));
+  await expect(page.getByTestId('selected-room-area')).toHaveText('Area: 600 sq ft · 2.67 marla');
+
+  // Take a corner away: the room tool says the walls are open and circles the loose ends, and
+  // doesn't make the whole plot a room.
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Space');
+  await page.mouse.click(...(await at(page, 5, 25)));
+  await page.keyboard.press('Delete');
+  await tool(page, 'room');
+  await page.mouse.click(...(await at(page, 15, 20)));
+  await expect(page.getByRole('alert')).toContainText('not closed on all sides');
+  await expect(page.getByTestId('gap-mark')).toHaveCount(2);
+  await expect(page.locator('[data-type="room"]')).toHaveCount(0);
+
+  await page.keyboard.press('Shift+W');
+  await expect(
+    page.getByRole('navigation', { name: 'Tools' }).getByRole('button', { name: 'Window', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+});

@@ -1,6 +1,7 @@
 import { pointInPolygon } from './geometry';
 import { wallSegments } from './lib/arc';
 import { MM_PER_UNIT } from './lib/scale';
+import { thicknessOf } from './walls';
 import type { PlanElement, Point, Room, Wall } from './types';
 
 /** Points closer than this (plan units) are treated as the same corner. */
@@ -42,6 +43,89 @@ function paramOnSegment(a: Point, b: Point, p: Point): number | null {
   return dist <= EPS ? t : null;
 }
 
+interface Piece {
+  a: Point;
+  b: Point;
+  /** Half the wall's thickness. */
+  half: number;
+}
+
+/**
+ * A wall that stops on another wall's face, or anywhere inside its thickness, looks joined to it:
+ * move that end onto the other wall's centre line (or its end, just past it) so the two meet here
+ * too. Only ends joined to nothing else move, and never onto a wall running the same way.
+ */
+function joinFreeEnds(pieces: Piece[]): Piece[] {
+  // Only walls whose boxes reach a point can meet it: bucket them, the boxes grown by the most an
+  // end may move (half the thickest wall).
+  const CELL = 200;
+  const r = Math.max(0, ...pieces.map((q) => q.half)) + EPS;
+  const buckets = new Map<string, number[]>();
+  pieces.forEach((q, j) => {
+    for (
+      let cx = Math.floor((Math.min(q.a.x, q.b.x) - r) / CELL);
+      cx <= Math.floor((Math.max(q.a.x, q.b.x) + r) / CELL);
+      cx++
+    )
+      for (
+        let cy = Math.floor((Math.min(q.a.y, q.b.y) - r) / CELL);
+        cy <= Math.floor((Math.max(q.a.y, q.b.y) + r) / CELL);
+        cy++
+      ) {
+        const key = `${cx},${cy}`;
+        const list = buckets.get(key);
+        if (list) list.push(j);
+        else buckets.set(key, [j]);
+      }
+  });
+  const nearby = (p: Point) => buckets.get(`${Math.floor(p.x / CELL)},${Math.floor(p.y / CELL)}`) ?? [];
+  const joined = (p: Point, self: number) =>
+    nearby(p).some(
+      (j) =>
+        j !== self &&
+        (Math.hypot(pieces[j].a.x - p.x, pieces[j].a.y - p.y) <= EPS ||
+          Math.hypot(pieces[j].b.x - p.x, pieces[j].b.y - p.y) <= EPS ||
+          paramOnSegment(pieces[j].a, pieces[j].b, p) !== null),
+    );
+  // Ends inside another wall first, then ends just past another wall's end. Each end moves as soon
+  // as it is found, so two free ends facing each other meet once, not swap places.
+  for (const pastEnd of [false, true])
+    pieces.forEach((piece, i) => {
+      for (const end of ['a', 'b'] as const) {
+        const len = Math.hypot(piece.b.x - piece.a.x, piece.b.y - piece.a.y);
+        const p = piece[end];
+        if (!len || joined(p, i)) continue;
+        let best: Point | null = null;
+        let bestD = Infinity;
+        for (const j of nearby(p)) {
+          if (j === i) continue;
+          const q = pieces[j];
+          const dx = q.b.x - q.a.x;
+          const dy = q.b.y - q.a.y;
+          const qLen = Math.hypot(dx, dy);
+          if (!qLen) continue;
+          // Walls running (nearly) the same way lie alongside each other; they don't meet.
+          const sin = Math.abs(((piece.b.x - piece.a.x) * dy - (piece.b.y - piece.a.y) * dx) / (len * qLen));
+          if (sin < 0.17) continue;
+          const along = ((p.x - q.a.x) * dx + (p.y - q.a.y) * dy) / qLen;
+          const across = Math.abs((p.x - q.a.x) * dy - (p.y - q.a.y) * dx) / qLen;
+          const reach = q.half + EPS;
+          const within = pastEnd ? along >= -reach && along <= qLen + reach : along >= 0 && along <= qLen;
+          if (across > reach || !within) continue;
+          const t = Math.min(1, Math.max(0, along / qLen));
+          const to = { x: q.a.x + t * dx, y: q.a.y + t * dy };
+          const d = Math.hypot(to.x - p.x, to.y - p.y);
+          if (d < bestD) {
+            best = to;
+            bestD = d;
+          }
+        }
+        if (best) piece[end] = best;
+      }
+    });
+  return pieces;
+}
+
 interface Graph {
   nodes: Point[];
   /** Outgoing neighbours of each node, sorted by angle. */
@@ -69,7 +153,10 @@ export function buildWallGraph(walls: Wall[]): Graph {
 
   const edges = new Set<string>();
   // A curved wall is its row of short straight pieces.
-  const segs = walls.flatMap(wallSegments).map(([a, b]) => ({
+  const pieces = joinFreeEnds(
+    walls.flatMap((w) => wallSegments(w).map(([a, b]) => ({ a: { ...a }, b: { ...b }, half: thicknessOf(w) / 2 }))),
+  );
+  const segs = pieces.map(({ a, b }) => ({
     a,
     b,
     minX: Math.min(a.x, b.x) - EPS,
@@ -177,12 +264,25 @@ export function wallFaces(walls: Wall[], outside = false): Point[][] {
   return faces;
 }
 
+/**
+ * The walls rooms are made from: a plot's boundary walls stand outside the house, so a room never
+ * reaches them (a gap in the house's walls would otherwise make the whole plot one room).
+ */
+const roomWalls = (elements: PlanElement[]) =>
+  elements.filter((el): el is Wall => el.type === 'wall' && el.kind !== 'boundary');
+
 /** The smallest area enclosed by walls around p, or null if p is not enclosed. */
 export function detectRoom(elements: PlanElement[], p: Point): Point[] | null {
-  const walls = elements.filter((el): el is Wall => el.type === 'wall');
+  const walls = roomWalls(elements);
   const containing = wallFaces(walls).filter((f) => pointInPolygon(p, f));
   if (!containing.length) return null;
   return containing.reduce((best, f) => (polygonArea(f) < polygonArea(best) ? f : best));
+}
+
+/** Wall ends joined to nothing, where a room's walls may be left open. */
+export function openWallEnds(elements: PlanElement[]): Point[] {
+  const { nodes, adjacency } = buildWallGraph(roomWalls(elements));
+  return nodes.filter((_, i) => adjacency[i].length === 1);
 }
 
 /** A point inside the polygon suitable for its label. */

@@ -1355,7 +1355,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       {!hasWalls && tool === 'select' && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="rounded-md border border-line bg-raised px-3 py-2 text-ink shadow-popover">
-            Pick Wall (L) or Rectangle (R) and draw right here, or in the 2D plan.
+            Pick Wall (W) or Rectangle (R) and draw right here, or in the 2D plan.
           </div>
         </div>
       )}

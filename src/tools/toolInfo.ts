@@ -1,14 +1,15 @@
 import type { IconName } from '../theme/icons';
 import type { Tool } from '../types';
 
-/** Name, icon and SketchUp-style shortcut for each tool. */
-export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: string }> = {
+/** Name, icon and shortcut for each tool (SketchUp's where it has one); `alt` are other keys for it. */
+export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: string; alt?: string[] }> = {
   select: { label: 'Select', icon: 'select', key: 'Space' },
   pan: { label: 'Pan', icon: 'pan', key: 'H' },
   zoom: { label: 'Zoom', icon: 'zoom', key: 'Z' },
   orbit: { label: 'Orbit', icon: 'orbit', key: 'O' },
   line: { label: 'Layout line', icon: 'line', key: 'Shift+L' },
-  wall: { label: 'Wall', icon: 'wall', key: 'L' },
+  // W for Wall, as people expect; L (SketchUp's Line) still works.
+  wall: { label: 'Wall', icon: 'wall', key: 'W', alt: ['L'] },
   rectangle: { label: 'Rectangle', icon: 'rectangle', key: 'R' },
   room: { label: 'Room', icon: 'room', key: 'A' },
   column: { label: 'Column', icon: 'column', key: 'C' },
@@ -18,7 +19,7 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
   plot: { label: 'Plot', icon: 'plot', key: 'Shift+P' },
   stairs: { label: 'Stairs', icon: 'stairs', key: 'U' },
   door: { label: 'Door', icon: 'door', key: 'D' },
-  window: { label: 'Window', icon: 'window', key: 'W' },
+  window: { label: 'Window', icon: 'window', key: 'Shift+W' },
   furniture: { label: 'Furniture', icon: 'furniture', key: 'K' },
   shape: { label: 'Shape', icon: 'shape', key: 'Shift+R' },
   pushpull: { label: 'Push/Pull', icon: 'pushpull', key: 'P' },

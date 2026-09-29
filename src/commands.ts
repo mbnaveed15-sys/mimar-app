@@ -92,7 +92,7 @@ function toolCommand(tool: Tool, menu: MenuId, group: number): Command {
     label: info.label,
     menu,
     group,
-    keys: [info.key],
+    keys: [info.key, ...(info.alt ?? [])],
     aliases: aliasesFor(tool),
     run: () => {
       const s = st();
