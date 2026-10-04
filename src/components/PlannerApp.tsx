@@ -18,6 +18,7 @@ import { SidePanel } from './SidePanel';
 import { SplitView } from './SplitView';
 import { StatusBar } from './StatusBar';
 import { ToolDock, ToolDockOverlay } from './ToolDocks';
+import { TouchBar } from './TouchBar';
 import { isDirty, useFileActions } from './useFileActions';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import { useOpenSections, type SectionId } from './useOpenSections';
@@ -139,6 +140,7 @@ export default function PlannerApp() {
           ) : (
             plan2d
           )}
+          {!drawing && <TouchBar />}
           {warnings.length > 0 && (
             <div className="pointer-events-none absolute inset-x-0 top-3 flex flex-col items-center gap-2">
               {warnings.map((w) => (

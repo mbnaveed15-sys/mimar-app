@@ -67,7 +67,7 @@ function ToolButton({ tool }: { tool: Tool }) {
       aria-pressed={active}
       aria-label={info.label}
       title={`${info.label} (${info.key})`}
-      className={`grid h-9 w-9 flex-none place-items-center rounded-md ${active ? 'bg-accent text-on-accent' : 'text-ink hover:bg-sunken'}`}
+      className={`grid h-9 w-9 flex-none place-items-center rounded-md pointer-coarse:h-11 pointer-coarse:w-11 ${active ? 'bg-accent text-on-accent' : 'text-ink hover:bg-sunken'}`}
     >
       <Icon name={info.icon} size={20} />
     </button>
@@ -124,7 +124,7 @@ function Grip({ id, vertical }: { id: ToolbarId; vertical: boolean }) {
         dragStore.setState({ menu: { id, x: r.right, y: r.bottom, keys: true } });
       }}
       className={`flex flex-none cursor-grab touch-none items-center justify-center rounded-sm text-muted hover:bg-sunken hover:text-ink ${
-        vertical ? 'h-3 w-9' : 'h-9 w-3'
+        vertical ? 'h-3 w-9 pointer-coarse:h-4 pointer-coarse:w-11' : 'h-9 w-3 pointer-coarse:h-11 pointer-coarse:w-4'
       }`}
     >
       <span

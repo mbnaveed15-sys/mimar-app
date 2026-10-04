@@ -5,6 +5,7 @@ import { usePlanner } from '../store/plannerStore';
 import { Icon } from './Icon';
 import { LevelSwitcher } from './LevelSwitcher';
 import { Mark } from './Mark';
+import { useCompact } from './useCompact';
 
 /** The items of one menu, with lines between groups. */
 function MenuList({ commands, onDone }: { commands: Command[]; onDone: () => void }) {
@@ -52,7 +53,7 @@ function MenuList({ commands, onDone }: { commands: Command[]; onDone: () => voi
                 onDone();
                 c.run();
               }}
-              className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left focus:bg-accent-soft focus:outline-none ${
+              className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left focus:bg-accent-soft focus:outline-none pointer-coarse:py-2.5 ${
                 enabled ? 'hover:bg-accent-soft' : 'cursor-default opacity-45'
               }`}
             >
@@ -71,7 +72,9 @@ function MenuList({ commands, onDone }: { commands: Command[]; onDone: () => voi
 
 /** Top bar: logo, the menus, the plan's name, mode and 2D/3D switches, and search. */
 export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch: () => void }) {
-  const [open, setOpen] = useState<MenuId | null>(null);
+  // 'all' is the list of menus behind the one Menu button of a narrow window.
+  const [open, setOpen] = useState<MenuId | 'all' | null>(null);
+  const compact = useCompact();
   const barRef = useRef<HTMLDivElement>(null);
   const fileName = usePlanner((s) => s.fileName);
   const dirty = usePlanner((s) => s.doc !== s.savedDoc);
@@ -95,7 +98,7 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
         // Focus stays on the menu's name (only if it was in the menu), rather than getting lost.
         const inMenu = barRef.current?.contains(document.activeElement);
         setOpen(null);
-        if (inMenu) barRef.current?.querySelector<HTMLElement>(`[data-menu="${open}"]`)?.focus();
+        if (inMenu) barRef.current?.querySelector<HTMLElement>(`[data-menu="${compact ? 'all' : open}"]`)?.focus();
       }
     };
     window.addEventListener('pointerdown', close);
@@ -104,7 +107,7 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
       window.removeEventListener('pointerdown', close);
       window.removeEventListener('keydown', esc, true);
     };
-  }, [open]);
+  }, [open, compact]);
 
   function onMenuKey(e: KeyboardEvent, id: MenuId) {
     if (e.key === 'ArrowDown' && !open) {
@@ -121,37 +124,79 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
   }
 
   return (
-    <header className="flex h-10 flex-none items-center gap-2 border-b border-line bg-surface px-2">
+    <header className="flex h-10 flex-none items-center gap-2 border-b border-line bg-surface px-2 pointer-coarse:h-12">
       <div className="flex flex-none items-center gap-2 pr-1">
         <Mark size={24} />
-        <span className="text-[17px] font-[650] tracking-[-0.2px]" style={{ fontStretch: '88%' }}>
+        <span className="hidden text-[17px] font-[650] tracking-[-0.2px] lg:inline" style={{ fontStretch: '88%' }}>
           Mimar
         </span>
       </div>
       <div ref={barRef} role="menubar" aria-label="Main menu" className="flex flex-none">
-        {MENUS.map((m) => (
-          <div key={m.id} className="relative" onKeyDown={(e) => onMenuKey(e, m.id)}>
+        {compact ? (
+          // A narrow window (an iPad held upright): one Menu button, then the menu picked from its list.
+          <div className="relative">
             <button
-              data-menu={m.id}
+              data-menu="all"
               aria-haspopup="menu"
-              aria-expanded={open === m.id}
-              onClick={() => setOpen(open === m.id ? null : m.id)}
-              onPointerEnter={() => open && setOpen(m.id)}
-              className={`rounded-sm px-2 py-1.5 xl:px-2.5 ${open === m.id ? 'bg-sunken' : 'hover:bg-sunken'}`}
+              aria-expanded={!!open}
+              aria-label="Menu"
+              title="Menu"
+              onClick={() => setOpen(open === 'all' ? null : 'all')}
+              className={`grid h-8 w-9 place-items-center rounded-sm pointer-coarse:h-10 pointer-coarse:w-11 ${open ? 'bg-sunken' : 'hover:bg-sunken'}`}
             >
-              {m.label}
+              <Icon name="menu" size={20} />
             </button>
-            {open === m.id && (
-              <MenuList commands={commands.filter((c) => c.menu === m.id)} onDone={() => setOpen(null)} />
+            {open === 'all' && (
+              <div
+                role="menu"
+                aria-label="Menus"
+                className="absolute top-full left-0 z-40 mt-1 min-w-48 rounded-md border border-line bg-raised p-1 shadow-popover"
+              >
+                {MENUS.map((m) => (
+                  <button
+                    key={m.id}
+                    role="menuitem"
+                    aria-label={m.label}
+                    onClick={() => setOpen(m.id)}
+                    className="flex w-full items-center justify-between rounded-sm px-3 py-2.5 text-left hover:bg-accent-soft"
+                  >
+                    {m.label}
+                    <span aria-hidden>›</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {open && open !== 'all' && (
+              <MenuList commands={commands.filter((c) => c.menu === open)} onDone={() => setOpen(null)} />
             )}
           </div>
-        ))}
+        ) : (
+          MENUS.map((m) => (
+            <div key={m.id} className="relative" onKeyDown={(e) => onMenuKey(e, m.id)}>
+              <button
+                data-menu={m.id}
+                aria-haspopup="menu"
+                aria-expanded={open === m.id}
+                onClick={() => setOpen(open === m.id ? null : m.id)}
+                onPointerEnter={() => open && setOpen(m.id)}
+                className={`rounded-sm px-1.5 py-1.5 lg:px-2 xl:px-2.5 ${open === m.id ? 'bg-sunken' : 'hover:bg-sunken'}`}
+              >
+                {m.label}
+              </button>
+              {open === m.id && (
+                <MenuList commands={commands.filter((c) => c.menu === m.id)} onDone={() => setOpen(null)} />
+              )}
+            </div>
+          ))
+        )}
       </div>
 
-      <div className="mx-auto min-w-0 truncate px-2 text-muted" title={fileName} data-testid="file-name">
+      {/* In a narrow window (an iPad held upright) the plan's name gives way to the buttons. */}
+      <div className="mx-auto min-w-0 truncate px-2 text-muted max-lg:sr-only" title={fileName} data-testid="file-name">
         <span className="font-semibold text-ink">{baseName(fileName)}</span>
         {dirty && <span className="font-medium text-accent-ink"> • unsaved changes</span>}
       </div>
+      <div aria-hidden className="flex-1 lg:hidden" />
 
       {/* On narrower screens (down to 1024 px) the buttons keep their icons and drop their words. */}
       <button

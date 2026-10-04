@@ -149,6 +149,17 @@
     color: var(--on-accent);
     font-weight: 600;
   }
+  /* Fingers need bigger targets than a mouse (about 40 px, as tablets advise). */
+  @media (pointer: coarse) {
+    .m-btn,
+    .m-seg > button {
+      min-height: 40px;
+      padding-inline: 12px;
+    }
+    .m-seg > button {
+      min-width: 40px;
+    }
+  }
   .m-kbd {
     border: 1px solid var(--line);
     border-bottom-width: 2px;

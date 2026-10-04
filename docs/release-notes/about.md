@@ -72,5 +72,5 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 - **Simple mode** has the main tools for homeowners. **Pro mode** has everything.
 - Feet and inches or metric. Light and dark themes.
 - Tool bars and side panels can be moved, docked and tabbed.
-- **Touch and pen:** pinch to zoom, two fingers to pan, three to turn the 3D view, and a long press for the menu.
+- **Touch and pen:** pinch to zoom, two fingers to pan, three to turn the 3D view, and a long press for the menu. On a touch screen, on-screen buttons stand in for the keyboard (Done, Cancel, Flip hinge, Delete), and an upright iPad gets a compact layout with one Menu button and a slide-out side panel.
 - A first-run tour and a sample 5-marla house to explore.

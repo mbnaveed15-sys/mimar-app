@@ -222,7 +222,7 @@ function DockIcon({ side }: { side: 'left' | 'right' }) {
 }
 
 /** The panel's own heading: drag it to dock the panel at the other side; switch between stacked and tabs. */
-export function PanelHeader() {
+export function PanelHeader({ onClose }: { onClose?: () => void } = {}) {
   const panels = usePlanner((s) => s.panels);
   const setPanels = usePlanner((s) => s.setPanels);
   const drag = useSideDrag();
@@ -240,24 +240,41 @@ export function PanelHeader() {
         <span aria-hidden className="h-3 w-[3px] flex-none border-x border-current" />
         Panels
       </div>
-      <div role="group" aria-label="Panel view" className="flex overflow-hidden rounded-md border border-line text-xs">
+      {/* Over the plan (a narrow window) it is always tabs, with a button to put it away. */}
+      {onClose ? (
         <button
           type="button"
-          aria-pressed={panels.view === 'stacked'}
-          className={seg(panels.view === 'stacked')}
-          onClick={() => setPanels({ view: 'stacked' })}
+          aria-label="Close panel"
+          title="Close panel"
+          onClick={onClose}
+          className="grid h-9 w-9 place-items-center rounded-md text-muted hover:bg-sunken hover:text-ink"
         >
-          Stacked
+          <Icon name="close" size={18} />
         </button>
-        <button
-          type="button"
-          aria-pressed={panels.view === 'tabs'}
-          className={seg(panels.view === 'tabs')}
-          onClick={() => setPanels({ view: 'tabs', folded: false })}
+      ) : (
+        <div
+          role="group"
+          aria-label="Panel view"
+          className="flex overflow-hidden rounded-md border border-line text-xs"
         >
-          Tabs
-        </button>
-      </div>
+          <button
+            type="button"
+            aria-pressed={panels.view === 'stacked'}
+            className={seg(panels.view === 'stacked')}
+            onClick={() => setPanels({ view: 'stacked' })}
+          >
+            Stacked
+          </button>
+          <button
+            type="button"
+            aria-pressed={panels.view === 'tabs'}
+            className={seg(panels.view === 'tabs')}
+            onClick={() => setPanels({ view: 'tabs', folded: false })}
+          >
+            Tabs
+          </button>
+        </div>
+      )}
       <button
         type="button"
         aria-label={`Dock panels ${other}`}

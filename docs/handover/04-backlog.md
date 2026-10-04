@@ -27,10 +27,11 @@ project types: free projects, buildings, per-floor heights, metric (1.33);
 furniture use zones with ADA wheelchair spaces (1.34); sections, elevations and drawing sheets (1.35); terrain and site:
 spot levels, contours, survey import, levelled plot and pads, cut and fill, OpenStreetMap surroundings and satellite levels (1.36);
 freer form: curved walls, double-height rooms, glass curtain walls and pitched roofs (1.37); faster 3D and IFC export (1.38);
-movable side panels: reorder, tabs, dock left or right, resize (1.39).
+movable side panels: reorder, tabs, dock left or right, resize (1.39); iPad polish: compact portrait layout, touch buttons, bigger touch targets, release descriptions (1.40).
 
 Planned next (the roadmap agreed with the owner for all kinds of work; plan each with the owner first):
-1.40 checks for non-residential buildings (1.39 went to movable side panels, asked for by the owner).
+1.41 checks for non-residential buildings (1.39 went to movable side panels and 1.40 to iPad polish, both asked for by the owner).
+Phones are not laid out yet (the side panel fills a phone screen); a phone layout would be its own release.
 Floating side panels were assessed with 1.39 and left out; revisit only if the owner still wants them.
 First-floor plans from a room list are a later idea.
 
