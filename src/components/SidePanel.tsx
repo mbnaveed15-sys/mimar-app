@@ -31,6 +31,7 @@ import { ProjectPanel } from './ProjectPanel';
 import { shows } from '../lib/project';
 import { WallThicknessPicker } from './WallThicknessPicker';
 import { CostPanel } from './CostPanel';
+import { useCompact } from './useCompact';
 import { GroundPanel, GroundToolOptions } from './GroundPanel';
 
 function Section({
@@ -170,7 +171,9 @@ function ToolOptions() {
 
 /**
  * The side panel: the selection's properties (or the tool's options), then settings sections. The
- * sections can be reordered, shown stacked or as tabs, and the panel docked at either side.
+ * sections can be reordered, shown stacked or as tabs, and the panel docked at either side. In a
+ * narrow window (an iPad held upright) it is always a strip of tabs, and the open tab slides over
+ * the plan instead of taking room from it.
  */
 export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSections> }) {
   const tool = usePlanner((s) => s.tool);
@@ -179,16 +182,21 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
   const setPanels = usePlanner((s) => s.setPanels);
   const { open, set } = sections;
   const [liveWidth, setLiveWidth] = useState<number | null>(null);
+  const compact = useCompact();
+  // In a narrow window the panel starts closed, over the plan when opened.
+  const [overOpen, setOverOpen] = useState(false);
   // The sections the project shows.
   const roomList = usePlanner((s) => shows(s.doc, 'roomList'));
   const checks = usePlanner((s) => shows(s.doc, 'bylaws') || shows(s.doc, 'hints'));
   const cost = usePlanner((s) => shows(s.doc, 'cost'));
   const shown = (id: SectionId) => (id === 'layout' ? roomList : id === 'check' ? checks : id === 'cost' ? cost : true);
   const order = panels.order.filter(shown);
-  const tabs = panels.view === 'tabs';
+  const tabs = compact || panels.view === 'tabs';
   const tab: PanelTab = panels.tab !== 'properties' && order.includes(panels.tab) ? panels.tab : 'properties';
-  const folded = tabs && panels.folded;
-  const width = liveWidth ?? panels.width;
+  const folded = compact ? !overOpen : tabs && panels.folded;
+  const width = compact
+    ? Math.min(panels.width, Math.max(PANEL_WIDTH_MIN, window.innerWidth - 160))
+    : (liveWidth ?? panels.width);
 
   // In the tabs view, selecting something brings its properties forward.
   const hadSelection = useRef(hasSelection);
@@ -225,8 +233,14 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
     }
   };
   const label = (id: SectionId) => PANELS.find((p) => p.id === id)!.label;
-  const pick = (next: PanelTab) =>
+  const pick = (next: PanelTab) => {
+    if (compact) {
+      setOverOpen(!(next === tab && overOpen));
+      if (next !== tab) setPanels({ tab: next });
+      return;
+    }
     setPanels(next === tab && !panels.folded ? { folded: true } : { tab: next, folded: false });
+  };
 
   const properties = (
     <div className="flex flex-col gap-2 p-3">
@@ -241,14 +255,23 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
     <aside
       aria-label="Properties"
       data-side={panels.side}
-      data-view={panels.view}
+      data-view={tabs ? 'tabs' : 'stacked'}
+      data-compact={compact || undefined}
       className={`relative flex flex-none ${panels.side === 'left' ? 'order-first flex-row-reverse border-r' : 'border-l'} border-line bg-surface`}
     >
       {!folded && (
         <>
-          <ResizeHandle side={panels.side} width={width} onLive={setLiveWidth} />
-          <div className="flex min-w-0 flex-col overflow-y-auto" style={{ width }}>
-            <PanelHeader />
+          {!compact && <ResizeHandle side={panels.side} width={width} onLive={setLiveWidth} />}
+          <div
+            data-testid="panel-content"
+            className={`flex min-w-0 flex-col overflow-y-auto ${
+              compact
+                ? `absolute inset-y-0 z-30 border-line bg-surface shadow-popover ${panels.side === 'left' ? 'left-full border-r' : 'right-full border-l'}`
+                : ''
+            }`}
+            style={{ width }}
+          >
+            <PanelHeader onClose={compact ? () => setOverOpen(false) : undefined} />
             {tabs ? (
               tab === 'properties' ? (
                 properties

@@ -69,12 +69,15 @@ jobs:
           for f in "${FILES[@]}"; do
             [ -f "$f" ] || { echo "Build did not produce $f"; exit 1; }
           done
+          # The release's description: what Mimar does, with what is new in this version (docs/release-notes).
+          node scripts/release-notes.mjs "$VERSION" > release-notes.md
           if ! gh release view "v$VERSION" --repo "$REPO" >/dev/null 2>&1; then
             gh release create "v$VERSION" --repo "$REPO" --draft --target "$GITHUB_SHA" --title "$VERSION" \
-              --notes "Mimar $VERSION"
+              --notes-file release-notes.md
           fi
           gh release upload "v$VERSION" --repo "$REPO" --clobber "${FILES[@]}"
-          gh release edit "v$VERSION" --repo "$REPO" --draft=false --prerelease=false --latest
+          gh release edit "v$VERSION" --repo "$REPO" --notes-file release-notes.md \
+            --draft=false --prerelease=false --latest
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
