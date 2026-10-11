@@ -291,6 +291,8 @@ export interface SketchLine extends Grouped {
   y1: number;
   x2: number;
   y2: number;
+  /** A curved line: how far its middle bows out from the straight line between its ends, as on Wall. */
+  bow?: number;
   material?: Id;
 }
 
@@ -565,6 +567,7 @@ export type Tool =
   | 'zoom'
   | 'orbit'
   | 'wall'
+  | 'curve'
   | 'rectangle'
   | 'room'
   | 'door'
@@ -608,6 +611,7 @@ export const TOOLS: Tool[] = [
   'zoom',
   'orbit',
   'wall',
+  'curve',
   'line',
   'rectangle',
   'room',
@@ -662,6 +666,21 @@ export type Draft =
       bow?: number;
     }
   | { type: 'rectangle'; x1: number; y1: number; x2: number; y2: number }
+  /**
+   * A curve being drawn with the Curve tool: the points clicked for the piece in hand, and where
+   * the pointer is. `sweep` is how far round a centre arc has been taken; `tangent` the direction
+   * a tangent arc leaves in; `chainStart` where a run of arcs began (clicking it closes the run).
+   */
+  | {
+      type: 'curve';
+      /** How it is being drawn (the tool's setting when it started). */
+      mode: 'arc' | 'arc3' | 'centre' | 'tangent' | 'circle' | 'oval' | 'freeform';
+      points: Point[];
+      cursor: Point;
+      sweep?: number;
+      tangent?: Point | null;
+      chainStart?: Point;
+    }
   | { type: 'beam'; x1: number; y1: number; x2: number; y2: number }
   | { type: 'line'; x1: number; y1: number; x2: number; y2: number; chain?: boolean }
   /** A section line: its two ends, then (once both are down) the side it looks to, from the pointer. */

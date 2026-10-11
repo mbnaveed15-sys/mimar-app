@@ -251,6 +251,32 @@ autosaves to local storage on every change.
     boundary walls, context blocks and roads). Drawings: `views.ts` adds a ground `profile` (finished and natural)
     and `hiddenLines.ts` clips elevations under a varying ground (`ViewFrame.ground`).
 
+- Curves (1.41):
+  - `src/lib/curves.ts` (pure, tested) builds curves out of arc pieces (`WallLine`s with a bow): `segThrough`
+    (3 points), `tangentArc`, `centreArc` with `trackSweep` (follows the pointer past a half circle), `circleSegs`
+    (two halves), `ovalSegs`/`ovalInBox` (four-centred, small radius searched to keep closest to the ellipse),
+    `splineSegs`/`biarc` (a biarc per span, Catmull-Rom style directions), `roundedRect`, `endDirection`. Also the
+    exact geometry the Modify tools use on curves: `carrierOf` (the whole line or circle), `offsetCarrier`,
+    `crossings` (line/line, line/circle, circle/circle), `footOn`, `fractionOn`, `withEndAt` (move one end round the
+    circle keeping the other), `sameCarrier`.
+  - The tool: `src/tools/curveTool.ts` (press, hover, release, typed values, readout, hint; `curvePreview` for the
+    overlay and `draft3d.ts`; `directionInto` finds the direction a wall or line ends in for tangent arcs). Draft
+    `{ type: 'curve', mode, points, cursor, sweep?, tangent?, chainStart? }`; settings `site.curveMode`,
+    `site.curveMake` ('wall' | 'line'), `site.rectRadiusMm`; options in `src/components/CurveOptions.tsx`. The store's
+    `addCurve(pieces, inside?)` adds them as walls or lines in one step, the room inside a closed curve of walls, and
+    clears the selection. `undo` in a run of arcs carries on from where the last arc started.
+  - `SketchLine.bow` (format 12): `isNear`, `elementCenter`, outlines, mirror (bow negated), scale, stretch,
+    `linesToWalls`, the Inspector's Radius, the `wall-*` grips (now for lines too), `SketchLineShape` (`CurvedLine`),
+    DXF bulges and inference (`Segment.bow`; curved lines snap like curved walls without faces). Inference adds the
+    `centre` snap kind for curved walls and lines.
+  - Modify on curves (`src/lib/modify.ts`): `extendWall` (crossings of the wall's carrier with each other wall,
+    `fromKept`/`onPiece`), `joinArcs`, `cornerOf`/`keepsStart`/`shaped`, `filletWalls` (centre where the carriers
+    moved by ±r cross, touching points between the kept end and the corner, one arc wall), `chamferWalls`
+    (`atFromKept`). `modifyTools.ts` picks walls and lines by `distanceToWall` (along the curve).
+  - Push/Pull: `faceOf` gives a curved wall's sides and ends from the hit point; `pushPull` offsets it on the same
+    centre (`offsetWall`) or runs an end round the circle (`withArcEnd`); `faces2d.ts` `arcFaces` gives 2D faces
+    piece by piece.
+
 - Freer form (1.37):
   - Curved walls: `Wall.bow` is the signed sagitta (plan units) towards side A (the left normal); none or 0 is
     straight. `src/lib/arc.ts` (pure, tested) has the circle (`arcOf`, cached), `runLength`, `pointAlong`,

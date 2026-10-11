@@ -8,6 +8,7 @@ import { protractor } from '../lib/protractor';
 import { draftOutline } from '../lib/shapes';
 import type { Draft, Point, Units } from '../types';
 import { OpeningShape } from './shapes/OpeningShape';
+import { curvePreview } from '../tools/curveTool';
 
 /** An outline with its first point repeated at the end, when it should be drawn closed. */
 const closedShape = (points: Point[], closed: boolean) => (closed && points.length ? [...points, points[0]] : points);
@@ -41,6 +42,7 @@ const SNAP_COLORS: Partial<Record<Inference['kind'], string>> = {
   'corner-gap': 'var(--snap-end)',
   'from-corner': 'var(--snap-edge)',
   aligned: 'var(--selection)',
+  centre: 'var(--snap-mid)',
 };
 
 /** Colour of a rubber band: red or green when it runs along an axis, like SketchUp. */
@@ -64,6 +66,62 @@ function Label({ p, k, children, color = PLAN.ink }: { p: Point; k: number; chil
     >
       {children}
     </text>
+  );
+}
+
+/** A curve being drawn: its pieces dashed, guides from a centre, the points clicked, and its radius. */
+function CurveDraft({
+  d,
+  k,
+  units,
+  band,
+  dash,
+}: {
+  d: Extract<Draft, { type: 'curve' }>;
+  k: number;
+  units: Units;
+  band: string;
+  dash: string;
+}) {
+  const { pieces, guides } = curvePreview(d);
+  const r = pieces.length === 1 ? radiusOf(pieces[0]) : null;
+  const mid = pieces.length === 1 ? pointAlong(pieces[0], 0.5) : null;
+  return (
+    <g data-testid="curve-draft">
+      {pieces.map((piece, i) => (
+        <polyline
+          key={i}
+          points={wallPath(piece)
+            .map((p) => `${p.x},${p.y}`)
+            .join(' ')}
+          fill="none"
+          style={{ stroke: band }}
+          strokeWidth={2 * k}
+          strokeDasharray={dash}
+        />
+      ))}
+      {guides.map(([a, b], i) => (
+        <line
+          key={i}
+          x1={a.x}
+          y1={a.y}
+          x2={b.x}
+          y2={b.y}
+          style={{ stroke: PLAN.draft }}
+          strokeWidth={k}
+          strokeDasharray={`${2 * k} ${3 * k}`}
+          opacity={0.7}
+        />
+      ))}
+      {d.points.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r={3 * k} style={{ fill: PLAN.draft }} />
+      ))}
+      {r !== null && mid && (
+        <Label p={{ x: mid.x + 10 * k, y: mid.y - 10 * k }} k={k} color={PLAN.draft}>
+          {`R ${formatLength(r * MM_PER_UNIT, units)}`}
+        </Label>
+      )}
+    </g>
   );
 }
 
@@ -112,6 +170,8 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
           </Label>
         </>
       )}
+
+      {d?.type === 'curve' && <CurveDraft d={d} k={k} units={units} band={band} dash={dash} />}
 
       {d?.type === 'offset' && (
         <polyline

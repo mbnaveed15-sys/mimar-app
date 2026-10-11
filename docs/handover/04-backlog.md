@@ -8,7 +8,7 @@ From the 1.23 QA pass (six testers; full reports in the git-ignored `.qa/<tester
 `.qa/SUMMARY.md`). 1.23.1 fixed the blockers and wrong results; plan each of these with the owner first.
 
 1. **Still open from the 2D review (after 1.24):** a persistent dimension tool; zoom window and zoom previous; a cursor
-   X,Y readout; arcs and circles for layout lines; grips for lines, beams, rooms, slabs and columns; shared
+   X,Y readout; grips for beams, rooms, slabs and columns (lines have them since 1.41); shared
    properties for a multi-selection (done for doors and windows in 1.29.1); Mirror of a group keeping it a group; Paste then place. 2D pan on very large
    plans (~5,000 walls) is limited by SVG layout.
 2. **Custom plots (1.30, planned with the owner):** any shape clicked corner by corner, each side its own type
@@ -27,10 +27,15 @@ project types: free projects, buildings, per-floor heights, metric (1.33);
 furniture use zones with ADA wheelchair spaces (1.34); sections, elevations and drawing sheets (1.35); terrain and site:
 spot levels, contours, survey import, levelled plot and pads, cut and fill, OpenStreetMap surroundings and satellite levels (1.36);
 freer form: curved walls, double-height rooms, glass curtain walls and pitched roofs (1.37); faster 3D and IFC export (1.38);
-movable side panels: reorder, tabs, dock left or right, resize (1.39); iPad polish: compact portrait layout, touch buttons, bigger touch targets, release descriptions (1.40).
+movable side panels: reorder, tabs, dock left or right, resize (1.39); iPad polish: compact portrait layout, touch buttons, bigger touch targets, release descriptions (1.40);
+curves part 1: the Curve tool (arcs by ends and bend, 3 points, centre, tangent; circles, ovals, freeform curves), rounded
+rectangles, curved layout lines, and Fillet, Extend, Join, Chamfer and Push/Pull on curves (1.41).
 
 Planned next (the roadmap agreed with the owner for all kinds of work; plan each with the owner first):
-1.41 checks for non-residential buildings (1.39 went to movable side panels and 1.40 to iPad polish, both asked for by the owner).
+1.42 curves part 2 (agreed with the owner on 11 Oct 2026, plan in the project files `curvilinear/plan.md`): curved doors
+and windows on arc walls (curved in plan, bent frame and glass in 3D), curved and spiral stairs, curved edges on slabs,
+voids, levelled areas and plot sides, and curved site paths and driveways. Then 1.43 checks for non-residential
+buildings (1.39 went to movable side panels, 1.40 to iPad polish and 1.41 to curves, all asked for by the owner).
 Phones are not laid out yet (the side panel fills a phone screen); a phone layout would be its own release.
 Floating side panels were assessed with 1.39 and left out; revisit only if the owner still wants them.
 First-floor plans from a room list are a later idea.
@@ -43,9 +48,9 @@ line (it is straight); hatching for materials (cut is solid black); the DXF fill
 outlined); plans on sheets are pictures at up to 200 DPI in the PDF (as the plan PDF); furniture or shading as
 options.
 
-Left from freer form for later: no domes, vaults or free-form roofs, no dormers or roof windows (skylights); arcs
-are circular only (no ellipses or splines) and can't be extended, joined, filleted or chamfered (straight walls can);
-Push/Pull takes only an arc wall's top; no spiral stairs; curved glass is flat panes between mullions; a roof is one
+Left from freer form for later: no domes, vaults or free-form roofs, no dormers or roof windows (skylights); walls
+are circular arcs only: ovals are four-centred and freeform curves are biarcs (both true arcs, not ellipses or
+splines); no spiral stairs (planned for 1.42); curved glass is flat panes between mullions; a roof is one
 pitch all round (no per-side pitches or mansards) and doesn't clip the walls under it (walls stop at their own
 height, gable walls fill up to the roof); roofs aren't drawn in the auto-planner's layouts; the roof over a house with
 curved walls follows the curve as short straight eaves.

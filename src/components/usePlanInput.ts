@@ -20,7 +20,15 @@ import { MM_PER_UNIT, plannerStore, type PlannerState } from '../store/plannerSt
 import { DRAG_PX, hover, MEASURE_TOOLS, press, release } from '../tools/controller';
 import { slideOpening } from '../store/openingAt';
 import { getPicker, setPointer } from '../three/picker';
-import { hasPoints, type Bounds, type Furniture, type PlanElement, type Point, type Wall } from '../types';
+import {
+  hasPoints,
+  type Bounds,
+  type Furniture,
+  type PlanElement,
+  type Point,
+  type SketchLine,
+  type Wall,
+} from '../types';
 
 type Drag =
   | { kind: 'pan'; lastX: number; lastY: number }
@@ -33,9 +41,9 @@ type Drag =
   | { kind: 'box'; start: Point; additive: boolean; client: Point; moved?: boolean; picked?: boolean }
   /** Eraser pressed: a click erases what is there when let go; a drag erases all it passes over. */
   | { kind: 'erase'; last: Point; click: () => void }
-  | { kind: 'wall-start' | 'wall-end'; orig: Wall }
-  /** Dragging a wall's middle sideways to bend it into an arc (or back to straight). */
-  | { kind: 'wall-bend'; orig: Wall }
+  | { kind: 'wall-start' | 'wall-end'; orig: Wall | SketchLine }
+  /** Dragging a wall's (or layout line's) middle sideways to bend it into an arc (or back to straight). */
+  | { kind: 'wall-bend'; orig: Wall | SketchLine }
   | { kind: 'resize' | 'rotate'; orig: Furniture }
   /** Dragging a corner of a plot to reshape it. */
   | { kind: 'plot-corner'; plotId: string; index: number };
@@ -204,7 +212,10 @@ export function usePlanInput(
     const handle = (e.target as Element).closest('[data-handle]')?.getAttribute('data-handle');
     const selected = s.selectedIds.length === 1 ? s.doc.elements.find((el) => el.id === s.selectedId) : undefined;
     if (handle && selected && s.tool === 'select') {
-      if (selected.type === 'wall' && (handle === 'wall-start' || handle === 'wall-end' || handle === 'wall-bend')) {
+      if (
+        (selected.type === 'wall' || selected.type === 'line') &&
+        (handle === 'wall-start' || handle === 'wall-end' || handle === 'wall-bend')
+      ) {
         startDrag(e, { kind: handle, orig: selected });
       } else if (selected.type === 'furniture' && (handle === 'resize' || handle === 'rotate')) {
         startDrag(e, { kind: handle, orig: selected });
@@ -390,7 +401,7 @@ export function usePlanInput(
           // Close to the straight line (a few pixels), it snaps straight again.
           const bow = bowThrough(drag.orig, raw);
           const straight = Math.abs(bow) < 6 * s.pxUnits();
-          const next: Wall = { ...drag.orig, bow };
+          const next: Wall | SketchLine = { ...drag.orig, bow };
           if (straight) delete next.bow;
           s.updateElement(next);
           break;

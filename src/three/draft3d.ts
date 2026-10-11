@@ -5,6 +5,8 @@ import { levelWallMm, slabMm } from '../lib/levels';
 import type { PlannerState } from '../store/plannerStore';
 import type { PlanElement, Point } from '../types';
 
+import { curvePreview } from '../tools/curveTool';
+
 const DRAFT = 'draft';
 
 /**
@@ -35,6 +37,10 @@ export function draftElements(s: PlannerState): PlanElement[] {
   const long = (x1: number, y1: number, x2: number, y2: number) => Math.hypot(x2 - x1, y2 - y1) > 1;
 
   if (d?.type === 'wall' && long(d.x1, d.y1, d.x2, d.y2)) return [wall({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 })];
+  if (d?.type === 'curve' && s.site.curveMake === 'wall')
+    return curvePreview(d)
+      .pieces.filter((p) => long(p.x1, p.y1, p.x2, p.y2))
+      .map((p, i) => ({ ...wall({ x: p.x1, y: p.y1 }, { x: p.x2, y: p.y2 }, i), ...(p.bow && { bow: p.bow }) }));
   if (d?.type === 'rectangle' && Math.abs(d.x2 - d.x1) > 1 && Math.abs(d.y2 - d.y1) > 1) {
     const c = rect(d.x1, d.y1, d.x2, d.y2);
     return c.map((p, i) => wall(p, c[(i + 1) % 4], i));

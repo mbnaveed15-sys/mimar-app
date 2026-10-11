@@ -4,15 +4,19 @@
  */
 import { mapOutline, placeOnWall, wallParam } from '../geometry';
 import {
+  arcOf,
   directionAlong,
   distanceToWall,
   isArc,
   offsetWall as offsetArc,
   partOf,
   projectOnWall,
+  reversed as reversedArc,
   runLength,
   wallSegments,
+  type WallLine,
 } from './arc';
+import { carrierOf, crossings, footOn, fractionOn, offsetCarrier, sameCarrier, segThrough, withEndAt } from './curves';
 import { doorSides, flipsFor } from './openingPlace';
 import { thicknessOf } from '../walls';
 import {
@@ -31,6 +35,7 @@ import {
 import { newId } from './ids';
 
 const EPS = 1e-6;
+const TAU = Math.PI * 2;
 const sub = (a: Point, b: Point) => ({ x: a.x - b.x, y: a.y - b.y });
 const add = (a: Point, b: Point) => ({ x: a.x + b.x, y: a.y + b.y });
 const mul = (a: Point, k: number) => ({ x: a.x * k, y: a.y * k });
@@ -77,7 +82,7 @@ export function lineCross(a: Wall, b: Wall): Point | null {
 /** Points along a wall (0–1) where other walls cross it or end on it, in order. */
 export function wallCuts(doc: PlanDoc, wall: Wall, tol: number): number[] {
   const ts: number[] = [];
-  const curved = (w: Wall) => w.type === 'wall' && isArc(w);
+  const curved = (w: Wall) => isArc(w);
   for (const other of wallsOf(doc)) {
     if (other.id === wall.id || levelOf(other) !== levelOf(wall)) continue;
     if (!curved(wall) && !curved(other)) {
@@ -156,33 +161,75 @@ export function breakWall(doc: PlanDoc, wallId: Id, t1: number, t2 = t1): PlanDo
   ]);
 }
 
-/** Extend: lengthen a wall from its end nearest p until it meets another wall. Null if nothing is in the way. */
+/**
+ * Extend: lengthen a wall from its end nearest p until it meets another wall (a curved wall carries
+ * on round its circle). Null if nothing is in the way.
+ */
 export function extendWall(doc: PlanDoc, wallId: Id, p: Point): PlanDoc | null {
   const wall = wallsOf(doc).find((w) => w.id === wallId);
-  // A curved wall isn't extended (its curve could go anywhere).
-  if (!wall || isArc(wall)) return null;
+  if (!wall) return null;
   const fromEnd = len(sub(p, end(wall))) <= len(sub(p, start(wall)));
-  const tip = fromEnd ? end(wall) : start(wall);
-  const dir = fromEnd ? sub(end(wall), start(wall)) : sub(start(wall), end(wall));
-  const L = len(dir);
-  const ray = add(tip, mul(dir, 1e4 / (L || 1)));
+  // The far end stays; the near end moves out along the wall's line or circle.
+  const keepStart = fromEnd;
+  const own = carrierOf(wall);
+  const arc = arcOf(wall);
+  const L = runLength(wall);
   let best: Point | null = null;
-  let bestD = Infinity;
+  let bestU = Infinity;
   for (const other of wallsOf(doc)) {
     if (other.id === wall.id || levelOf(other) !== levelOf(wall)) continue;
-    for (const [b1, b2] of wallSegments(other)) {
-      const hit = segmentHit(tip, ray, b1, b2);
-      if (!hit || hit.t * 1e4 < 1e-3) continue;
-      const d = hit.t * 1e4;
-      if (d < bestD) {
-        bestD = d;
-        best = add(tip, mul(dir, d / L));
+    for (const h of crossings(own, carrierOf(other))) {
+      if (!onPiece(other, h)) continue;
+      const u = fromKept(wall, keepStart, h);
+      // Past the moving end (by at least a millimetre or so), and short of a whole circle.
+      if (u * L <= 0.1 + L || (arc && u * Math.abs(arc.sweep) >= Math.PI * 2 - 0.01)) continue;
+      if (u < bestU) {
+        bestU = u;
+        best = h;
       }
     }
   }
   if (!best) return null;
-  const next = fromEnd ? withEnds(wall, start(wall), best) : withEnds(wall, best, end(wall));
-  return replaceWall(doc, wall, next);
+  return replaceWall(doc, wall, withEndAt(wall, keepStart ? 'start' : 'end', best));
+}
+
+/** Whether a point on a wall's line or circle lies on the wall itself (within a millimetre). */
+function onPiece(w: Wall, p: Point): boolean {
+  const t = fractionOn(w, p);
+  const L = runLength(w) || 1;
+  if (t >= -0.1 / L && t <= 1 + 0.1 / L) return true;
+  // Just before the start of a curve counts too.
+  return isArc(w) && -fractionOn(w, p, true) * L <= 0.1;
+}
+
+/**
+ * How far along a wall p is, as a fraction of the wall, counted from the end that is kept
+ * (its start, or its end) going into the wall: past 1 is beyond the other end (round the circle
+ * for a curved wall), below 0 behind the kept end (straight walls only).
+ */
+function fromKept(w: Wall, keepStart: boolean, p: Point): number {
+  const arc = arcOf(w);
+  if (!arc) {
+    const t = fractionOn(w, p);
+    return keepStart ? t : 1 - t;
+  }
+  const far = keepStart ? start(w) : end(w);
+  const a0 = Math.atan2(far.y - arc.cy, far.x - arc.cx);
+  const dir = (keepStart ? 1 : -1) * Math.sign(arc.sweep);
+  const a1 = Math.atan2(p.y - arc.cy, p.x - arc.cx);
+  const turned = ((((a1 - a0) * dir) % TAU) + TAU) % TAU;
+  return turned / Math.abs(arc.sweep);
+}
+
+/** The point a fraction u along a wall from its kept end (on round the circle for a curved wall). */
+function atFromKept(w: Wall, keepStart: boolean, u: number): Point {
+  const arc = arcOf(w);
+  if (!arc) return at(w, keepStart ? u : 1 - u);
+  const far = keepStart ? start(w) : end(w);
+  const a0 = Math.atan2(far.y - arc.cy, far.x - arc.cx);
+  const dir = (keepStart ? 1 : -1) * Math.sign(arc.sweep);
+  const a = a0 + dir * u * Math.abs(arc.sweep);
+  return { x: arc.cx + arc.r * Math.cos(a), y: arc.cy + arc.r * Math.sin(a) };
 }
 
 /** Swap a wall for a changed copy, keeping its doors and windows where they are (or dropping them). */
@@ -204,8 +251,9 @@ function replaceWall(doc: PlanDoc, old: Wall, next: Wall): PlanDoc {
 export function joinWalls(doc: PlanDoc, idA: Id, idB: Id, tol: number): PlanDoc | null {
   const a = wallsOf(doc).find((w) => w.id === idA);
   const b = wallsOf(doc).find((w) => w.id === idB);
-  // A wall joins a wall, a line a line; curved walls don't join.
-  if (!a || !b || a.id === b.id || a.type !== b.type || isArc(a) || isArc(b)) return null;
+  // A wall joins a wall, a line a line; a curved one joins one on the same circle.
+  if (!a || !b || a.id === b.id || a.type !== b.type) return null;
+  if (isArc(a) || isArc(b)) return isArc(a) && isArc(b) ? joinArcs(doc, a, b, tol) : null;
   const dir = sub(end(a), start(a));
   const L = len(dir);
   const u = mul(dir, 1 / L);
@@ -238,57 +286,139 @@ export function joinWalls(doc: PlanDoc, idA: Id, idB: Id, tol: number): PlanDoc 
   return { ...doc, elements };
 }
 
-/** The part of a wall on the picked side of the corner point c: [far end, direction towards c]. */
-function keptSide(w: Wall, c: Point, pick: Point): { far: Point; toCorner: Point; ends: (p: Point) => Wall } {
-  const tc = wallParam(w, c);
-  const tp = wallParam(w, pick);
-  const keepStart = tp < tc;
-  const far = keepStart ? start(w) : end(w);
-  // The new corner point replaces whichever end was cut off, so the wall keeps its direction.
-  return { far, toCorner: sub(c, far), ends: (p) => (keepStart ? withEnds(w, far, p) : withEnds(w, p, far)) };
+/**
+ * Two curved walls on the same circle that meet end to end become one arc. Null if they aren't on
+ * one circle, don't meet, or would go all the way round.
+ */
+function joinArcs(doc: PlanDoc, a: Wall, b: Wall, tol: number): PlanDoc | null {
+  if (!sameCarrier(a, b, tol)) return null;
+  const near = (p: Point, q: Point) => len(sub(p, q)) <= tol;
+  // Turn b round if needed so it runs on from a's end, or up to a's start, the same way round.
+  let flipped = false;
+  let bb = b;
+  if (near(end(a), end(b)) || near(start(a), start(b))) {
+    bb = reversedArc(b);
+    flipped = true;
+  }
+  const sa = Math.sign(arcOf(a)!.sweep);
+  const sb = Math.sign(arcOf(bb)!.sweep);
+  if (sa !== sb) return null;
+  const total = Math.abs(arcOf(a)!.sweep) + Math.abs(arcOf(bb)!.sweep);
+  if (total >= Math.PI * 2 - 0.01) return null;
+  let merged: Wall;
+  if (near(end(a), start(bb))) merged = withEndAt(a, 'start', end(bb));
+  else if (near(start(a), end(bb))) merged = withEndAt(a, 'end', start(bb));
+  else return null;
+  const turned = (o: Opening): Opening =>
+    flipped && o.wallId === b.id
+      ? {
+          ...o,
+          flipSide: !o.flipSide,
+          flipHinge: !o.flipHinge,
+          ...(o.face && { face: o.face === 1 ? -1 : 1 }),
+          ...(o.profile && { profile: o.profile.map((p) => ({ x: -p.x, y: p.y })) }),
+        }
+      : o;
+  const elements = doc.elements
+    .filter((el) => el.id !== b.id)
+    .map((el) => {
+      if (el.id === a.id) return merged;
+      if (isOpening(el) && (el.wallId === a.id || el.wallId === b.id))
+        return refit({ ...turned(el), wallId: a.id }, merged) ?? el;
+      return el;
+    });
+  return { ...doc, elements };
+}
+
+/** Where the lines or circles of two walls cross: the crossing nearest p, or null if they don't. */
+function cornerOf(a: Wall, b: Wall, p: Point): Point | null {
+  const hits = crossings(carrierOf(a), carrierOf(b));
+  if (!hits.length) return null;
+  return hits.reduce((best, h) => (len(sub(h, p)) < len(sub(best, p)) ? h : best));
+}
+
+/**
+ * Which end of a wall is kept when it is cut (or carried on) to the corner c: the start when the
+ * part clicked lies between its start and c. A corner past one end of a curved wall keeps the
+ * other end.
+ */
+function keepsStart(w: Wall, c: Point, pick: Point): boolean {
+  const arc = arcOf(w);
+  if (!arc) return wallParam(w, pick) < wallParam(w, c);
+  const tc = fromKept(w, true, c);
+  if (tc <= 1) return projectOnWall(w, pick).t < tc;
+  // Beyond the end round the circle: whichever end the corner is nearer to (round the circle).
+  const full = (Math.PI * 2) / Math.abs(arc.sweep);
+  return tc - 1 < full - tc;
+}
+
+/** A wall given the line or curve of `seg`, keeping everything else about it (a new id when asked). */
+function shaped(w: Wall, seg: WallLine, id = w.id): Wall {
+  const next = { ...w, id, x1: seg.x1, y1: seg.y1, x2: seg.x2, y2: seg.y2 };
+  if (seg.bow) next.bow = seg.bow;
+  else delete next.bow;
+  return next;
 }
 
 /**
  * Fillet: make two walls meet in a clean corner, keeping the parts that were clicked. With a radius,
- * the corner is rounded with short wall pieces.
+ * the corner is rounded with a curved wall touching both. Either wall may be curved.
  */
 export function filletWalls(doc: PlanDoc, idA: Id, pickA: Point, idB: Id, pickB: Point, radius = 0): PlanDoc | null {
   const a = wallsOf(doc).find((w) => w.id === idA);
   const b = wallsOf(doc).find((w) => w.id === idB);
-  if (!a || !b || a.id === b.id || isArc(a) || isArc(b)) return null;
-  const c = lineCross(a, b);
+  if (!a || !b || a.id === b.id) return null;
+  const c = cornerOf(a, b, mul(add(pickA, pickB), 0.5));
   if (!c) return null;
-  const A = keptSide(a, c, pickA);
-  const B = keptSide(b, c, pickB);
+  const keepA = keepsStart(a, c, pickA);
+  const keepB = keepsStart(b, c, pickB);
+  const side = (k: boolean) => (k ? 'start' : 'end');
   if (radius <= 0) {
-    return replaceWall(replaceWall(doc, a, A.ends(c)), b, B.ends(c));
+    if (fromKept(a, keepA, c) <= 0 || fromKept(b, keepB, c) <= 0) return null;
+    return replaceWall(replaceWall(doc, a, withEndAt(a, side(keepA), c)), b, withEndAt(b, side(keepB), c));
   }
-  // Tangent points sit back from the corner by r / tan(θ/2), where θ is the angle between the walls.
-  const ua = mul(A.toCorner, 1 / len(A.toCorner));
-  const ub = mul(B.toCorner, 1 / len(B.toCorner));
-  const theta = Math.acos(Math.max(-1, Math.min(1, dot(mul(ua, -1), mul(ub, -1)))));
-  const back = radius / Math.tan(theta / 2);
-  if (back >= len(A.toCorner) || back >= len(B.toCorner)) return null;
-  const ta = sub(c, mul(ua, back));
-  const tb = sub(c, mul(ub, back));
-  const bis = add(mul(ua, -1), mul(ub, -1));
-  const centre = add(c, mul(bis, radius / Math.sin(theta / 2) / len(bis)));
-  const a0 = Math.atan2(ta.y - centre.y, ta.x - centre.x);
-  let sweep = Math.atan2(tb.y - centre.y, tb.x - centre.x) - a0;
-  if (sweep > Math.PI) sweep -= 2 * Math.PI;
-  if (sweep < -Math.PI) sweep += 2 * Math.PI;
-  const steps = Math.max(2, Math.ceil((Math.abs(sweep) * 180) / Math.PI / 15));
-  const arc: Point[] = Array.from({ length: steps + 1 }, (_, i) => {
-    const ang = a0 + (sweep * i) / steps;
-    return { x: centre.x + radius * Math.cos(ang), y: centre.y + radius * Math.sin(ang) };
-  });
-  let next = replaceWall(replaceWall(doc, a, A.ends(ta)), b, B.ends(tb));
-  const pieces = arc.slice(0, -1).map((p, i) => withEnds({ ...a, id: newId(), material: a.material }, p, arc[i + 1]));
-  next = { ...next, elements: [...next.elements, ...pieces] };
-  return next;
+  // The centre is a radius away from both: where the lines (or circles) moved over by the radius cross.
+  const ka = carrierOf(a);
+  const kb = carrierOf(b);
+  const uc = { a: fromKept(a, keepA, c), b: fromKept(b, keepB, c) };
+  let best: { centre: Point; ta: Point; tb: Point } | null = null;
+  let bestD = Infinity;
+  for (const sa of [1, -1])
+    for (const sb of [1, -1]) {
+      const oa = offsetCarrier(ka, sa * radius);
+      const ob = offsetCarrier(kb, sb * radius);
+      if (!oa || !ob) continue;
+      for (const centre of crossings(oa, ob)) {
+        const ta = footOn(ka, centre);
+        const tb = footOn(kb, centre);
+        // Each touching point between the kept end and the corner.
+        const ua = fromKept(a, keepA, ta);
+        const ub = fromKept(b, keepB, tb);
+        if (!(ua > EPS && ua < uc.a + EPS && ub > EPS && ub < uc.b + EPS)) continue;
+        const d = len(sub(centre, c));
+        if (d < bestD) {
+          bestD = d;
+          best = { centre, ta, tb };
+        }
+      }
+    }
+  if (!best) return null;
+  const { centre, ta, tb } = best;
+  // The short way round between the touching points, bulging towards the corner.
+  const ra = sub(ta, centre);
+  const rb = sub(tb, centre);
+  let bis = add(mul(ra, 1 / len(ra)), mul(rb, 1 / len(rb)));
+  if (len(bis) < 1e-9) bis = sub(c, centre);
+  const mid = add(centre, mul(bis, radius / len(bis)));
+  const round = shaped({ ...a, groupId: undefined, defKey: undefined }, segThrough(ta, mid, tb), newId());
+  const next = replaceWall(replaceWall(doc, a, withEndAt(a, side(keepA), ta)), b, withEndAt(b, side(keepB), tb));
+  return { ...next, elements: [...next.elements, round] };
 }
 
-/** Chamfer: cut the corner of two walls with an angled wall, d1 back along the first and d2 along the second. */
+/**
+ * Chamfer: cut the corner of two walls with a straight wall, d1 back along the first and d2 along
+ * the second (along the curve for a curved wall).
+ */
 export function chamferWalls(
   doc: PlanDoc,
   idA: Id,
@@ -300,16 +430,29 @@ export function chamferWalls(
 ): PlanDoc | null {
   const a = wallsOf(doc).find((w) => w.id === idA);
   const b = wallsOf(doc).find((w) => w.id === idB);
-  if (!a || !b || a.id === b.id || isArc(a) || isArc(b)) return null;
-  const c = lineCross(a, b);
+  if (!a || !b || a.id === b.id) return null;
+  const c = cornerOf(a, b, mul(add(pickA, pickB), 0.5));
   if (!c) return null;
-  const A = keptSide(a, c, pickA);
-  const B = keptSide(b, c, pickB);
-  if (d1 >= len(A.toCorner) || d2 >= len(B.toCorner)) return null;
-  const pa = sub(c, mul(A.toCorner, d1 / len(A.toCorner)));
-  const pb = sub(c, mul(B.toCorner, d2 / len(B.toCorner)));
-  const next = replaceWall(replaceWall(doc, a, A.ends(pa)), b, B.ends(pb));
-  return { ...next, elements: [...next.elements, withEnds({ ...a, id: newId() }, pa, pb)] };
+  const keepA = keepsStart(a, c, pickA);
+  const keepB = keepsStart(b, c, pickB);
+  const La = runLength(a);
+  const Lb = runLength(b);
+  const ua = fromKept(a, keepA, c) - d1 / La;
+  const ub = fromKept(b, keepB, c) - d2 / Lb;
+  if (ua <= EPS || ub <= EPS) return null;
+  const pa = atFromKept(a, keepA, ua);
+  const pb = atFromKept(b, keepB, ub);
+  const next = replaceWall(
+    replaceWall(doc, a, withEndAt(a, keepA ? 'start' : 'end', pa)),
+    b,
+    withEndAt(b, keepB ? 'start' : 'end', pb),
+  );
+  const cut = shaped(
+    { ...a, groupId: undefined, defKey: undefined },
+    { x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y },
+    newId(),
+  );
+  return { ...next, elements: [...next.elements, cut] };
 }
 
 /** Offset: a parallel copy of a wall, `dist` away on the side of `side`. */
@@ -380,7 +523,9 @@ export function mirrorItems(
     } else if (el.type === 'beam' || el.type === 'line' || el.type === 'section') {
       const p1 = reflect({ x: el.x1, y: el.y1 }, a, b);
       const p2 = reflect({ x: el.x2, y: el.y2 }, a, b);
-      mirrored.set(el.id, { ...el, ...fresh, id, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
+      // A curved line bows the mirror way.
+      const bow = el.type === 'line' && el.bow ? { bow: -el.bow } : {};
+      mirrored.set(el.id, { ...el, ...fresh, id, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, ...bow });
     } else if (hasPoints(el)) {
       mirrored.set(el.id, { ...mapOutline(el, (p) => reflect(p, a, b), true), ...fresh, id });
     } else if (el.type === 'level') {
@@ -501,7 +646,8 @@ export function scaleItems(doc: PlanDoc, ids: Id[], base: Point, factor: number)
     if (el.type === 'beam' || el.type === 'line' || el.type === 'section') {
       const p1 = sc({ x: el.x1, y: el.y1 });
       const p2 = sc({ x: el.x2, y: el.y2 });
-      return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+      const bow = el.type === 'line' && el.bow ? { bow: el.bow * factor } : {};
+      return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, ...bow };
     }
     if (hasPoints(el)) return mapOutline(el, sc);
     const p = sc(el);
@@ -554,7 +700,11 @@ export function stretchItems(
     if (el.type === 'beam' || el.type === 'line' || el.type === 'section') {
       const p1 = move({ x: el.x1, y: el.y1 });
       const p2 = move({ x: el.x2, y: el.y2 });
-      return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+      // A curved line keeps its shape as its ends move apart or together, as a curved wall does.
+      const was = Math.hypot(el.x2 - el.x1, el.y2 - el.y1);
+      const bow =
+        el.type === 'line' && el.bow && was ? { bow: (el.bow * Math.hypot(p2.x - p1.x, p2.y - p1.y)) / was } : {};
+      return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, ...bow };
     }
     if (hasPoints(el)) return mapOutline(el, move);
     return el;

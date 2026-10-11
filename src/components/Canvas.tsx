@@ -304,11 +304,13 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
       </g>
 
       <g>
-        {tool === 'select' && selected?.type === 'wall' && (
+        {tool === 'select' && (selected?.type === 'wall' || selected?.type === 'line') && (
           <>
             <Handle name="wall-start" p={{ x: selected.x1, y: selected.y1 }} k={hk} />
             <Handle name="wall-end" p={{ x: selected.x2, y: selected.y2 }} k={hk} />
-            {!selected.plotId && <Handle name="wall-bend" p={pointAlong(selected, 0.5)} k={hk} />}
+            {!(selected.type === 'wall' && selected.plotId) && (
+              <Handle name="wall-bend" p={pointAlong(selected, 0.5)} k={hk} />
+            )}
           </>
         )}
         {tool === 'select' &&

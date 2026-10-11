@@ -15,6 +15,7 @@ export const ALIASES: Record<string, { tool: Tool; copy?: boolean; label: string
   SC: { tool: 'scale', label: 'Scale' },
   CHA: { tool: 'chamfer', label: 'Chamfer' },
   REC: { tool: 'rectangle', label: 'Rectangle' },
+  ARC: { tool: 'curve', label: 'Arc (Curve tool)' },
   DI: { tool: 'tape', label: 'Distance (tape measure)' },
   BR: { tool: 'breakWall', label: 'Break' },
   FIL: { tool: 'fillet', label: 'Fillet' },
