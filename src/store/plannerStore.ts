@@ -14,6 +14,7 @@ import {
 import { DEFAULT_FILE_NAME } from '../lib/files';
 import { newId } from '../lib/ids';
 import { GRID_MAX_MM, GRID_MIN_MM, loadPrefs, savePrefs, type GridPrefs, type Prefs } from '../lib/prefs';
+import type { CheckCategory, ChecksPrefs, SnapGroup, SnapsPrefs } from '../lib/checks';
 import { DEFAULT_PANELS, clampPanelWidth, movePanel, type PanelLayout, type SectionId } from '../lib/panels';
 import { DEFAULT_TOOLBARS, moveToolbar, type DockArea, type ToolbarId, type ToolbarLayout } from '../lib/toolbars';
 import { emptyDoc, loadFileInfo, loadPlan, saveFileInfo, savePlan, STORAGE_KEY, type FileInfo } from '../lib/storage';
@@ -400,6 +401,8 @@ export interface PlannerState {
   clipboard: { doc: PlanDoc; ids: Id[] } | null;
   theme: ThemeId;
   grid: GridPrefs;
+  checks: ChecksPrefs;
+  snaps: SnapsPrefs;
   view: View;
   viewport: Size;
 
@@ -557,6 +560,10 @@ export interface PlannerState {
   setTheme: (theme: ThemeId) => void;
   /** Change some grid settings; spacing is for the current units. */
   setGrid: (patch: Partial<Omit<GridPrefs, 'spacingMm'>> & { spacingMm?: number }) => void;
+  /** Turn all checks on or off, or one kind of check. */
+  setChecks: (patch: { on?: boolean; category?: CheckCategory; categoryOn?: boolean }) => void;
+  /** Turn all snapping on or off, or one group of snap points. */
+  setSnaps: (patch: { on?: boolean; group?: SnapGroup; groupOn?: boolean }) => void;
   /** Set (or with null, reset to the theme's own) a grid line colour for the current theme. */
   setGridColor: (line: 'minor' | 'major', color: string | null) => void;
 
@@ -628,9 +635,8 @@ export function createPlannerStore(
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
-      const { showHints, pdfHints, accessibleZones } = get();
-      const { wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } =
-        get();
+      const { showHints, pdfHints, accessibleZones, checks, snaps } = get();
+      const { wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } = get();
       savePrefs({
         units,
         showDimensions,
@@ -649,6 +655,8 @@ export function createPlannerStore(
         wallHeightMm,
         theme,
         grid,
+        checks,
+        snaps,
         toolbars,
         panels,
       });
@@ -770,6 +778,8 @@ export function createPlannerStore(
       setChamferDist: (chamferDist) => set({ chamferDist }),
       theme: prefs.theme,
       grid: prefs.grid,
+      checks: prefs.checks,
+      snaps: prefs.snaps,
       toolbars: prefs.toolbars,
       dockToolbar: (id, area, index) => {
         set({ toolbars: moveToolbar(get().toolbars, id, area, index) });
@@ -2140,6 +2150,20 @@ export function createPlannerStore(
         if (spacingMm !== undefined && Number.isFinite(spacingMm))
           next.spacingMm = { ...grid.spacingMm, [units]: Math.min(GRID_MAX_MM, Math.max(GRID_MIN_MM, spacingMm)) };
         set({ grid: next, gridPx: gridFor(next, units) });
+        persistPrefs();
+      },
+      setChecks: ({ on, category, categoryOn }) => {
+        const { checks } = get();
+        const next = { ...checks, on: on ?? checks.on };
+        if (category) next.off = checks.off.filter((c) => c !== category).concat(categoryOn ? [] : [category]);
+        set({ checks: next });
+        persistPrefs();
+      },
+      setSnaps: ({ on, group, groupOn }) => {
+        const { snaps } = get();
+        const next = { ...snaps, on: on ?? snaps.on };
+        if (group) next.off = snaps.off.filter((g) => g !== group).concat(groupOn ? [] : [group]);
+        set({ snaps: next });
         persistPrefs();
       },
       setGridColor: (line, color) => {

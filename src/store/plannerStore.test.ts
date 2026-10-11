@@ -240,7 +240,6 @@ describe('rooms, walls and modes', () => {
     expect(s().doc.rooms).toHaveLength(1);
     expect(s().doc.elements).toHaveLength(3);
   });
-
 });
 
 describe('furniture library and layers', () => {

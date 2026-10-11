@@ -89,7 +89,7 @@ function pointerOnWall(s: PlannerState, wallId: Id, face: 1 | -1): Point | null 
   if (!hit) return null;
   const p = onWall(s, wall, hit);
   const step = s.gridPx;
-  return s.grid.snap ? { x: snapTo(p.x, step), y: snapTo(p.y, step) } : p;
+  return s.grid.snap && s.snaps.on ? { x: snapTo(p.x, step), y: snapTo(p.y, step) } : p;
 }
 
 /** The surface a shape starts on: a wall's face, a slab's or block's top, or the floor. */
@@ -107,7 +107,7 @@ function surfaceAt(s: PlannerState): { surface: ShapeSurface; wallPoint?: Point 
     const step = s.gridPx;
     return {
       surface: { on: 'wall', wallId: el.id, face: face.sign },
-      wallPoint: s.grid.snap ? { x: snapTo(p.x, step), y: snapTo(p.y, step) } : p,
+      wallPoint: s.grid.snap && s.snaps.on ? { x: snapTo(p.x, step), y: snapTo(p.y, step) } : p,
     };
   }
   if (el.type === 'slab' && face?.part === 'top') return { surface: { ...floor, slabId: el.id } };

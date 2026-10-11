@@ -73,7 +73,8 @@ export function modifyAnchor(s: PlannerState): Point | null {
 /** Offset preview: the parallel wall at the pointer's distance (snapped to the grid). */
 function offsetDraft(s: PlannerState, wall: Wall, side: Point, d?: number) {
   let distance = d ?? distanceToLine(wall, side);
-  if (d === undefined && s.grid.snap) distance = Math.max(s.gridPx, Math.round(distance / s.gridPx) * s.gridPx);
+  if (d === undefined && s.grid.snap && s.snaps.on)
+    distance = Math.max(s.gridPx, Math.round(distance / s.gridPx) * s.gridPx);
   const w = offsetWall(wall, distance, side);
   const bow = 'bow' in w ? w.bow : undefined;
   return {

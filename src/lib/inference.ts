@@ -90,6 +90,8 @@ export interface InferOptions {
   lock?: Point | null;
   /** Leave these walls out (the ones being moved). */
   ignoreIds?: Set<string>;
+  /** Which kinds of snap may be used (all when missing): the Snap button's menu. */
+  allow?: (kind: SnapKind) => boolean;
 }
 
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -153,6 +155,7 @@ type Kind = 'on-wall' | 'on-face' | 'on-line' | 'building-line';
  */
 export function infer(raw: Point, opts: InferOptions): Inference {
   const { walls, tolerance, from, grid, lock, ignoreIds } = opts;
+  const allow = opts.allow ?? (() => true);
   const keep = <T extends { id: string }>(list: T[]) => (ignoreIds ? list.filter((w) => !ignoreIds.has(w.id)) : list);
   const kept = keep(walls);
   // Curved walls snap by their own rules (below); everything else here treats walls as straight.
@@ -192,6 +195,7 @@ export function infer(raw: Point, opts: InferOptions): Inference {
   let best: Inference | null = null;
   let bestD = Infinity;
   const consider = (point: Point, kind: SnapKind, within = tolerance) => {
+    if (!allow(kind)) return;
     const d = dist(point, raw);
     if (d < within && d < bestD) {
       best = { point, kind };
@@ -294,12 +298,14 @@ export function infer(raw: Point, opts: InferOptions): Inference {
   //    two lines of alignment cross, or one crosses the axis from the last point or a wall.
   // Not the ends of what the pointer is already on: along it, those are just its own line.
   const under = new Set(near.map(({ seg, kind }) => (kind === 'on-face' ? wallIdOf(seg) : seg.id)));
-  const align = alignments(
-    raw,
-    [...kept, ...allLines].filter((seg) => !under.has(seg.id)),
-    from,
-    tolerance,
-  );
+  const align = allow('aligned')
+    ? alignments(
+        raw,
+        [...kept, ...allLines].filter((seg) => !under.has(seg.id)),
+        from,
+        tolerance,
+      )
+    : { ax: null, ay: null };
   const { ax, ay } = align;
   // On a wall or line, a point must stay on it: only where a guide crosses it counts.
   const onSomething = near.some(({ kind }) => kind !== 'building-line');
@@ -328,7 +334,7 @@ export function infer(raw: Point, opts: InferOptions): Inference {
   if (onSeg) return onSeg;
 
   // 4. Straight across or up from the last point: ahead of grid points, so a line from an off-grid point stays level.
-  if (from) {
+  if (from && allow('axis-x')) {
     const dx = Math.abs(raw.x - from.x);
     const dy = Math.abs(raw.y - from.y);
     if (dy < tolerance && dx >= dy) {

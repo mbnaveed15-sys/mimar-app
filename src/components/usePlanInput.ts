@@ -20,6 +20,7 @@ import { MM_PER_UNIT, plannerStore, type PlannerState } from '../store/plannerSt
 import { DRAG_PX, hover, MEASURE_TOOLS, press, release } from '../tools/controller';
 import { slideOpening } from '../store/openingAt';
 import { getPicker, setPointer } from '../three/picker';
+import { setPlanPointer } from '../store/pointerStore';
 import {
   hasPoints,
   type Bounds,
@@ -64,7 +65,7 @@ function capture(e: PointerEvent<Element>) {
 /** Snap to the grid, when grid snapping is on. */
 function gridSnap(raw: Point): Point {
   const s = plannerStore.getState();
-  return s.grid.snap ? snap(raw, s.gridPx) : raw;
+  return s.grid.snap && s.snaps.on ? snap(raw, s.gridPx) : raw;
 }
 
 /** Snap to a nearby wall end (so walls join cleanly), otherwise to the grid. */
@@ -306,6 +307,7 @@ export function usePlanInput(
     setPointer(e.clientX, e.clientY);
     const drag = dragRef.current;
     const raw = toPlan(e);
+    setPlanPointer(raw);
 
     if (drag) {
       switch (drag.kind) {
@@ -357,7 +359,7 @@ export function usePlanInput(
         case 'moveMany': {
           let dx = raw.x - drag.start.x;
           let dy = raw.y - drag.start.y;
-          if (s.grid.snap) {
+          if (s.grid.snap && s.snaps.on) {
             dx = Math.round(dx / s.gridPx) * s.gridPx;
             dy = Math.round(dy / s.gridPx) * s.gridPx;
           }
