@@ -38,7 +38,7 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 
 ### Draw quickly and precisely (AutoCAD and SketchUp habits work)
 - **Snapping** to ends, midpoints, wall faces, crossings, perpendiculars, the building line and the grid, with red and green axis guides.
-- **Typed input:** `12' 6"`, `3.5 m`, `@x,y`, `length<angle`, and AutoCAD aliases (CO, RO, TR, EX, MI, SC, FIL, ARC…).
+- **Typed input:** `12' 6"`, `3.5 m`, `@x,y`, `length<angle`, and AutoCAD aliases (CO, RO, TR, EX, MI, SC, FIL…).
 - **Modify tools:** move, copy, rotate, mirror, scale, stretch, offset, trim, extend, break, join, fillet, chamfer, on straight and curved walls alike.
 - **Push/Pull and Shape** as in SketchUp: pull shapes into blocks, and push them into walls to make niches, projections (chajjas) and arched or round openings.
 - **Groups, components, layers** that you can hide and lock, and full undo and redo.
