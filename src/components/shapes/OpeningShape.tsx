@@ -1,7 +1,8 @@
-import type { Opening } from '../../types';
+import type { Opening, Point } from '../../types';
+import type { Bend } from '../../lib/arc';
 import { MM_PER_UNIT } from '../../lib/scale';
 import { PLAN } from '../../theme/plan';
-import { doorKindOf, openingSymbol, type SymbolStroke } from '../../lib/openingKinds';
+import { bentSymbol, doorKindOf, openingSymbol, type SymbolStroke } from '../../lib/openingKinds';
 
 /** Line weight and dashes for each part of a door or window symbol. */
 const LOOKS: Record<SymbolStroke, { width: number; dash?: string }> = {
@@ -20,10 +21,12 @@ interface Props {
   wallThickness: number;
   /** A preview of one about to be placed: not an item on the plan, so it isn't marked as one. */
   ghost?: boolean;
+  /** A window on a curved wall: drawn round the curve. */
+  bend?: Bend | null;
 }
 
 /** Door (leaf + swing arc) or window (double line with glazing) cut into a wall. */
-export function OpeningShape({ opening, color, selected, wallThickness, ghost }: Props) {
+export function OpeningShape({ opening, color, selected, wallThickness, ghost, bend }: Props) {
   const w = opening.width;
   const stroke = { stroke: selected ? PLAN.selection : PLAN.wallEdge };
   const t = wallThickness / 2 + 1;
@@ -52,6 +55,37 @@ export function OpeningShape({ opening, color, selected, wallThickness, ghost }:
         ) : (
           <line x1={-w / 2} y1={y} x2={w / 2} y2={y} style={style} strokeWidth={3} strokeDasharray="6 3" />
         )}
+      </g>
+    );
+  }
+  if (bend) {
+    const bent = bentSymbol(opening, t, bend);
+    const ptsOf = (pts: Point[]) => pts.map((p) => `${p.x},${p.y}`).join(' ');
+    return (
+      <g
+        data-type={ghost ? undefined : opening.type}
+        data-id={ghost ? undefined : opening.id}
+        data-kind={opening.windowKind ?? 'plain'}
+        data-bent
+        data-testid={ghost ? undefined : opening.open ? 'open-hole' : undefined}
+        transform={`translate(${opening.x},${opening.y}) rotate(${opening.angle})`}
+      >
+        <polygon points={ptsOf(bent.cover)} style={{ fill: PLAN.paper }} />
+        {bent.jambs.map(([a, b], i) => (
+          <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} style={stroke} strokeWidth={2} />
+        ))}
+        {bent.paths.map((path, i) => {
+          const look = LOOKS[path.stroke];
+          const style = { stroke: path.stroke === 'glass' ? (color ?? PLAN.glass) : stroke.stroke };
+          const props = {
+            points: ptsOf(path.points),
+            style,
+            fill: 'none',
+            strokeWidth: look.width,
+            strokeDasharray: look.dash,
+          };
+          return path.closed ? <polygon key={i} {...props} /> : <polyline key={i} {...props} />;
+        })}
       </g>
     );
   }

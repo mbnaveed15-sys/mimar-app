@@ -1,4 +1,5 @@
-import type { DoorKind, Opening, WindowKind } from '../types';
+import type { DoorKind, Opening, Point, WindowKind } from '../types';
+import { bendPath, bendPoint, type Bend } from './arc';
 
 /** Door types, in the order the tool offers them. */
 export const DOOR_KINDS: DoorKind[] = ['single', 'double', 'sliding', 'folding', 'shutter', 'opening'];
@@ -149,4 +150,40 @@ export function openingSymbol(o: Opening, t: number): SymbolPath[] {
     default:
       return [...frame, line(-h, 0, h, 0, 'glass')];
   }
+}
+
+/**
+ * A window's plan symbol bent round its curved wall (`openingBend`), in its own frame with the
+ * flips already applied: the patch of paper over the wall, the two jambs (square to the curve) and
+ * the symbol's lines.
+ */
+export function bentSymbol(
+  o: Opening,
+  t: number,
+  bend: Bend,
+): { cover: Point[]; jambs: [Point, Point][]; paths: { points: Point[]; stroke: SymbolStroke; closed?: boolean }[] } {
+  const hx = o.flipHinge ? -1 : 1;
+  const sy = o.flipSide ? -1 : 1;
+  const step = Math.max(1, o.width / 16);
+  const h = o.width / 2;
+  const flip = (pts: [number, number][]) => pts.map(([x, y]): [number, number] => [x * hx, y * sy]);
+  return {
+    cover: bendPath(
+      bend,
+      [
+        [-h, -t],
+        [h, -t],
+        [h, t],
+        [-h, t],
+      ],
+      step,
+      true,
+    ),
+    jambs: [-h, h].map((x): [Point, Point] => [bendPoint(bend, x, -t), bendPoint(bend, x, t)]),
+    paths: openingSymbol(o, t).map((p) => ({
+      points: bendPath(bend, flip(p.points), step, p.closed),
+      stroke: p.stroke,
+      closed: p.closed,
+    })),
+  };
 }

@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { openingBend } from '../lib/arc';
 import { projectOf } from '../lib/project';
 import { elementOutline, planBounds } from '../geometry';
 import { formatLength } from '../lib/units';
@@ -6,7 +7,7 @@ import { PLAN } from '../theme/plan';
 import type { MarlaSqFt, PlanDoc, Room, Units } from '../types';
 import { labelPoint, wallFaces } from '../rooms';
 import { metricProject } from '../lib/curtain';
-import { DEFAULT_WALL_THICKNESS, openingCover, placeWallDimension, wallsOf } from '../walls';
+import { DEFAULT_WALL_THICKNESS, openingCover, placeWallDimension, thicknessOf, wallsOf } from '../walls';
 import { FurnitureShape } from './shapes/FurnitureShape';
 import { MaskShape } from './shapes/MaskShape';
 import { OpeningShape } from './shapes/OpeningShape';
@@ -107,13 +108,18 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
           case 'door':
           case 'window': {
             const host = wallById.get(el.wallId);
+            // A window round a curve covers just the wall; one flat across it, the curve's rise too.
+            const bend = openingBend(el, host);
             return (
               <OpeningShape
                 key={el.id}
                 opening={el}
                 color={color}
                 selected={isSelected}
-                wallThickness={host ? openingCover(host, el.width) : DEFAULT_WALL_THICKNESS}
+                wallThickness={
+                  host ? (bend ? thicknessOf(host) : openingCover(host, el.width)) : DEFAULT_WALL_THICKNESS
+                }
+                bend={bend}
               />
             );
           }

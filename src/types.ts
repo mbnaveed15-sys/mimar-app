@@ -762,6 +762,8 @@ export type Draft =
       ghost?: Opening;
       /** Thickness of the wall it would go in. */
       thickness?: number;
+      /** How a window follows a curved wall it would go in. */
+      bend?: { cy: number; r: number } | null;
       /** Clear distances from the ends of the piece of wall to the opening's edges. */
       dims?: [Point, Point][];
       /** Unit direction across the wall, towards the pointer: the side the distances are shown on. */

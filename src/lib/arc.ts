@@ -303,7 +303,26 @@ export function straightPieces<T extends WallLine>(w: T, openings: Opening[], ha
   let t = 0;
   for (const s of spans) {
     fill(t, s.t0);
-    cuts.push(s);
+    const o = s.openings[0];
+    if (s.openings.length === 1 && o.type === 'window' && !o.flat && !o.shape) {
+      // A window alone in its span follows the curve: short straight panes, each in its own piece.
+      const n = Math.max(2, pieceCount(arc.r, (s.t1 - s.t0) * size));
+      for (let i = 0; i < n; i++) {
+        const t0 = s.t0 + ((s.t1 - s.t0) * i) / n;
+        const t1 = s.t0 + ((s.t1 - s.t0) * (i + 1)) / n;
+        const a = pointAlong(w, t0);
+        const b = pointAlong(w, t1);
+        const pane: Opening = {
+          ...o,
+          x: (a.x + b.x) / 2,
+          y: (a.y + b.y) / 2,
+          angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI,
+          width: Math.hypot(b.x - a.x, b.y - a.y),
+          windowKind: o.windowKind === 'vent' ? 'vent' : undefined,
+        };
+        cuts.push({ t0, t1, openings: [pane] });
+      }
+    } else cuts.push(s);
     t = s.t1;
   }
   fill(t, 1);
@@ -347,4 +366,57 @@ export function placeOnArc(
     angle: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI,
     width: Math.hypot(b.x - a.x, b.y - a.y),
   };
+}
+
+/**
+ * A window on a curved wall follows the curve: its circle in the window's own frame (x along its
+ * chord from its centre, y across), as the centre's y (the centre is on the y axis) and the radius.
+ * Null on a straight wall, and for doors (their leaves stay flat) and shapes drawn on the face.
+ */
+export interface Bend {
+  cy: number;
+  r: number;
+}
+
+export function openingBend(
+  o: Pick<Opening, 'type' | 'x' | 'y' | 'angle' | 'width' | 'flat' | 'shape'>,
+  wall: WallLine | undefined,
+): Bend | null {
+  // Shaped windows (round, arched) keep their outline flat.
+  if (!wall || o.type !== 'window' || o.flat || o.shape) return null;
+  const arc = arcOf(wall);
+  if (!arc || o.width >= 2 * arc.r) return null;
+  const a = (-o.angle * Math.PI) / 180;
+  const dx = arc.cx - o.x;
+  const dy = arc.cy - o.y;
+  const lx = dx * Math.cos(a) - dy * Math.sin(a);
+  const ly = dx * Math.sin(a) + dy * Math.cos(a);
+  // Its ends must be on the curve: the centre straight across from its middle.
+  if (Math.abs(lx) > 0.5 || Math.abs(ly) < 1e-6) return null;
+  return { cy: ly, r: arc.r };
+}
+
+/** A point of a window's straight symbol (x along the chord, y across) moved onto the curve. */
+export function bendPoint(b: Bend, x: number, y: number): Point {
+  // From the centre towards the middle of the curve.
+  const s = b.cy < 0 ? 1 : -1;
+  const phi = Math.asin(Math.max(-1, Math.min(1, x / b.r)));
+  const rad = b.r + s * y;
+  return { x: rad * Math.sin(phi), y: b.cy + s * rad * Math.cos(phi) };
+}
+
+/** A polyline of a window's symbol, split finely enough to follow the curve, then bent. */
+export function bendPath(b: Bend, pts: [number, number][], step: number, closed = false): Point[] {
+  const out: Point[] = [];
+  const ring = closed && pts.length > 2 ? [...pts, pts[0]] : pts;
+  for (let i = 0; i < ring.length; i++) {
+    const [x, y] = ring[i];
+    if (i > 0) {
+      const [px, py] = ring[i - 1];
+      const n = Math.max(1, Math.ceil(Math.hypot(x - px, y - py) / step));
+      for (let k = 1; k < n; k++) out.push(bendPoint(b, px + ((x - px) * k) / n, py + ((y - py) * k) / n));
+    }
+    if (!(closed && i === ring.length - 1)) out.push(bendPoint(b, x, y));
+  }
+  return out;
 }
