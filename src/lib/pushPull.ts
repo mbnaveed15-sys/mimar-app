@@ -2,12 +2,12 @@
  * Push/Pull, SketchUp style: grab a face of an item and push it in or pull it out. Everything here
  * is pure: which face was grabbed (from the 3D hit), and the plan after moving that face.
  */
-import { centroid, wallLength } from '../geometry';
+import { centroid, placeOnWall, wallLength, withWallLength } from '../geometry';
 import { MM_PER_UNIT } from './scale';
 import { signedArea } from './shapes';
 import type { Block, Column, Id, Opening, PlanDoc, PlanElement, Point, PushFace, Slab, Vec3, Wall } from '../types';
 import { thicknessOf } from '../walls';
-import { isArc } from './arc';
+import { directionAlong, isArc, offsetWall, projectOnWall, reversed, runLength } from './arc';
 
 /** Plan units per scene metre (scene metres are x, z; plan units are 10 mm). */
 const UNITS_PER_M = 1000 / MM_PER_UNIT;
@@ -30,8 +30,14 @@ export function faceOf(el: PlanElement, normal: Vec3, point: Vec3): PushFace | n
     case 'beam': {
       if (up) return el.type === 'wall' ? { part: 'top' } : null;
       if (down) return el.type === 'beam' ? { part: 'bottom' } : null;
-      // A curved wall is pushed and pulled only by its top (its radius is set in the side panel).
-      if (el.type === 'wall' && isArc(el)) return null;
+      if (el.type === 'wall' && isArc(el)) {
+        // A curved wall: its ends, or its sides (which way is side A where it was grabbed).
+        const on = projectOnWall(el, { x: point[0] * UNITS_PER_M, y: point[2] * UNITS_PER_M });
+        const d = directionAlong(el, on.t);
+        const along = nx * d.x + nz * d.y;
+        if (Math.abs(along) > 0.7) return { part: 'end', end: along > 0 ? 2 : 1 };
+        return { part: 'side', sign: nx * -d.y + nz * d.x > 0 ? 1 : -1 };
+      }
       const len = Math.hypot(el.x2 - el.x1, el.y2 - el.y1) || 1;
       const [ux, uy] = [(el.x2 - el.x1) / len, (el.y2 - el.y1) / len];
       const along = nx * ux + nz * uy;
@@ -126,12 +132,21 @@ export function pushPull(
     case 'wall': {
       if (face.part === 'top')
         return replace({ ...el, heightMm: round(clamp((el.heightMm ?? ctx.wallHeightMm) + mm, 100, 30000)) });
-      if (face.part === 'end') return replace(withEnd(el, face.end, d));
+      if (face.part === 'end') return replace(isArc(el) ? withArcEnd(el, face.end, d) : withEnd(el, face.end, d));
       if (face.part === 'side') {
         // The other face stays put: the wall thickens (or thins) towards the face that moved.
         const t = thicknessOf(el);
         const next = Math.max(MIN_THICK_MM / MM_PER_UNIT, t + d);
         const shift = (face.sign * (next - t)) / 2;
+        if (isArc(el)) {
+          // A curved wall: its centre line moves to a circle on the same centre.
+          const moved = { ...offsetWall(el, shift), thickness: next };
+          return replace(moved, (x) =>
+            (x.type === 'door' || x.type === 'window') && x.wallId === el.id
+              ? { ...x, ...placeOnWall(moved, x, x.width) }
+              : x,
+          );
+        }
         const moved = shiftSideways(el, shift);
         return replace({ ...moved, thickness: next }, (x) =>
           'wallId' in x && x.wallId === el.id ? shiftOpening(x, el, shift) : x,
@@ -207,6 +222,14 @@ function withEnd<T extends { x1: number; y1: number; x2: number; y2: number }>(e
   return end === 2
     ? { ...el, x2: el.x2 + ux * move, y2: el.y2 + uy * move }
     : { ...el, x1: el.x1 - ux * move, y1: el.y1 - uy * move };
+}
+
+/** A curved wall's end pushed out (or in) by d, round its circle. */
+function withArcEnd(el: Wall, end: 1 | 2, d: number): Wall {
+  const L = runLength(el);
+  const longer = Math.max(MIN_LENGTH, L + d);
+  if (end === 2) return withWallLength(el, longer);
+  return reversed(withWallLength(reversed(el), longer));
 }
 
 /** A wall or beam moved sideways by `shift` plan units towards its left normal (-uy, ux). */

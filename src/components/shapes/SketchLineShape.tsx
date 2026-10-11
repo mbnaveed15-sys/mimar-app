@@ -1,5 +1,6 @@
 import { PLAN } from '../../theme/plan';
-import type { SketchLine } from '../../types';
+import type { Point, SketchLine } from '../../types';
+import { directionAlong, isArc, offsetPath, wallPath } from '../../lib/arc';
 
 /** A small, repeatable wobble for each line, so it looks drawn by hand but stays still. */
 function wobble(id: string): number {
@@ -13,6 +14,7 @@ function wobble(id: string): number {
  * slightly, and has a dot at each end to snap to.
  */
 export function SketchLineShape({ line, selected, k }: { line: SketchLine; selected: boolean; k: number }) {
+  if (isArc(line)) return <CurvedLine line={line} selected={selected} k={k} />;
   const dx = line.x2 - line.x1;
   const dy = line.y2 - line.y1;
   const len = Math.hypot(dx, dy) || 1;
@@ -37,6 +39,50 @@ export function SketchLineShape({ line, selected, k }: { line: SketchLine; selec
         strokeLinecap="round"
       />
       <path d={path} fill="none" stroke="currentColor" strokeWidth={(selected ? 2 : 1.1) * k} strokeLinecap="round" />
+      {[
+        { x: line.x1, y: line.y1 },
+        { x: line.x2, y: line.y2 },
+      ].map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r={2.2 * k} fill="currentColor" />
+      ))}
+    </g>
+  );
+}
+
+/** A curved layout line: the arc in pencil, running a little past its ends along the curve's direction. */
+function CurvedLine({ line, selected, k }: { line: SketchLine; selected: boolean; k: number }) {
+  const over = 7 * k;
+  const d0 = directionAlong(line, 0);
+  const d1 = directionAlong(line, 1);
+  const withTails = (pts: Point[]) => [
+    { x: pts[0].x - d0.x * over, y: pts[0].y - d0.y * over },
+    ...pts,
+    { x: pts[pts.length - 1].x + d1.x * over, y: pts[pts.length - 1].y + d1.y * over },
+  ];
+  const path = (pts: Point[]) =>
+    `M ${withTails(pts)
+      .map((p) => `${p.x} ${p.y}`)
+      .join(' L ')}`;
+  const colour = selected ? PLAN.selection : PLAN.inkMuted;
+  return (
+    <g data-type="line" data-id={line.id} data-arc style={{ color: colour }}>
+      <path
+        d={path(offsetPath(line, 0.6 * k))}
+        fill="none"
+        stroke="currentColor"
+        strokeOpacity={0.35}
+        strokeWidth={0.8 * k}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d={path(wallPath(line))}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={(selected ? 2 : 1.1) * k}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
       {[
         { x: line.x1, y: line.y1 },
         { x: line.x2, y: line.y2 },

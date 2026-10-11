@@ -16,6 +16,7 @@ import { LayersPanel } from './LayersPanel';
 import { MaterialsPanel } from './MaterialsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { SiteOptions, WallKindPicker, WallShapePicker } from './SiteOptions';
+import { CurvePicker, RectCornerPicker } from './CurveOptions';
 import { PlanCheckPanel } from './PlanCheckPanel';
 import { ShapeOptions } from './ShapeOptions';
 import { RoofToolOptions } from './RoofOptions';
@@ -132,6 +133,22 @@ function ResizeHandle({
   );
 }
 
+/** The Curve tool: how it draws, and, for walls, their thickness and type. */
+function CurveToolOptions() {
+  const make = usePlanner((s) => s.site.curveMake);
+  return (
+    <>
+      <CurvePicker />
+      {make === 'wall' && (
+        <>
+          <WallThicknessPicker />
+          <WallKindPicker />
+        </>
+      )}
+    </>
+  );
+}
+
 /** Options for the active tool, shown when nothing is selected. */
 function ToolOptions() {
   const tool = usePlanner((s) => s.tool);
@@ -141,10 +158,12 @@ function ToolOptions() {
     return (
       <>
         {tool === 'wall' && <WallShapePicker />}
+        {tool === 'rectangle' && <RectCornerPicker />}
         <WallThicknessPicker />
         <WallKindPicker />
       </>
     );
+  if (tool === 'curve') return <CurveToolOptions />;
   if (tool === 'plot' || tool === 'stairs' || tool === 'door' || tool === 'window') return <SiteOptions />;
   if (tool === 'furniture') return <FurnitureLibrary />;
   if (tool === 'column' || tool === 'beam' || tool === 'slab') return <StructureOptions />;

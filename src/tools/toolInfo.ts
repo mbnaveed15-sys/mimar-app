@@ -10,6 +10,7 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
   line: { label: 'Layout line', icon: 'line', key: 'Shift+L' },
   // W for Wall, as people expect; L (SketchUp's Line) still works.
   wall: { label: 'Wall', icon: 'wall', key: 'W', alt: ['L'] },
+  curve: { label: 'Curve', icon: 'curve', key: 'Shift+V' },
   rectangle: { label: 'Rectangle', icon: 'rectangle', key: 'R' },
   room: { label: 'Room', icon: 'room', key: 'A' },
   column: { label: 'Column', icon: 'column', key: 'C' },
@@ -49,6 +50,7 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
 /** Which menu each tool is listed in: drawing tools under Draw, the rest under Tools. */
 export const DRAW_TOOLS: Tool[] = [
   'wall',
+  'curve',
   'line',
   'rectangle',
   'room',

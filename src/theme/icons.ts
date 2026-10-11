@@ -2,6 +2,8 @@
 export const ICONS = {
   select: "<path d='M6 3.5v16l4.3-4.1 2.9 5.6 2.6-1.3-2.8-5.6H19z'/>",
   pan: "<path d='M8 13.5V6.6a1.6 1.6 0 0 1 3.2 0V12'/><path d='M11.2 11.6V5.1a1.6 1.6 0 0 1 3.2 0v6.5'/><path d='M14.4 11.6V7a1.6 1.6 0 0 1 3.2 0v7c0 4.1-2.6 6.8-6.3 6.8-2.6 0-4.3-1.2-5.6-3.3L3.9 14a1.5 1.5 0 0 1 2.5-1.6L8 14.3'/>",
+  curve:
+    "<path d='M4 19C4 10 10 5 20 5'/><rect x='2' y='17' width='4' height='4' rx='1'/><rect x='18' y='3' width='4' height='4' rx='1'/>",
   wall: "<path d='M5.5 18.5 18.5 5.5'/><rect x='3' y='16' width='5' height='5' rx='1'/><rect x='16' y='3' width='5' height='5' rx='1'/>",
   rectangle:
     "<rect x='4' y='6' width='16' height='12' rx='0.5'/><circle cx='4' cy='6' r='1.6' fill='currentColor' stroke='none'/><circle cx='20' cy='18' r='1.6' fill='currentColor' stroke='none'/>",

@@ -14,6 +14,8 @@ import {
   wallCuts,
 } from './modify';
 import { emptyDoc } from './storage';
+import { arcOf, projectOnWall, radiusOf } from './arc';
+import { segThrough } from './curves';
 
 const wall = (id: string, x1: number, y1: number, x2: number, y2: number): Wall => ({
   id,
@@ -88,7 +90,13 @@ describe('join, fillet and chamfer', () => {
     const f = plan(wall('a', 0, 0, 40, 0), wall('b', 40, 0, 40, 40));
     const round = filletWalls(f, 'a', { x: 5, y: 0 }, 'b', { x: 40, y: 35 }, 10)!;
     expect(byId(round, 'a')).toMatchObject({ x2: 30 });
-    expect(walls(round).length).toBeGreaterThan(3);
+    // One curved wall of radius 10 rounds the corner, touching both.
+    expect(walls(round)).toHaveLength(3);
+    const arc = walls(round)[2];
+    expect(radiusOf(arc)).toBeCloseTo(10, 6);
+    expect(arc).toMatchObject({ x1: 30, y1: 0 });
+    expect(arc.x2).toBeCloseTo(40, 6);
+    expect(arc.y2).toBeCloseTo(10, 6);
     const cut = chamferWalls(f, 'a', { x: 5, y: 0 }, 'b', { x: 40, y: 35 }, 10, 10)!;
     expect(walls(cut)).toHaveLength(3);
     expect(walls(cut)[2]).toMatchObject({ x1: 30, y1: 0, x2: 40, y2: 10 });
@@ -154,5 +162,82 @@ describe('offset, mirror, scale and stretch', () => {
     const out = stretchItems(d, box, 20, 0, (id) => id === 'a');
     expect(byId(out, 'a')).toMatchObject({ x2: 120 });
     expect(byId(out, 'b')).toMatchObject({ x2: 100 });
+  });
+});
+
+describe('curved walls in Extend, Join, Fillet and Chamfer', () => {
+  // A quarter circle of radius 100 about the origin, from (100, 0) round to (0, 100).
+  const quarter = (id: string): Wall => ({
+    id,
+    type: 'wall',
+    ...segThrough({ x: 100, y: 0 }, { x: Math.SQRT1_2 * 100, y: Math.SQRT1_2 * 100 }, { x: 0, y: 100 }),
+  });
+
+  it('extends a curved wall round its circle to the next wall', () => {
+    const d = plan(quarter('a'), wall('b', -200, 0, -50, 0));
+    const out = extendWall(d, 'a', { x: 0, y: 99 })!;
+    const a = byId(out, 'a') as Wall;
+    expect(a.x1).toBeCloseTo(100, 6);
+    expect(a.x2).toBeCloseTo(-100, 6);
+    expect(a.y2).toBeCloseTo(0, 6);
+    expect(radiusOf(a)).toBeCloseTo(100, 6);
+    expect(Math.abs(arcOf(a)!.sweep)).toBeCloseTo(Math.PI, 6);
+  });
+
+  it('extends a straight wall to a curved one', () => {
+    const d = plan(quarter('a'), wall('b', 0, 0, 30, 30));
+    const b = byId(extendWall(d, 'b', { x: 29, y: 29 })!, 'b') as Wall;
+    expect(b.x2).toBeCloseTo(Math.SQRT1_2 * 100, 6);
+    expect(b.y2).toBeCloseTo(Math.SQRT1_2 * 100, 6);
+  });
+
+  it('joins two arcs on the same circle into one', () => {
+    const left = segThrough({ x: 0, y: 100 }, { x: -Math.SQRT1_2 * 100, y: Math.SQRT1_2 * 100 }, { x: -100, y: 0 });
+    const d = plan(quarter('a'), { id: 'b', type: 'wall', ...left });
+    const out = joinWalls(d, 'a', 'b', 1)!;
+    expect(walls(out)).toHaveLength(1);
+    const a = walls(out)[0];
+    expect(Math.abs(arcOf(a)!.sweep)).toBeCloseTo(Math.PI, 6);
+    expect(a.x2).toBeCloseTo(-100, 6);
+    // Not on the same circle: no join.
+    const other = segThrough({ x: 0, y: 100 }, { x: -60, y: 90 }, { x: -100, y: 30 });
+    expect(joinWalls(plan(quarter('a'), { id: 'b', type: 'wall', ...other }), 'a', 'b', 1)).toBeNull();
+  });
+
+  it('fillets a straight wall into a curved one with a radius', () => {
+    // A straight wall from the left along y = 50 into the circle.
+    const d = plan(quarter('a'), wall('b', -100, 50, 50, 50));
+    const out = filletWalls(d, 'a', { x: 100, y: 1 }, 'b', { x: -90, y: 50 }, 20)!;
+    expect(out).not.toBeNull();
+    const round = walls(out).find((w) => !['a', 'b'].includes(w.id))!;
+    expect(radiusOf(round)).toBeCloseTo(20, 6);
+    // It touches both: its ends are on the trimmed walls' ends.
+    const a = byId(out, 'a') as Wall;
+    const b = byId(out, 'b') as Wall;
+    const ends = [
+      { x: round.x1, y: round.y1 },
+      { x: round.x2, y: round.y2 },
+    ];
+    const near = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.hypot(p.x - q.x, p.y - q.y) < 1e-6;
+    expect(ends.some((p) => near(p, { x: a.x2, y: a.y2 }) || near(p, { x: a.x1, y: a.y1 }))).toBe(true);
+    expect(ends.some((p) => near(p, { x: b.x2, y: b.y2 }) || near(p, { x: b.x1, y: b.y1 }))).toBe(true);
+    // The curved wall stays on its circle.
+    expect(radiusOf(a)).toBeCloseTo(100, 6);
+    // Tangent to both: its centre is a radius inside the circle and a radius below the straight wall.
+    const c = arcOf(round)!;
+    expect(Math.hypot(c.cx, c.cy)).toBeCloseTo(80, 6);
+    expect(c.cy).toBeCloseTo(30, 6);
+    expect(projectOnWall(round, { x: c.cx, y: c.cy }).dist).toBeCloseTo(20, 6);
+  });
+
+  it('meets a curved wall in a corner with no radius, and chamfers it', () => {
+    const d = plan(quarter('a'), wall('b', -100, 50, 50, 50));
+    const out = filletWalls(d, 'a', { x: 100, y: 1 }, 'b', { x: -90, y: 50 })!;
+    const b = byId(out, 'b') as Wall;
+    // The corner is where y = 50 meets the circle: x = √(100² − 50²).
+    expect(b.x2).toBeCloseTo(Math.sqrt(7500), 6);
+    const cut = chamferWalls(d, 'a', { x: 100, y: 1 }, 'b', { x: -90, y: 50 }, 10, 10)!;
+    expect(walls(cut)).toHaveLength(3);
+    expect((byId(cut, 'b') as Wall).x2).toBeCloseTo(Math.sqrt(7500) - 10, 6);
   });
 });

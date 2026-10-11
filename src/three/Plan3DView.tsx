@@ -394,6 +394,7 @@ const SNAP_COLORS: Record<SnapKind, string> = {
   'corner-gap': '#16a34a',
   'from-corner': '#dc2626',
   aligned: '#7c3aed',
+  centre: '#0891b2',
 };
 
 const levelIndex = (s: PlannerState, id: string | undefined) =>

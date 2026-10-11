@@ -186,10 +186,10 @@ export function Inspector() {
                 onCommit={(mm) => updateElement(withWallLength(el, toUnits(mm)))}
               />
             )}
-            {el.type === 'wall' && isArc(el) && (
+            {(el.type === 'wall' || el.type === 'line') && isArc(el) && (
               <div className="flex items-end gap-2">
                 <LengthField
-                  id="wall-radius"
+                  id={el.type === 'wall' ? 'wall-radius' : 'line-radius'}
                   label="Radius"
                   mm={radiusOf(el)! * MM_PER_UNIT}
                   units={units}

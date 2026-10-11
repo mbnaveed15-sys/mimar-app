@@ -134,6 +134,8 @@ const ELEMENTS: PlanElement[] = [
     ],
   },
   { id: 'sec', type: 'section', x1: -50, y1: 200, x2: 550, y2: 200, label: 'A' },
+  // A curved layout line (1.41).
+  { id: 'ln', type: 'line', x1: 600, y1: 0, x2: 600, y2: 300, bow: 40 },
   {
     id: 'st',
     type: 'stair',

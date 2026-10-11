@@ -4,8 +4,9 @@
  */
 import { elementOutline, pointToSegmentDistance } from '../geometry';
 import { edgeNormal } from './pushPull';
-import type { Id, PlanElement, Point } from '../types';
+import type { Id, PlanElement, Point, Wall } from '../types';
 import { thicknessOf } from '../walls';
+import { directionAlong, isArc, offsetPath } from './arc';
 
 /** A face seen from above: the line it makes on the plan, and the way it faces (a unit vector). */
 export interface PlanFace {
@@ -21,6 +22,7 @@ export function planFaces(el: PlanElement): PlanFace[] {
   switch (el.type) {
     case 'wall':
     case 'beam': {
+      if (el.type === 'wall' && isArc(el)) return arcFaces(el, face);
       const len = Math.hypot(el.x2 - el.x1, el.y2 - el.y1);
       if (!len) return [];
       const u = { x: (el.x2 - el.x1) / len, y: (el.y2 - el.y1) / len };
@@ -81,4 +83,26 @@ export function faceAt2D(elements: PlanElement[], p: Point, tolerance: number): 
     }
   }
   return best;
+}
+
+/** A curved wall's faces: each side as the short straight pieces it is drawn with, and its two ends. */
+function arcFaces(el: Wall, face: (a: Point, b: Point, normal: Point) => PlanFace): PlanFace[] {
+  const h = thicknessOf(el) / 2;
+  const out: PlanFace[] = [];
+  for (const side of [1, -1]) {
+    const pts = offsetPath(el, h * side);
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [a, b] = [pts[i], pts[i + 1]];
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const n = { x: (-(b.y - a.y) / len) * side, y: ((b.x - a.x) / len) * side };
+      out.push(face(a, b, n));
+    }
+  }
+  const d0 = directionAlong(el, 0);
+  const d1 = directionAlong(el, 1);
+  const s = offsetPath(el, h);
+  const e = offsetPath(el, -h);
+  out.push(face(s[0], e[0], { x: -d0.x, y: -d0.y }));
+  out.push(face(s[s.length - 1], e[e.length - 1], d1));
+  return out;
 }

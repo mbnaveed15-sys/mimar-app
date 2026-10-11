@@ -4,6 +4,7 @@ import { shapeEnter } from './shapeTools';
 import { finishContour } from './groundTools';
 import { finishPlotPoly, finishRoof } from './structureTools';
 import { finishArcWall } from './controller';
+import { curveEnter } from './curveTool';
 
 interface Store {
   getState: () => PlannerState;
@@ -14,7 +15,14 @@ interface Store {
  * when there was nothing to finish.
  */
 export function finishStep(store: Store): boolean {
-  if (modifyEnter(store) || shapeEnter(store) || finishPlotPoly(store) || finishRoof(store) || finishContour(store))
+  if (
+    modifyEnter(store) ||
+    shapeEnter(store) ||
+    curveEnter(store) ||
+    finishPlotPoly(store) ||
+    finishRoof(store) ||
+    finishContour(store)
+  )
     return true;
   const s = store.getState();
   const d = s.draft;

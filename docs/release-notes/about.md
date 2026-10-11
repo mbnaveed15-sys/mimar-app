@@ -28,17 +28,18 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 
 ### Draw the plan
 - **Walls** in 4½", 9" and 13½" brick, retaining walls, and **glass curtain walls** with mullions and transoms. Walls can be straight or **curved** (true arcs).
+- **Curves:** a Curve tool draws arcs (by their ends and a bend, by 3 points, by their centre, or carrying on smoothly from the last piece), **circles**, **ovals** and **freeform curves**, as walls or layout lines. Circles, ovals and closed curves get their room inside. The Rectangle tool can round its corners.
 - **Rooms** show their area in sq ft or m² and in **marla** (225 or 272.25 sq ft), measured to the centre of the walls.
 - **Doors:** single, double, sliding, folding, rolling shutter, a plain opening, and gates. **Windows:** sliding, casement, double casement, fixed and ventilator. Placing one shows the clear distance to each corner and never puts it flush against a corner.
 - **Structure:** columns, beams, slabs with voids, stairs (straight, L, U, ramp), plinth, **basements** with retaining walls, and **pitched roofs** (hip, gable, shed, flat) that work on L, T and any other plan shape.
 - **Floors:** as many as you need, each with its own height, plus a basement and the mumty.
 - **Furniture and garden:** a library of beds, sofas, dining, kitchen, bath, cars, plants and garden items at their real sizes. Each item shows the **free space it needs** to be used, from the ADA standards or common practice.
-- **Layout lines** for drafting, which can be turned into walls.
+- **Layout lines** for drafting, straight or curved, which can be turned into walls.
 
 ### Draw quickly and precisely (AutoCAD and SketchUp habits work)
 - **Snapping** to ends, midpoints, wall faces, crossings, perpendiculars, the building line and the grid, with red and green axis guides.
 - **Typed input:** `12' 6"`, `3.5 m`, `@x,y`, `length<angle`, and AutoCAD aliases (CO, RO, TR, EX, MI, SC, FIL…).
-- **Modify tools:** move, copy, rotate, mirror, scale, stretch, offset, trim, extend, break, join, fillet, chamfer.
+- **Modify tools:** move, copy, rotate, mirror, scale, stretch, offset, trim, extend, break, join, fillet, chamfer, on straight and curved walls alike.
 - **Push/Pull and Shape** as in SketchUp: pull shapes into blocks, and push them into walls to make niches, projections (chajjas) and arched or round openings.
 - **Groups, components, layers** that you can hide and lock, and full undo and redo.
 

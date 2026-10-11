@@ -49,6 +49,8 @@ import { basementOf, levelWallMm, slabMm } from '../lib/levels';
 import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
 import { CURTAIN_MM, isBuildingWall } from '../walls';
+import { wallPath, type WallLine } from '../lib/arc';
+import { roundedRect, type CurveMode } from '../lib/curves';
 import { groundOf, roundLevel } from '../lib/terrain/ground';
 import type { Built } from '../lib/layoutBuild';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
@@ -118,6 +120,11 @@ export interface SiteSpec {
   wallKind: 'normal' | WallKind;
   /** The Wall tool draws arcs: the start, the end, then a point the curve passes through. */
   wallArc: boolean;
+  /** How the Curve tool draws, and whether it makes walls or layout lines. */
+  curveMode: CurveMode;
+  curveMake: 'wall' | 'line';
+  /** The Rectangle tool rounds its corners to this radius (mm); 0 for square corners. */
+  rectRadiusMm: number;
   /** Door tool places a door or a gate. */
   gate: boolean;
   gateWidthMm: number;
@@ -161,6 +168,9 @@ export const DEFAULT_SITE: SiteSpec = {
   boundaryWall: true,
   wallKind: 'normal',
   wallArc: false,
+  curveMode: 'arc3',
+  curveMake: 'wall',
+  rectRadiusMm: 0,
   gate: false,
   gateWidthMm: 3048,
   doorKind: 'single',
@@ -245,7 +255,12 @@ export interface PlannerState {
   addColumn: (p: Point) => void;
   addBeam: (a: Point, b: Point) => void;
   /** A layout (drafting) line on the floor being drawn. */
-  addLine: (a: Point, b: Point) => void;
+  addLine: (a: Point, b: Point, bow?: number) => void;
+  /**
+   * Add a curve from the Curve tool: walls or layout lines (as the tool is set), one per piece, as
+   * one step. A closed curve of walls gets the room inside it, found from `inside`.
+   */
+  addCurve: (pieces: WallLine[], inside?: Point) => void;
   /** A section line from a to b, looking to its right (or left when flipped), with the next free letter. */
   addSection: (a: Point, b: Point, flip: boolean) => void;
   /** Make walls (current thickness) along the selected layout lines, and remove the lines. */
@@ -843,6 +858,18 @@ export function createPlannerStore(
           ) as { x1: number; y1: number } | undefined;
           if (piece) draft = { ...d, x1: piece.x1, y1: piece.y1 };
         }
+        // A run of arcs carries on from where the last arc started (its direction found again from the plan).
+        if (d?.type === 'curve' && d.points.length === 1) {
+          const kept = new Set(prev.elements.map((el) => el.id));
+          const [at] = d.points;
+          const piece = doc.elements.find(
+            (el) =>
+              !kept.has(el.id) &&
+              (el.type === 'wall' || el.type === 'line') &&
+              Math.hypot(el.x2 - at.x, el.y2 - at.y) < 1e-6,
+          ) as { x1: number; y1: number } | undefined;
+          if (piece) draft = { ...d, points: [{ x: piece.x1, y: piece.y1 }], tangent: undefined };
+        }
         set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], draft });
         refreshSelection();
         get().applyProject();
@@ -1040,8 +1067,13 @@ export function createPlannerStore(
           return;
         }
         const corners = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
+        const radius = get().site.rectRadiusMm / MM_PER_UNIT;
         get().beginBatch();
-        corners.forEach((p, i) => get().addWall(p, corners[(i + 1) % 4]));
+        if (radius > 0)
+          // Corners rounded to the tool's radius: straight sides and a quarter circle at each corner.
+          for (const piece of roundedRect(a, b, radius))
+            get().addWall({ x: piece.x1, y: piece.y1 }, { x: piece.x2, y: piece.y2 }, piece.bow);
+        else corners.forEach((p, i) => get().addWall(p, corners[(i + 1) % 4]));
         get().addRoomAt({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
         get().endBatch();
         get().setWarning(null);
@@ -1584,10 +1616,35 @@ export function createPlannerStore(
         };
         updateElements((els) => [...els, onActive(col)]);
       },
-      addLine: (a, b) => {
+      addLine: (a, b, bow) => {
         if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
-        const line: PlanElement = { id: newId(), type: 'line', x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+        const line: PlanElement = {
+          id: newId(),
+          type: 'line',
+          x1: a.x,
+          y1: a.y,
+          x2: b.x,
+          y2: b.y,
+          ...(bow && Math.abs(bow) > 0.05 && { bow }),
+        };
         updateElements((els) => [...els, onActive(line)]);
+      },
+      addCurve: (pieces, inside) => {
+        const kept = pieces.filter((p) => Math.hypot(p.x2 - p.x1, p.y2 - p.y1) > MIN_WALL_PX);
+        if (!kept.length) return;
+        const asLines = get().site.curveMake === 'line';
+        get().beginBatch();
+        for (const p of kept) {
+          const a = { x: p.x1, y: p.y1 };
+          const b = { x: p.x2, y: p.y2 };
+          if (asLines) get().addLine(a, b, p.bow);
+          else get().addWall(a, b, p.bow);
+        }
+        const outline = kept.flatMap((p) => wallPath(p));
+        if (inside && !asLines && pointInPolygon(inside, outline)) get().addRoomAt(inside);
+        get().endBatch();
+        // Nothing selected, so the tool's options stay in view for the next curve.
+        get().select(null);
       },
       addSection: (a, b, flip) => {
         if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
@@ -1613,7 +1670,7 @@ export function createPlannerStore(
         get().beginBatch();
         const gone = new Set(lines.map((l) => l.id));
         updateElements((els) => els.filter((el) => !gone.has(el.id)));
-        for (const l of lines) get().addWall({ x: l.x1, y: l.y1 }, { x: l.x2, y: l.y2 });
+        for (const l of lines) get().addWall({ x: l.x1, y: l.y1 }, { x: l.x2, y: l.y2 }, l.bow);
         get().endBatch();
         get().select(null);
       },

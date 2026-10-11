@@ -90,7 +90,7 @@ export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Poin
 }
 
 export function elementCenter(el: PlanElement): Point {
-  if (el.type === 'wall' && isArc(el)) return pointAlong(el, 0.5);
+  if ((el.type === 'wall' || el.type === 'line') && isArc(el)) return pointAlong(el, 0.5);
   if (el.type === 'wall' || el.type === 'beam' || el.type === 'line' || el.type === 'section')
     return { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 };
   if (hasPoints(el)) return centroid(el.points);
@@ -116,6 +116,7 @@ export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
         pointToSegmentDistance(p, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 }) < Math.max(threshold, el.width / 2)
       );
     case 'line':
+      return distanceToWall(el, p) < threshold;
     case 'section':
       return pointToSegmentDistance(p, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 }) < threshold;
     case 'slab':
@@ -296,9 +297,9 @@ export function elementOutline(el: PlanElement): Point[] {
 function elementPoints(el: PlanElement): Point[] {
   switch (el.type) {
     case 'wall':
+    case 'line':
       return wallPath(el);
     case 'beam':
-    case 'line':
     case 'section':
       return [
         { x: el.x1, y: el.y1 },

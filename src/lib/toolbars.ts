@@ -3,7 +3,7 @@ import type { Tool } from '../types';
 /** The tool bars, each a group of tools that can be docked on any side of the drawing. */
 export const TOOLBARS = [
   { id: 'view', label: 'View', tools: ['select', 'pan', 'zoom', 'orbit'] },
-  { id: 'draw', label: 'Draw', tools: ['wall', 'line', 'rectangle', 'room', 'door', 'window', 'furniture'] },
+  { id: 'draw', label: 'Draw', tools: ['wall', 'curve', 'line', 'rectangle', 'room', 'door', 'window', 'furniture'] },
   { id: 'structure', label: 'Structure', tools: ['column', 'beam', 'slab', 'roof', 'plot', 'stairs', 'section'] },
   { id: 'ground', label: 'Ground', tools: ['level', 'contour', 'pad'] },
   { id: 'shapes', label: 'Shape & Push/Pull', tools: ['shape', 'pushpull'] },

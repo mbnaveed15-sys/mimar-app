@@ -41,6 +41,17 @@ import {
 } from './structureTools';
 import { SHAPE_TOOLS, shapeHint, shapeHover, shapeMeasure, shapePress, shapeReadout, shapeRelease } from './shapeTools';
 import { OPENING_TOOLS, openingHint, openingHover, openingMeasure, openingPress, openingReadout } from './openingTool';
+import {
+  CURVE_TOOLS,
+  curveAnchor,
+  curveHint,
+  curveHover,
+  curveMeasure,
+  curveMeasureKind,
+  curvePress,
+  curveReadout,
+  curveRelease,
+} from './curveTool';
 
 /** The bits of a zustand store the controller needs. */
 export interface Store {
@@ -50,6 +61,7 @@ export interface Store {
 /** Tools that take clicks on the plan and a typed value in the Measurements box. */
 export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   wall: 'length',
+  curve: 'length',
   line: 'length',
   rectangle: 'pair',
   tape: 'length',
@@ -98,13 +110,14 @@ function buildingGuides(s: PlannerState): Segment[] {
   const plots = s.doc.elements.filter((el): el is Plot => el.type === 'plot' && !el.hidden);
   if (!plots.length) return [];
   let half: ((dir: Point) => number) | null = null;
-  if (s.tool === 'wall' || s.tool === 'rectangle') {
+  if (s.tool === 'wall' || s.tool === 'rectangle' || (s.tool === 'curve' && s.site.curveMake === 'wall')) {
     const t = s.wallThicknessMm / MM_PER_UNIT / 2;
     half = () => t;
   } else if (s.tool === 'column') {
     const { columnShape, columnW, columnH } = s.structure;
     half = (d) => (columnShape === 'round' ? columnW / 2 : (Math.abs(d.y) * columnW + Math.abs(d.x) * columnH) / 2);
-  } else if (s.tool === 'line' || s.tool === 'room' || s.tool === 'slab' || s.tool === 'tape') half = () => 0;
+  } else if (s.tool === 'line' || s.tool === 'curve' || s.tool === 'room' || s.tool === 'slab' || s.tool === 'tape')
+    half = () => 0;
   if (!half) return [];
   const edge = half;
   return plots.flatMap((plot) => {
@@ -168,6 +181,8 @@ export function anchorOf(s: PlannerState): Point | null {
       return d.center;
     case 'shape':
       return d.surface.on === 'floor' ? d.points[d.points.length - 1] : null;
+    case 'curve':
+      return curveAnchor(d);
     default:
       return null;
   }
@@ -181,7 +196,7 @@ export function currentDirection(s: PlannerState): Point | null {
     return sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 });
   if (d.type === 'tape') return sub(d.b, d.a);
   if (d.type === 'move') return sub(d.to, d.base);
-  if (d.type === 'plotPoly' || d.type === 'contour' || d.type === 'roof')
+  if (d.type === 'plotPoly' || d.type === 'contour' || d.type === 'roof' || d.type === 'curve')
     return sub(d.cursor, d.points[d.points.length - 1]);
   return null;
 }
@@ -189,6 +204,7 @@ export function currentDirection(s: PlannerState): Point | null {
 /** What the active tool takes typed: a plot drawn corner by corner takes lengths, as walls do. */
 export function measureKindOf(s: PlannerState): MeasureKind | undefined {
   if (s.tool === 'plot' && s.site.plotShape === 'any' && !s.site.plotSize) return 'length';
+  if (s.tool === 'curve') return curveMeasureKind(s);
   return MEASURE_TOOLS[s.tool];
 }
 
@@ -238,6 +254,7 @@ export function hover(store: Store, raw: Point, shift = false, screenY?: number)
   if (MODIFY_TOOLS.includes(s.tool)) return modifyHover(store, raw, inf, shift);
   if (STRUCTURE_TOOLS.includes(s.tool)) return structureHover(store, inf);
   if (SHAPE_TOOLS.includes(s.tool)) return shapeHover(store, inf);
+  if (CURVE_TOOLS.includes(s.tool)) return curveHover(store, inf);
   const p = inf.point;
   if (!d) return;
 
@@ -481,6 +498,10 @@ export function press(
     shapePress(store, inf, opts.clicks);
     return true;
   }
+  if (CURVE_TOOLS.includes(s.tool)) {
+    curvePress(store, inf);
+    return true;
+  }
 
   switch (s.tool) {
     case 'wall': {
@@ -633,6 +654,7 @@ export function release(store: Store, dragged: boolean) {
   if (MODIFY_TOOLS.includes(s.tool)) return modifyRelease(store, dragged);
   if (STRUCTURE_TOOLS.includes(s.tool)) return structureRelease(store, dragged);
   if (SHAPE_TOOLS.includes(s.tool)) return shapeRelease(store, dragged);
+  if (CURVE_TOOLS.includes(s.tool)) return curveRelease(store, dragged);
   if (s.tool === 'line' && d?.type === 'line' && !d.chain) {
     // Like walls: a drag makes one line, a click starts click-by-click drawing.
     if (dragged) {
@@ -683,7 +705,9 @@ export function applyMeasure(store: Store, text: string): boolean {
         ? structureMeasure
         : OPENING_TOOLS.includes(s.tool)
           ? openingMeasure
-          : null;
+          : CURVE_TOOLS.includes(s.tool)
+            ? curveMeasure
+            : null;
   if (measureWith) {
     const error = measureWith(store, m);
     if (error) return fail(error);
@@ -905,6 +929,7 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
       return { label: 'Angle', value: d?.type === 'rotate' ? `${Math.round(-d.angle) || 0}°` : '' };
     default:
       if (OPENING_TOOLS.includes(s.tool)) return openingReadout(s);
+      if (CURVE_TOOLS.includes(s.tool)) return curveReadout(s);
       if (SHAPE_TOOLS.includes(s.tool)) return shapeReadout(s);
       return STRUCTURE_TOOLS.includes(s.tool) ? structureReadout(s) : modifyReadout(s);
   }
@@ -938,6 +963,8 @@ export function toolHint(s: PlannerState): string {
       return d?.type === 'wall'
         ? 'Click the next corner or type a length and press Enter. Arrow keys lock an axis; Esc stops.'
         : 'Click to start a wall (or drag to draw one). Walls snap to ends, midpoints and the grid.';
+    case 'curve':
+      return curveHint(s);
     case 'rectangle':
       return d?.type === 'rectangle'
         ? `Click the opposite corner, or type width, depth (e.g. 12',10') and press Enter.`

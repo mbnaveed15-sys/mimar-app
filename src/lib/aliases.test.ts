@@ -11,6 +11,8 @@ describe('AutoCAD aliases', () => {
     b = aliasStep(aliasStep('', 'c').buffer, 'h');
     expect(b.hit).toBe('wait');
     expect(aliasStep(b.buffer, 'a').hit).toBe(ALIASES.CHA);
+    // A, R: Room then Rectangle, typed quickly; R is still its own shortcut.
+    expect(aliasStep(aliasStep('', 'a').buffer, 'r').hit).toBeNull();
     // L, L: no alias, so each L is its own shortcut.
     expect(aliasStep(aliasStep('', 'l').buffer, 'l').hit).toBeNull();
     expect(ALIASES.CO).toMatchObject({ tool: 'move', copy: true });

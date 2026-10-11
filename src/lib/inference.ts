@@ -1,7 +1,7 @@
 import { snap } from '../geometry';
 import type { Point, Wall } from '../types';
 import { thicknessOf } from '../walls';
-import { directionAlong, isArc, pointAlong, projectOnWall } from './arc';
+import { arcOf, directionAlong, isArc, pointAlong, projectOnWall } from './arc';
 import { clearAlong, wallPieces } from './openingPlace';
 
 /** What a drawing point snapped to, like SketchUp's inference and AutoCAD's object snaps. */
@@ -26,7 +26,9 @@ export type SnapKind =
   | 'corner-gap'
   | 'from-corner'
   // Lined up with the end of another wall or line.
-  | 'aligned';
+  | 'aligned'
+  // The centre of a curved wall or line.
+  | 'centre';
 
 export interface Inference {
   point: Point;
@@ -55,6 +57,7 @@ export const SNAP_LABELS: Record<SnapKind, string> = {
   'corner-gap': 'Gap from corner',
   'from-corner': 'From corner',
   aligned: 'Lined up',
+  centre: 'Centre of arc',
 };
 
 /** A straight piece to snap to: a wall's centre line or a layout line. */
@@ -64,6 +67,8 @@ export interface Segment {
   y1: number;
   x2: number;
   y2: number;
+  /** A curved layout line's bow (see `arc.ts`). */
+  bow?: number;
 }
 
 export interface InferOptions {
@@ -153,7 +158,10 @@ export function infer(raw: Point, opts: InferOptions): Inference {
   // Curved walls snap by their own rules (below); everything else here treats walls as straight.
   const arcs = kept.filter(isArc);
   const others = arcs.length ? kept.filter((w) => !isArc(w)) : kept;
-  const lines = keep(opts.lines ?? []);
+  // Curved layout lines snap like curved walls (without faces); the rest are straight.
+  const allLines = keep(opts.lines ?? []);
+  const lineArcs = allLines.filter(isArc);
+  const lines = lineArcs.length ? allLines.filter((l) => !isArc(l)) : allLines;
   const guides = opts.guides ?? [];
 
   if (from && lock) {
@@ -221,10 +229,12 @@ export function infer(raw: Point, opts: InferOptions): Inference {
         consider({ x: seg.x1 + (seg.x2 - seg.x1) * t, y: seg.y1 + (seg.y2 - seg.y1) * t }, 'midpoint');
       }
     }
-  for (const w of arcs) {
+  for (const w of [...arcs, ...lineArcs]) {
     consider({ x: w.x1, y: w.y1 }, 'endpoint');
     consider({ x: w.x2, y: w.y2 }, 'endpoint');
     consider(pointAlong(w, 0.5), 'midpoint');
+    const arc = arcOf(w);
+    if (arc) consider({ x: arc.cx, y: arc.cy }, 'centre');
   }
   for (const g of guides) {
     consider({ x: g.x1, y: g.y1 }, 'building-line');
@@ -264,6 +274,10 @@ export function infer(raw: Point, opts: InferOptions): Inference {
     const h = thicknessOf(w) / 2;
     for (const side of [1, -1]) consider({ x: on.point.x - d.y * h * side, y: on.point.y + d.x * h * side }, 'on-face');
   }
+  for (const l of lineArcs) {
+    const on = projectOnWall(l, raw);
+    if (on.dist <= tolerance) consider(on.point, 'on-line');
+  }
   if (best) return best;
 
   // 2. On the building line, at the grid step nearest the pointer: ahead of a grid point on the line itself.
@@ -282,7 +296,7 @@ export function infer(raw: Point, opts: InferOptions): Inference {
   const under = new Set(near.map(({ seg, kind }) => (kind === 'on-face' ? wallIdOf(seg) : seg.id)));
   const align = alignments(
     raw,
-    [...kept, ...lines].filter((seg) => !under.has(seg.id)),
+    [...kept, ...allLines].filter((seg) => !under.has(seg.id)),
     from,
     tolerance,
   );

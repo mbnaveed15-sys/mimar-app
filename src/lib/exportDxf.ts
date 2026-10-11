@@ -489,9 +489,22 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
         // Flat shapes are drafting aids, not built: only blocks with a height go out.
         if (el.heightMm > 0) dxf.poly('A-FLOR-BLCK', el.points);
         break;
-      case 'line':
-        dxf.line('A-ANNO-LAYT', { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 });
+      case 'line': {
+        const arc = arcOf(el);
+        // A curved line is a true arc: a two-point polyline whose first side bulges (y points up in the DXF).
+        if (arc)
+          dxf.poly(
+            'A-ANNO-LAYT',
+            [
+              { x: el.x1, y: el.y1 },
+              { x: el.x2, y: el.y2 },
+            ],
+            false,
+            [-Math.sign(arc.sweep) * Math.tan(Math.abs(arc.sweep) / 4), 0],
+          );
+        else dxf.line('A-ANNO-LAYT', { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 });
         break;
+      }
       case 'section': {
         // The cut line, with its letter past each end on the side it looks to.
         dxf.line('A-ANNO-SECT', { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 });

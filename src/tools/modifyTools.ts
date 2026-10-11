@@ -1,4 +1,5 @@
-import { pointToSegmentDistance, wallParam } from '../geometry';
+import { wallParam } from '../geometry';
+import { distanceToWall, projectOnWall } from '../lib/arc';
 import type { Inference } from '../lib/inference';
 import type { Measure } from '../lib/measure';
 import {
@@ -37,7 +38,8 @@ function wallAt(s: PlannerState, raw: Point): Wall | null {
   let bestD = s.hitTolerance() * 1.5;
   for (const el of s.pickableElements()) {
     if (el.type !== 'wall' && el.type !== 'line') continue;
-    const d = pointToSegmentDistance(raw, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 });
+    // Along the curve for a curved wall or line.
+    const d = distanceToWall(el, raw);
     if (d < bestD) {
       best = el;
       bestD = d;
@@ -130,8 +132,8 @@ function finishPair(store: Store, raw: Point, first: { wallId: Id; point: Point 
   if (s.tool === 'chamfer') next = chamferWalls(s.doc, a.id, first.point, b.id, raw, ...s.chamferDist);
   if (!next) {
     const why: Record<string, string> = {
-      join: 'Join needs two walls in a straight line with each other.',
-      fillet: 'These walls cannot meet: they are parallel, or the radius is too big for them.',
+      join: 'Join needs two walls in a straight line with each other, or two curved walls on the same circle that meet.',
+      fillet: 'These walls cannot meet: they are parallel or never cross, or the radius is too big for them.',
       chamfer: 'These walls cannot be chamfered: they are parallel, or the distances are too big.',
     };
     s.setDraft(null);
@@ -186,9 +188,8 @@ export function modifyPress(store: Store, raw: Point, inf: Inference, opts: { ct
       if (!wall)
         return s.setWarning(s.tool === 'breakWall' ? 'Click the wall or line to break.' : 'Click the first wall.');
       s.setWarning(null);
-      // Remember where on the wall it was clicked (projected onto its centre line).
-      const t = Math.max(0, Math.min(1, wallParam(wall, raw)));
-      const point = { x: wall.x1 + t * (wall.x2 - wall.x1), y: wall.y1 + t * (wall.y2 - wall.y1) };
+      // Remember where on the wall it was clicked (projected onto its centre line, or its curve).
+      const point = projectOnWall(wall, raw).point;
       s.setDraft({ type: 'pick', wallId: wall.id, point });
       return;
     }
@@ -410,8 +411,8 @@ export function modifyHint(s: PlannerState): string {
         : 'Click the wall or line where it should break.';
     case 'join':
       return d?.type === 'pick'
-        ? 'Click the second wall, in line with the first.'
-        : 'Click the first of two walls in a straight line.';
+        ? 'Click the second wall, in line with the first (or on the same circle).'
+        : 'Click the first of two walls in a straight line, or two curved walls on the same circle.';
     case 'fillet':
       return d?.type === 'pick'
         ? 'Click the second wall. The corner keeps the parts you clicked.'

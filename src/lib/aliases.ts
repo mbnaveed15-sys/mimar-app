@@ -3,7 +3,8 @@ import type { Tool } from '../types';
 /**
  * AutoCAD command aliases, typed as quick letter sequences (each letter within a second of the
  * last). The first letter still picks its own tool; the whole sequence then picks the alias's.
- * O (Offset in AutoCAD) stays Orbit here; Offset is F.
+ * O (Offset in AutoCAD) stays Orbit here; Offset is F. There is no ARC: A then R (Room, then Rectangle)
+ * typed quickly would wait for the C and lose the R. The Curve tool is Shift+V.
  */
 export const ALIASES: Record<string, { tool: Tool; copy?: boolean; label: string }> = {
   CO: { tool: 'move', copy: true, label: 'Copy' },

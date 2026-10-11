@@ -44,9 +44,9 @@ const ROOF_SHAPES: RoofKind[] = ['hip', 'gable', 'shed', 'flat'];
 export const STORAGE_KEY = 'mimar.plan';
 /**
  * 4 added groups and components; 5 added levels, columns, beams and slabs; 9 section lines and sheets;
- * 10 the ground; 11 curved and glass walls, pitched roofs and double-height rooms.
+ * 10 the ground; 11 curved and glass walls, pitched roofs and double-height rooms; 12 curved layout lines.
  */
-export const CURRENT_VERSION = 11;
+export const CURRENT_VERSION = 12;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -249,7 +249,15 @@ function normaliseElement(raw: unknown): PlanElement | null {
       return [el.x, el.y, el.w, el.h].every(Number.isFinite) && el.w > 0 && el.h > 0 ? el : null;
     }
     case 'line': {
-      const el = { ...base, type: 'line' as const, x1: num('x1'), y1: num('y1'), x2: num('x2'), y2: num('y2') };
+      const el = {
+        ...base,
+        type: 'line' as const,
+        x1: num('x1'),
+        y1: num('y1'),
+        x2: num('x2'),
+        y2: num('y2'),
+        ...(Math.abs(num('bow')) > 0.05 && { bow: num('bow') }),
+      };
       return [el.x1, el.y1, el.x2, el.y2].every(Number.isFinite) ? el : null;
     }
     case 'section': {
