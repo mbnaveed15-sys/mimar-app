@@ -1,7 +1,8 @@
 import { wallLength, withWallLength } from '../geometry';
 import { FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { sideName, USE_ZONES, zoneOf } from '../furniture/useZones';
-import { stairLayout } from '../lib/site';
+import { CURVED_INNER_MM, SPIRAL_HEADROOM_MM, spiralTurnRiseMm, STAIR_SHAPE_NAMES, stairLayout } from '../lib/site';
+import { TurnPicker } from './SiteOptions';
 import { WINDOW_SILL_MM } from '../three/model';
 import { levelWallMm, slabMm } from '../lib/levels';
 import { formatArea, formatLength, formatMarla } from '../lib/units';
@@ -512,7 +513,7 @@ export function Inspector() {
             {el.type === 'stair' && (
               <>
                 <div className="flex flex-wrap gap-1">
-                  {(['straight', 'L', 'U', 'ramp'] as const).map((shape) => (
+                  {(['straight', 'L', 'U', 'curved', 'spiral', 'ramp'] as const).map((shape) => (
                     <button
                       key={shape}
                       className="m-btn px-2 py-0.5"
@@ -531,7 +532,7 @@ export function Inspector() {
                         })
                       }
                     >
-                      {shape === 'straight' ? 'Straight' : shape === 'ramp' ? 'Ramp' : `${shape}-shaped`}
+                      {STAIR_SHAPE_NAMES[shape]}
                     </button>
                   ))}
                 </div>
@@ -562,11 +563,32 @@ export function Inspector() {
                       onCommit={(mm) => restair(el, { treadMm: mm })}
                     />
                   )}
+                  {el.shape === 'curved' && (
+                    <LengthField
+                      id="stair-inner-edit"
+                      label="Inner radius"
+                      mm={el.innerMm ?? CURVED_INNER_MM}
+                      units={units}
+                      min={0}
+                      onCommit={(mm) => restair(el, { innerMm: Math.min(mm, 20000) })}
+                    />
+                  )}
                 </div>
+                {(el.shape === 'curved' || el.shape === 'spiral') && (
+                  <TurnPicker turn={el.turn} onPick={(turn) => restair(el, { turn })} />
+                )}
                 <div className="text-muted" data-testid="stair-risers">
                   {el.shape === 'ramp'
                     ? `Ramp 1 in 12, ${formatLength(el.h * MM_PER_UNIT, units)} long`
                     : `${stairLayout(el).risers} risers of ${formatLength(el.riserMm, units)}`}
+                  {el.shape === 'spiral' &&
+                    (() => {
+                      // Headroom: one full turn climbs this much, less the tread above's thickness.
+                      const turnMm = spiralTurnRiseMm(stairLayout(el));
+                      return turnMm !== null && turnMm < SPIRAL_HEADROOM_MM
+                        ? `. A full turn climbs only ${formatLength(turnMm, units)}: make it wider or the tread deeper for ${formatLength(SPIRAL_HEADROOM_MM, units)} of headroom.`
+                        : '';
+                    })()}
                 </div>
               </>
             )}

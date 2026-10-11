@@ -1,7 +1,7 @@
 import type { Inference } from '../lib/inference';
 import type { Measure } from '../lib/measure';
 import { formatLength, MM_PER_FOOT } from '../lib/units';
-import { plotRect, stairLayout } from '../lib/site';
+import { plotRect, stairLayout, stairSpec } from '../lib/site';
 import { detectRoom } from '../rooms';
 import { levelWallMm, slabMm } from '../lib/levels';
 import { riseIn12 } from '../lib/roof/roof';
@@ -375,12 +375,7 @@ export function structureReadout(s: PlannerState): { label: string; value: strin
     if (site.stairShape === 'ramp') return { label: 'Ramp', value: `1 in 12` };
     const riseMm =
       site.climb === 'plinth' ? s.doc.plinthMm : levelWallMm(s.doc, s.activeLevel, s.wallHeightMm) + slabMm(s.doc);
-    const l = stairLayout({
-      shape: site.stairShape,
-      width: site.stairWidthMm / MM_PER_UNIT,
-      riseMm,
-      treadMm: site.treadMm,
-    });
+    const l = stairLayout(stairSpec(site, riseMm));
     return { label: 'Risers', value: `${l.risers} × ${formatLength(l.riserMm, s.units)}` };
   }
   if (s.tool === 'roof' && d?.type !== 'roof') {

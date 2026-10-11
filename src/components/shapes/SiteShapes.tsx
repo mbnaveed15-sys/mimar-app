@@ -1,6 +1,6 @@
 import { fromFurnitureLocal } from '../../geometry';
 import { outlinePoints, plotSides, sideOutward } from '../../lib/plot';
-import { buildableArea, stairLayout } from '../../lib/site';
+import { buildableArea, partOutline, stairLayout } from '../../lib/site';
 import { PLAN } from '../../theme/plan';
 import type { Plot, Point, Stair } from '../../types';
 
@@ -114,21 +114,16 @@ export function StairShape({ stair, selected, k }: { stair: Stair; selected: boo
   const start = path[0];
   return (
     <g data-type="stair" data-id={stair.id}>
-      {layout.parts.map((part, i) => (
-        <polygon
-          key={i}
-          points={pts(
-            [
-              { x: part.x, y: part.y },
-              { x: part.x + part.w, y: part.y },
-              { x: part.x + part.w, y: part.y + part.h },
-              { x: part.x, y: part.y + part.h },
-            ].map(world),
-          )}
-          style={{ fill: PLAN.paper, ...stroke }}
-          strokeWidth={(selected ? 2 : 1) * k}
-        />
-      ))}
+      {layout.parts
+        .filter((part) => !part.overhead)
+        .map((part, i) => (
+          <polygon
+            key={i}
+            points={pts(partOutline(part).map(world))}
+            style={{ fill: part.kind === 'pole' ? PLAN.wallEdge : PLAN.paper, ...stroke }}
+            strokeWidth={(selected ? 2 : 1) * k}
+          />
+        ))}
       <polyline points={pts(path)} fill="none" style={stroke} strokeWidth={1 * k} pointerEvents="none" />
       <polyline points={pts(arrow)} fill="none" style={stroke} strokeWidth={1 * k} pointerEvents="none" />
       <circle cx={start.x} cy={start.y} r={3 * k} style={{ fill: PLAN.wallEdge }} pointerEvents="none" />

@@ -1,4 +1,4 @@
-import { wallLength, wallParam } from '../geometry';
+import { fromFurnitureLocal, wallLength, wallParam } from '../geometry';
 import { patternSpanMm } from '../lib/patterns';
 import { MM_PER_UNIT } from '../lib/scale';
 import { doorKindOf } from '../lib/openingKinds';
@@ -132,7 +132,7 @@ export interface Slab3D {
   id?: string;
   level?: string;
   /** A flat shape waiting for Push/Pull, which isn't built (or exported). */
-  role?: 'slab' | 'block' | 'shape';
+  role?: 'slab' | 'block' | 'shape' | 'stair';
 }
 
 /** A roof: its sloped faces (the underside, as [x, y, z] points in metres), thickened straight up by h. */
@@ -839,6 +839,8 @@ function stairSolids(st: Stair, color?: string): Solid[] {
       role: 'stair',
     });
   for (const part of layout.parts) {
+    // Wedges of a curved or spiral stair are built as outlines (stairBlocks).
+    if (part.points) continue;
     if (part.kind !== 'ramp') {
       block(part.x, part.y, part.w, part.h, part.topMm);
       continue;
@@ -849,6 +851,22 @@ function stairSolids(st: Stair, color?: string): Solid[] {
       block(part.x, part.y + part.h - (i + 1) * slice, part.w, slice, (part.topMm * (i + 1)) / RAMP_SLICES);
   }
   return solids;
+}
+
+/** A curved or spiral stair's wedge treads (and pole), each a block from the floor to its top. */
+function stairBlocks(st: Stair, color?: string): Slab3D[] {
+  return stairLayout(st)
+    .parts.filter((p) => p.points)
+    .map((p) => ({
+      points: p.points!.map((q) => {
+        const w = fromFurnitureLocal(st, q);
+        return [m(w.x), m(w.y)] as [number, number];
+      }),
+      y0: 0,
+      h: Math.max(0.01, mmToM(p.topMm)),
+      color: color ?? CONCRETE,
+      role: 'stair' as const,
+    }));
 }
 
 function columnSolid(c: Column, top: number, color?: string): Solid {
@@ -1082,6 +1100,14 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
             return { ...s, y0: top - h, h };
           });
         solids.push(...(fromGround ? parts : parts.map(lift)).map(raise(el)).map(from(el.id)));
+        const finish = finishOf(el.material, 'concrete');
+        blocks.push(
+          ...stairBlocks(el, colorOf(el.material))
+            .map((b) => (finish ? { ...b, finish } : b))
+            .map(fromGround ? (b: Slab3D) => b : lift)
+            .map(raise(el))
+            .map(from(el.id)),
+        );
       }
       // The plot's lawn: a floor where it is flat, else a mesh following the ground (in the terrain).
       const lawnY = el.type === 'plot' && ground ? (el.id === plotEl?.id ? site?.lawnY : 0) : undefined;

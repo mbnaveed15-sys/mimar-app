@@ -44,9 +44,10 @@ const ROOF_SHAPES: RoofKind[] = ['hip', 'gable', 'shed', 'flat'];
 export const STORAGE_KEY = 'mimar.plan';
 /**
  * 4 added groups and components; 5 added levels, columns, beams and slabs; 9 section lines and sheets;
- * 10 the ground; 11 curved and glass walls, pitched roofs and double-height rooms; 12 curved layout lines.
+ * 10 the ground; 11 curved and glass walls, pitched roofs and double-height rooms; 12 curved layout lines;
+ * 13 curved and spiral stairs, and curved edges on slabs, levelled areas and plots.
  */
-export const CURRENT_VERSION = 12;
+export const CURRENT_VERSION = 13;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -384,9 +385,11 @@ function normaliseElement(raw: unknown): PlanElement | null {
       };
     }
     case 'stair': {
-      const shape = ['straight', 'L', 'U', 'ramp'].includes(raw.shape as string)
+      const shape = ['straight', 'L', 'U', 'ramp', 'curved', 'spiral'].includes(raw.shape as string)
         ? (raw.shape as 'straight')
         : 'straight';
+      const round = (shape as string) === 'curved' || (shape as string) === 'spiral';
+      const inner = Number(raw.innerMm);
       const el = {
         ...base,
         type: 'stair' as const,
@@ -400,6 +403,10 @@ function normaliseElement(raw: unknown): PlanElement | null {
         treadMm: num('treadMm'),
         w: num('w'),
         h: num('h'),
+        ...((shape as string) === 'curved' && Number.isFinite(inner) && inner >= 0 && inner <= 20000
+          ? { innerMm: inner }
+          : {}),
+        ...(round && raw.turn === 'right' ? { turn: 'right' as const } : {}),
       };
       const ok =
         [el.x, el.y, el.width, el.riseMm, el.riserMm, el.treadMm, el.w, el.h].every(

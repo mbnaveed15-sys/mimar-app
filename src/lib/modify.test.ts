@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Furniture, Opening, PlanDoc, Wall } from '../types';
+import type { Furniture, Opening, PlanDoc, Stair, Wall } from '../types';
+import { partOutline, stairLayout } from './site';
+import { fromFurnitureLocal } from '../geometry';
 import {
   breakWall,
   chamferWalls,
@@ -114,6 +116,44 @@ describe('offset, mirror, scale and stretch', () => {
     expect(m.doc.elements).toHaveLength(2);
     expect(m.doc.elements[1]).toMatchObject({ x: 30, y: 5, rotation: 150 });
     expect(mirrorItems(plan(bed), ['f'], { x: 20, y: -10 }, { x: 20, y: 10 }, true).doc.elements).toHaveLength(1);
+  });
+
+  it('mirrors a curved stair into one that turns the other way', () => {
+    const st: Stair = {
+      id: 's',
+      type: 'stair',
+      x: 10,
+      y: 5,
+      rotation: 30,
+      shape: 'curved',
+      innerMm: 1000,
+      width: 91.44,
+      riseMm: 3200,
+      riserMm: 3200 / 18,
+      treadMm: 254,
+      w: 0,
+      h: 0,
+    };
+    const m = mirrorItems(plan(st), ['s'], { x: 200, y: -10 }, { x: 260, y: 90 }, true);
+    const out = m.doc.elements[0] as Stair;
+    expect(out.turn).toBe('right');
+    // Every tread lands where the mirror puts the original's.
+    const a = (Math.atan2(100, 60) * 180) / Math.PI;
+    const reflect = (p: { x: number; y: number }) => {
+      const t = (2 * a * Math.PI) / 180;
+      const [dx, dy] = [p.x - 200, p.y + 10];
+      return { x: 200 + dx * Math.cos(t) + dy * Math.sin(t), y: -10 + dx * Math.sin(t) - dy * Math.cos(t) };
+    };
+    const before = stairLayout(st).parts.map((p) => partOutline(p).map((q) => reflect(fromFurnitureLocal(st, q))));
+    const after = stairLayout(out).parts.map((p) => partOutline(p).map((q) => fromFurnitureLocal(out, q)));
+    for (let i = 0; i < before.length; i++) {
+      const centre = (pts: { x: number; y: number }[]) => ({
+        x: pts.reduce((n, p) => n + p.x, 0) / pts.length,
+        y: pts.reduce((n, p) => n + p.y, 0) / pts.length,
+      });
+      expect(centre(after[i]).x).toBeCloseTo(centre(before[i]).x, 3);
+      expect(centre(after[i]).y).toBeCloseTo(centre(before[i]).y, 3);
+    }
   });
 
   it('scales about a base point, keeping wall thickness', () => {

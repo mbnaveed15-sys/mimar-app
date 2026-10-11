@@ -530,6 +530,18 @@ export function mirrorItems(
       mirrored.set(el.id, { ...mapOutline(el, (p) => reflect(p, a, b), true), ...fresh, id });
     } else if (el.type === 'level') {
       mirrored.set(el.id, { ...el, ...fresh, id, ...reflect(el, a, b) });
+    } else if (el.type === 'stair' && (el.shape === 'curved' || el.shape === 'spiral')) {
+      // A curved stair turns the other way: its own frame turned half round and flipped across.
+      const p = reflect(el, a, b);
+      mirrored.set(el.id, {
+        ...el,
+        ...fresh,
+        id,
+        x: p.x,
+        y: p.y,
+        rotation: (((2 * lineDeg - (el.rotation ?? 0) + 180) % 360) + 360) % 360,
+        turn: el.turn === 'right' ? 'left' : 'right',
+      });
     } else {
       const p = reflect(el, a, b);
       mirrored.set(el.id, {

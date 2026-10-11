@@ -41,7 +41,7 @@ import {
   syncComponent,
   ungroup,
 } from '../lib/selection';
-import { boundaryWallLines, buildableArea, stairLayout } from '../lib/site';
+import { boundaryWallLines, buildableArea, stairLayout, stairSpec } from '../lib/site';
 import { plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
 import { guessSideKinds, insetPolygon, orientOutline, outlineProblem, plotSides, signedArea2 } from '../lib/plot';
 import { boundaryWallsAlong, buildPlotWalls, syncPlotWalls } from '../lib/plotWalls';
@@ -144,6 +144,9 @@ export interface SiteSpec {
   stairShape: Stair['shape'];
   stairWidthMm: number;
   treadMm: number;
+  /** A curved stair's inner radius (mm), and which way curved and spiral stairs turn. */
+  stairInnerMm?: number;
+  stairTurn?: Stair['turn'];
   /** A stair climbs a full floor; a ramp or plinth steps climb the plinth. */
   climb: 'floor' | 'plinth';
   /** Height of new spot levels and contour lines, mm above the datum (the road level). */
@@ -2060,7 +2063,7 @@ export function createPlannerStore(
         // A full floor: this floor's height and the slab over it (a basement's own height).
         const riseMm =
           site.climb === 'plinth' ? doc.plinthMm : levelWallMm(doc, activeLevel, wallHeightMm) + slabMm(doc);
-        const spec = { shape: site.stairShape, width: site.stairWidthMm / MM_PER_UNIT, riseMm, treadMm: site.treadMm };
+        const spec = stairSpec(site, riseMm);
         const layout = stairLayout(spec);
         const stair: PlanElement = {
           id: newId(),

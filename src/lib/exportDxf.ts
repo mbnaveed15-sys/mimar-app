@@ -9,7 +9,7 @@ import { arcOf, directionAlong, isArc, openingBend, paramAlong, pointAlong, wall
 import { isCurtain, metricProject, mullionStops } from './curtain';
 import { MM_PER_UNIT } from './scale';
 import { outlinePoints, plotSides, sideOutward } from './plot';
-import { buildableArea, stairLayout } from './site';
+import { buildableArea, partOutline, stairLayout } from './site';
 import { formatArea, formatLength, formatMarla } from './units';
 import { sectionLook } from './drawings/refs';
 import { formatLevel } from './drawings/levels';
@@ -534,16 +534,7 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       case 'stair': {
         const layout = stairLayout(el);
         const world = (p: Point) => fromFurnitureLocal(el, p);
-        for (const part of layout.parts)
-          dxf.poly(
-            'A-FLOR-STRS',
-            [
-              { x: part.x, y: part.y },
-              { x: part.x + part.w, y: part.y },
-              { x: part.x + part.w, y: part.y + part.h },
-              { x: part.x, y: part.y + part.h },
-            ].map(world),
-          );
+        for (const part of layout.parts) if (!part.overhead) dxf.poly('A-FLOR-STRS', partOutline(part).map(world));
         dxf.poly('A-FLOR-STRS', layout.path.map(world), false);
         const start = world(layout.path[0]);
         dxf.text('A-FLOR-STRS', start, el.shape === 'ramp' ? 'RAMP 1:12' : 'UP', 0, TEXT_MM * 0.6);

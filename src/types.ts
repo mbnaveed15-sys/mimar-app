@@ -269,7 +269,11 @@ export interface Stair extends Grouped {
   x: number;
   y: number;
   rotation?: number;
-  shape: 'straight' | 'L' | 'U' | 'ramp';
+  shape: 'straight' | 'L' | 'U' | 'ramp' | 'curved' | 'spiral';
+  /** A curved stair's inner radius, mm (1 m when missing); a spiral stair winds round a pole. */
+  innerMm?: number;
+  /** Which way a curved or spiral stair turns as it climbs (left when missing). */
+  turn?: 'left' | 'right';
   /** Clear width of a flight, in plan units. */
   width: number;
   /** Total height it climbs, in millimetres. */
