@@ -814,10 +814,7 @@ export interface Bounds {
   maxY: number;
 }
 
-/** Simple mode shows the tools homeowners need; Pro mode shows everything. */
-export type Mode = 'simple' | 'pro';
-
-/** The AutoCAD-style editing tools, shown in Pro mode. */
+/** The AutoCAD-style editing tools. */
 export const MODIFY_TOOLS: Tool[] = [
   'offset',
   'mirror',
@@ -830,8 +827,6 @@ export const MODIFY_TOOLS: Tool[] = [
   'stretch',
   'scale',
 ];
-
-export const SIMPLE_TOOLS: Tool[] = TOOLS.filter((t) => t !== 'brush' && t !== 'mask' && !MODIFY_TOOLS.includes(t));
 
 export type PaperSize = 'A4' | 'A3' | 'A1';
 

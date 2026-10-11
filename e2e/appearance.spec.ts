@@ -92,7 +92,6 @@ test('tool bars dock at any side, next to each other, wrap instead of scrolling,
   await expect(left.getByRole('button', { name: 'Wall', exact: true })).toBeVisible();
 
   // A short window: the bars wrap into more columns rather than scroll.
-  await page.getByRole('radio', { name: 'Pro' }).click();
   await page.setViewportSize({ width: 1200, height: 520 });
   await expect(left.locator('[data-bar]').first()).toBeVisible();
   // The dock re-packs after its ResizeObserver fires, so wait for it rather than reading once.

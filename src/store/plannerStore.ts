@@ -59,7 +59,7 @@ import { clampGap, type Hand } from '../lib/openingPlace';
 import { besideOpening, loneOpenings, nounOf, openingAt, refitOpening, tidy } from './openingAt';
 import { setActivePicker } from '../three/picker';
 import { applyTheme, type ThemeId } from '../theme/themes';
-import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
+import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf } from '../types';
 import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
 import type {
   RoofKind,
@@ -84,7 +84,6 @@ import type {
   Id,
   MarlaSqFt,
   Material,
-  Mode,
   PaperSize,
   PlanDoc,
   PlanElement,
@@ -362,7 +361,6 @@ export interface PlannerState {
   showRoomLabels: boolean;
   showRoomFills: boolean;
   exportLines: boolean;
-  mode: Mode;
   wallThicknessMm: number;
   marlaSqFt: MarlaSqFt;
   paper: PaperSize;
@@ -547,7 +545,6 @@ export interface PlannerState {
   /** Bring back everything hidden, or unlock everything locked (items and layers). */
   showAllHidden: () => void;
   unlockAll: () => void;
-  setMode: (mode: Mode) => void;
   setWallThicknessMm: (mm: number) => void;
   setMarlaSqFt: (sqft: MarlaSqFt) => void;
   setPaper: (paper: PaperSize) => void;
@@ -632,7 +629,7 @@ export function createPlannerStore(
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
       const { showHints, pdfHints, accessibleZones } = get();
-      const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } =
+      const { wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } =
         get();
       savePrefs({
         units,
@@ -645,7 +642,6 @@ export function createPlannerStore(
         showHints,
         pdfHints,
         accessibleZones,
-        mode,
         wallThicknessMm,
         openingGapMm,
         marlaSqFt,
@@ -750,7 +746,6 @@ export function createPlannerStore(
       pdfHints: prefs.pdfHints,
       accessibleZones: prefs.accessibleZones,
       furnitureKind: DEFAULT_FURNITURE_KIND,
-      mode: prefs.mode,
       wallThicknessMm: prefs.wallThicknessMm,
       openingGapMm: prefs.openingGapMm,
       openingStamp: [],
@@ -2111,10 +2106,6 @@ export function createPlannerStore(
       },
       setPlinthMm: (mm) =>
         get().commit((doc) => (doc.plinthMm === mm ? doc : { ...doc, plinthMm: Math.max(0, Math.min(3000, mm)) })),
-      setMode: (mode) => {
-        set((s) => ({ mode, tool: mode === 'simple' && !SIMPLE_TOOLS.includes(s.tool) ? 'select' : s.tool }));
-        persistPrefs();
-      },
       setWallThicknessMm: (wallThicknessMm) => {
         set({ wallThicknessMm });
         persistPrefs();

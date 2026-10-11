@@ -70,7 +70,7 @@ function MenuList({ commands, onDone }: { commands: Command[]; onDone: () => voi
   );
 }
 
-/** Top bar: logo, the menus, the plan's name, mode and 2D/3D switches, and search. */
+/** Top bar: logo, the menus, the plan's name, the 2D/3D switches, and search. */
 export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch: () => void }) {
   // 'all' is the list of menus behind the one Menu button of a narrow window.
   const [open, setOpen] = useState<MenuId | 'all' | null>(null);
@@ -78,8 +78,6 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
   const barRef = useRef<HTMLDivElement>(null);
   const fileName = usePlanner((s) => s.fileName);
   const dirty = usePlanner((s) => s.doc !== s.savedDoc);
-  const mode = usePlanner((s) => s.mode);
-  const setMode = usePlanner((s) => s.setMode);
   const view3d = usePlanner((s) => s.view3d);
   const setView3d = usePlanner((s) => s.setView3d);
   const split = usePlanner((s) => s.split);
@@ -210,13 +208,6 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
         <kbd className="m-kbd hidden xl:inline">{showKeys('Ctrl+K')}</kbd>
       </button>
       <LevelSwitcher />
-      <div role="radiogroup" aria-label="Mode" className="m-seg flex-none text-xs whitespace-nowrap">
-        {(['simple', 'pro'] as const).map((m) => (
-          <button key={m} role="radio" aria-checked={mode === m} onClick={() => setMode(m)}>
-            {m === 'simple' ? 'Simple' : 'Pro'}
-          </button>
-        ))}
-      </div>
       <div role="radiogroup" aria-label="View" className="m-seg flex-none text-xs whitespace-nowrap">
         {[
           { id: '2d', label: '2D plan', icon: 'view-2d' as const, keys: 'Ctrl+1' },

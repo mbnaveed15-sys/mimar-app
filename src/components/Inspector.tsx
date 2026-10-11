@@ -133,7 +133,6 @@ export function Inspector() {
   const flipOpening = usePlanner((s) => s.flipOpening);
   const editOpenings = usePlanner((s) => s.editOpenings);
   const updateRoom = usePlanner((s) => s.updateRoom);
-  const mode = usePlanner((s) => s.mode);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
   const project = projectOf(doc);
   const house = project.type === 'house';
@@ -818,7 +817,7 @@ export function Inspector() {
             </div>
           </div>
         )}
-        <div className={mode === 'pro' && doc.masks.length ? 'pt-2' : 'hidden'}>
+        <div className={doc.masks.length ? 'pt-2' : 'hidden'}>
           <div className="m-heading">Masks</div>
           <ul className="mt-2 text-xs">
             {doc.masks.map((m) => (

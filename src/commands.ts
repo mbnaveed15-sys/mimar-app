@@ -15,7 +15,7 @@ import { plannerStore, type PlannerState } from './store/plannerStore';
 import { THEMES } from './theme/themes';
 import { pasteToPlace } from './tools/controller';
 import { DRAW_TOOLS, TOOL_INFO } from './tools/toolInfo';
-import { MODIFY_TOOLS, SIMPLE_TOOLS, TOOLS, type Tool } from './types';
+import { MODIFY_TOOLS, TOOLS, type Tool } from './types';
 
 export type MenuId = 'file' | 'edit' | 'view' | 'draw' | 'tools' | 'modify' | 'help';
 
@@ -43,7 +43,7 @@ export interface Command {
   /** Shown as a tick (check) or a dot (radio) when true. */
   checked?: (s: PlannerState) => boolean;
   kind?: 'check' | 'radio';
-  /** Hidden from menus (still in search), e.g. Pro tools in Simple mode. */
+  /** Hidden from menus (still in search), e.g. commands kept for search only. */
   hidden?: (s: PlannerState) => boolean;
   /** AutoCAD aliases that also find it in search, e.g. TR for Trim. */
   aliases?: string[];
@@ -94,15 +94,9 @@ function toolCommand(tool: Tool, menu: MenuId, group: number): Command {
     group,
     keys: [info.key, ...(info.alt ?? [])],
     aliases: aliasesFor(tool),
-    run: () => {
-      const s = st();
-      if (!SIMPLE_TOOLS.includes(tool) && s.mode === 'simple') s.setMode('pro');
-      s.setTool(tool);
-    },
+    run: () => st().setTool(tool),
     kind: 'radio',
     checked: (s) => s.tool === tool,
-    // Pro drawing tools are hidden in Simple mode; the Modify menu always lists its tools.
-    hidden: (s) => s.mode === 'simple' && !SIMPLE_TOOLS.includes(tool) && !MODIFY_TOOLS.includes(tool),
   };
 }
 
@@ -526,24 +520,6 @@ export function buildCommands(ctx: CommandContext): Command[] {
     layer('view.furniture', 'Furniture', 'showFurniture'),
     layer('view.roomLabels', 'Room names & areas', 'showRoomLabels'),
     layer('view.roomFills', 'Room colours', 'showRoomFills'),
-    {
-      id: 'view.simple',
-      label: 'Simple mode',
-      menu: 'view',
-      group: 4,
-      run: () => st().setMode('simple'),
-      kind: 'radio',
-      checked: (s) => s.mode === 'simple',
-    },
-    {
-      id: 'view.pro',
-      label: 'Pro mode',
-      menu: 'view',
-      group: 4,
-      run: () => st().setMode('pro'),
-      kind: 'radio',
-      checked: (s) => s.mode === 'pro',
-    },
     { id: 'view.resetToolbars', label: 'Reset tool bars', menu: 'view', group: 4, run: () => st().resetToolbars() },
     {
       id: 'view.panelTabs',

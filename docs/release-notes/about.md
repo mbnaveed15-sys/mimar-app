@@ -70,7 +70,7 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 - Plans save as `.mimar` files that you can back up, email or move between computers. Work is also autosaved.
 
 ### Made to fit you
-- **Simple mode** has the main tools for homeowners. **Pro mode** has everything.
+- Every tool is on hand from the start: no separate simple and pro modes.
 - Feet and inches or metric. Light and dark themes.
 - Tool bars and side panels can be moved, docked and tabbed.
 - **Touch and pen:** pinch to zoom, two fingers to pan, three to turn the 3D view, and a long press for the menu. On a touch screen, on-screen buttons stand in for the keyboard (Done, Cancel, Flip hinge, Delete), and an upright iPad gets a compact layout with one Menu button and a slide-out side panel.

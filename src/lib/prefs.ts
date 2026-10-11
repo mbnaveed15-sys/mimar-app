@@ -1,5 +1,5 @@
 import { DEFAULT_THEME, isThemeId, type ThemeId } from '../theme/themes';
-import type { MarlaSqFt, Mode, PaperSize, Units } from '../types';
+import type { MarlaSqFt, PaperSize, Units } from '../types';
 import { clampGap, DEFAULT_OPENING_GAP_MM } from './openingPlace';
 import { browserStorage } from './storage';
 import { GRID_MM } from './units';
@@ -57,7 +57,6 @@ export interface Prefs {
   pdfHints: boolean;
   /** Furniture use zones sized for a wheelchair user (ADA), where they differ. */
   accessibleZones: boolean;
-  mode: Mode;
   /** Thickness for new walls, in millimetres. */
   wallThicknessMm: number;
   /** Gap kept between doors and windows and wall corners (and each other), in millimetres. */
@@ -86,7 +85,6 @@ export const DEFAULT_PREFS: Prefs = {
   showHints: true,
   pdfHints: false,
   accessibleZones: false,
-  mode: 'simple',
   wallThicknessMm: 228.6,
   openingGapMm: DEFAULT_OPENING_GAP_MM,
   marlaSqFt: 225,
@@ -153,7 +151,6 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       showHints: raw?.showHints !== false,
       pdfHints: raw?.pdfHints === true,
       accessibleZones: raw?.accessibleZones === true,
-      mode: raw?.mode === 'pro' ? 'pro' : 'simple',
       wallThicknessMm: thickness >= 25 && thickness <= 1000 ? thickness : DEFAULT_PREFS.wallThicknessMm,
       openingGapMm: clampGap(raw?.openingGapMm),
       marlaSqFt: raw?.marlaSqFt === 272.25 ? 272.25 : 225,

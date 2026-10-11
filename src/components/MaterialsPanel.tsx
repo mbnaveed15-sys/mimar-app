@@ -70,7 +70,6 @@ export function MaterialsPanel() {
   const selectedMat = usePlanner((s) => s.selectedMat);
   const pickMaterial = usePlanner((s) => s.pickMaterial);
   const addMaterial = usePlanner((s) => s.addMaterial);
-  const mode = usePlanner((s) => s.mode);
   const [query, setQuery] = useState('');
   const active = materials.find((m) => m.id === selectedMat) ?? materials[0];
   const found = useMemo(() => searchLibrary(query), [query]);
@@ -131,7 +130,7 @@ export function MaterialsPanel() {
           </details>
         ))
       )}
-      {mode === 'simple' && <div className="text-xs text-muted">Pick a material, then use Paint (B) on the plan.</div>}
+      <div className="text-xs text-muted">Pick a material, then use Paint (B) on the plan.</div>
     </div>
   );
 }

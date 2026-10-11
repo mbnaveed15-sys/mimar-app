@@ -241,13 +241,6 @@ describe('rooms, walls and modes', () => {
     expect(s().doc.elements).toHaveLength(3);
   });
 
-  it('switching to Simple mode leaves Pro-only tools', () => {
-    const store = setup();
-    store.getState().setMode('pro');
-    store.getState().setTool('brush');
-    store.getState().setMode('simple');
-    expect(store.getState().tool).toBe('select');
-  });
 });
 
 describe('furniture library and layers', () => {
