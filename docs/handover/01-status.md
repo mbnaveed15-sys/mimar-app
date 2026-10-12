@@ -59,11 +59,11 @@ Windows desktop app (Electron) and a web app (GitHub Pages, installable, works o
 | 1.10–1.11 | Selection, groups and components; Modify tools (offset, mirror, trim, extend, break, join, fillet, chamfer, stretch, scale) |
 | earlier | 2D drawing, rooms and marla areas, doors and windows, furniture, PDF/PNG export, themes, auto-update |
 
-## Checks at 1.42.0
+## Checks at 1.44.0
 
-631 unit tests (Vitest, including `src/lib/releaseNotes.test.ts`, which needs a release note for the version) and 99
-browser tests (Playwright; `e2e/ipad.spec.ts` runs at 810 × 1080 with touch: the Menu button, the side-panel drawer and the
-touch bar) pass; `npm run check` (types, lint, format, unit tests, build) is green.
+736 unit tests (Vitest, including `src/lib/releaseNotes.test.ts`, which needs a release note for the version) and 112
+browser tests (Playwright; `e2e/ipad.spec.ts` runs at 810 × 1080 with touch, `e2e/phone.spec.ts` at 375 × 667,
+412 × 915 and 667 × 375 with touch) pass; `npm run check` (types, lint, format, unit tests, build) is green.
 
 ## Things the owner has decided
 

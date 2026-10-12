@@ -543,7 +543,8 @@ export function buildCommands(ctx: CommandContext): Command[] {
     { id: 'view.gridSettings', label: 'Grid settings…', menu: 'view', group: 2, run: () => ctx.showSection('grid') },
     {
       id: 'view.dimensions',
-      label: 'Dimensions',
+      // The walls' own length labels (placed dimensions are the Dimensions layer).
+      label: 'Wall lengths',
       menu: 'view',
       group: 3,
       run: () => st().setShowDimensions(!st().showDimensions),
