@@ -167,7 +167,7 @@ export function projectOnWall(w: WallLine, p: Point): { t: number; point: Point;
  * The fraction along an arc of the point nearest p, not clamped: below 0 or above 1 when p is
  * beyond an end (whichever end is nearer round the circle).
  */
-function arcParam(arc: WallArc, p: Point): number {
+export function arcParam(arc: WallArc, p: Point): number {
   const TAU = Math.PI * 2;
   const s = Math.sign(arc.sweep);
   const size = Math.abs(arc.sweep);

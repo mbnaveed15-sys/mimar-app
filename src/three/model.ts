@@ -133,7 +133,7 @@ export interface Slab3D {
   id?: string;
   level?: string;
   /** A flat shape waiting for Push/Pull, which isn't built (or exported). */
-  role?: 'slab' | 'block' | 'shape' | 'stair';
+  role?: 'slab' | 'block' | 'shape' | 'stair' | 'furniture' | 'column';
 }
 
 /** A roof: its sloped faces (the underside, as [x, y, z] points in metres), thickened straight up by h. */
@@ -666,17 +666,11 @@ function furnitureSolids(f: Furniture, color?: string): Solid[] {
 
   const shaped = f.kind && SHAPES[f.kind];
   if (shaped) {
-    const small = Math.min(f.w, f.h);
     for (const p of shaped) {
       if ('line' in p || !p.z) continue;
       const c = p.color ?? '#cbd5e1';
+      // Round parts are upright cylinders (see furnitureRounds).
       if ('box' in p) part(...p.box, p.z[0], p.z[1], c, p.keep);
-      else {
-        // A round part as the square inside its circle.
-        const [fx, fy, fr] = p.disc;
-        const half = (fr * small) / Math.SQRT2;
-        part(fx - half / f.w, fy - half / f.h, (2 * half) / f.w, (2 * half) / f.h, p.z[0], p.z[1], c, p.keep);
-      }
     }
     return parts;
   }
@@ -898,6 +892,45 @@ function stairBlocks(st: Stair, color?: string): Slab3D[] {
     });
 }
 
+/** Sides of the many-sided outline a round part or column is built from. */
+const ROUND_SIDES = 32;
+
+/** A circle in the scene (metres) as a many-sided outline. */
+function circleOutline(x: number, z: number, r: number): [number, number][] {
+  return Array.from({ length: ROUND_SIDES }, (_, i) => {
+    const a = (i / ROUND_SIDES) * Math.PI * 2;
+    return [x + r * Math.cos(a), z + r * Math.sin(a)] as [number, number];
+  });
+}
+
+/** A library item's round parts (basins, bins, WC pans…) as upright cylinders. */
+function furnitureRounds(f: Furniture, color?: string): Slab3D[] {
+  const shaped = f.kind && SHAPES[f.kind];
+  if (!shaped) return [];
+  const small = Math.min(f.w, f.h);
+  const out: Slab3D[] = [];
+  for (const p of shaped) {
+    if (!('disc' in p) || !p.z) continue;
+    const [fx, fy, fr] = p.disc;
+    const c = toScene(f, f.rotation ?? 0, { x: -f.w / 2 + fx * f.w, y: -f.h / 2 + fy * f.h });
+    const own = p.color ?? '#cbd5e1';
+    out.push({
+      points: circleOutline(c.x, c.z, m(fr * small)),
+      y0: p.z[0],
+      h: p.z[1],
+      color: p.keep ? own : (color ?? own),
+      role: 'furniture',
+    });
+  }
+  return out;
+}
+
+/** A round column as an upright cylinder, its diameter the column's width. */
+function columnRound(c: Column, top: number, color?: string): Slab3D {
+  const at = toScene(c, 0, { x: 0, y: 0 });
+  return { points: circleOutline(at.x, at.z, m(c.w / 2)), y0: 0, h: top, color: color ?? CONCRETE, role: 'column' };
+}
+
 function columnSolid(c: Column, top: number, color?: string): Solid {
   return {
     ...toScene(c, 0, { x: 0, y: 0 }),
@@ -968,7 +1001,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const withFinish = (id: string | undefined, fallback?: Pattern) => {
     const finish = finishOf(id, fallback);
     const color = colorOf(id);
-    return (s: Solid): Solid => (finish && (!color || s.color === color) ? { ...s, finish } : s);
+    return <T extends { color: string; finish?: Finish }>(s: T): T =>
+      finish && (!color || s.color === color) ? { ...s, finish } : s;
   };
   const solids: Solid[] = [];
   const floors: Floor[] = [];
@@ -1092,7 +1126,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       solids.push(...placed.map(from(door.id)));
     }
     for (const el of els) {
-      if (el.type === 'furniture' && options.showFurniture)
+      if (el.type === 'furniture' && options.showFurniture) {
         solids.push(
           ...furnitureSolids(el, colorOf(el.material))
             .map(withFinish(el.material))
@@ -1100,7 +1134,22 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
             .map(raise(el))
             .map(from(el.id)),
         );
-      if (el.type === 'column')
+        blocks.push(
+          ...furnitureRounds(el, colorOf(el.material))
+            .map(withFinish(el.material))
+            .map(lift)
+            .map(raise(el))
+            .map(from(el.id)),
+        );
+      }
+      const columnTop = el.type === 'column' ? (el.heightMm ? mmToM(el.heightMm) : wallTop) : 0;
+      if (el.type === 'column' && el.shape === 'round')
+        blocks.push(
+          from(el.id)(
+            raise(el)(lift(withFinish(el.material, 'concrete')(columnRound(el, columnTop, colorOf(el.material))))),
+          ),
+        );
+      else if (el.type === 'column')
         solids.push(
           from(el.id)(
             raise(el)(

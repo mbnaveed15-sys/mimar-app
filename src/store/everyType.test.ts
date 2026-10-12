@@ -328,7 +328,8 @@ describe('every kind of item', () => {
     expect(meshes.some((m) => m.name.startsWith('roof'))).toBe(true);
     expect(model.panels.filter((p) => p.role === 'glass')).toHaveLength(1);
     expect(model.panels.filter((p) => p.role === 'shape')).toHaveLength(1);
-    expect(model.blocks.filter((b) => b.role !== 'stair').map((b) => b.role)).toEqual(['block', 'shape']);
+    // The round column is a cylinder (1.43.2).
+    expect(model.blocks.filter((b) => b.role !== 'stair').map((b) => b.role)).toEqual(['column', 'block', 'shape']);
     // A curved stair's wedges and a spiral's, with its pole, each from its own stair.
     const wedges = model.blocks.filter((b) => b.role === 'stair');
     expect(wedges.filter((b) => b.id === 'stc')).toHaveLength(17);

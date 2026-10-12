@@ -20,6 +20,7 @@ import { shapeDraftScene } from '../tools/shapeTools';
 import { clearPicker, getPointer, setPicker, type FaceHit, type Picker3D } from './picker';
 import type { StandardView } from './cameraRig';
 import { isParallel, requestView, setViewControls, toggleParallel } from './viewControls';
+import { cornerNear, curveTest } from './cornerSnap';
 import { lookRuns, mergeParts, partAt, type PartRange } from './merge';
 import { buildModel, levelBaseM, M_PER_UNIT, roofMesh, type Finish, type Model3D, type Sides } from './model';
 
@@ -61,6 +62,8 @@ const keep = <T extends THREE.Material>(m: T): T => {
 const EDGE_MATERIAL = keep(new THREE.LineBasicMaterial({ color: '#57534e', transparent: true, opacity: 0.35 }));
 /** The edges of a box one metre each way. */
 const BOX_EDGES = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+/** Edges between the sides of a round column or part (32 sides, 11.25° apart) aren't drawn. */
+const ROUND_CREASE = 20;
 /** A plot's setback line on the ground, dashed as on the plan. */
 const GUIDE_MATERIAL = keep(new THREE.LineDashedMaterial({ color: '#44403c', dashSize: 0.3, gapSize: 0.2 }));
 /** Each mesh's box in the scene, worked out once (the model's meshes don't move once built). */
@@ -271,10 +274,11 @@ function buildMeshes(model: Model3D): THREE.Group {
     for (const h of holes) shape.holes.push(new THREE.Path(h.map(v)));
     return shape;
   };
-  const addWithEdges = (mesh: THREE.Mesh, level?: string, edges = true) => {
+  /** `crease`: the least angle (degrees) between faces drawn as an edge (more for round things). */
+  const addWithEdges = (mesh: THREE.Mesh, level?: string, edges = true, crease?: number) => {
     group.add(mesh);
     if (!edges) return;
-    const lines = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), edgeMaterial);
+    const lines = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, crease), edgeMaterial);
     lines.position.copy(mesh.position);
     lines.rotation.copy(mesh.rotation);
     lines.userData = { level };
@@ -295,7 +299,9 @@ function buildMeshes(model: Model3D): THREE.Group {
     mesh.castShadow = !flatShape;
     mesh.receiveShadow = !flatShape;
     mesh.userData = { id: slab.id, level: slab.level };
-    addWithEdges(mesh, slab.level);
+    // Round columns and parts: no lines down the joins between the sides of the cylinder.
+    const round = slab.role === 'column' || slab.role === 'furniture';
+    addWithEdges(mesh, slab.level, true, round ? ROUND_CREASE : undefined);
   }
 
   for (const roof of model.roofs ?? []) {
@@ -548,49 +554,20 @@ const idOf = (hit: THREE.Intersection): string | undefined => hit.object.userDat
 /** Tools that only look or pick, which don't snap to corners. */
 const LOOK_TOOLS = new Set<string>(['select', 'pan', 'zoom', 'orbit']);
 
-/** Meshes with more corners than this are left to the plan's own snapping (too slow to search on every move). */
-const MAX_CORNER_SEARCH = 150_000;
-
-/**
- * The corner of a mesh nearest a screen position, within `px` pixels, in world space (null when none
- * is that close). Lets any corner seen in 3D be picked exactly, at its own height.
- */
-function cornerNear(
-  hit: THREE.Intersection,
-  camera: THREE.Camera,
-  rect: DOMRect,
-  clientX: number,
-  clientY: number,
-  px: number,
-): THREE.Vector3 | null {
-  const mesh = hit.object as THREE.Mesh;
-  const pos = mesh.geometry?.getAttribute('position');
-  if (!pos || pos.count > MAX_CORNER_SEARCH) return null;
-  const eye = camera.getWorldPosition(new THREE.Vector3());
-  // Corners further away than the face under the pointer are behind it, out of sight.
-  const reach = hit.distance * 1.02 + 0.05;
-  const world = new THREE.Vector3();
-  const v = new THREE.Vector3();
-  const best = new THREE.Vector3();
-  let bestD = px * px;
-  let found = false;
-  mesh.updateMatrixWorld();
-  for (let i = 0; i < pos.count; i++) {
-    world.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
-    if (world.distanceTo(eye) > reach) continue;
-    v.copy(world).project(camera);
-    if (v.z > 1 || v.z < -1) continue;
-    const dx = rect.left + ((v.x + 1) / 2) * rect.width - clientX;
-    const dy = rect.top + ((1 - v.y) / 2) * rect.height - clientY;
-    const d = dx * dx + dy * dy;
-    if (d < bestD) {
-      bestD = d;
-      best.copy(world);
-      found = true;
-    }
-  }
-  return found ? best : null;
+/** The current plan's curve test for 3D corner snapping, kept while the plan and floor stay the same. */
+let curveMemo: { doc: PlanDoc; level: string; test: (p: Point) => boolean } | null = null;
+function curveTestFor(s: PlannerState) {
+  if (curveMemo?.doc !== s.doc || curveMemo.level !== s.activeLevel)
+    curveMemo = { doc: s.doc, level: s.activeLevel, test: curveTest(s.visibleElements()) };
+  return curveMemo.test;
 }
+
+/** Solid meshes that can hide a corner (not edge lines, nor see-through glass). */
+const solidMeshes = (group: THREE.Object3D) =>
+  group.children.filter(
+    (o): o is THREE.Mesh =>
+      o instanceof THREE.Mesh && !(Array.isArray(o.material) ? o.material : [o.material]).some((m) => m.transparent),
+  );
 
 /** A hit on something that can be picked: an item (not a part with no item) on a floor that isn't faded. */
 const pickable = (hit: THREE.Intersection) =>
@@ -1188,7 +1165,10 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       // Close to a corner of what is under the pointer (on screen), take the corner itself, at its height.
       const corner =
         s.snaps.on && !LOOK_TOOLS.has(s.tool)
-          ? cornerNear(hit, stage.rig.active, rect, clientX, clientY, 10 * s.reach())
+          ? cornerNear(hit, stage.rig.active, rect, clientX, clientY, 10 * s.reach(), {
+              occluders: solidMeshes(stage.model),
+              onCurve: curveTestFor(s),
+            })
           : null;
       world = corner ?? hit.point.clone();
       id = idOf(hit) ?? null;

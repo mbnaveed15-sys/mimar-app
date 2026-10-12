@@ -283,8 +283,8 @@ autosaves to local storage on every change.
   - Corners (1.43): `src/lib/snapPoints.ts` gives every item's corners (`item-corner`), edge middles and round
     centres; `inferAt` passes them (memoised per plan) as `InferOptions.points`; `infer` also finds true wall corners
     where faces of nearby walls cross, and ranks a midpoint 1.6× further than it is so corners win. Snap group
-    `items`. In 3D, `cornerNear` in `Plan3DView.tsx` moves the pick to the nearest mesh vertex within 10 px (not
-    behind the face hit). Grips use `snapGrip` (`usePlanInput.ts`); new grips `shape-corner-i`, `beam-start/end`,
+    `items`. In 3D, `cornerNear` (`src/three/cornerSnap.ts`, 1.43.2) moves the pick to the nearest mesh vertex
+    within 10 px that is in sight and not along a curve (`curveTest`). Grips use `snapGrip` (`usePlanInput.ts`); new grips `shape-corner-i`, `beam-start/end`,
     `column-size`. Dragging a whole item: walls, beams, lines and sections snap their start like a grip; any
     other item goes through `cornerSnap` (`controller.ts`, 1.43.1): its 4 corners nearest the pointer are each
     inferred, the smallest nudge to a face, corner, item corner or line wins, else the anchor goes to the grid.
