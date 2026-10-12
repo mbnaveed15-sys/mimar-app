@@ -5,7 +5,7 @@ import { usePlanner } from '../store/plannerStore';
 import { Icon } from './Icon';
 import { LevelSwitcher } from './LevelSwitcher';
 import { Mark } from './Mark';
-import { useCompact } from './useCompact';
+import { useCompact, usePhone } from './useCompact';
 
 /** The items of one menu, with lines between groups. */
 function MenuList({ commands, onDone }: { commands: Command[]; onDone: () => void }) {
@@ -75,6 +75,7 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
   // 'all' is the list of menus behind the one Menu button of a narrow window.
   const [open, setOpen] = useState<MenuId | 'all' | null>(null);
   const compact = useCompact();
+  const phone = usePhone();
   const barRef = useRef<HTMLDivElement>(null);
   const fileName = usePlanner((s) => s.fileName);
   const dirty = usePlanner((s) => s.doc !== s.savedDoc);
@@ -84,6 +85,10 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
   const setSplit = usePlanner((s) => s.setSplit);
   const drawing = usePlanner((s) => s.drawing);
   const showDrawing = usePlanner((s) => s.showDrawing);
+  const canUndo = usePlanner((s) => s.past.length > 0);
+  const canRedo = usePlanner((s) => s.future.length > 0);
+  const undo = usePlanner((s) => s.undo);
+  const redo = usePlanner((s) => s.redo);
 
   useEffect(() => {
     if (!open) return;
@@ -122,8 +127,8 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
   }
 
   return (
-    <header className="flex h-10 flex-none items-center gap-2 border-b border-line bg-surface px-2 pointer-coarse:h-12">
-      <div className="flex flex-none items-center gap-2 pr-1">
+    <header className="flex h-10 flex-none items-center gap-2 border-b border-line bg-surface px-2 pointer-coarse:h-12 phone:gap-1 phone:px-1">
+      <div className="flex flex-none items-center gap-2 pr-1 phone:hidden">
         <Mark size={24} />
         <span className="hidden text-[17px] font-[650] tracking-[-0.2px] lg:inline" style={{ fontStretch: '88%' }}>
           Mimar
@@ -189,6 +194,29 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
         )}
       </div>
 
+      {/* On a phone, Undo and Redo sit by the menu (there is no tool rail to keep them). */}
+      {phone && (
+        <div className="flex flex-none">
+          <button
+            onClick={undo}
+            disabled={!canUndo}
+            aria-label="Undo"
+            title="Undo"
+            className="grid h-10 w-9 place-items-center rounded-sm disabled:opacity-35"
+          >
+            <Icon name="undo" size={20} />
+          </button>
+          <button
+            onClick={redo}
+            disabled={!canRedo}
+            aria-label="Redo"
+            title="Redo"
+            className="grid h-10 w-9 place-items-center rounded-sm disabled:opacity-35"
+          >
+            <Icon name="redo" size={20} />
+          </button>
+        </div>
+      )}
       {/* In a narrow window (an iPad held upright) the plan's name gives way to the buttons. */}
       <div className="mx-auto min-w-0 truncate px-2 text-muted max-lg:sr-only" title={fileName} data-testid="file-name">
         <span className="font-semibold text-ink">{baseName(fileName)}</span>
@@ -214,21 +242,26 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
           { id: 'split', label: 'Split', icon: 'view-split' as const, keys: 'Ctrl+3' },
           { id: '3d', label: '3D view', icon: 'view-3d' as const, keys: 'Ctrl+2' },
           { id: 'drawings', label: 'Drawings', icon: 'view-drawings' as const, keys: 'Ctrl+4' },
-        ].map((v) => (
-          <button
-            key={v.id}
-            role="radio"
-            aria-checked={drawing ? v.id === 'drawings' : split ? v.id === 'split' : v.id === (view3d ? '3d' : '2d')}
-            aria-label={v.label}
-            title={`${v.label} (${showKeys(v.keys)})`}
-            onClick={() =>
-              v.id === 'drawings' ? showDrawing() : v.id === 'split' ? setSplit(true) : setView3d(v.id === '3d')
-            }
-          >
-            <Icon name={v.icon} size={16} />
-            <span className="hidden xl:inline">{v.label}</span>
-          </button>
-        ))}
+        ]
+          // A phone has no room for the plan and the 3D view side by side.
+          .filter((v) => !(phone && v.id === 'split'))
+          .map((v) => (
+            <button
+              key={v.id}
+              role="radio"
+              aria-checked={
+                drawing ? v.id === 'drawings' : split && !phone ? v.id === 'split' : v.id === (view3d ? '3d' : '2d')
+              }
+              aria-label={v.label}
+              title={`${v.label} (${showKeys(v.keys)})`}
+              onClick={() =>
+                v.id === 'drawings' ? showDrawing() : v.id === 'split' ? setSplit(true) : setView3d(v.id === '3d')
+              }
+            >
+              <Icon name={v.icon} size={16} />
+              <span className="hidden xl:inline">{v.label}</span>
+            </button>
+          ))}
       </div>
     </header>
   );

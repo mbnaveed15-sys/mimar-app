@@ -14,11 +14,14 @@ import {
 import { Icon } from './Icon';
 import { MenuBar } from './MenuBar';
 import { PanelMovesOverlay } from './PanelMoves';
+import { PhoneTools } from './PhoneTools';
+import { revealPanel } from './panelSheet';
 import { SidePanel } from './SidePanel';
 import { SplitView } from './SplitView';
 import { StatusBar } from './StatusBar';
 import { ToolDock, ToolDockOverlay } from './ToolDocks';
 import { TouchBar } from './TouchBar';
+import { useCompact, usePhone } from './useCompact';
 import { isDirty, useFileActions } from './useFileActions';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import { useOpenSections, type SectionId } from './useOpenSections';
@@ -55,6 +58,8 @@ export default function PlannerApp() {
   const [menuAt, setMenuAt] = useState<ContextMenuState | null>(null);
   const sections = useOpenSections();
   const { set: setSection } = sections;
+  const compact = useCompact();
+  const phone = usePhone();
 
   useEffect(() => {
     document.title = `${dirty ? '• ' : ''}${baseName(fileName)} — Mimar`;
@@ -66,12 +71,13 @@ export default function PlannerApp() {
   const showSection = useCallback(
     (id: string) => {
       setSection(id as SectionId, true);
-      // In the tabs view, the section's tab opens instead.
+      // In the tabs view (always, in a narrow window), the section's tab opens instead.
       const { panels, setPanels } = plannerStore.getState();
-      if (panels.view === 'tabs') setPanels({ tab: id as SectionId, folded: false });
+      if (panels.view === 'tabs' || compact) setPanels({ tab: id as SectionId, folded: false });
+      if (compact) revealPanel();
       requestAnimationFrame(() => document.getElementById(`section-${id}`)?.scrollIntoView({ block: 'nearest' }));
     },
-    [setSection],
+    [setSection, compact],
   );
   const updates = typeof window !== 'undefined' ? window.mimarUpdates : undefined;
 
@@ -113,7 +119,8 @@ export default function PlannerApp() {
 
   function focusProperties() {
     const { panels, setPanels } = plannerStore.getState();
-    if (panels.view === 'tabs') setPanels({ tab: 'properties', folded: false });
+    if (panels.view === 'tabs' || compact) setPanels({ tab: 'properties', folded: false });
+    if (compact) revealPanel();
     requestAnimationFrame(() => {
       const field = document.querySelector<HTMLElement>('aside[aria-label="Properties"] input');
       field?.focus();
@@ -121,19 +128,20 @@ export default function PlannerApp() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-surface text-ink">
+    <div className="flex h-dvh flex-col bg-surface text-ink">
       <MenuBar commands={commands} onSearch={() => setDialog('search')} />
-      <ToolDock area="top" />
-      <div className="flex min-h-0 flex-1">
-        <ToolDock area="left" />
-        <main className="relative min-w-0 flex-1 overflow-hidden bg-canvas">
+      {!phone && <ToolDock area="top" />}
+      {/* On a phone the plan fills the width, with the panel as a sheet over its bottom. */}
+      <div className={`flex min-h-0 flex-1 ${phone ? 'relative flex-col' : ''}`}>
+        {!phone && <ToolDock area="left" />}
+        <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-canvas">
           {drawing ? (
             <Suspense
               fallback={<div className="flex h-full items-center justify-center text-muted">Loading drawings…</div>}
             >
               <DrawingsView />
             </Suspense>
-          ) : split ? (
+          ) : split && !phone ? (
             <SplitView plan={plan2d} model={model3d} />
           ) : view3d ? (
             model3d
@@ -158,10 +166,11 @@ export default function PlannerApp() {
             </div>
           )}
         </main>
-        <ToolDock area="right" />
+        {!phone && <ToolDock area="right" />}
         <SidePanel sections={sections} />
       </div>
-      <ToolDock area="bottom" />
+      {/* The drawings (sheets and elevations) take no tools. */}
+      {phone ? !drawing && <PhoneTools /> : <ToolDock area="bottom" />}
       <StatusBar />
       <ToolDockOverlay />
       <PanelMovesOverlay />

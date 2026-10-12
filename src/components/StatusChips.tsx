@@ -6,7 +6,7 @@ import { usePlanCheck, usePlanHints } from '../store/usePlanCheck';
 import { usePlanPointer } from '../store/pointerStore';
 import { Icon } from './Icon';
 
-const chip = 'flex h-5 items-center gap-1 rounded-sm border px-1.5 text-[11px]';
+const chip = 'flex h-5 items-center gap-1 rounded-sm border px-1.5 text-[11px] phone:h-8 phone:px-2';
 const chipLook = (on: boolean) => (on ? 'border-line-strong text-ink' : 'border-line text-muted');
 
 /**
@@ -107,7 +107,7 @@ export function SnapChip() {
           title="Snapping on or off (F3). Rest the pointer here to pick the snap points."
           onClick={() => setSnaps({ on: !snaps.on })}
         >
-          <Icon name="snap" size={12} /> Snap
+          <Icon name="snap" size={12} /> <span className="phone:sr-only">Snap</span>
         </button>
       }
     >
@@ -164,7 +164,7 @@ export function ChecksChip() {
           onClick={() => setChecks({ on: !checks.on })}
           data-testid="checks-chip"
         >
-          <Icon name="check" size={12} /> Checks
+          <Icon name="check" size={12} /> <span className="phone:sr-only">Checks</span>
           {checks.on && count > 0 && (
             <span className="rounded-sm bg-accent-soft px-1 text-accent-ink" data-testid="checks-count">
               {count}

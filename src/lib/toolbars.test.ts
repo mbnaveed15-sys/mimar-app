@@ -6,7 +6,11 @@ import {
   GRIP_PX,
   moveToolbar,
   packColumns,
+  PHONE_ALWAYS,
+  PHONE_GROUPS,
+  phoneGroupOf,
   readToolbars,
+  TOOLBARS,
 } from './toolbars';
 
 const px = (buttons: number) => GRIP_PX + buttons * (BUTTON_PX + BUTTON_GAP_PX);
@@ -47,5 +51,13 @@ describe('tool bars', () => {
     // Even a tiny window shows every button.
     const tiny = packColumns(bars, 10);
     expect(tiny.flat().reduce((n, p) => n + p.to - p.from, 0)).toBe(21);
+  });
+
+  it('puts every tool in the phone strip once, in one group or at the start of all of them', () => {
+    const all = TOOLBARS.flatMap((t) => [...t.tools]);
+    const phone = [...PHONE_ALWAYS, ...PHONE_GROUPS.flatMap((g) => [...g.tools])];
+    expect([...phone].sort()).toEqual([...all].sort());
+    expect(phoneGroupOf('dimension')).toBe('annotate');
+    expect(phoneGroupOf('select')).toBe('draw');
   });
 });

@@ -95,10 +95,10 @@ export function DrawingsView() {
   );
 
   return (
-    <div className="flex h-full min-h-0" data-testid="drawings-view">
+    <div className="flex h-full min-h-0 phone:flex-col" data-testid="drawings-view">
       <nav
         aria-label="Drawings"
-        className="flex w-64 flex-none flex-col gap-3 overflow-y-auto border-r border-line bg-surface p-2 text-xs"
+        className="flex w-64 flex-none flex-col gap-3 overflow-y-auto border-r border-line bg-surface p-2 text-xs phone:max-h-[45%] phone:w-full phone:border-r-0 phone:border-b"
       >
         <div>
           <div className="m-heading px-2">Sections</div>

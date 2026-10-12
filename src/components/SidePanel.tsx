@@ -6,6 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
+import { useStore } from 'zustand';
 import { usePlanner } from '../store/plannerStore';
 import { TOOL_INFO } from '../tools/toolInfo';
 import { ComponentsPanel } from './ComponentsPanel';
@@ -32,7 +33,8 @@ import { ProjectPanel } from './ProjectPanel';
 import { shows } from '../lib/project';
 import { WallThicknessPicker } from './WallThicknessPicker';
 import { CostPanel } from './CostPanel';
-import { useCompact } from './useCompact';
+import { useCompact, usePhone } from './useCompact';
+import { overStore, PEEK_PX, type Sheet } from './panelSheet';
 import { GroundPanel, GroundToolOptions } from './GroundPanel';
 
 function Section({
@@ -203,8 +205,10 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
   const { open, set } = sections;
   const [liveWidth, setLiveWidth] = useState<number | null>(null);
   const compact = useCompact();
+  const phone = usePhone();
   // In a narrow window the panel starts closed, over the plan when opened.
-  const [overOpen, setOverOpen] = useState(false);
+  const overOpen = useStore(overStore, (s) => s.open);
+  const setOverOpen = (on: boolean) => overStore.setState({ open: on });
   // The sections the project shows.
   const roomList = usePlanner((s) => shows(s.doc, 'roomList'));
   const checks = usePlanner((s) => shows(s.doc, 'bylaws') || shows(s.doc, 'hints'));
@@ -254,6 +258,12 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
   };
   const label = (id: SectionId) => PANELS.find((p) => p.id === id)!.label;
   const pick = (next: PanelTab) => {
+    if (phone) {
+      const { sheet } = overStore.getState();
+      overStore.setState({ sheet: next === tab && sheet !== 'peek' ? 'peek' : sheet === 'peek' ? 'half' : sheet });
+      if (next !== tab) setPanels({ tab: next });
+      return;
+    }
     if (compact) {
       setOverOpen(!(next === tab && overOpen));
       if (next !== tab) setPanels({ tab: next });
@@ -270,6 +280,27 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
       <Inspector />
     </div>
   );
+
+  if (phone)
+    return (
+      <PhoneSheet
+        tabs={[
+          { id: 'properties', label: hasSelection ? 'Properties' : TOOL_INFO[tool].label },
+          ...order.map((id) => ({ id, label: PANELS.find((p) => p.id === id)!.tab })),
+        ]}
+        tab={tab}
+        onPick={pick}
+      >
+        {tab === 'properties' ? (
+          properties
+        ) : (
+          <div id={`section-${tab}`} role="tabpanel" aria-label={label(tab)} className="flex flex-col gap-2 p-3">
+            <h2 className="m-heading">{label(tab)}</h2>
+            {body(tab, true)}
+          </div>
+        )}
+      </PhoneSheet>
+    );
 
   return (
     <aside
@@ -341,5 +372,102 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
         </div>
       )}
     </aside>
+  );
+}
+
+/**
+ * A phone's panel: a sheet over the bottom of the plan. Peeking, it is one row of tabs; tap a tab, or
+ * drag the handle up, to open it half or all the way. Tap the open tab (or drag it down) to put it away.
+ */
+function PhoneSheet({
+  tabs,
+  tab,
+  onPick,
+  children,
+}: {
+  tabs: { id: PanelTab; label: string }[];
+  tab: PanelTab;
+  onPick: (id: PanelTab) => void;
+  children: ReactNode;
+}) {
+  const sheet = useStore(overStore, (s) => s.sheet);
+  const ref = useRef<HTMLElement>(null);
+  const start = useRef<{ y: number; h: number; moved: boolean } | null>(null);
+  const [live, setLive] = useState<number | null>(null);
+  const room = () => ref.current?.parentElement?.getBoundingClientRect().height ?? window.innerHeight;
+  const heightAt = (s: { y: number; h: number }, y: number) => Math.max(PEEK_PX, Math.min(room(), s.h + s.y - y));
+  const next: Record<Sheet, Sheet> = { peek: 'half', half: 'full', full: 'peek' };
+  const height = live ?? (sheet === 'peek' ? PEEK_PX : sheet === 'half' ? '50%' : '100%');
+
+  return (
+    <>
+      {/* The peeking row takes its room from the plan; opened, the sheet goes over the plan. */}
+      <div aria-hidden className="flex-none" style={{ height: PEEK_PX }} />
+      <aside
+        ref={ref}
+        aria-label="Properties"
+        data-sheet={sheet}
+        data-testid="phone-sheet"
+        className="absolute inset-x-0 bottom-0 z-30 flex flex-col rounded-t-xl border-t border-line bg-surface shadow-popover"
+        style={{ height }}
+      >
+        <button
+          type="button"
+          aria-label="Panel size"
+          title="Drag up or down, or tap, to open or put away the panel"
+          className="flex h-4 w-full flex-none cursor-grab touch-none items-center justify-center"
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            start.current = { y: e.clientY, h: ref.current?.getBoundingClientRect().height ?? PEEK_PX, moved: false };
+          }}
+          onPointerMove={(e) => {
+            const s = start.current;
+            if (!s || (!s.moved && Math.abs(e.clientY - s.y) < 6)) return;
+            s.moved = true;
+            setLive(heightAt(s, e.clientY));
+          }}
+          onPointerUp={(e) => {
+            const s = start.current;
+            start.current = null;
+            setLive(null);
+            if (!s) return;
+            if (!s.moved) {
+              overStore.setState({ sheet: next[sheet] });
+              return;
+            }
+            const f = heightAt(s, e.clientY) / room();
+            overStore.setState({ sheet: f < 0.3 ? 'peek' : f < 0.75 ? 'half' : 'full' });
+          }}
+          onPointerCancel={() => {
+            start.current = null;
+            setLive(null);
+          }}
+        >
+          <span aria-hidden className="h-1 w-10 rounded-full bg-line-strong" />
+        </button>
+        <div role="tablist" aria-label="Panels" className="flex flex-none gap-1 overflow-x-auto px-2 pb-2 text-xs">
+          {tabs.map((t) => {
+            const on = t.id === tab;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => onPick(t.id)}
+                className={`h-8 flex-none rounded-full px-3 font-medium whitespace-nowrap ${on ? 'bg-accent text-on-accent' : 'text-muted active:bg-sunken'}`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+        {(sheet !== 'peek' || live !== null) && (
+          <div data-testid="panel-content" className="min-h-0 flex-1 overflow-y-auto border-t border-line">
+            {children}
+          </div>
+        )}
+      </aside>
+    </>
   );
 }

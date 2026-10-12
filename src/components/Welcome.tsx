@@ -164,14 +164,18 @@ export function Welcome({
 
   const s = STEPS[step];
   const pad = 6;
-  // The card sits beside the highlighted part where there is room, otherwise in the middle.
-  const card = 320;
+  // The card sits beside the highlighted part where there is room, else below or above it (a phone),
+  // otherwise in the middle.
+  const card = Math.min(320, window.innerWidth - 24);
   let left = window.innerWidth / 2 - card / 2;
-  let top = window.innerHeight / 2 - 90;
+  let top: number | undefined = window.innerHeight / 2 - 90;
+  let bottom: number | undefined;
   if (rect) {
     const roomRight = window.innerWidth - rect.right > card + 24;
     const roomLeft = rect.left > card + 24;
-    const roomBelow = window.innerHeight - rect.bottom > 200;
+    const roomBelow = window.innerHeight - rect.bottom > 260;
+    const roomAbove = rect.top > 260;
+    const under = () => Math.min(Math.max(12, rect.left), window.innerWidth - card - 12);
     if (roomRight) {
       left = rect.right + 16;
       top = Math.min(Math.max(12, rect.top), window.innerHeight - 220);
@@ -179,8 +183,12 @@ export function Welcome({
       left = rect.left - card - 16;
       top = Math.min(Math.max(12, rect.top), window.innerHeight - 220);
     } else if (roomBelow) {
-      left = Math.min(Math.max(12, rect.left), window.innerWidth - card - 12);
+      left = under();
       top = rect.bottom + 12;
+    } else if (roomAbove) {
+      left = under();
+      top = undefined;
+      bottom = window.innerHeight - rect.top + 12;
     }
   }
   return (
@@ -204,8 +212,8 @@ export function Welcome({
         role="dialog"
         aria-modal="true"
         aria-label={s.title}
-        className="absolute rounded-lg border border-line bg-raised p-4 text-ink shadow-popover"
-        style={{ left, top, width: card }}
+        className="absolute overflow-y-auto rounded-lg border border-line bg-raised p-4 text-ink shadow-popover"
+        style={{ left, top, bottom, width: card, maxHeight: window.innerHeight - 24 - (top ?? bottom ?? 0) }}
       >
         <div className="text-xs text-muted">
           Step {step + 1} of {STEPS.length}

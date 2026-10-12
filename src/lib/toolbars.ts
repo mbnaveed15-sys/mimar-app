@@ -19,6 +19,52 @@ export const TOOLBARS = [
 
 export type ToolbarId = (typeof TOOLBARS)[number]['id'];
 
+/**
+ * On a phone the tools run along the bottom in one scrolling strip, a group at a time. Select and Pan
+ * start every group, so the plan can always be picked from and moved.
+ */
+export const PHONE_GROUPS = [
+  { id: 'draw', label: 'Draw', tools: ['wall', 'curve', 'line', 'rectangle', 'room', 'door', 'window', 'furniture'] },
+  {
+    id: 'build',
+    label: 'Build',
+    tools: ['column', 'beam', 'slab', 'roof', 'stairs', 'shape', 'pushpull', 'section'],
+  },
+  {
+    id: 'edit',
+    label: 'Edit',
+    tools: [
+      'move',
+      'rotate',
+      'erase',
+      'paint',
+      'offset',
+      'mirror',
+      'trim',
+      'extend',
+      'breakWall',
+      'join',
+      'fillet',
+      'chamfer',
+      'stretch',
+      'scale',
+    ],
+  },
+  { id: 'annotate', label: 'Annotate', tools: ['dimension', 'tape', 'brush', 'mask'] },
+  { id: 'site', label: 'Site', tools: ['plot', 'level', 'contour', 'pad'] },
+  { id: 'view', label: 'View', tools: ['zoom', 'orbit'] },
+] as const satisfies readonly { id: string; label: string; tools: readonly Tool[] }[];
+
+export type PhoneGroupId = (typeof PHONE_GROUPS)[number]['id'];
+
+/** The tools at the start of every phone group. */
+export const PHONE_ALWAYS: readonly Tool[] = ['select', 'pan'];
+
+/** The phone group a tool is in (the Draw group for Select and Pan). */
+export function phoneGroupOf(tool: Tool): PhoneGroupId {
+  return PHONE_GROUPS.find((g) => (g.tools as readonly Tool[]).includes(tool))?.id ?? 'draw';
+}
+
 /** Where tool bars can be docked: in columns at the left or right, or in rows at the top or bottom. */
 export type DockArea = 'left' | 'right' | 'top' | 'bottom';
 export const DOCK_AREAS: DockArea[] = ['left', 'right', 'top', 'bottom'];
