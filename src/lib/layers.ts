@@ -16,6 +16,7 @@ export const LAYERS = [
   { id: 'plot', label: 'Plot & setbacks' },
   { id: 'lines', label: 'Layout lines' },
   { id: 'sections', label: 'Section lines' },
+  { id: 'dimensions', label: 'Dimensions' },
   { id: 'terrain', label: 'Ground levels & contours' },
   { id: 'pads', label: 'Levelled areas' },
   { id: 'context', label: 'Surroundings' },
@@ -48,6 +49,7 @@ const BY_TYPE: Record<PlanElement['type'], LayerId> = {
   pad: 'pads',
   context: 'context',
   roof: 'roofs',
+  dimension: 'dimensions',
 };
 
 export const layerOf = (item: PlanElement | Room): LayerId => ('type' in item ? BY_TYPE[item.type] : 'rooms');

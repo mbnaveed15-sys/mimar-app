@@ -31,6 +31,7 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
   move: { label: 'Move', icon: 'move', key: 'M' },
   rotate: { label: 'Rotate', icon: 'rotate', key: 'Q' },
   tape: { label: 'Tape measure', icon: 'tape', key: 'T' },
+  dimension: { label: 'Dimension', icon: 'dimension', key: 'Shift+D' },
   paint: { label: 'Paint', icon: 'paint', key: 'B' },
   erase: { label: 'Eraser', icon: 'erase', key: 'E' },
   brush: { label: 'Brush', icon: 'brush', key: 'Shift+B' },

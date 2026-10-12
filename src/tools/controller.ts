@@ -54,6 +54,7 @@ import {
   curveReadout,
   curveRelease,
 } from './curveTool';
+import { DIM_TOOLS, dimAnchor, dimHint, dimHover, dimMeasure, dimPress, dimReadout, dimRelease } from './dimensionTool';
 
 /** The bits of a zustand store the controller needs. */
 export interface Store {
@@ -67,6 +68,7 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   line: 'length',
   rectangle: 'pair',
   tape: 'length',
+  dimension: 'length',
   move: 'move',
   rotate: 'angle',
   offset: 'length',
@@ -118,7 +120,14 @@ function buildingGuides(s: PlannerState): Segment[] {
   } else if (s.tool === 'column') {
     const { columnShape, columnW, columnH } = s.structure;
     half = (d) => (columnShape === 'round' ? columnW / 2 : (Math.abs(d.y) * columnW + Math.abs(d.x) * columnH) / 2);
-  } else if (s.tool === 'line' || s.tool === 'curve' || s.tool === 'room' || s.tool === 'slab' || s.tool === 'tape')
+  } else if (
+    s.tool === 'line' ||
+    s.tool === 'curve' ||
+    s.tool === 'room' ||
+    s.tool === 'slab' ||
+    s.tool === 'tape' ||
+    s.tool === 'dimension'
+  )
     half = () => 0;
   if (!half) return [];
   const edge = half;
@@ -245,6 +254,8 @@ export function anchorOf(s: PlannerState): Point | null {
       return d.surface.on === 'floor' ? d.points[d.points.length - 1] : null;
     case 'curve':
       return curveAnchor(d);
+    case 'dimension':
+      return dimAnchor(d);
     default:
       return null;
   }
@@ -260,6 +271,7 @@ export function currentDirection(s: PlannerState): Point | null {
   if (d.type === 'move') return sub(d.to, d.base);
   if (d.type === 'plotPoly' || d.type === 'contour' || d.type === 'roof' || d.type === 'curve')
     return sub(d.cursor, d.points[d.points.length - 1]);
+  if (d.type === 'dimension' && d.points.length) return sub(d.cursor, d.points[d.points.length - 1]);
   return null;
 }
 
@@ -317,6 +329,7 @@ export function hover(store: Store, raw: Point, shift = false, screenY?: number)
   if (STRUCTURE_TOOLS.includes(s.tool)) return structureHover(store, inf);
   if (SHAPE_TOOLS.includes(s.tool)) return shapeHover(store, inf);
   if (CURVE_TOOLS.includes(s.tool)) return curveHover(store, inf);
+  if (DIM_TOOLS.includes(s.tool)) return dimHover(store, inf);
   const p = inf.point;
   if (!d) return;
 
@@ -564,6 +577,10 @@ export function press(
     curvePress(store, inf);
     return true;
   }
+  if (DIM_TOOLS.includes(s.tool)) {
+    dimPress(store, inf, raw);
+    return true;
+  }
 
   switch (s.tool) {
     case 'wall': {
@@ -717,6 +734,7 @@ export function release(store: Store, dragged: boolean) {
   if (STRUCTURE_TOOLS.includes(s.tool)) return structureRelease(store, dragged);
   if (SHAPE_TOOLS.includes(s.tool)) return shapeRelease(store, dragged);
   if (CURVE_TOOLS.includes(s.tool)) return curveRelease(store, dragged);
+  if (DIM_TOOLS.includes(s.tool)) return dimRelease(store, dragged);
   if (s.tool === 'line' && d?.type === 'line' && !d.chain) {
     // Like walls: a drag makes one line, a click starts click-by-click drawing.
     if (dragged) {
@@ -770,6 +788,12 @@ export function applyMeasure(store: Store, text: string): boolean {
           : CURVE_TOOLS.includes(s.tool)
             ? curveMeasure
             : null;
+  if (DIM_TOOLS.includes(s.tool)) {
+    const lockDir = s.axisLock === 'x' || s.axisLock === 'y' ? axisDirection(s.axisLock) : s.shiftLock;
+    const error = dimMeasure(store, m, lockDir ?? currentDirection(s));
+    if (error) return fail(error);
+    return true;
+  }
   if (measureWith) {
     const error = measureWith(store, m);
     if (error) return fail(error);
@@ -992,6 +1016,7 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
     default:
       if (OPENING_TOOLS.includes(s.tool)) return openingReadout(s);
       if (CURVE_TOOLS.includes(s.tool)) return curveReadout(s);
+      if (DIM_TOOLS.includes(s.tool)) return dimReadout(s);
       if (SHAPE_TOOLS.includes(s.tool)) return shapeReadout(s);
       return STRUCTURE_TOOLS.includes(s.tool) ? structureReadout(s) : modifyReadout(s);
   }
@@ -1006,7 +1031,9 @@ export function toolHint(s: PlannerState): string {
     case 'pan':
       return 'Drag to move around. Middle-drag pans with any tool.';
     case 'zoom':
-      return 'Drag up to zoom in, down to zoom out. Shift+Z fits the plan.';
+      return s.view3d
+        ? 'Drag up to zoom in, down to zoom out. Shift+Z fits the plan.'
+        : 'Drag a window to zoom to it, or click to zoom in. Shift+drag zooms in and out; ZP goes back to the last view.';
     case 'orbit':
       return s.split && !s.view3d
         ? 'Orbit works on the 3D side: move the pointer over it and drag to turn around the building.'
@@ -1027,6 +1054,8 @@ export function toolHint(s: PlannerState): string {
         : 'Click to start a wall (or drag to draw one). Walls snap to ends, midpoints and the grid.';
     case 'curve':
       return curveHint(s);
+    case 'dimension':
+      return dimHint(s);
     case 'rectangle':
       return d?.type === 'rectangle'
         ? `Click the opposite corner, or type width, depth (e.g. 12',10') and press Enter.`

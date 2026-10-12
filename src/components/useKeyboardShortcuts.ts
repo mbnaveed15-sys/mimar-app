@@ -15,7 +15,7 @@ import {
   toggleHeightLock,
 } from '../tools/controller';
 import { flipOpeningHand } from '../tools/openingTool';
-import { aliasStep, ALIAS_GAP_MS } from '../lib/aliases';
+import { aliasStep, ALIAS_GAP_MS, type Alias } from '../lib/aliases';
 import { finishStep } from '../tools/finish';
 import { armCopyNext } from '../tools/controller';
 import type { Tool } from '../types';
@@ -23,6 +23,21 @@ import type { Tool } from '../types';
 // AutoCAD aliases typed as quick letter sequences, and the last tool for Enter to go back to.
 let aliasBuffer = '';
 let aliasAt = 0;
+/** The tool in use when an alias's first letter was typed: ZP goes back to it. */
+let aliasFrom: Tool = 'select';
+
+/** Do what an alias says: pick its tool, or run its command and go back to the tool before. */
+function applyAlias(alias: Alias, commands: Command[]) {
+  const s = plannerStore.getState();
+  const back = aliasFrom;
+  if (alias.command) {
+    if (s.tool !== back) s.setTool(back);
+    commands.find((c) => c.id === alias.command)?.run();
+    return;
+  }
+  s.setTool(alias.tool);
+  armCopyNext(!!alias.copy);
+}
 let lastTool: Tool | null = null;
 plannerStore.subscribe((state, prev) => {
   if (state.tool !== prev.tool && prev.tool !== 'select') lastTool = prev.tool;
@@ -181,17 +196,27 @@ export function useKeyboardShortcuts(commands: Command[]) {
       // AutoCAD aliases: CO, TR, EX… typed quickly pick that tool (the first letter picked its own).
       if (!mod && !e.shiftKey && /^[a-z]$/i.test(e.key)) {
         const now = performance.now();
-        const step = aliasStep(now - aliasAt < ALIAS_GAP_MS ? aliasBuffer : '', e.key);
+        const fresh = !(now - aliasAt < ALIAS_GAP_MS) || !aliasBuffer;
+        // The tool in use before the alias's first letter (which picks its own tool) was typed.
+        if (fresh) aliasFrom = s.tool;
+        const step = aliasStep(fresh ? '' : aliasBuffer, e.key);
         aliasBuffer = step.buffer;
         aliasAt = now;
         if (step.hit === 'wait') {
           e.preventDefault();
+          const { pending } = step;
+          // DI on its own is the tape measure, unless an M follows (DIM).
+          if (pending)
+            setTimeout(() => {
+              if (aliasBuffer !== step.buffer || performance.now() - aliasAt < ALIAS_GAP_MS - 50) return;
+              aliasBuffer = '';
+              applyAlias(pending, commands);
+            }, ALIAS_GAP_MS);
           return;
         }
         if (step.hit) {
           e.preventDefault();
-          s.setTool(step.hit.tool);
-          armCopyNext(!!step.hit.copy);
+          applyAlias(step.hit, commands);
           return;
         }
       }

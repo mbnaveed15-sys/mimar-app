@@ -1,5 +1,5 @@
 import { CURVE_MODES } from '../lib/curves';
-import { plannerStore, usePlanner } from '../store/plannerStore';
+import { plannerStore, usePlanner, type DimMode } from '../store/plannerStore';
 import { LengthField } from './LengthField';
 
 const box = 'flex flex-col gap-1.5 rounded-md border border-line bg-raised p-2 text-xs';
@@ -106,6 +106,62 @@ export function RectCornerPicker() {
           onCommit={(mm) => setSite({ rectRadiusMm: mm })}
         />
       )}
+    </div>
+  );
+}
+
+const DIM_MODES: { id: DimMode; label: string; note: string }[] = [
+  { id: 'linear', label: 'Horizontal / vertical', note: 'Up or down for horizontal, sideways for vertical.' },
+  { id: 'aligned', label: 'Aligned', note: 'Along the two points, at any angle.' },
+  { id: 'radius', label: 'Radius', note: 'Click a curved wall or curved layout line.' },
+];
+
+/** The Dimension tool's options: how it measures, and whether dimensions carry on in a chain. */
+export function DimensionPicker() {
+  const mode = usePlanner((s) => s.site.dimMode);
+  const chain = usePlanner((s) => s.site.dimChain);
+  const setSite = usePlanner((s) => s.setSite);
+  const drop = () => {
+    const s = plannerStore.getState();
+    if (s.draft?.type === 'dimension') s.setDraft(null);
+  };
+  return (
+    <div className={box} data-testid="dimension-options">
+      <div className="font-medium">Measure</div>
+      <div className="flex flex-col gap-1">
+        {DIM_MODES.map((m) => (
+          <button
+            key={m.id}
+            className="m-btn px-2 py-0.5 text-left"
+            aria-pressed={mode === m.id}
+            title={m.note}
+            onClick={() => {
+              if (m.id !== mode) drop();
+              setSite({ dimMode: m.id });
+            }}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <div className="text-muted">{DIM_MODES.find((m) => m.id === mode)?.note}</div>
+      {mode !== 'radius' && (
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={chain}
+            onChange={(e) => {
+              drop();
+              setSite({ dimChain: e.currentTarget.checked });
+            }}
+          />
+          Chain: each click carries on from the last dimension
+        </label>
+      )}
+      <div className="text-muted">
+        Dimensions drawn on walls, corners and items follow them as the plan changes. They print in the PDF and go into
+        the DXF.
+      </div>
     </div>
   );
 }

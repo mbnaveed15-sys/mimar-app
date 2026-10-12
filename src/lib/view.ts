@@ -29,16 +29,21 @@ export function zoomAt(view: View, screen: Point, factor: number): View {
   return { zoom, x: anchor.x - screen.x / zoom, y: anchor.y - screen.y / zoom };
 }
 
+/** How many earlier views Zoom previous can go back through. */
+export const VIEW_HISTORY = 20;
+/** View changes closer together than this (ms) are one step for Zoom previous (a wheel spin, a drag). */
+export const VIEW_STEP_MS = 500;
+
 /** Move the view by a distance in screen pixels (drag direction). */
 export function panBy(view: View, dxScreen: number, dyScreen: number): View {
   return { ...view, x: view.x - dxScreen / view.zoom, y: view.y - dyScreen / view.zoom };
 }
 
-/** View that shows the bounds centred with a margin (in screen pixels). */
-export function fitView(bounds: Bounds, size: Size, margin = 40): View {
+/** View that shows the bounds centred with a margin (in screen pixels), zoomed in no further than `most`. */
+export function fitView(bounds: Bounds, size: Size, margin = 40, most = 4): View {
   const w = Math.max(bounds.maxX - bounds.minX, 1);
   const h = Math.max(bounds.maxY - bounds.minY, 1);
-  const zoom = clampZoom(Math.min((size.width - 2 * margin) / w, (size.height - 2 * margin) / h, 4));
+  const zoom = clampZoom(Math.min((size.width - 2 * margin) / w, (size.height - 2 * margin) / h, most));
   const cx = (bounds.minX + bounds.maxX) / 2;
   const cy = (bounds.minY + bounds.maxY) / 2;
   return { zoom, x: cx - size.width / zoom / 2, y: cy - size.height / zoom / 2 };

@@ -33,6 +33,8 @@ import {
   type Wall as WallItem,
 } from '../types';
 import { newId } from './ids';
+import { mapDimension } from './dimLine';
+import { remapTies } from './dimensions';
 
 const EPS = 1e-6;
 const TAU = Math.PI * 2;
@@ -530,6 +532,13 @@ export function mirrorItems(
       mirrored.set(el.id, { ...mapOutline(el, (p) => reflect(p, a, b), true), ...fresh, id });
     } else if (el.type === 'level') {
       mirrored.set(el.id, { ...el, ...fresh, id, ...reflect(el, a, b) });
+    } else if (el.type === 'dimension') {
+      const out = mapDimension(
+        el,
+        (p) => reflect(p, a, b),
+        (deg) => 2 * lineDeg - deg,
+      );
+      mirrored.set(el.id, remapTies({ ...out, ...fresh, id }, idMap));
     } else if (el.type === 'stair' && (el.shape === 'curved' || el.shape === 'spiral')) {
       // A curved stair turns the other way: its own frame turned half round and flipped across.
       const p = reflect(el, a, b);
@@ -668,6 +677,7 @@ export function scaleItems(doc: PlanDoc, ids: Id[], base: Point, factor: number)
         sc,
       );
     if (hasPoints(el)) return mapOutline(el, sc);
+    if (el.type === 'dimension') return mapDimension(el, sc);
     const p = sc(el);
     // Furniture scales; columns and stairs keep their (structural) size.
     return el.type === 'furniture'
@@ -725,6 +735,7 @@ export function stretchItems(
       return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, ...bow };
     }
     if (hasPoints(el)) return mapOutline(el, move);
+    if (el.type === 'dimension') return mapDimension(el, move);
     return el;
   });
   return {

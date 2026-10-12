@@ -457,6 +457,17 @@ export function buildCommands(ctx: CommandContext): Command[] {
       keys: ['Shift+Z', '0'],
       run: () => (st().view3d && getViewControls() ? getViewControls()!.extents() : st().fitToPlan()),
     },
+    {
+      id: 'view.zoomPrevious',
+      label: 'Zoom previous',
+      menu: 'view',
+      group: 1,
+      aliases: ['ZP', 'back'],
+      run: () => {
+        if (!st().zoomPrevious()) st().setWarning('There is no earlier view to go back to.');
+      },
+      enabled: (s) => !s.view3d || s.split,
+    },
     ...(
       [
         ['top', 'Top view'],
@@ -598,7 +609,11 @@ export function buildCommands(ctx: CommandContext): Command[] {
       toolCommand(
         t,
         'tools',
-        ['select', 'pan', 'zoom', 'orbit'].includes(t) ? 0 : ['move', 'rotate', 'tape'].includes(t) ? 1 : 2,
+        ['select', 'pan', 'zoom', 'orbit'].includes(t)
+          ? 0
+          : ['move', 'rotate', 'tape', 'dimension'].includes(t)
+            ? 1
+            : 2,
       ),
     ),
 

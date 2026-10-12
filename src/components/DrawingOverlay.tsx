@@ -9,6 +9,9 @@ import { draftOutline } from '../lib/shapes';
 import type { Draft, Point, Units } from '../types';
 import { OpeningShape } from './shapes/OpeningShape';
 import { curvePreview } from '../tools/curveTool';
+import { draftDimension } from '../tools/dimensionTool';
+import type { DimMode } from '../store/plannerStore';
+import { DimensionShape } from './shapes/DimensionShape';
 
 /** An outline with its first point repeated at the end, when it should be drawn closed. */
 const closedShape = (points: Point[], closed: boolean) => (closed && points.length ? [...points, points[0]] : points);
@@ -22,6 +25,8 @@ interface Props {
   units: Units;
   /** Plan units per screen pixel. */
   k: number;
+  /** How the Dimension tool measures. */
+  dimMode?: DimMode;
 }
 
 const SNAP_COLORS: Partial<Record<Inference['kind'], string>> = {
@@ -127,7 +132,7 @@ function CurveDraft({
 }
 
 /** Rubber bands, previews and the snap marker for the drawing tools. */
-export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverEdge }: Props) {
+export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverEdge, dimMode }: Props) {
   const dash = `${6 * k} ${4 * k}`;
   const len = (a: Point, b: Point) => formatLength(Math.hypot(b.x - a.x, b.y - a.y) * MM_PER_UNIT, units);
   const band = bandColor(inference, axisLock);
@@ -278,6 +283,22 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
           strokeLinecap="round"
         />
       )}
+
+      {d?.type === 'zoomBox' && (
+        <rect
+          data-testid="zoom-box"
+          x={Math.min(d.x1, d.x2)}
+          y={Math.min(d.y1, d.y2)}
+          width={Math.abs(d.x2 - d.x1)}
+          height={Math.abs(d.y2 - d.y1)}
+          style={{ fill: PLAN.selection, stroke: PLAN.selection }}
+          fillOpacity={0.05}
+          strokeWidth={1.25 * k}
+          strokeDasharray={`${3 * k} ${3 * k}`}
+        />
+      )}
+
+      {d?.type === 'dimension' && <DimensionDraft d={d} mode={dimMode ?? 'linear'} units={units} k={k} />}
 
       {d?.type === 'section' && (
         <SectionShape
@@ -561,6 +582,41 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
           </Label>
         </g>
       )}
+    </g>
+  );
+}
+
+/** A dimension being placed: its points so far, and the dimension it would make. */
+function DimensionDraft({
+  d,
+  mode,
+  units,
+  k,
+}: {
+  d: Extract<Draft, { type: 'dimension' }>;
+  mode: DimMode;
+  units: Units;
+  k: number;
+}) {
+  const dim = draftDimension(mode, d, d.cursor);
+  const last = d.points[d.points.length - 1];
+  return (
+    <g data-testid="dimension-draft-group">
+      {d.points.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r={3 * k} style={{ fill: PLAN.draft }} />
+      ))}
+      {!dim && d.points.length === 1 && (
+        <line
+          x1={last.x}
+          y1={last.y}
+          x2={d.cursor.x}
+          y2={d.cursor.y}
+          style={{ stroke: PLAN.draft }}
+          strokeWidth={k}
+          strokeDasharray={`${4 * k} ${3 * k}`}
+        />
+      )}
+      {dim && <DimensionShape dim={dim} units={units} selected={false} k={k} ghost />}
     </g>
   );
 }

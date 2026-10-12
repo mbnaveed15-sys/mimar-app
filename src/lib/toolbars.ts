@@ -7,7 +7,7 @@ export const TOOLBARS = [
   { id: 'structure', label: 'Structure', tools: ['column', 'beam', 'slab', 'roof', 'plot', 'stairs', 'section'] },
   { id: 'ground', label: 'Ground', tools: ['level', 'contour', 'pad'] },
   { id: 'shapes', label: 'Shape & Push/Pull', tools: ['shape', 'pushpull'] },
-  { id: 'change', label: 'Move, rotate & measure', tools: ['move', 'rotate', 'tape'] },
+  { id: 'change', label: 'Move, rotate & measure', tools: ['move', 'rotate', 'tape', 'dimension'] },
   { id: 'finish', label: 'Paint & erase', tools: ['paint', 'erase'] },
   { id: 'pro', label: 'Brush & mask', tools: ['brush', 'mask'] },
   {

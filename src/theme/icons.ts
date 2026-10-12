@@ -23,6 +23,10 @@ export const ICONS = {
   move: "<path d='M12 3v18M3 12h18'/><path d='m9 5.5 3-2.5 3 2.5M9 18.5l3 2.5 3-2.5M5.5 9 3 12l2.5 3M18.5 9l2.5 3-2.5 3'/>",
   rotate: "<path d='M19.5 13a7.5 7.5 0 1 1-2.2-6.3'/><path d='M19.8 4v4.4h-4.4'/>",
   zoom: "<circle cx='10.5' cy='10.5' r='6.5'/><path d='m15.3 15.3 5.2 5.2M10.5 7.8v5.4M7.8 10.5h5.4'/>",
+  dimension:
+    "<path d='M3 6v9M21 6v9M3 11h18'/><path d='m6 9.5-1.5 3M19.5 9.5 18 12.5'/><path d='M9 17.5h6' stroke-width='1.5'/>",
+  'zoom-previous':
+    "<circle cx='12.5' cy='10.5' r='6.5'/><path d='m17.3 15.3 4.2 4.2'/><path d='M10 8 7.5 10.5 10 13M7.7 10.5h7.3'/>",
   'zoom-extents':
     "<path d='M3.5 8.5v-5h5M20.5 8.5v-5h-5M3.5 15.5v5h5M20.5 15.5v5h-5'/><rect x='8.5' y='8.5' width='7' height='7' rx='0.5'/>",
   orbit:

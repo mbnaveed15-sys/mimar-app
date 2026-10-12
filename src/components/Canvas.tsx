@@ -87,6 +87,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const warnings = usePlanner((s) => s.warnings);
   const gapEnds = usePlanner((s) => s.gapEnds);
   const hoverEdge = usePlanner((s) => s.hoverEdge);
+  const dimMode = usePlanner((s) => s.site.dimMode);
   const selectedIds = usePlanner((s) => s.selectedIds);
   const openGroupId = usePlanner((s) => s.openGroupId);
   const gridPx = usePlanner((s) => s.gridPx);
@@ -375,6 +376,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         units={units}
         k={k}
         hoverEdge={hoverEdge}
+        dimMode={dimMode}
       />
       <CameraEyeMark k={k} />
     </svg>

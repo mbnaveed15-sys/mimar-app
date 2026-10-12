@@ -16,7 +16,7 @@ import { LayersPanel } from './LayersPanel';
 import { MaterialsPanel } from './MaterialsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { SiteOptions, WallKindPicker, WallShapePicker } from './SiteOptions';
-import { CurvePicker, RectCornerPicker } from './CurveOptions';
+import { CurvePicker, DimensionPicker, RectCornerPicker } from './CurveOptions';
 import { PlanCheckPanel } from './PlanCheckPanel';
 import { ShapeOptions } from './ShapeOptions';
 import { RoofToolOptions } from './RoofOptions';
@@ -164,6 +164,7 @@ function ToolOptions() {
       </>
     );
   if (tool === 'curve') return <CurveToolOptions />;
+  if (tool === 'dimension') return <DimensionPicker />;
   if (tool === 'plot' || tool === 'stairs' || tool === 'door' || tool === 'window') return <SiteOptions />;
   if (tool === 'furniture') return <FurnitureLibrary />;
   if (tool === 'column' || tool === 'beam' || tool === 'slab') return <StructureOptions />;

@@ -6,6 +6,8 @@ export function ViewControls() {
   const zoom = usePlanner((s) => s.view.zoom);
   const zoomBy = usePlanner((s) => s.zoomBy);
   const fitToPlan = usePlanner((s) => s.fitToPlan);
+  const canGoBack = usePlanner((s) => s.viewBack.length > 0);
+  const zoomPrevious = usePlanner((s) => s.zoomPrevious);
   const btn = 'grid h-8 w-8 place-items-center hover:bg-sunken';
 
   return (
@@ -21,6 +23,15 @@ export function ViewControls() {
       </button>
       <button onClick={fitToPlan} className={btn} title="Fit plan to screen (0)" aria-label="Fit plan to screen">
         <Icon name="zoom-extents" size={18} />
+      </button>
+      <button
+        onClick={() => zoomPrevious()}
+        disabled={!canGoBack}
+        className={`${btn} disabled:opacity-40`}
+        title="Zoom previous: back to the last view (ZP)"
+        aria-label="Zoom previous"
+      >
+        <Icon name="zoom-previous" size={18} />
       </button>
     </div>
   );
