@@ -109,7 +109,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
           case 'door':
           case 'window': {
             const host = wallById.get(el.wallId);
-            // A window round a curve covers just the wall; one flat across it, the curve's rise too.
+            // An opening round a curve covers just the wall; one flat across it, the curve's rise too.
             const bend = openingBend(el, host);
             return (
               <OpeningShape

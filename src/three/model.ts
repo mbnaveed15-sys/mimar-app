@@ -2,7 +2,7 @@ import { SHAPES } from '../furniture/shapes';
 import { centroid, fromFurnitureLocal, wallLength, wallParam } from '../geometry';
 import { patternSpanMm } from '../lib/patterns';
 import { MM_PER_UNIT } from '../lib/scale';
-import { doorKindOf } from '../lib/openingKinds';
+import { doorKindOf, SWING_KINDS } from '../lib/openingKinds';
 import { openingProfileMm } from '../lib/shapes';
 import { buildableArea, stairLayout } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
@@ -25,7 +25,7 @@ import {
   type Wall,
 } from '../types';
 import { isBuildingWall, thicknessOf, wallExtensions, wallsOf } from '../walls';
-import { paramAlong, pointAlong, straightPieces } from '../lib/arc';
+import { bendPath, openingBend, paramAlong, pointAlong, straightPieces, type Bend } from '../lib/arc';
 import { FRAME_MM, isCurtain, metricProject, mullionStops, transomMm } from '../lib/curtain';
 import { eaveMm, gableWalls, GABLE_WALL_MM, slopedFaces, thicknessUpMm, triangulate } from '../lib/roof/roof';
 import { groundBeside, lowestAlong, lowestUnder, siteOf, stepOnGround, type TerrainMesh } from './terrain3d';
@@ -516,27 +516,14 @@ function wallParts(
  * folding door part open, a closed rolling shutter with its box above, or nothing for a doorway.
  * `thicknessM` is the host wall's thickness.
  */
-function doorLeaves(door: Opening, heightMm: number, thicknessM = 0.23): Solid[] {
+function doorLeaves(door: Opening, heightMm: number, thicknessM = 0.23, bend: Bend | null = null): Solid[] {
   const sy = door.flipSide ? -1 : 1;
   const hx = door.flipHinge ? -1 : 1;
   const kind = doorKindOf(door);
   const head = Math.min(mmToM(DOOR_HEAD_MM), mmToM(heightMm));
-  const rotY = (-door.angle * Math.PI) / 180;
   /** A thin panel from a to b in the door's own frame (plan units: x along the wall, y across). */
-  const panel = (a: Point, b: Point, color = DOOR_COLOR, y0 = 0, h = head - 0.01, d = 0.04): Solid => {
-    const [pa, pb] = [a, b].map((p) => ({ x: p.x * hx, y: p.y * sy }));
-    const turn = Math.atan2(pb.y - pa.y, pb.x - pa.x);
-    return {
-      ...toScene(door, door.angle, { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }),
-      y0,
-      h,
-      w: Math.max(0.01, m(Math.hypot(pb.x - pa.x, pb.y - pa.y))),
-      d,
-      rotY: rotY - turn,
-      color,
-      role: 'door',
-    };
-  };
+  const panel = (a: Point, b: Point, color = DOOR_COLOR, y0 = 0, h = head - 0.01, d = 0.04): Solid[] =>
+    doorPanel(door, bend, [a, b].map((p) => ({ x: p.x * hx, y: p.y * sy })) as [Point, Point], { y0, h, d, color });
   const w = door.width;
   const half = w / 2;
   const t = thicknessM / M_PER_UNIT_LOCAL / 2;
@@ -545,21 +532,21 @@ function doorLeaves(door: Opening, heightMm: number, thicknessM = 0.23): Solid[]
       return [];
     case 'sliding':
       return [
-        panel({ x: -half, y: -t / 3 }, { x: w / 10, y: -t / 3 }),
-        panel({ x: -w / 10, y: t / 3 }, { x: half, y: t / 3 }),
+        ...panel({ x: -half, y: -t / 3 }, { x: w / 10, y: -t / 3 }),
+        ...panel({ x: -w / 10, y: t / 3 }, { x: half, y: t / 3 }),
       ];
     case 'folding': {
       const n = w > 120 ? 4 : 2;
       const depth = (w / n) * 0.6;
       const pts = Array.from({ length: n + 1 }, (_, i) => ({ x: -half + (i * w) / n, y: i % 2 ? -depth : 0 }));
-      return pts.slice(1).map((p, i) => panel(pts[i], p));
+      return pts.slice(1).flatMap((p, i) => panel(pts[i], p));
     }
     case 'shutter': {
       // Closed, on the inside face, with the roll's box above the opening.
       const box = Math.min(0.35, Math.max(0.1, mmToM(heightMm) - head));
       return [
-        panel({ x: -half, y: -t + 1 }, { x: half, y: -t + 1 }, SHUTTER_COLOR, 0, head, 0.03),
-        panel({ x: -half, y: -t - 12 }, { x: half, y: -t - 12 }, SHUTTER_COLOR, head - box, box, 0.25),
+        ...panel({ x: -half, y: -t + 1 }, { x: half, y: -t + 1 }, SHUTTER_COLOR, 0, head, 0.03),
+        ...panel({ x: -half, y: -t - 12 }, { x: half, y: -t - 12 }, SHUTTER_COLOR, head - box, box, 0.25),
       ];
     }
   }
@@ -579,26 +566,61 @@ function doorLeaves(door: Opening, heightMm: number, thicknessM = 0.23): Solid[]
   return [doorLeaf(door, heightMm)];
 }
 
+/**
+ * A thin upright panel of a door from a to b in the door's own frame (plan units, flips applied),
+ * bent round its curved wall in short flat strips when `bend` is given.
+ */
+function doorPanel(
+  door: Opening,
+  bend: Bend | null,
+  [a, b]: [Point, Point],
+  { y0, h, d, color }: { y0: number; h: number; d: number; color: string },
+): Solid[] {
+  const rotY = (-door.angle * Math.PI) / 180;
+  const strip = (pa: Point, pb: Point): Solid => ({
+    ...toScene(door, door.angle, { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }),
+    y0,
+    h,
+    w: Math.max(0.01, m(Math.hypot(pb.x - pa.x, pb.y - pa.y))),
+    d,
+    rotY: rotY - Math.atan2(pb.y - pa.y, pb.x - pa.x),
+    color,
+    role: 'door',
+  });
+  if (!bend) return [strip(a, b)];
+  const pts = bendPath(
+    bend,
+    [
+      [a.x, a.y],
+      [b.x, b.y],
+    ],
+    Math.max(1, door.width / 12),
+  );
+  return pts.slice(1).map((p, i) => strip(pts[i], p));
+}
+
 /** A door shut in its opening: a leaf (or two, with a small gap between) across it, as drawn in elevation. */
-function closedDoor(door: Opening, heightMm: number): Solid[] {
+function closedDoor(door: Opening, heightMm: number, bend: Bend | null = null): Solid[] {
   const kind = doorKindOf(door);
   if (kind === 'opening') return [];
   const head = Math.min(mmToM(DOOR_HEAD_MM), mmToM(heightMm)) - 0.01;
-  const rotY = (-door.angle * Math.PI) / 180;
-  const leaf = (a: number, b: number): Solid => ({
-    ...toScene(door, door.angle, { x: (a + b) / 2, y: 0 }),
-    y0: 0,
-    h: head,
-    w: m(b - a),
-    d: 0.04,
-    rotY,
-    color: kind === 'shutter' ? SHUTTER_COLOR : DOOR_COLOR,
-    role: 'door',
-  });
+  // A swinging leaf stays flat on a curved wall; sliding, folding and shutter doors follow the curve.
+  const curve = SWING_KINDS.has(kind) ? null : bend;
+  const color = kind === 'shutter' ? SHUTTER_COLOR : DOOR_COLOR;
+  const leaf = (x0: number, x1: number): Solid[] =>
+    doorPanel(
+      door,
+      curve,
+      [
+        { x: x0, y: 0 },
+        { x: x1, y: 0 },
+      ],
+      { y0: 0, h: head, d: 0.04, color },
+    );
   const half = door.width / 2;
   const gap = 0.3; // plan units (3 mm)
   const pair = kind === 'double' || kind === 'sliding' || kind === 'folding' || door.gate;
-  return pair ? [leaf(-half, -gap), leaf(gap, half)] : [leaf(-half, half)];
+  return pair ? [...leaf(-half, -gap), ...leaf(gap, half)] : leaf(-half, half);
 }
 
 function doorLeaf(door: Opening, heightMm: number): Solid {
@@ -1113,8 +1135,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       if (door.type !== 'door' || !host) continue;
       const leaves = (
         options.closedDoors
-          ? closedDoor(door, host.heightMm ?? levelMm)
-          : doorLeaves(door, host.heightMm ?? levelMm, m(thicknessOf(host)))
+          ? closedDoor(door, host.heightMm ?? levelMm, openingBend(door, host))
+          : doorLeaves(door, host.heightMm ?? levelMm, m(thicknessOf(host)), openingBend(door, host))
       ).map(raise(host));
       const onGround = host.kind === 'boundary' && ground;
       // A gate in a wall on sloping ground rises with the ground at it.

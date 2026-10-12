@@ -430,7 +430,7 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
     const layer: Layer = o.type === 'door' ? 'A-DOOR' : 'A-GLAZ';
     const bend = openingBend(o, host);
     if (bend) {
-      // A window round a curved wall: its symbol bent to the curve (flips already in the points).
+      // A door or window round a curved wall: its symbol bent to the curve (flips already in the points).
       const flat = (p: Point): Point => ({
         x: o.x + p.x * Math.cos(a) - p.y * Math.sin(a),
         y: o.y + p.x * Math.sin(a) + p.y * Math.cos(a),

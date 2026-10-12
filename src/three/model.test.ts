@@ -34,6 +34,27 @@ describe('3D model', () => {
     expect(leaf.z).toBeCloseTo(-0.45); // swung open to the same side as in 2D
   });
 
+  it('follows a curved wall with a sliding door’s panels; a swing door’s leaf stays one flat panel', () => {
+    // A wall bowing 3 m off its 10 m chord, and a door at its middle (its ends on the curve).
+    const arc: PlanElement = { ...wall, bow: 300 } as PlanElement;
+    const r = (500 * 500 + 300 * 300) / (2 * 300);
+    const centre = { x: 500, y: 300 - r }; // it bows to +y (its left)
+    const half = 90;
+    const end = Math.sqrt(r * r - half * half);
+    const door: PlanElement = { id: 'd', type: 'door', wallId: 'w', x: 500, y: centre.y + end, angle: 0, width: 180 };
+    const leaves = (el: PlanElement) => buildModel(docWith(arc, el), opts).solids.filter((s) => s.role === 'door');
+    expect(leaves(door)).toHaveLength(1);
+    const sliding = leaves({ ...door, doorKind: 'sliding' } as PlanElement);
+    expect(sliding.length).toBeGreaterThan(4);
+    // Every strip of the outer panel is the same distance from the curve's centre.
+    const radii = sliding.map((s) => Math.hypot(s.x - centre.x * M_PER_UNIT, s.z - centre.y * M_PER_UNIT));
+    const outer = radii.filter((x) => x > r * M_PER_UNIT);
+    expect(Math.max(...outer) - Math.min(...outer)).toBeLessThan(0.02);
+    // The lintel over it is in short pieces round the curve, too.
+    const lintels = buildModel(docWith(arc, door), opts).solids.filter((s) => s.role === 'wall' && s.y0 > 2);
+    expect(lintels.length).toBeGreaterThan(1);
+  });
+
   it('puts windows between the sill and the head, with glass', () => {
     const win: PlanElement = { id: 'n', type: 'window', wallId: 'w', x: 500, y: 0, angle: 0, width: 120 };
     const { solids } = buildModel(docWith(wall, win), opts);
