@@ -486,7 +486,7 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
 
       {d?.type === 'opening' && d.ghost && (
         <g data-testid="opening-ghost" opacity={0.8}>
-          <OpeningShape opening={d.ghost} selected wallThickness={d.thickness ?? 0} ghost />
+          <OpeningShape opening={d.ghost} selected wallThickness={d.thickness ?? 0} bend={d.bend} ghost />
           {(d.dims ?? []).map(([a, b], i) => {
             // The clear distance from the corner to the edge, beside the wall on the pointer's side.
             const side = d.side ?? { x: 0, y: 1 };

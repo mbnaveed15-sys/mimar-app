@@ -14,7 +14,9 @@ import { placeOnWallPiece } from './openingPlace';
 import type { Opening, PlanDoc, Wall } from '../types';
 import {
   arcOf,
+  bendPoint,
   bowForRadius,
+  openingBend,
   bowThrough,
   offsetWall,
   partOf,
@@ -116,6 +118,34 @@ describe('curved walls', () => {
       expect(pieces[i].end).toBeGreaterThan(0);
     }
     expect(pieces[0].start).toBeUndefined();
+  });
+
+  it('bends a window round the curve, in plan and as panes in 3D; doors stay flat', () => {
+    const at = placeOnArc(curve, { x: 500, y: -520 }, 200)!;
+    const win: Opening = { id: 'w', type: 'window', wallId: 'b', ...at };
+    const bend = openingBend(win, curve)!;
+    expect(bend.r).toBeCloseTo(500);
+    // In its own frame the ends stay put and the middle moves out onto the curve.
+    const a = (win.angle * Math.PI) / 180;
+    const world = (p: { x: number; y: number }) => ({
+      x: win.x + p.x * Math.cos(a) - p.y * Math.sin(a),
+      y: win.y + p.x * Math.sin(a) + p.y * Math.cos(a),
+    });
+    expect(bendPoint(bend, 100, 0).x).toBeCloseTo(100);
+    expect(bendPoint(bend, 100, 0).y).toBeCloseTo(0);
+    for (const x of [-100, -40, 0, 70]) expect(dist(world(bendPoint(bend, x, 0)), centre)).toBeCloseTo(500);
+    expect(dist(world(bendPoint(bend, 0, 10)), centre) - 500).toBeCloseTo(Math.abs(10));
+    expect(openingBend({ ...win, type: 'door' }, curve)).toBeNull();
+    expect(openingBend({ ...win, shape: 'circle' }, curve)).toBeNull();
+    expect(openingBend(win, flat)).toBeNull();
+    // In 3D: several short panes, end to end along the curve, each the window (so it picks as one).
+    const panes = straightPieces(curve, [win], 10).filter((p) => p.openings.length);
+    expect(panes.length).toBeGreaterThan(1);
+    expect(panes.every((p) => p.openings[0].id === 'w')).toBe(true);
+    for (const p of panes) {
+      const o = p.openings[0];
+      expect(o.width).toBeCloseTo(dist({ x: p.wall.x1, y: p.wall.y1 }, { x: p.wall.x2, y: p.wall.y2 }));
+    }
   });
 
   it('places doors along the curve like a straight wall, clear of the corners', () => {

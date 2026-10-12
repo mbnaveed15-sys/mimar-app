@@ -2,6 +2,7 @@
  * Plots of any shape: their sides (road, neighbour, back or open), each side's setback and wall, a
  * corner plot's cut corner (splay), and the building line set in from the sides. Pure.
  */
+import { bowThrough, pointAlong, runLength, wallPath, type WallLine } from './arc';
 import { MM_PER_UNIT } from './scale';
 import type { Plot, PlotSide, PlotSideKind, Point } from '../types';
 
@@ -194,6 +195,57 @@ export function roadCorner(plot: Plot, sides = plotSides(plot)): number | null {
   return null;
 }
 
+/** Side i as a line from its corner to the next, bowed when the side is curved (`PlotSide.bow`). */
+export function sideLine(plot: Plot, i: number): WallLine {
+  const n = plot.points.length;
+  const a = plot.points[i % n];
+  const b = plot.points[(i + 1) % n];
+  const bow = plot.sideList?.length === n ? plot.sideList[i % n]?.bow : undefined;
+  return { x1: a.x, y1: a.y, x2: b.x, y2: b.y, ...(bow ? { bow } : {}) };
+}
+
+/** The middle of side i (on its curve, when it is curved). */
+export const sideMiddle = (plot: Plot, i: number): Point => pointAlong(sideLine(plot, i), 0.5);
+
+/** Whether side i is curved. */
+export const isCurvedSide = (plot: Plot, i: number): boolean => Math.abs(sideLine(plot, i).bow ?? 0) > 0.05;
+
+/** Whether side i can be curved: not a side at the cut corner (that corner needs two straight sides). */
+export function canBendSide(plot: Plot, i: number): boolean {
+  const n = plot.points.length;
+  const corner = plot.splay && plot.splay.sizeMm > 0 ? roadCorner(plot) : null;
+  return corner === null || (i !== corner && i !== (corner - 1 + n) % n);
+}
+
+/** The plot with side i bowed by `bow` (straight when 0), its sides listed. */
+export function withSideBow(plot: Plot, i: number, bow: number): Plot {
+  const sideList = plotSides(plot).map((side, j) => {
+    if (j !== i) return side;
+    const next = { ...side };
+    if (Math.abs(bow) > 0.05) next.bow = bow;
+    else delete next.bow;
+    return next;
+  });
+  return { ...plot, sideList };
+}
+
+/**
+ * The plot with corner `index` moved to p: the two sides at it keep their curve, bowing out in
+ * proportion to their new length.
+ */
+export function withCorner(plot: Plot, index: number, p: Point): Plot {
+  const n = plot.points.length;
+  const points = plot.points.map((q, i) => (i === index ? p : q));
+  if (!plot.sideList?.some((side) => side.bow)) return { ...plot, points };
+  const chord = (pts: Point[], i: number) => Math.hypot(pts[(i + 1) % n].x - pts[i].x, pts[(i + 1) % n].y - pts[i].y);
+  const sideList = plot.sideList.map((side, i) => {
+    if (!side.bow || (i !== index && (i + 1) % n !== index)) return side;
+    const was = chord(plot.points, i);
+    return was ? { ...side, bow: (side.bow * chord(points, i)) / was } : side;
+  });
+  return { ...plot, points, sideList };
+}
+
 /** An edge of the outline the plot really has: `side` is the plot side it lies on, or 'splay' for the cut corner. */
 export interface OutlineEdge {
   a: Point;
@@ -208,9 +260,17 @@ export interface OutlineEdge {
 export function plotOutline(plot: Plot, sides = plotSides(plot)): OutlineEdge[] {
   const pts = plot.points;
   const n = pts.length;
-  const corner = plot.splay && plot.splay.sizeMm > 0 ? roadCorner(plot, sides) : null;
+  let corner = plot.splay && plot.splay.sizeMm > 0 ? roadCorner(plot, sides) : null;
+  // A corner is only cut between two straight sides.
+  if (corner !== null && (isCurvedSide(plot, corner) || isCurvedSide(plot, (corner - 1 + n) % n))) corner = null;
   const edges: OutlineEdge[] = [];
   for (let i = 0; i < n; i++) {
+    if (isCurvedSide(plot, i)) {
+      // A curved side is a row of short straight pieces along its arc.
+      const path = wallPath(sideLine(plot, i));
+      for (let j = 0; j + 1 < path.length; j++) edges.push({ a: path[j], b: path[j + 1], side: i });
+      continue;
+    }
     let a = pts[i];
     let b = pts[(i + 1) % n];
     const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
@@ -393,6 +453,8 @@ export interface SideWallLine {
   b: Point;
   thickness: number;
   heightMm: number;
+  /** A curved side's wall bows like the side (see `Wall.bow`). */
+  bow?: number;
 }
 
 /**
@@ -414,26 +476,51 @@ export function sideWallLines(plot: Plot, sides = plotSides(plot)): SideWallLine
   );
   const out: SideWallLine[] = [];
   const m = inset.points.length;
-  inset.edges.forEach((orig, j) => {
-    const spec = specs[orig];
-    if (!spec) return;
-    out.push({
-      side: edges[orig].side,
-      a: inset.points[j],
-      b: inset.points[(j + 1) % m],
-      thickness: spec.thicknessMm / MM_PER_UNIT,
-      heightMm: spec.heightMm,
-    });
-  });
+  // The pieces of a curved side come back as one curved wall: start where a run of pieces starts.
+  const sideAt = (j: number) => edges[inset.edges[((j % m) + m) % m]].side;
+  let start = 0;
+  while (start < m && m > 1 && sideAt(start) === sideAt(start - 1)) start++;
+  if (start === m) start = 0;
+  for (let k = 0; k < m;) {
+    const j = (start + k) % m;
+    const side = sideAt(j);
+    let run = 1;
+    while (k + run < m && sideAt(j + run) === side) run++;
+    k += run;
+    const spec = specs[inset.edges[j]];
+    if (!spec) continue;
+    const a = inset.points[j];
+    const b = inset.points[(j + run) % m];
+    const line: SideWallLine = { side, a, b, thickness: spec.thicknessMm / MM_PER_UNIT, heightMm: spec.heightMm };
+    if (run > 1) {
+      const bow = bowThrough({ x1: a.x, y1: a.y, x2: b.x, y2: b.y }, middleOf(inset.points, j, run));
+      if (Math.abs(bow) > 0.05) line.bow = bow;
+    }
+    out.push(line);
+  }
   return out;
+}
+
+/** The point halfway along `run` pieces of a closed outline, starting at corner j. */
+function middleOf(pts: Point[], j: number, run: number): Point {
+  const m = pts.length;
+  const at = (k: number) => pts[(j + k) % m];
+  let total = 0;
+  for (let k = 0; k < run; k++) total += Math.hypot(at(k + 1).x - at(k).x, at(k + 1).y - at(k).y);
+  let left = total / 2;
+  for (let k = 0; k < run; k++) {
+    const a = at(k);
+    const b = at(k + 1);
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len >= left && len > 0) return { x: a.x + ((b.x - a.x) * left) / len, y: a.y + ((b.y - a.y) * left) / len };
+    left -= len;
+  }
+  return at(run);
 }
 
 /** The main road's length (the frontage) in plan units, before any cut corner. */
 export function frontage(plot: Plot): number {
-  const n = plot.points.length;
-  const a = plot.points[plot.front % n];
-  const b = plot.points[(plot.front + 1) % n];
-  return Math.hypot(b.x - a.x, b.y - a.y);
+  return runLength(sideLine(plot, plot.front % plot.points.length));
 }
 
 /** Whether a plot has more than one road side. */

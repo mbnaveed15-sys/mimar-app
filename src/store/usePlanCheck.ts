@@ -2,6 +2,7 @@ import { planCheck, type PlanCheck } from '../lib/planCheck';
 import { planHints, type Hint } from '../lib/planHints';
 import type { PlanDoc, Units } from '../types';
 import { usePlanner } from './plannerStore';
+import { filterCheck, filterHints, type ChecksPrefs } from '../lib/checks';
 
 // One result shared by every part of the screen (the panel and the marks), worked out once per change.
 let lastCheck: { doc: PlanDoc; wallHeightMm: number; units: Units; result: PlanCheck | null } | null = null;
@@ -50,10 +51,30 @@ const settledDoc = (s: { batchBase: PlanDoc | null; doc: PlanDoc }) => s.batchBa
 
 /** The plan measured against the plot's bylaws, updating as you draw. */
 export function usePlanCheck() {
+  const checks = usePlanner((s) => s.checks);
+  return shownCheck(useFullCheck(), checks);
+}
+
+/** The whole plan check, whatever the Checks button says (the hints skip rooms it finds too small). */
+export function useFullCheck() {
   const doc = usePlanner(settledDoc);
   const wallHeightMm = usePlanner((s) => s.wallHeightMm);
   const units = usePlanner((s) => s.units);
   return checkFor(doc, wallHeightMm, units);
+}
+
+// Filtered results are kept too, so the same object comes back while nothing changes.
+let lastShown: { check: PlanCheck | null; checks: ChecksPrefs; result: PlanCheck | null } | null = null;
+function shownCheck(check: PlanCheck | null, checks: ChecksPrefs): PlanCheck | null {
+  if (lastShown?.check !== check || lastShown.checks !== checks)
+    lastShown = { check, checks, result: filterCheck(check, checks) };
+  return lastShown.result;
+}
+let lastShownHints: { hints: Hint[]; checks: ChecksPrefs; result: Hint[] } | null = null;
+function shownHints(hints: Hint[], checks: ChecksPrefs): Hint[] {
+  if (lastShownHints?.hints !== hints || lastShownHints.checks !== checks)
+    lastShownHints = { hints, checks, result: filterHints(hints, checks) };
+  return lastShownHints.result;
 }
 
 /** Plan hints (good-practice advice), or none when they are turned off. */
@@ -63,8 +84,9 @@ export function usePlanHints(): Hint[] {
   const show = usePlanner((s) => s.showHints);
   const gapMm = usePlanner((s) => s.openingGapMm);
   const accessible = usePlanner((s) => s.accessibleZones);
-  const check = usePlanCheck();
-  return show ? hintsFor(doc, units, check, gapMm, accessible) : NONE;
+  const checks = usePlanner((s) => s.checks);
+  const check = useFullCheck();
+  return show ? shownHints(hintsFor(doc, units, check, gapMm, accessible), checks) : NONE;
 }
 
 const NONE: Hint[] = [];

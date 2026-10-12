@@ -3,6 +3,7 @@
  * tool's settings (or from a door or window picked up or pasted), on the nearest wall, placed by
  * the rules in openingPlace (inside a piece of wall, clear of corners and other openings).
  */
+import { checkOn } from '../lib/checks';
 import { nearestWall, wallLength } from '../geometry';
 import { pointAlong } from '../lib/arc';
 import { DOOR_WIDTH_MM, WINDOW_SIZE_MM } from '../lib/openingKinds';
@@ -37,8 +38,10 @@ export function placeContext(s: PlannerState, noun: string, elements: PlanElemen
   return {
     walls: wallsOf(elements),
     openings: elements.filter((el): el is Opening => el.type === 'door' || el.type === 'window'),
-    gap: s.openingGapMm / MM_PER_UNIT,
-    grid: s.grid.snap ? s.gridPx : null,
+    // Door and window gap checks paused: they may go right up to a corner or another opening.
+    gap: checkOn(s.checks, 'openings') ? s.openingGapMm / MM_PER_UNIT : 0,
+    grid: s.grid.snap && s.snaps.on ? s.gridPx : null,
+    noSnap: !s.snaps.on || s.snaps.off.includes('openings'),
     tolerance: 8 * s.reach() * s.pxUnits(),
     ignoreId,
     fmt: (u) => formatLength(u * MM_PER_UNIT, s.units),

@@ -1,4 +1,5 @@
 import { findElementNear } from '../geometry';
+import { snapAllowed } from '../lib/checks';
 import { copyOpeningTo, loneOpenings, slideOpening } from '../store/openingAt';
 import { newId } from '../lib/ids';
 import { axisDirection, infer, type Inference, type Segment } from '../lib/inference';
@@ -149,15 +150,19 @@ export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreI
   const previewing = !!s.batchBase && ['stretch', 'scale', 'rotate', 'mirror'].includes(s.draft?.type ?? '');
   const ids = previewing ? new Set(shown.map((el) => el.id)) : null;
   const elements = previewing && ids ? s.batchBase!.elements.filter((el) => ids.has(el.id)) : shown;
+  const allow = snapAllowed(s.snaps, s.checks);
+  // Snapping off: the point stays where the pointer is (an axis lock still holds it to its line).
+  if (!s.snaps.on && !(from && lock)) return { point: raw, kind: 'free' };
   return infer(raw, {
     walls: wallsOf(elements),
     lines: elements.filter((el): el is SketchLine => el.type === 'line'),
-    guides: buildingGuides(s),
+    guides: allow('building-line') ? buildingGuides(s) : [],
     tolerance: 10 * s.reach() * s.pxUnits(),
     from,
-    grid: s.grid.snap ? s.gridPx : null,
+    grid: s.grid.snap && s.snaps.on ? s.gridPx : null,
     lock,
     ignoreIds,
+    allow,
   });
 }
 

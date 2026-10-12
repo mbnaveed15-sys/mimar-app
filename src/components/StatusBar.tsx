@@ -2,6 +2,7 @@ import { SNAP_LABELS } from '../lib/inference';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import { applyMeasure, MEASURE_TOOLS, measureReadout, toolHint } from '../tools/controller';
 import { Icon } from './Icon';
+import { ChecksChip, PointerReadout, SnapChip } from './StatusChips';
 
 const AXIS_NAMES = { x: 'Red axis locked', y: 'Green axis locked', z: 'Blue axis locked (up and down)' };
 
@@ -29,6 +30,7 @@ export function StatusBar() {
           {SNAP_LABELS[inference.kind]}
         </span>
       )}
+      <PointerReadout />
       <button
         className={`${chip} ${grid.show ? 'border-line-strong text-ink' : 'border-line text-muted'}`}
         aria-pressed={grid.show}
@@ -37,14 +39,8 @@ export function StatusBar() {
       >
         <Icon name="layers" size={12} /> Grid
       </button>
-      <button
-        className={`${chip} ${grid.snap ? 'border-line-strong text-ink' : 'border-line text-muted'}`}
-        aria-pressed={grid.snap}
-        title="Snap to grid points when nothing else is nearer"
-        onClick={() => state.setGrid({ snap: !grid.snap })}
-      >
-        <Icon name="snap" size={12} /> Snap
-      </button>
+      <SnapChip />
+      <ChecksChip />
       <label
         className={`flex h-6 items-center gap-2 rounded-sm border px-2 ${
           measuring ? 'border-line-strong bg-raised' : 'border-line opacity-60'

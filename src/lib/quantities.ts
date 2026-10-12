@@ -20,6 +20,7 @@ import { boxOf, cellFor, GridIndex } from './spatial';
 import { openingProfileMm } from './shapes';
 import { groundOf } from './terrain/ground';
 import { siteEarthworks } from './terrain/groundView';
+import { stairLayout } from './site';
 
 /** Cubic feet in a cubic metre. */
 const CFT_PER_M3 = 35.3147;
@@ -252,10 +253,18 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
           q.columnCft += plan * mmFt(el.heightMm ?? levelMm + slabMm(doc));
           break;
         }
-        case 'stair':
-          // A 6" waist slab along the slope plus the steps' own triangles, over the footprint.
-          q.stairCft += el.w * FT * el.h * FT * (0.5 * 1.15 + mmFt(el.riserMm || 150) / 2);
+        case 'stair': {
+          // A 6" waist slab along the slope plus the steps' own triangles, over the footprint (a
+          // curved or spiral stair's treads themselves).
+          const round = el.shape === 'curved' || el.shape === 'spiral';
+          const plan = round
+            ? stairLayout(el)
+                .parts.filter((p) => p.kind === 'tread' && p.points)
+                .reduce((sum, p) => sum + polygonArea(p.points!) * FT * FT, 0)
+            : el.w * FT * el.h * FT;
+          q.stairCft += plan * (0.5 * 1.15 + mmFt(el.riserMm || 150) / 2);
           break;
+        }
         case 'block':
           if (el.heightMm > 0) q.blockCft += areaSqft(el.points) * mmFt(el.heightMm);
           break;

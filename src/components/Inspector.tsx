@@ -1,7 +1,8 @@
 import { wallLength, withWallLength } from '../geometry';
 import { FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { sideName, USE_ZONES, zoneOf } from '../furniture/useZones';
-import { stairLayout } from '../lib/site';
+import { CURVED_INNER_MM, SPIRAL_HEADROOM_MM, spiralTurnRiseMm, STAIR_SHAPE_NAMES, stairLayout } from '../lib/site';
+import { TurnPicker } from './SiteOptions';
 import { WINDOW_SILL_MM } from '../three/model';
 import { levelWallMm, slabMm } from '../lib/levels';
 import { formatArea, formatLength, formatMarla } from '../lib/units';
@@ -15,7 +16,9 @@ import {
   levelOf,
   type DoorKind,
   type Opening,
+  type Pad,
   type PlanElement,
+  type Slab,
   type Stair,
   type Units,
   type Wall,
@@ -24,6 +27,7 @@ import {
 import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
 import { CURTAIN_MM, thicknessOf } from '../walls';
 import { bowForRadius, isArc, radiusOf } from '../lib/arc';
+import { curveOf, isCurved, withCurve } from '../lib/curvedEdges';
 import { levelAbove } from '../lib/voids';
 import { metricProject, mullionSpacingMm, TRANSOM_MM } from '../lib/curtain';
 import { useLevelDoc } from '../store/useLevelDoc';
@@ -62,6 +66,7 @@ const CONTEXT_ROAD_MM = 6000;
 /** What to call a selected item. */
 function itemName(el: PlanElement): string {
   if (el.type === 'furniture' && el.kind) return FURNITURE_CATALOG[el.kind].name;
+  if (el.type === 'block' && el.path) return 'path';
   if (el.type === 'block')
     return el.heightMm > 0 ? `block (${SHAPE_NAMES[el.shape]})` : `${SHAPE_NAMES[el.shape]} shape`;
   if (el.type === 'window' && el.flat)
@@ -133,7 +138,6 @@ export function Inspector() {
   const flipOpening = usePlanner((s) => s.flipOpening);
   const editOpenings = usePlanner((s) => s.editOpenings);
   const updateRoom = usePlanner((s) => s.updateRoom);
-  const mode = usePlanner((s) => s.mode);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
   const project = projectOf(doc);
   const house = project.type === 'house';
@@ -482,6 +486,7 @@ export function Inspector() {
                 </button>
               </div>
             )}
+            {(el.type === 'slab' || el.type === 'pad') && <CurvedEdges el={el} />}
             {el.type === 'block' && (
               <>
                 <LengthField
@@ -493,11 +498,13 @@ export function Inspector() {
                   onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 30000) })}
                 />
                 <div className="text-muted">
-                  {el.heightMm > 0
-                    ? 'Push/Pull (P) its top or sides in 3D to change its size.'
-                    : el.slabId
-                      ? 'A flat shape on a slab: pull it up into a block, or push it down through the slab for a void.'
-                      : 'A flat shape: pull it up with Push/Pull (P) in 3D, or give it a height here.'}
+                  {el.path
+                    ? 'Paving on the ground: the plan check leaves it out, so it can run through the setbacks.'
+                    : el.heightMm > 0
+                      ? 'Push/Pull (P) its top or sides in 3D to change its size.'
+                      : el.slabId
+                        ? 'A flat shape on a slab: pull it up into a block, or push it down through the slab for a void.'
+                        : 'A flat shape: pull it up with Push/Pull (P) in 3D, or give it a height here.'}
                 </div>
               </>
             )}
@@ -513,7 +520,7 @@ export function Inspector() {
             {el.type === 'stair' && (
               <>
                 <div className="flex flex-wrap gap-1">
-                  {(['straight', 'L', 'U', 'ramp'] as const).map((shape) => (
+                  {(['straight', 'L', 'U', 'curved', 'spiral', 'ramp'] as const).map((shape) => (
                     <button
                       key={shape}
                       className="m-btn px-2 py-0.5"
@@ -532,7 +539,7 @@ export function Inspector() {
                         })
                       }
                     >
-                      {shape === 'straight' ? 'Straight' : shape === 'ramp' ? 'Ramp' : `${shape}-shaped`}
+                      {STAIR_SHAPE_NAMES[shape]}
                     </button>
                   ))}
                 </div>
@@ -563,11 +570,32 @@ export function Inspector() {
                       onCommit={(mm) => restair(el, { treadMm: mm })}
                     />
                   )}
+                  {el.shape === 'curved' && (
+                    <LengthField
+                      id="stair-inner-edit"
+                      label="Inner radius"
+                      mm={el.innerMm ?? CURVED_INNER_MM}
+                      units={units}
+                      min={0}
+                      onCommit={(mm) => restair(el, { innerMm: Math.min(mm, 20000) })}
+                    />
+                  )}
                 </div>
+                {(el.shape === 'curved' || el.shape === 'spiral') && (
+                  <TurnPicker turn={el.turn} onPick={(turn) => restair(el, { turn })} />
+                )}
                 <div className="text-muted" data-testid="stair-risers">
                   {el.shape === 'ramp'
                     ? `Ramp 1 in 12, ${formatLength(el.h * MM_PER_UNIT, units)} long`
                     : `${stairLayout(el).risers} risers of ${formatLength(el.riserMm, units)}`}
+                  {el.shape === 'spiral' &&
+                    (() => {
+                      // Headroom: one full turn climbs this much, less the tread above's thickness.
+                      const turnMm = spiralTurnRiseMm(stairLayout(el));
+                      return turnMm !== null && turnMm < SPIRAL_HEADROOM_MM
+                        ? `. A full turn climbs only ${formatLength(turnMm, units)}: make it wider or the tread deeper for ${formatLength(SPIRAL_HEADROOM_MM, units)} of headroom.`
+                        : '';
+                    })()}
                 </div>
               </>
             )}
@@ -818,7 +846,7 @@ export function Inspector() {
             </div>
           </div>
         )}
-        <div className={mode === 'pro' && doc.masks.length ? 'pt-2' : 'hidden'}>
+        <div className={doc.masks.length ? 'pt-2' : 'hidden'}>
           <div className="m-heading">Masks</div>
           <ul className="mt-2 text-xs">
             {doc.masks.map((m) => (
@@ -851,6 +879,30 @@ function UseZoneNote({ kind, units }: { kind: FurnitureKind; units: Units }) {
         {accessible && USE_ZONES[kind]?.accessible ? 'Wheelchair space, ' : ''}
         {USE_ZONES[kind]?.source}.
       </span>
+    </div>
+  );
+}
+
+/** A slab's or levelled area's curved edges: how many, and a button to make them straight again. */
+function CurvedEdges({ el }: { el: Slab | Pad }) {
+  const curve = curveOf(el);
+  if (!curve || !isCurved(curve)) {
+    return <div className="text-muted">Drag the round grip in the middle of an edge to curve it.</div>;
+  }
+  const n = curve.mids.filter((m) => m).length;
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span data-testid="curved-edges">
+        {n} curved {n === 1 ? 'edge' : 'edges'}
+      </span>
+      <button
+        className="m-btn"
+        onClick={() =>
+          plannerStore.getState().updateElement(withCurve(el, { ...curve, mids: curve.mids.map(() => null) }))
+        }
+      >
+        Make edges straight
+      </button>
     </div>
   );
 }

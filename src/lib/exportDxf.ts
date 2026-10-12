@@ -1,15 +1,15 @@
 import { elementOutline, fromFurnitureLocal, planBounds, wallLength, wallParam } from '../geometry';
 import { formatPitch, roofShape } from './roof/roof';
-import { openingSymbol } from './openingKinds';
+import { bentSymbol, openingSymbol } from './openingKinds';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
 import type { MarlaSqFt, Opening, PlanDoc, Point, Room, Units, Wall } from '../types';
 import { placeWallDimension, thicknessOf, wallExtensions, wallPolygon, wallsOf } from '../walls';
-import { arcOf, directionAlong, isArc, paramAlong, pointAlong, wallPath } from './arc';
+import { arcOf, directionAlong, isArc, openingBend, paramAlong, pointAlong, wallPath } from './arc';
 import { isCurtain, metricProject, mullionStops } from './curtain';
 import { MM_PER_UNIT } from './scale';
-import { outlinePoints, plotSides, sideOutward } from './plot';
-import { buildableArea, stairLayout } from './site';
+import { outlinePoints, plotSides, sideMiddle, sideOutward } from './plot';
+import { buildableArea, partOutline, stairLayout } from './site';
 import { formatArea, formatLength, formatMarla } from './units';
 import { sectionLook } from './drawings/refs';
 import { formatLevel } from './drawings/levels';
@@ -366,11 +366,10 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       // ROAD beside each road side, 5' outside it.
       plotSides(el).forEach((side, i) => {
         if (side.kind !== 'road') return;
-        const a = el.points[i];
-        const b = el.points[(i + 1) % el.points.length];
+        const m = sideMiddle(el, i);
         const o = sideOutward(el, i);
         const off = 1524 / MM_PER_UNIT;
-        dxf.text('C-PROP', { x: (a.x + b.x) / 2 + o.x * off, y: (a.y + b.y) / 2 + o.y * off }, 'ROAD');
+        dxf.text('C-PROP', { x: m.x + o.x * off, y: m.y + o.y * off }, 'ROAD');
       });
     }
 
@@ -428,6 +427,18 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
     });
     const w = o.width;
     const layer: Layer = o.type === 'door' ? 'A-DOOR' : 'A-GLAZ';
+    const bend = openingBend(o, host);
+    if (bend) {
+      // A window round a curved wall: its symbol bent to the curve (flips already in the points).
+      const flat = (p: Point): Point => ({
+        x: o.x + p.x * Math.cos(a) - p.y * Math.sin(a),
+        y: o.y + p.x * Math.sin(a) + p.y * Math.cos(a),
+      });
+      const bent = bentSymbol(o, t, bend);
+      for (const [p, q] of bent.jambs) dxf.line(layer, flat(p), flat(q));
+      for (const path of bent.paths) dxf.poly(layer, path.points.map(flat), !!path.closed);
+      continue;
+    }
     for (const x of [-w / 2, w / 2]) dxf.line(layer, at(x, -t), at(x, t));
     // The same symbol as the plan: leaves, swings, sliding panels, frames and glass.
     for (const path of openingSymbol(o, t)) {
@@ -522,16 +533,7 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       case 'stair': {
         const layout = stairLayout(el);
         const world = (p: Point) => fromFurnitureLocal(el, p);
-        for (const part of layout.parts)
-          dxf.poly(
-            'A-FLOR-STRS',
-            [
-              { x: part.x, y: part.y },
-              { x: part.x + part.w, y: part.y },
-              { x: part.x + part.w, y: part.y + part.h },
-              { x: part.x, y: part.y + part.h },
-            ].map(world),
-          );
+        for (const part of layout.parts) if (!part.overhead) dxf.poly('A-FLOR-STRS', partOutline(part).map(world));
         dxf.poly('A-FLOR-STRS', layout.path.map(world), false);
         const start = world(layout.path[0]);
         dxf.text('A-FLOR-STRS', start, el.shape === 'ramp' ? 'RAMP 1:12' : 'UP', 0, TEXT_MM * 0.6);

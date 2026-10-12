@@ -31,8 +31,9 @@ import { DEFAULT_OPENING_GAP_MM, openingFits } from './openingPlace';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { sideName, toPlan, zoneOf, zoneRects, zoneSamples, type ZoneSide } from '../furniture/useZones';
 import { daylightRooms, projectOf, shows } from './project';
+import { buildingUseHints, type FloorInfo } from './buildingUse';
 
-export type HintKind = 'reach' | 'daylight' | 'size' | 'layout';
+export type HintKind = 'reach' | 'daylight' | 'size' | 'layout' | 'use';
 
 export interface Hint {
   id: string;
@@ -252,6 +253,7 @@ export function planHints(
   const mumtys = mumtyLevelIds(doc);
   const wallById = new Map(doc.elements.filter((el): el is Wall => el.type === 'wall').map((w) => [w.id, w] as const));
 
+  const floors: FloorInfo[] = [];
   doc.levels.forEach((level, index) => {
     const rooms = doc.rooms.filter((r) => !r.hidden && levelOf(r) === level.id);
     if (!rooms.length) return;
@@ -288,6 +290,7 @@ export function planHints(
       const b = nodeAt(q);
       if (a !== b) links.push({ door: o.id, a, b });
     }
+    floors.push({ level, index, rooms: indoor, links, on });
     const adjacent = new Map<Id, Id[]>();
     for (const l of links) {
       adjacent.set(l.a, [...(adjacent.get(l.a) ?? []), l.b]);
@@ -501,5 +504,7 @@ export function planHints(
       });
     }
   });
+  // Offices, schools, clinics, shops and mosques: exits, stairs, corridors, doors, toilets and access.
+  if (type === 'building') hints.push(...buildingUseHints(doc, projectOf(doc).use ?? 'other', floors, len));
   return hints;
 }

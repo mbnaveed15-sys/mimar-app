@@ -19,7 +19,7 @@ import {
   type DockArea,
   type ToolbarId,
 } from '../lib/toolbars';
-import { SIMPLE_TOOLS, type Tool } from '../types';
+import type { Tool } from '../types';
 import { Icon } from './Icon';
 import { useMenuKeys } from './useFocus';
 
@@ -48,13 +48,9 @@ const dragStore = createStore<{
 const AREA_NAMES: Record<DockArea, string> = { left: 'left', right: 'right', top: 'top', bottom: 'bottom' };
 const VERTICAL = (area: DockArea) => area === 'left' || area === 'right';
 
-/** The tools of a bar shown in this mode (Pro-only tools are left out in Simple mode). */
+/** The tools of a bar. */
 function useBarTools(): (id: ToolbarId) => Tool[] {
-  const mode = usePlanner((s) => s.mode);
-  return (id) => {
-    const bar = TOOLBARS.find((t) => t.id === id)!;
-    return (bar.tools as readonly Tool[]).filter((t) => mode === 'pro' || SIMPLE_TOOLS.includes(t));
-  };
+  return (id) => [...(TOOLBARS.find((t) => t.id === id)!.tools as readonly Tool[])];
 }
 
 function ToolButton({ tool }: { tool: Tool }) {

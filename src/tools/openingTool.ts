@@ -5,6 +5,7 @@
  * length places it that far from the nearer corner, V flips the hinge and Alt-click picks up the
  * settings of a door or window already drawn.
  */
+import { openingBend } from '../lib/arc';
 import { findElementNear } from '../geometry';
 import type { Measure } from '../lib/measure';
 import { MM_PER_UNIT } from '../lib/scale';
@@ -41,6 +42,7 @@ export function openingHover(store: Store, raw: Point) {
     cursor: raw,
     ghost: opening,
     thickness: thicknessOf(wall),
+    bend: openingBend(opening, wall),
     dims: openingDims(wall, placement),
     side: { x: n.x * towards, y: n.y * towards },
   });

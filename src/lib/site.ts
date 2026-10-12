@@ -62,7 +62,11 @@ export interface StairPart {
   topMm: number;
   /** For ramps: the low end's height, and which way it rises (-y means towards the top of the footprint). */
   bottomMm?: number;
-  kind: 'tread' | 'landing' | 'ramp';
+  kind: 'tread' | 'landing' | 'ramp' | 'pole';
+  /** A curved or spiral stair's wedge (or its pole), as an outline; x, y, w, h are then its box. */
+  points?: Point[];
+  /** Past a spiral's first turn: over the treads below, so left out of the plan. */
+  overhead?: boolean;
 }
 
 export interface StairLayout {
@@ -84,7 +88,26 @@ export interface StairLayout {
 /** The most a stair or ramp may climb (10 m): more is damage, not a design. */
 export const MAX_RISE_MM = 10000;
 
-export function stairLayout(st: Pick<Stair, 'shape' | 'width' | 'riseMm' | 'treadMm'>): StairLayout {
+/** What each stair shape is called. */
+export const STAIR_SHAPE_NAMES: Record<Stair['shape'], string> = {
+  straight: 'Straight',
+  L: 'L-shaped',
+  U: 'U-shaped',
+  curved: 'Curved',
+  spiral: 'Spiral',
+  ramp: 'Ramp',
+};
+
+/** Clear height wanted over a spiral stair's treads, under the turn above. */
+export const SPIRAL_HEADROOM_MM = 2000;
+
+/** A curved stair's usual inner radius, and a spiral stair's centre pole. */
+export const CURVED_INNER_MM = 1000;
+export const SPIRAL_POLE_MM = 75;
+
+export function stairLayout(
+  st: Pick<Stair, 'shape' | 'width' | 'riseMm' | 'treadMm'> & Partial<Pick<Stair, 'innerMm' | 'turn'>>,
+): StairLayout {
   const u = (mm: number) => mm / MM_PER_UNIT;
   const W = st.width;
   const T = u(st.treadMm);
@@ -107,6 +130,8 @@ export function stairLayout(st: Pick<Stair, 'shape' | 'width' | 'riseMm' | 'trea
   const riserMm = rise / risers;
   const treads = risers - 1; // the last riser steps up onto the floor above
   const parts: StairPart[] = [];
+
+  if (st.shape === 'curved' || st.shape === 'spiral') return roundStair(st, risers, riserMm, treads, T);
 
   if (st.shape === 'straight') {
     const h = treads * T;
@@ -175,5 +200,109 @@ export function stairLayout(st: Pick<Stair, 'shape' | 'width' | 'riseMm' | 'trea
       { x: w / 2 - W / 2, y: -h / 2 + W / 2 },
       { x: w / 2 - W / 2, y: -h / 2 + W + t2 * T },
     ],
+  };
+}
+
+/**
+ * A curved or spiral stair: wedge treads round a centre, the tread depth measured on the walking
+ * line (the middle of the flight). It starts at the bottom of its box going up the page (-y) and
+ * turns left (or right) as it climbs; the box is centred on 0,0.
+ */
+function roundStair(
+  st: Pick<Stair, 'shape' | 'width' | 'innerMm' | 'turn'>,
+  risers: number,
+  riserMm: number,
+  treads: number,
+  T: number,
+): StairLayout {
+  const u = (mm: number) => mm / MM_PER_UNIT;
+  const spiral = st.shape === 'spiral';
+  const ri = spiral ? u(SPIRAL_POLE_MM) : u(Math.max(0, st.innerMm ?? CURVED_INNER_MM));
+  const ro = ri + st.width;
+  const rw = ri + st.width / 2;
+  const step = T / rw;
+  const sx = st.turn === 'right' ? -1 : 1;
+  const at = (r: number, a: number): Point => ({ x: sx * r * Math.cos(a), y: -r * Math.sin(a) });
+  const arc = (r: number, a0: number, a1: number) => {
+    const n = Math.max(1, Math.ceil(Math.abs(a1 - a0) / ((5 * Math.PI) / 180)));
+    return Array.from({ length: n + 1 }, (_, i) => at(r, a0 + ((a1 - a0) * i) / n));
+  };
+  const wedges: { points: Point[]; topMm: number; overhead: boolean }[] = [];
+  for (let i = 0; i < treads; i++) {
+    const a0 = i * step;
+    const a1 = (i + 1) * step;
+    wedges.push({
+      points: [...arc(ri, a0, a1), ...arc(ro, a1, a0)],
+      topMm: (i + 1) * riserMm,
+      overhead: a1 > 2 * Math.PI + 1e-6,
+    });
+  }
+  const pole = spiral ? arc(ri, 0, 2 * Math.PI).slice(0, -1) : null;
+  // Centre the box of what shows in plan (a spiral's first turn) on 0,0.
+  const shown = [...wedges.filter((w) => !w.overhead).flatMap((w) => w.points), ...(pole ?? [])];
+  const xs = shown.map((p) => p.x);
+  const ys = shown.map((p) => p.y);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const dx = -(x0 + x1) / 2;
+  const dy = -(y0 + y1) / 2;
+  const move = (p: Point): Point => ({ x: p.x + dx, y: p.y + dy });
+  const part = (points: Point[], topMm: number, kind: StairPart['kind'], overhead = false): StairPart => {
+    const px = points.map((p) => p.x);
+    const py = points.map((p) => p.y);
+    const x = Math.min(...px);
+    const y = Math.min(...py);
+    return { x, y, w: Math.max(...px) - x, h: Math.max(...py) - y, topMm, kind, points, ...(overhead && { overhead }) };
+  };
+  const parts = wedges.map((w) => part(w.points.map(move), w.topMm, 'tread', w.overhead));
+  if (pole) parts.push(part(pole.map(move), risers * riserMm, 'pole'));
+  const sweep = Math.min(treads * step, 2 * Math.PI - step / 2);
+  return {
+    risers,
+    riserMm,
+    w: x1 - x0,
+    h: y1 - y0,
+    parts,
+    path: arc(rw, 0, sweep).map(move),
+  };
+}
+
+/** Where a stair's tread or landing lies in its own frame: its outline, or its box. */
+export function partOutline(part: StairPart): Point[] {
+  return (
+    part.points ?? [
+      { x: part.x, y: part.y },
+      { x: part.x + part.w, y: part.y },
+      { x: part.x + part.w, y: part.y + part.h },
+      { x: part.x, y: part.y + part.h },
+    ]
+  );
+}
+
+/** How much a spiral stair climbs in one turn (mm): the headroom under the turn above, less the tread. */
+export function spiralTurnRiseMm(layout: StairLayout): number | null {
+  const treads = layout.parts.filter((p) => p.kind === 'tread');
+  const over = treads.findIndex((p) => p.overhead);
+  return over < 0 ? null : over * layout.riserMm;
+}
+
+/** A new stair's own settings from the Stairs tool's, climbing `riseMm`. */
+export function stairSpec(
+  site: {
+    stairShape: Stair['shape'];
+    stairWidthMm: number;
+    treadMm: number;
+    stairInnerMm?: number;
+    stairTurn?: Stair['turn'];
+  },
+  riseMm: number,
+): Pick<Stair, 'shape' | 'width' | 'riseMm' | 'treadMm' | 'innerMm' | 'turn'> {
+  const round = site.stairShape === 'curved' || site.stairShape === 'spiral';
+  return {
+    shape: site.stairShape,
+    width: site.stairWidthMm / MM_PER_UNIT,
+    riseMm,
+    treadMm: site.treadMm,
+    ...(site.stairShape === 'curved' && { innerMm: site.stairInnerMm ?? CURVED_INNER_MM }),
+    ...(round && site.stairTurn === 'right' && { turn: 'right' as const }),
   };
 }

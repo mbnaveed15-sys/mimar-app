@@ -3,10 +3,9 @@ import { projectOf } from '../lib/project';
 import { METRIC_WALL_PRESETS_MM, WALL_PRESETS_MM } from '../walls';
 import { LengthField } from './LengthField';
 
-/** Thickness for new walls: common brick sizes, plus a custom size in Pro mode. */
+/** Thickness for new walls: common brick sizes, plus a custom size. */
 export function WallThicknessPicker() {
   const units = usePlanner((s) => s.units);
-  const mode = usePlanner((s) => s.mode);
   const house = usePlanner((s) => projectOf(s.doc).type === 'house');
   const presets = !house && units === 'metric' ? METRIC_WALL_PRESETS_MM : WALL_PRESETS_MM[units];
   const thickness = usePlanner((s) => s.wallThicknessMm);
@@ -27,16 +26,14 @@ export function WallThicknessPicker() {
           </button>
         ))}
       </div>
-      {mode === 'pro' && (
-        <LengthField
-          id="new-wall-thickness"
-          label="Custom"
-          mm={thickness}
-          units={units}
-          min={25}
-          onCommit={(mm) => setThickness(Math.min(mm, 1000))}
-        />
-      )}
+      <LengthField
+        id="new-wall-thickness"
+        label="Custom"
+        mm={thickness}
+        units={units}
+        min={25}
+        onCommit={(mm) => setThickness(Math.min(mm, 1000))}
+      />
     </div>
   );
 }

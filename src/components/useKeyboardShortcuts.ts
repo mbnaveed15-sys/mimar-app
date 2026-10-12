@@ -18,7 +18,7 @@ import { flipOpeningHand } from '../tools/openingTool';
 import { aliasStep, ALIAS_GAP_MS } from '../lib/aliases';
 import { finishStep } from '../tools/finish';
 import { armCopyNext } from '../tools/controller';
-import { SIMPLE_TOOLS, type Tool } from '../types';
+import type { Tool } from '../types';
 
 // AutoCAD aliases typed as quick letter sequences, and the last tool for Enter to go back to.
 let aliasBuffer = '';
@@ -190,7 +190,6 @@ export function useKeyboardShortcuts(commands: Command[]) {
         }
         if (step.hit) {
           e.preventDefault();
-          if (!SIMPLE_TOOLS.includes(step.hit.tool) && s.mode === 'simple') s.setMode('pro');
           s.setTool(step.hit.tool);
           armCopyNext(!!step.hit.copy);
           return;

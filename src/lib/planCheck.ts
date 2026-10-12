@@ -6,7 +6,8 @@ import { elementOutline, pointInPolygon, pointToSegmentDistance } from '../geome
 import { roofTopMm } from './roof/roof';
 import { plotRule, plotSetbacks, roomRuleFor, type Authority, type PlotRule } from './bylaws';
 import { MM_PER_UNIT } from './scale';
-import { isCornerPlot, outlinePoints, plotSides, sideSetbacks, SIDE_KIND_NAMES } from './plot';
+import { isCornerPlot, outlinePoints, plotSides, sideLine, sideSetbacks, SIDE_KIND_NAMES } from './plot';
+import { distanceToWall } from './arc';
 import { buildableArea } from './site';
 import { basementOf, groundIndex, levelWallMm, slabMm } from './levels';
 import { outsideOutline } from './outline';
@@ -472,9 +473,10 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       const l = Math.hypot(along.x, along.y) || 1;
       const u = { x: along.x / l, y: along.y / l };
       // The plot's average width along the road: its area over its depth from the road.
-      const depths = plot.points.map((p) => (p.x - a.x) * u.y - (p.y - a.y) * u.x);
+      const outline = outlinePoints(plot);
+      const depths = outline.map((p) => (p.x - a.x) * u.y - (p.y - a.y) * u.x);
       const depth = Math.max(...depths) - Math.min(...depths) || 1;
-      const avg = polygonArea(plot.points) / depth;
+      const avg = polygonArea(outline) / depth;
       const proj = mumtyWalls.flatMap((w) => wallCorners(w)).map((p) => p.x * u.x + p.y * u.y);
       const width = Math.max(...proj) - Math.min(...proj);
       const max = avg * widthShare.share;
@@ -548,7 +550,7 @@ function itemOutline(el: PlanElement): Point[] | null {
     case 'stair':
       return elementOutline(el);
     case 'block':
-      return el.heightMm > 0 ? el.points : null;
+      return el.heightMm > 0 && !el.path ? el.points : null;
     default:
       return null;
   }
@@ -566,23 +568,26 @@ function sideRows(doc: PlanDoc, plot: Plot, len: (mm: number) => string, clause:
   const sides = plotSides(plot);
   const setbacks = sideSetbacks(plot, sides);
   const n = plot.points.length;
+  const outline = outlinePoints(plot);
   const items: { id: Id; pts: Point[] }[] = [];
   for (const el of doc.elements) {
-    if (el.hidden || !((el.type === 'wall' && el.kind !== 'boundary') || (el.type === 'block' && el.heightMm > 0)))
+    if (
+      el.hidden ||
+      !((el.type === 'wall' && el.kind !== 'boundary') || (el.type === 'block' && el.heightMm > 0 && !el.path))
+    )
       continue;
     const pts = itemOutline(el);
-    if (pts && pts.some((p) => pointInPolygon(p, plot.points))) items.push({ id: el.id, pts });
+    if (pts && pts.some((p) => pointInPolygon(p, outline))) items.push({ id: el.id, pts });
   }
   const rows: CheckRow[] = [];
   for (let k = 0; k < n; k++) {
     const i = (plot.front + k) % n;
-    const a = plot.points[i];
-    const b = plot.points[(i + 1) % n];
+    const side = sideLine(plot, i);
     const need = setbacks[i].mm / MM_PER_UNIT;
     let nearest = Infinity;
     const close: Id[] = [];
     for (const it of items) {
-      const d = Math.min(...it.pts.map((p) => pointToSegmentDistance(p, a, b)));
+      const d = Math.min(...it.pts.map((p) => distanceToWall(side, p)));
       nearest = Math.min(nearest, d);
       if (d < need - TOLERANCE) close.push(it.id);
     }
@@ -608,7 +613,7 @@ function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: number)
     const base = levelBaseM(doc, levelOf(el), wallHeightMm) * 1000 + (el.elevMm ?? 0);
     if (el.type === 'wall' && el.kind !== 'boundary') top = Math.max(top, base + (el.heightMm ?? wallHeightMm));
     if (el.type === 'slab') top = Math.max(top, base + wallHeightMm + el.thickness * MM_PER_UNIT);
-    if (el.type === 'block' && el.heightMm > 0) top = Math.max(top, base + el.heightMm);
+    if (el.type === 'block' && el.heightMm > 0 && !el.path) top = Math.max(top, base + el.heightMm);
     // A pitched roof to its ridge.
     if (el.type === 'roof')
       top = Math.max(

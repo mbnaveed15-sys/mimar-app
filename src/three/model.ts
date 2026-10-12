@@ -1,4 +1,4 @@
-import { wallLength, wallParam } from '../geometry';
+import { centroid, fromFurnitureLocal, wallLength, wallParam } from '../geometry';
 import { patternSpanMm } from '../lib/patterns';
 import { MM_PER_UNIT } from '../lib/scale';
 import { doorKindOf } from '../lib/openingKinds';
@@ -132,7 +132,7 @@ export interface Slab3D {
   id?: string;
   level?: string;
   /** A flat shape waiting for Push/Pull, which isn't built (or exported). */
-  role?: 'slab' | 'block' | 'shape';
+  role?: 'slab' | 'block' | 'shape' | 'stair';
 }
 
 /** A roof: its sloped faces (the underside, as [x, y, z] points in metres), thickened straight up by h. */
@@ -839,6 +839,8 @@ function stairSolids(st: Stair, color?: string): Solid[] {
       role: 'stair',
     });
   for (const part of layout.parts) {
+    // Wedges of a curved or spiral stair are built as outlines (stairBlocks).
+    if (part.points) continue;
     if (part.kind !== 'ramp') {
       block(part.x, part.y, part.w, part.h, part.topMm);
       continue;
@@ -849,6 +851,33 @@ function stairSolids(st: Stair, color?: string): Solid[] {
       block(part.x, part.y + part.h - (i + 1) * slice, part.w, slice, (part.topMm * (i + 1)) / RAMP_SLICES);
   }
   return solids;
+}
+
+/** A spiral stair's treads are plates cantilevered from its pole. */
+const SPIRAL_TREAD_M = 0.06;
+
+/**
+ * A curved stair's wedge treads, each a block from the floor to its top; a spiral stair's, plates
+ * round its pole, which stands the full height.
+ */
+function stairBlocks(st: Stair, color?: string): Slab3D[] {
+  const spiral = st.shape === 'spiral';
+  return stairLayout(st)
+    .parts.filter((p) => p.points)
+    .map((p) => {
+      const top = Math.max(0.01, mmToM(p.topMm));
+      const plate = spiral && p.kind === 'tread';
+      return {
+        points: p.points!.map((q) => {
+          const w = fromFurnitureLocal(st, q);
+          return [m(w.x), m(w.y)] as [number, number];
+        }),
+        y0: plate ? Math.max(0, top - SPIRAL_TREAD_M) : 0,
+        h: plate ? Math.min(top, SPIRAL_TREAD_M) : top,
+        color: color ?? CONCRETE,
+        role: 'stair' as const,
+      };
+    });
 }
 
 function columnSolid(c: Column, top: number, color?: string): Solid {
@@ -1082,6 +1111,14 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
             return { ...s, y0: top - h, h };
           });
         solids.push(...(fromGround ? parts : parts.map(lift)).map(raise(el)).map(from(el.id)));
+        const finish = finishOf(el.material, 'concrete');
+        blocks.push(
+          ...stairBlocks(el, colorOf(el.material))
+            .map((b) => (finish ? { ...b, finish } : b))
+            .map(fromGround ? (b: Slab3D) => b : lift)
+            .map(raise(el))
+            .map(from(el.id)),
+        );
       }
       // The plot's lawn: a floor where it is flat, else a mesh following the ground (in the terrain).
       const lawnY = el.type === 'plot' && ground ? (el.id === plotEl?.id ? site?.lawnY : 0) : undefined;
@@ -1136,7 +1173,12 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       if (el.type === 'block') {
         // On a slab it stands on the slab's top; otherwise on the floor.
         const host = el.slabId ? els.find((x): x is Slab => x.type === 'slab' && x.id === el.slabId) : undefined;
-        const foot = host ? base + wallTop + mmToM(host.elevMm ?? 0) + m(host.thickness) : base;
+        let foot = host ? base + wallTop + mmToM(host.elevMm ?? 0) + m(host.thickness) : base;
+        // A path or driveway lies on the ground (on a sloping site, at the ground's height at its middle).
+        if (el.path && ground && !host) {
+          const c = centroid(el.points);
+          foot = site ? (site.lawnY ?? mmToM(site.lawnAt(c.x, c.y))) : 0;
+        }
         const flatShape = el.heightMm <= 0;
         blocks.push({
           points: el.points.map(toXZ),

@@ -11,6 +11,8 @@ import { selectionBounds } from '../lib/selection';
 import { GROUND_LEVEL, levelOf, type Furniture, type PlanElement, type Point, type SectionLine } from '../types';
 import { wallPolygon, wallsOf } from '../walls';
 import { pointAlong } from '../lib/arc';
+import { edgeMiddles } from '../lib/curvedEdges';
+import { canBendSide, sideMiddle } from '../lib/plot';
 import { voidsOver } from '../lib/voids';
 import { DrawingOverlay } from './DrawingOverlay';
 import { CheckMarks } from './CheckMarks';
@@ -39,6 +41,8 @@ interface Props {
 }
 
 const NONE: string[] = [];
+/** An outline with more edges than this (a curve that was stretched into short pieces) shows no bend grips. */
+const MAX_BEND_GRIPS = 48;
 
 export function Canvas({ svgRef, onContextMenu }: Props) {
   const doc = useLevelDoc()!;
@@ -317,6 +321,20 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
           selected?.type === 'plot' &&
           !selected.locked &&
           selected.points.map((p, i) => <Handle key={i} name={`plot-corner-${i}`} p={p} k={hk} />)}
+        {tool === 'select' &&
+          selected?.type === 'plot' &&
+          !selected.locked &&
+          selected.points.map(
+            (_, i) =>
+              canBendSide(selected, i) && (
+                <Handle key={`b${i}`} name={`plot-bend-${i}`} p={sideMiddle(selected, i)} k={hk} />
+              ),
+          )}
+        {tool === 'select' &&
+          (selected?.type === 'slab' || selected?.type === 'pad') &&
+          !selected.locked &&
+          edgeMiddles(selected).length <= MAX_BEND_GRIPS &&
+          edgeMiddles(selected).map((p, i) => <Handle key={i} name={`edge-bend-${i}`} p={p} k={hk} />)}
         {tool === 'select' && selected?.type === 'furniture' && showFurniture && (
           <FurnitureHandles item={selected} k={hk} />
         )}

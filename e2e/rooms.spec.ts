@@ -72,15 +72,12 @@ test('wall thickness can be chosen for new walls and changed later', async ({ pa
   await expect(page.getByLabel('Thickness')).toHaveValue('9"');
 });
 
-test('Simple mode shows the main tools; Pro mode shows all of them', async ({ page }) => {
+test('every tool shows on the tool bars (there is no Simple mode)', async ({ page }) => {
   const rail = page.getByRole('navigation', { name: 'Tools' });
-  await expect(rail.getByRole('button', { name: 'Brush', exact: true })).toHaveCount(0);
-  await page.getByRole('radio', { name: 'Pro' }).click();
   await expect(rail.getByRole('button', { name: 'Brush', exact: true })).toBeVisible();
+  await expect(page.getByRole('radio', { name: 'Pro' })).toHaveCount(0);
   await tool(page, 'brush');
   await expect(page.getByLabel('Brush size (px)')).toBeVisible();
-  await page.reload();
-  await expect(page.getByRole('radio', { name: 'Pro' })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('exports a PDF', async ({ page }) => {

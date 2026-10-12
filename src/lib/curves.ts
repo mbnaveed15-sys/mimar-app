@@ -6,7 +6,7 @@
  * crossings of lines and circles that Fillet, Chamfer, Extend and Join use on curves. Pure.
  */
 import type { Point } from '../types';
-import { arcOf, bowThrough, isArc, type WallLine } from './arc';
+import { arcOf, bowThrough, isArc, wallPath, type WallLine } from './arc';
 
 /** The ways the Curve tool draws. */
 export type CurveMode = 'arc' | 'arc3' | 'centre' | 'tangent' | 'circle' | 'oval' | 'freeform';
@@ -389,6 +389,49 @@ export function sameCarrier(a: WallLine, b: WallLine, tol: number): boolean {
   const kb = carrierOf(b);
   if (ka.kind === 'circle' && kb.kind === 'circle') return len(sub(ka.c, kb.c)) <= tol && Math.abs(ka.r - kb.r) <= tol;
   return false;
+}
+
+/**
+ * The outline of a path of width 2 × `half` along a row of pieces (a paved path or driveway): its
+ * left edge out to the end, then its right edge back, with mitred bends. A closed row (a ring)
+ * goes round the outside, then in and round the inside the other way, so the ring's middle is left
+ * open. Empty when the row is too short.
+ */
+export function pathOutline(pieces: WallLine[], half: number): Point[] {
+  const centre: Point[] = [];
+  for (const piece of pieces)
+    for (const p of wallPath(piece)) {
+      const last = centre[centre.length - 1];
+      if (!last || len(sub(p, last)) > 1e-6) centre.push(p);
+    }
+  const closed = centre.length > 3 && len(sub(centre[0], centre[centre.length - 1])) < 0.5;
+  if (closed) centre.pop();
+  const n = centre.length;
+  if (n < 2 || !(half > 0)) return [];
+  const normal = (a: Point, b: Point) => {
+    const d = sub(b, a);
+    const l = len(d) || 1;
+    return { x: -d.y / l, y: d.x / l };
+  };
+  const left: Point[] = [];
+  const right: Point[] = [];
+  for (let i = 0; i < n; i++) {
+    const prev = i > 0 ? centre[i - 1] : closed ? centre[n - 1] : null;
+    const next = i < n - 1 ? centre[i + 1] : closed ? centre[0] : null;
+    const nIn = prev ? normal(prev, centre[i]) : null;
+    const nOut = next ? normal(centre[i], next) : null;
+    const a = nIn ?? nOut!;
+    const b = nOut ?? nIn!;
+    const m = add(a, b);
+    const ml = len(m);
+    // Mitred: out along the bisector, far enough to keep the width (not more than 4 × at a sharp bend).
+    const dir = ml > 1e-9 ? mul(m, 1 / ml) : a;
+    const reach = half / Math.max(dot(dir, a), 0.25);
+    left.push(add(centre[i], mul(dir, reach)));
+    right.push(sub(centre[i], mul(dir, reach)));
+  }
+  if (!closed) return [...left, ...right.reverse()];
+  return [...left, left[0], right[0], ...right.slice(1).reverse(), right[0]];
 }
 
 export { isArc };

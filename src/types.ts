@@ -188,11 +188,22 @@ export interface Beam extends Grouped {
   material?: Id;
 }
 
+/**
+ * How an outline's edges are curved: its corners, and for each edge (corner i to i + 1) the point it
+ * passes through at its middle, or null when straight. The outline's `points` follow the curves.
+ */
+export interface EdgeCurve {
+  corners: Point[];
+  mids: (Point | null)[];
+}
+
 /** A floor or roof slab: an outline with a thickness, at the top of its level. */
 export interface Slab extends Grouped {
   id: Id;
   type: 'slab';
   points: Point[];
+  /** Curved edges (see `curvedEdges.ts`). */
+  curve?: EdgeCurve;
   /** Thickness in plan units. */
   thickness: number;
   /** Voids through it (stair openings, skylights, shafts): outlines in plan units. */
@@ -238,6 +249,8 @@ export interface PlotSide {
   wall?: { heightMm: number; thicknessMm: number };
   /** The wall built for this side: it follows the plot when the plot is reshaped. */
   wallId?: Id;
+  /** A curved side: how far its middle bows out from the straight line between its corners, as on Wall. */
+  bow?: number;
 }
 
 export interface Plot extends Grouped {
@@ -269,7 +282,11 @@ export interface Stair extends Grouped {
   x: number;
   y: number;
   rotation?: number;
-  shape: 'straight' | 'L' | 'U' | 'ramp';
+  shape: 'straight' | 'L' | 'U' | 'ramp' | 'curved' | 'spiral';
+  /** A curved stair's inner radius, mm (1 m when missing); a spiral stair winds round a pole. */
+  innerMm?: number;
+  /** Which way a curved or spiral stair turns as it climbs (left when missing). */
+  turn?: 'left' | 'right';
   /** Clear width of a flight, in plan units. */
   width: number;
   /** Total height it climbs, in millimetres. */
@@ -314,6 +331,8 @@ export interface Block extends Grouped {
   shape: ShapeKind;
   /** Drawn on top of this slab (its height above floor then counts from the slab's top). */
   slabId?: Id;
+  /** A paved path or driveway: paving on the ground, not part of the building (the plan check leaves it out). */
+  path?: boolean;
   material?: Id;
 }
 
@@ -366,6 +385,8 @@ export interface Pad extends Grouped {
   id: Id;
   type: 'pad';
   points: Point[];
+  /** Curved edges (see `curvedEdges.ts`). */
+  curve?: EdgeCurve;
   zMm: number;
   material?: Id;
 }
@@ -762,6 +783,8 @@ export type Draft =
       ghost?: Opening;
       /** Thickness of the wall it would go in. */
       thickness?: number;
+      /** How a window follows a curved wall it would go in. */
+      bend?: { cy: number; r: number } | null;
       /** Clear distances from the ends of the piece of wall to the opening's edges. */
       dims?: [Point, Point][];
       /** Unit direction across the wall, towards the pointer: the side the distances are shown on. */
@@ -814,10 +837,7 @@ export interface Bounds {
   maxY: number;
 }
 
-/** Simple mode shows the tools homeowners need; Pro mode shows everything. */
-export type Mode = 'simple' | 'pro';
-
-/** The AutoCAD-style editing tools, shown in Pro mode. */
+/** The AutoCAD-style editing tools. */
 export const MODIFY_TOOLS: Tool[] = [
   'offset',
   'mirror',
@@ -830,8 +850,6 @@ export const MODIFY_TOOLS: Tool[] = [
   'stretch',
   'scale',
 ];
-
-export const SIMPLE_TOOLS: Tool[] = TOOLS.filter((t) => t !== 'brush' && t !== 'mask' && !MODIFY_TOOLS.includes(t));
 
 export type PaperSize = 'A4' | 'A3' | 'A1';
 

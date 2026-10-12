@@ -15,7 +15,15 @@ import {
   sideSetbacks,
   sideSlots,
   sideWallLines,
+  canBendSide,
+  frontage,
+  isCurvedSide,
+  sideMiddle,
+  withCorner,
+  withSideBow,
 } from './plot';
+import { bowThrough } from './arc';
+import { mapOutline } from '../geometry';
 import { plotRect } from './site';
 
 const ft = (f: number) => (f * 304.8) / 10; // feet in plan units
@@ -247,5 +255,59 @@ describe('plot outlines', () => {
     expect(outlineProblem([P(0, 0), P(10, 0)])).toMatch(/three corners/);
     expect(outlineProblem([P(0, 0), P(10, 0), P(20, 0)])).toMatch(/no area/);
     expect(outlineProblem([P(0, 0), P(10, 0), P(10, 10), P(0, 10)])).toBeNull();
+  });
+});
+
+describe('curved plot sides', () => {
+  const wall = { heightMm: 2134, thicknessMm: 228.6 };
+  const rect = plotRect(P(0, 0), P(30, 60));
+  const straight = plot(rect, {
+    sideList: [
+      { kind: 'back', wall },
+      { kind: 'neighbour', wall },
+      { kind: 'road', wall },
+      { kind: 'neighbour', wall },
+    ],
+  });
+  // The road side (the bottom, y = 60 ft) bowed out 5 ft towards the road.
+  const bow = bowThrough({ x1: rect[2].x, y1: rect[2].y, x2: rect[3].x, y2: rect[3].y }, P(15, 65));
+  const curved = withSideBow(straight, 2, bow);
+
+  it('follows the curve in its outline, area, frontage and setback line', () => {
+    expect(isCurvedSide(curved, 2)).toBe(true);
+    expect(isCurvedSide(curved, 0)).toBe(false);
+    expect(outlinePoints(curved).length).toBeGreaterThan(8);
+    expect(plotArea(curved)).toBeGreaterThan(plotArea(straight) + ft(30) * ft(5) * 0.6);
+    expect(frontage(curved)).toBeGreaterThan(frontage(straight));
+    expect(sideMiddle(curved, 2).y).toBeCloseTo(ft(65), 3);
+    // The building line bulges with the road side: 5 ft in from it at the middle.
+    expect(box(buildableArea(curved)).maxY).toBeCloseTo(ft(60), 0);
+    expect(box(buildableArea(straight)).maxY).toBeCloseTo(ft(55), 3);
+  });
+
+  it('gets one curved boundary wall along a curved side', () => {
+    const lines = sideWallLines(curved);
+    expect(lines).toHaveLength(4);
+    const road = lines.find((l) => l.side === 2)!;
+    expect(road.bow).toBeDefined();
+    expect(Math.sign(road.bow!)).toBe(Math.sign(bow));
+    expect(lines.filter((l) => l.side !== 2).every((l) => l.bow === undefined)).toBe(true);
+  });
+
+  it('keeps its curves when a corner moves, when mirrored, and goes straight again', () => {
+    const moved = withCorner(curved, 2, P(60, 60));
+    expect(moved.sideList![2].bow! / bow).toBeCloseTo(2, 3);
+    const mirrored = mapOutline(curved, (p) => ({ x: -p.x, y: p.y }), true);
+    expect(plotArea(mirrored)).toBeCloseTo(plotArea(curved), 3);
+    expect(Math.abs(box(outlinePoints(mirrored)).maxY - ft(65))).toBeLessThan(1);
+    expect(withSideBow(curved, 2, 0).sideList![2].bow).toBeUndefined();
+  });
+
+  it('has no curve on the two sides at a cut corner', () => {
+    const corner = plot(rect, {
+      sideList: [{ kind: 'back' }, { kind: 'neighbour' }, { kind: 'road' }, { kind: 'road' }],
+      splay: { sizeMm: 1524 },
+    });
+    expect([0, 1, 2, 3].map((i) => canBendSide(corner, i))).toEqual([true, true, false, false]);
   });
 });

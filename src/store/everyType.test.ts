@@ -149,8 +149,39 @@ const ELEMENTS: PlanElement[] = [
     w: 294.64,
     h: 294.64,
   },
+  // Curved and spiral stairs (1.42).
+  {
+    id: 'stc',
+    type: 'stair',
+    x: 900,
+    y: 300,
+    shape: 'curved',
+    innerMm: 1000,
+    turn: 'right',
+    width: 91.44,
+    riseMm: 3200,
+    riserMm: 3200 / 18,
+    treadMm: 254,
+    w: 300,
+    h: 300,
+  },
+  {
+    id: 'sts',
+    type: 'stair',
+    x: 900,
+    y: 700,
+    shape: 'spiral',
+    width: 91.44,
+    riseMm: 3200,
+    riserMm: 3200 / 18,
+    treadMm: 254,
+    w: 198,
+    h: 198,
+  },
   curved,
   { id: 'da', type: 'door', wallId: 'wa', ...placeOnArc(curved, { x: 250, y: 460 }, 91)! },
+  // A window following the curve (1.42).
+  { id: 'wa2', type: 'window', wallId: 'wa', ...placeOnArc(curved, { x: 400, y: 420 }, 120)! },
   glass,
   { id: 'dc', type: 'door', wallId: 'wc', x: 250, y: -150, width: 91, angle: 0 },
   { id: 'lv', type: 'level', x: 650, y: 650, zMm: -300 },
@@ -297,7 +328,12 @@ describe('every kind of item', () => {
     expect(meshes.some((m) => m.name.startsWith('roof'))).toBe(true);
     expect(model.panels.filter((p) => p.role === 'glass')).toHaveLength(1);
     expect(model.panels.filter((p) => p.role === 'shape')).toHaveLength(1);
-    expect(model.blocks.map((b) => b.role)).toEqual(['block', 'shape']);
+    expect(model.blocks.filter((b) => b.role !== 'stair').map((b) => b.role)).toEqual(['block', 'shape']);
+    // A curved stair's wedges and a spiral's, with its pole, each from its own stair.
+    const wedges = model.blocks.filter((b) => b.role === 'stair');
+    expect(wedges.filter((b) => b.id === 'stc')).toHaveLength(17);
+    expect(wedges.filter((b) => b.id === 'sts')).toHaveLength(18);
+    expect(meshes.some((m) => m.name.startsWith('stair'))).toBe(true);
     expect(model.slabs[0].holes).toHaveLength(1);
     // Flat shapes aren't built, so they aren't exported.
     expect(meshes.some((m) => m.name.startsWith('block'))).toBe(true);

@@ -6,6 +6,7 @@ import {
   WINDOW_KINDS,
   WINDOW_SIZE_MM,
 } from '../lib/openingKinds';
+import { CURVED_INNER_MM } from '../lib/site';
 import { projectOf, shows } from '../lib/project';
 import { WINDOW_HEIGHT_MM } from '../lib/shapes';
 import { WINDOW_SILL_MM } from '../three/model';
@@ -27,6 +28,8 @@ const STAIR_SHAPES: { id: SiteSpec['stairShape']; label: string }[] = [
   { id: 'straight', label: 'Straight' },
   { id: 'L', label: 'L-shaped' },
   { id: 'U', label: 'U-shaped' },
+  { id: 'curved', label: 'Curved' },
+  { id: 'spiral', label: 'Spiral' },
   { id: 'ramp', label: 'Ramp' },
 ];
 
@@ -209,7 +212,20 @@ export function SiteOptions() {
               onCommit={(v) => setSite({ treadMm: v })}
             />
           )}
+          {site.stairShape === 'curved' && (
+            <LengthField
+              id="stair-inner"
+              label="Inner radius"
+              mm={site.stairInnerMm ?? CURVED_INNER_MM}
+              units={units}
+              min={0}
+              onCommit={(v) => setSite({ stairInnerMm: Math.min(v, 20000) })}
+            />
+          )}
         </div>
+        {(site.stairShape === 'curved' || site.stairShape === 'spiral') && (
+          <TurnPicker turn={site.stairTurn} onPick={(turn) => setSite({ stairTurn: turn })} />
+        )}
         <div className="flex gap-1">
           <button
             className="m-btn px-2 py-0.5"
@@ -345,4 +361,17 @@ export function SiteOptions() {
       </div>
     );
   return null;
+}
+
+/** Which way a curved or spiral stair turns as it climbs. */
+export function TurnPicker({ turn, onPick }: { turn?: 'left' | 'right'; onPick: (turn: 'left' | 'right') => void }) {
+  return (
+    <div className="flex gap-1" role="group" aria-label="Turns">
+      {(['left', 'right'] as const).map((t) => (
+        <button key={t} className="m-btn px-2 py-0.5" aria-pressed={(turn ?? 'left') === t} onClick={() => onPick(t)}>
+          {t === 'left' ? 'Turns left' : 'Turns right'}
+        </button>
+      ))}
+    </div>
+  );
 }

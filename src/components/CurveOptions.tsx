@@ -4,10 +4,12 @@ import { LengthField } from './LengthField';
 
 const box = 'flex flex-col gap-1.5 rounded-md border border-line bg-raised p-2 text-xs';
 
-/** The Curve tool's options: what it makes (walls or layout lines) and how it draws. */
+/** The Curve tool's options: what it makes (walls, layout lines or a path) and how it draws. */
 export function CurvePicker() {
   const mode = usePlanner((s) => s.site.curveMode);
   const make = usePlanner((s) => s.site.curveMake);
+  const pathWidth = usePlanner((s) => s.site.pathWidthMm);
+  const units = usePlanner((s) => s.units);
   const setSite = usePlanner((s) => s.setSite);
   // A curve half drawn one way is dropped when the way changes.
   const drop = () => {
@@ -32,7 +34,27 @@ export function CurvePicker() {
         >
           Layout lines
         </button>
+        <button
+          className="m-btn px-2 py-0.5"
+          aria-pressed={make === 'path'}
+          onClick={() => setSite({ curveMake: 'path' })}
+        >
+          Path or driveway
+        </button>
       </div>
+      {make === 'path' && (
+        <>
+          <LengthField
+            id="path-width"
+            label="Width"
+            mm={pathWidth}
+            units={units}
+            min={300}
+            onCommit={(mm) => setSite({ pathWidthMm: Math.min(mm, 15000) })}
+          />
+          <div className="text-muted">Draw along the middle of the path. A 10' width suits a driveway.</div>
+        </>
+      )}
       <div className="font-medium">Draw</div>
       <div className="flex flex-col gap-1">
         {CURVE_MODES.map((m) => (

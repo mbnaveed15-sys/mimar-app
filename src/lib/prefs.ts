@@ -1,10 +1,11 @@
 import { DEFAULT_THEME, isThemeId, type ThemeId } from '../theme/themes';
-import type { MarlaSqFt, Mode, PaperSize, Units } from '../types';
+import type { MarlaSqFt, PaperSize, Units } from '../types';
 import { clampGap, DEFAULT_OPENING_GAP_MM } from './openingPlace';
 import { browserStorage } from './storage';
 import { GRID_MM } from './units';
 import { DEFAULT_TOOLBARS, readToolbars, type ToolbarLayout } from './toolbars';
 import { DEFAULT_PANELS, readPanels, type PanelLayout } from './panels';
+import { DEFAULT_CHECKS, DEFAULT_SNAPS, readChecks, readSnaps, type ChecksPrefs, type SnapsPrefs } from './checks';
 
 export interface GridPrefs {
   /** Show the grid on the plan (it still snaps when hidden, if snap is on). */
@@ -57,7 +58,6 @@ export interface Prefs {
   pdfHints: boolean;
   /** Furniture use zones sized for a wheelchair user (ADA), where they differ. */
   accessibleZones: boolean;
-  mode: Mode;
   /** Thickness for new walls, in millimetres. */
   wallThicknessMm: number;
   /** Gap kept between doors and windows and wall corners (and each other), in millimetres. */
@@ -68,6 +68,10 @@ export interface Prefs {
   wallHeightMm: number;
   theme: ThemeId;
   grid: GridPrefs;
+  /** Checks shown and applied while drawing (the Checks button). */
+  checks: ChecksPrefs;
+  /** Snap points used while drawing (the Snap button; grid snapping is `grid.snap`). */
+  snaps: SnapsPrefs;
   /** Where each tool bar is docked. */
   toolbars: ToolbarLayout;
   /** How the side panel is laid out. */
@@ -86,7 +90,6 @@ export const DEFAULT_PREFS: Prefs = {
   showHints: true,
   pdfHints: false,
   accessibleZones: false,
-  mode: 'simple',
   wallThicknessMm: 228.6,
   openingGapMm: DEFAULT_OPENING_GAP_MM,
   marlaSqFt: 225,
@@ -94,6 +97,8 @@ export const DEFAULT_PREFS: Prefs = {
   wallHeightMm: 3048,
   theme: DEFAULT_THEME,
   grid: DEFAULT_GRID,
+  checks: DEFAULT_CHECKS,
+  snaps: DEFAULT_SNAPS,
   toolbars: DEFAULT_TOOLBARS,
   panels: DEFAULT_PANELS,
 };
@@ -153,7 +158,6 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       showHints: raw?.showHints !== false,
       pdfHints: raw?.pdfHints === true,
       accessibleZones: raw?.accessibleZones === true,
-      mode: raw?.mode === 'pro' ? 'pro' : 'simple',
       wallThicknessMm: thickness >= 25 && thickness <= 1000 ? thickness : DEFAULT_PREFS.wallThicknessMm,
       openingGapMm: clampGap(raw?.openingGapMm),
       marlaSqFt: raw?.marlaSqFt === 272.25 ? 272.25 : 225,
@@ -164,6 +168,8 @@ export function loadPrefs(storage = browserStorage()): Prefs {
           : DEFAULT_PREFS.wallHeightMm,
       theme: isThemeId(raw?.theme) ? raw.theme : DEFAULT_THEME,
       grid: readGrid(raw?.grid),
+      checks: readChecks(raw?.checks),
+      snaps: readSnaps(raw?.snaps),
       toolbars: readToolbars(raw?.toolbars),
       panels: readPanels(raw?.panels),
     };

@@ -149,3 +149,49 @@ test('furniture use zones: a hint when a wall is in the way, shown round the sel
   await expect(page.getByTestId('use-zone-note')).toContainText(`2' 4" in front, 2' 10" at one side`);
   await expect(page.getByTestId('use-zone-note')).toContainText('Wheelchair space');
 });
+
+test('the Checks button pauses every check, or one kind from its menu', async ({ page }) => {
+  const hints = page.getByTestId('plan-hints');
+  const chip = page.getByTestId('checks-chip');
+  await expect(hints.locator('[data-hint]')).toHaveCount(2);
+  await expect(page.getByTestId('checks-count')).toHaveText('2');
+
+  // Resting the pointer on it opens the menu: pausing daylight leaves the other hint.
+  await chip.hover();
+  const checksMenu = page.getByRole('menu', { name: 'Checks' });
+  await expect(checksMenu).toBeVisible();
+  await checksMenu.getByRole('menuitemcheckbox', { name: 'Daylight and air' }).click();
+  await expect(hints.locator('[data-hint]')).toHaveCount(1);
+  await expect(page.getByTestId('checks-paused')).toContainText('Paused: daylight and air.');
+
+  // A click on the chip turns them all off: no marks, and the panel says so.
+  await page.mouse.move(10, 10);
+  await chip.click();
+  await expect(chip).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('[data-check-mark]')).toHaveCount(0);
+  await expect(page.getByTestId('checks-paused')).toContainText('Checks are off');
+  await page.reload();
+  await ready(page);
+  await expect(page.getByTestId('checks-chip')).toHaveAttribute('aria-pressed', 'false');
+
+  // Turn on brings everything back.
+  await openSection(page, 'Plan check');
+  await page.getByTestId('checks-paused').getByRole('button', { name: 'Turn on' }).click();
+  await expect(page.getByTestId('plan-hints').locator('[data-hint]')).toHaveCount(2);
+});
+
+test('the Snap button turns snapping off, or one kind of snap point from its menu', async ({ page }) => {
+  const snap = page.getByRole('button', { name: 'Snap', exact: true });
+  await expect(snap).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Snap options' }).click();
+  const snapMenu = page.getByRole('menu', { name: 'Snap' });
+  await snapMenu.getByRole('menuitemcheckbox', { name: 'Midpoint' }).click();
+  await expect(snapMenu.getByRole('menuitemcheckbox', { name: 'Midpoint' })).toHaveAttribute('aria-checked', 'false');
+  await snapMenu.getByRole('button', { name: 'All off' }).click();
+  await expect(snapMenu.getByRole('menuitemcheckbox', { name: 'Grid' })).toHaveAttribute('aria-checked', 'false');
+  await snapMenu.getByRole('button', { name: 'All on' }).click();
+  await expect(snapMenu.getByRole('menuitemcheckbox', { name: 'Midpoint' })).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('F3');
+  await expect(snap).toHaveAttribute('aria-pressed', 'false');
+});

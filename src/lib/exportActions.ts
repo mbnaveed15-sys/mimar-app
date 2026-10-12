@@ -7,6 +7,7 @@ import { exportPdf } from './exportPdf';
 import { builtAreaSqFt, planCheck } from './planCheck';
 import { shows } from './project';
 import { planHints } from './planHints';
+import { filterCheck, filterHints } from './checks';
 import { downloadUrl, exportPng } from './exportPng';
 import { planToDxf, sideDrawingsToDxf } from './exportDxf';
 import { sideDrawingRefs } from './drawings/refs';
@@ -81,10 +82,15 @@ export function exportPlanPng() {
 /** The plan check, the hints and the cost estimate, as asked for in the PDF settings. */
 function pdfExtras() {
   const { units, pdfCheck, doc, wallHeightMm, fileName } = plannerStore.getState();
-  const { showHints, pdfHints, openingGapMm: gapMm, accessibleZones: accessible } = plannerStore.getState();
+  const { showHints, pdfHints, openingGapMm: gapMm, accessibleZones: accessible, checks } = plannerStore.getState();
   const check = planCheck(doc, { wallHeightMm, units });
   const skipSizes = new Set(check?.rows.find((r) => r.id === 'rooms')?.ids ?? []);
-  const hints = showHints && pdfHints ? planHints(doc, { units, skipSizes, gapMm, accessible }).map((h) => h.text) : [];
+  // Checks paused with the Checks button are left out of the PDF too.
+  const hints =
+    showHints && pdfHints
+      ? filterHints(planHints(doc, { units, skipSizes, gapMm, accessible }), checks).map((h) => h.text)
+      : [];
+  const printed = filterCheck(check, checks);
   return {
     checkTitle: baseName(fileName),
     hints,
@@ -96,10 +102,10 @@ function pdfExtras() {
       ? `Bylaws: ${check.authority.name}${check.authority.status === 'provisional' ? ' (provisional)' : ''}${check.rule ? `, ${check.rule.label}` : ''}`
       : '',
     check:
-      check && pdfCheck
+      printed && pdfCheck
         ? {
-            heading: `${check.authority.name}${check.rule ? ` · ${check.rule.label}` : ''} · ${check.authority.source}`,
-            rows: check.rows,
+            heading: `${printed.authority.name}${printed.rule ? ` · ${printed.rule.label}` : ''} · ${printed.authority.source}`,
+            rows: printed.rows,
             footer:
               'Indicative only: measured from the drawing (areas and heights are approximate). Check with the authority before submitting.',
           }

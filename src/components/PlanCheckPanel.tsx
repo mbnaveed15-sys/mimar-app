@@ -1,6 +1,7 @@
 import { type CheckStatus } from '../lib/planCheck';
 import { usePlanner } from '../store/plannerStore';
-import { usePlanCheck, usePlanHints } from '../store/usePlanCheck';
+import { useFullCheck, usePlanCheck, usePlanHints } from '../store/usePlanCheck';
+import { CHECK_CATEGORIES } from '../lib/checks';
 
 const MARK: Record<CheckStatus, { sign: string; className: string; word: string }> = {
   ok: { sign: '✓', className: 'text-[color:var(--snap-end)]', word: 'OK' },
@@ -12,8 +13,33 @@ const MARK: Record<CheckStatus, { sign: string; className: string; word: string 
 export function PlanCheckPanel() {
   return (
     <div className="flex flex-col gap-3">
+      <PausedNote />
       <BylawRows />
       <PlanHints />
+    </div>
+  );
+}
+
+/** Says which checks the Checks button in the bottom bar has paused, with a button to turn them back on. */
+function PausedNote() {
+  const checks = usePlanner((s) => s.checks);
+  const setChecks = usePlanner((s) => s.setChecks);
+  if (checks.on && !checks.off.length) return null;
+  const names = CHECK_CATEGORIES.filter((c) => checks.off.includes(c.id)).map((c) => c.label.toLowerCase());
+  return (
+    <div className="flex items-start gap-2 rounded-sm bg-sunken p-2 text-xs" data-testid="checks-paused">
+      <span className="min-w-0 flex-1">
+        {checks.on ? `Paused: ${names.join(', ')}.` : 'Checks are off: nothing is checked or marked on the plan.'}
+      </span>
+      <button
+        className="m-btn flex-none px-2 py-0.5"
+        onClick={() => {
+          setChecks({ on: true });
+          for (const c of checks.off) setChecks({ category: c, categoryOn: true });
+        }}
+      >
+        Turn on
+      </button>
     </div>
   );
 }
@@ -25,7 +51,8 @@ function PlanHints() {
   const setSelection = usePlanner((s) => s.setSelection);
   const fixOpeningGaps = usePlanner((s) => s.fixOpeningGaps);
   const hasRooms = usePlanner((s) => s.doc.rooms.length > 0);
-  if (!show) return null;
+  const paused = usePlanner((s) => !s.checks.on);
+  if (!show || paused) return null;
   return (
     <div className="flex flex-col gap-1.5 border-t pt-2 text-xs" data-testid="plan-hints">
       <div className="font-medium">
@@ -68,8 +95,11 @@ function PlanHints() {
 /** One row per bylaw rule, with its clause; click a row to select what breaks it. */
 function BylawRows() {
   const check = usePlanCheck();
+  const hasBylaws = !!useFullCheck();
   const setSelection = usePlanner((s) => s.setSelection);
   const plot = usePlanner((s) => s.doc.elements.find((el) => el.type === 'plot'));
+  // Paused with the Checks button: the note above says so.
+  if (!check && hasBylaws) return null;
   if (!check)
     return plot ? (
       <div className="text-xs text-muted">

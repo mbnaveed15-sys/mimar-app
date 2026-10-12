@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { at, menu, ready } from './helpers';
+import { at, ready } from './helpers';
 
 const FT = 30.48;
 
@@ -38,9 +38,6 @@ test('SketchUp keys pick tools, and typed lengths draw exact walls', async ({ pa
 });
 
 test('menus, search, the shortcut list and the right-click menu', async ({ page }) => {
-  await menu(page, 'View', 'Pro mode');
-  await expect(page.getByRole('radio', { name: 'Pro' })).toHaveAttribute('aria-checked', 'true');
-
   await page.keyboard.press('Control+k');
   const search = page.getByRole('dialog', { name: 'Search actions' });
   await search.getByRole('textbox').fill('rectangle');

@@ -14,6 +14,7 @@ import {
 import { DEFAULT_FILE_NAME } from '../lib/files';
 import { newId } from '../lib/ids';
 import { GRID_MAX_MM, GRID_MIN_MM, loadPrefs, savePrefs, type GridPrefs, type Prefs } from '../lib/prefs';
+import type { CheckCategory, ChecksPrefs, SnapGroup, SnapsPrefs } from '../lib/checks';
 import { DEFAULT_PANELS, clampPanelWidth, movePanel, type PanelLayout, type SectionId } from '../lib/panels';
 import { DEFAULT_TOOLBARS, moveToolbar, type DockArea, type ToolbarId, type ToolbarLayout } from '../lib/toolbars';
 import { emptyDoc, loadFileInfo, loadPlan, saveFileInfo, savePlan, STORAGE_KEY, type FileInfo } from '../lib/storage';
@@ -40,9 +41,18 @@ import {
   syncComponent,
   ungroup,
 } from '../lib/selection';
-import { boundaryWallLines, buildableArea, stairLayout } from '../lib/site';
+import { boundaryWallLines, buildableArea, stairLayout, stairSpec } from '../lib/site';
 import { plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
-import { guessSideKinds, insetPolygon, orientOutline, outlineProblem, plotSides, signedArea2 } from '../lib/plot';
+import {
+  guessSideKinds,
+  insetPolygon,
+  orientOutline,
+  outlineProblem,
+  outlinePoints,
+  plotSides,
+  signedArea2,
+  withCorner,
+} from '../lib/plot';
 import { boundaryWallsAlong, buildPlotWalls, syncPlotWalls } from '../lib/plotWalls';
 import { formatLength } from '../lib/units';
 import { basementOf, levelWallMm, slabMm } from '../lib/levels';
@@ -50,7 +60,7 @@ import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
 import { CURTAIN_MM, isBuildingWall } from '../walls';
 import { wallPath, type WallLine } from '../lib/arc';
-import { roundedRect, type CurveMode } from '../lib/curves';
+import { pathOutline, roundedRect, type CurveMode } from '../lib/curves';
 import { groundOf, roundLevel } from '../lib/terrain/ground';
 import type { Built } from '../lib/layoutBuild';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
@@ -59,7 +69,7 @@ import { clampGap, type Hand } from '../lib/openingPlace';
 import { besideOpening, loneOpenings, nounOf, openingAt, refitOpening, tidy } from './openingAt';
 import { setActivePicker } from '../three/picker';
 import { applyTheme, type ThemeId } from '../theme/themes';
-import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SIMPLE_TOOLS } from '../types';
+import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf } from '../types';
 import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
 import type {
   RoofKind,
@@ -84,7 +94,6 @@ import type {
   Id,
   MarlaSqFt,
   Material,
-  Mode,
   PaperSize,
   PlanDoc,
   PlanElement,
@@ -122,7 +131,9 @@ export interface SiteSpec {
   wallArc: boolean;
   /** How the Curve tool draws, and whether it makes walls or layout lines. */
   curveMode: CurveMode;
-  curveMake: 'wall' | 'line';
+  curveMake: 'wall' | 'line' | 'path';
+  /** Width of a path or driveway made with the Curve tool, mm. */
+  pathWidthMm: number;
   /** The Rectangle tool rounds its corners to this radius (mm); 0 for square corners. */
   rectRadiusMm: number;
   /** Door tool places a door or a gate. */
@@ -144,6 +155,9 @@ export interface SiteSpec {
   stairShape: Stair['shape'];
   stairWidthMm: number;
   treadMm: number;
+  /** A curved stair's inner radius (mm), and which way curved and spiral stairs turn. */
+  stairInnerMm?: number;
+  stairTurn?: Stair['turn'];
   /** A stair climbs a full floor; a ramp or plinth steps climb the plinth. */
   climb: 'floor' | 'plinth';
   /** Height of new spot levels and contour lines, mm above the datum (the road level). */
@@ -155,6 +169,9 @@ export interface SiteSpec {
 }
 
 /** Heights of boundary walls (7') and parapets (3'). */
+/** A path or driveway made with the Curve tool: 4' wide, paving 3" thick, standing on the ground. */
+export const PATH_WIDTH_MM = 1219.2;
+export const PATH_HEIGHT_MM = 76.2;
 export const KIND_HEIGHT_MM = { boundary: 2133.6, parapet: 914.4, retaining: 3048 + 152.4 } as const;
 /** The height a new wall of this type starts at, or undefined for the floor's own wall height. */
 export const kindHeightMm = (kind?: WallKind): number | undefined =>
@@ -170,6 +187,7 @@ export const DEFAULT_SITE: SiteSpec = {
   wallArc: false,
   curveMode: 'arc3',
   curveMake: 'wall',
+  pathWidthMm: PATH_WIDTH_MM,
   rectRadiusMm: 0,
   gate: false,
   gateWidthMm: 3048,
@@ -362,7 +380,6 @@ export interface PlannerState {
   showRoomLabels: boolean;
   showRoomFills: boolean;
   exportLines: boolean;
-  mode: Mode;
   wallThicknessMm: number;
   marlaSqFt: MarlaSqFt;
   paper: PaperSize;
@@ -402,6 +419,8 @@ export interface PlannerState {
   clipboard: { doc: PlanDoc; ids: Id[] } | null;
   theme: ThemeId;
   grid: GridPrefs;
+  checks: ChecksPrefs;
+  snaps: SnapsPrefs;
   view: View;
   viewport: Size;
 
@@ -547,7 +566,6 @@ export interface PlannerState {
   /** Bring back everything hidden, or unlock everything locked (items and layers). */
   showAllHidden: () => void;
   unlockAll: () => void;
-  setMode: (mode: Mode) => void;
   setWallThicknessMm: (mm: number) => void;
   setMarlaSqFt: (sqft: MarlaSqFt) => void;
   setPaper: (paper: PaperSize) => void;
@@ -560,6 +578,10 @@ export interface PlannerState {
   setTheme: (theme: ThemeId) => void;
   /** Change some grid settings; spacing is for the current units. */
   setGrid: (patch: Partial<Omit<GridPrefs, 'spacingMm'>> & { spacingMm?: number }) => void;
+  /** Turn all checks on or off, or one kind of check. */
+  setChecks: (patch: { on?: boolean; category?: CheckCategory; categoryOn?: boolean }) => void;
+  /** Turn all snapping on or off, or one group of snap points. */
+  setSnaps: (patch: { on?: boolean; group?: SnapGroup; groupOn?: boolean }) => void;
   /** Set (or with null, reset to the theme's own) a grid line colour for the current theme. */
   setGridColor: (line: 'minor' | 'major', color: string | null) => void;
 
@@ -631,9 +653,8 @@ export function createPlannerStore(
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
-      const { showHints, pdfHints, accessibleZones } = get();
-      const { mode, wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } =
-        get();
+      const { showHints, pdfHints, accessibleZones, checks, snaps } = get();
+      const { wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } = get();
       savePrefs({
         units,
         showDimensions,
@@ -645,7 +666,6 @@ export function createPlannerStore(
         showHints,
         pdfHints,
         accessibleZones,
-        mode,
         wallThicknessMm,
         openingGapMm,
         marlaSqFt,
@@ -653,6 +673,8 @@ export function createPlannerStore(
         wallHeightMm,
         theme,
         grid,
+        checks,
+        snaps,
         toolbars,
         panels,
       });
@@ -750,7 +772,6 @@ export function createPlannerStore(
       pdfHints: prefs.pdfHints,
       accessibleZones: prefs.accessibleZones,
       furnitureKind: DEFAULT_FURNITURE_KIND,
-      mode: prefs.mode,
       wallThicknessMm: prefs.wallThicknessMm,
       openingGapMm: prefs.openingGapMm,
       openingStamp: [],
@@ -775,6 +796,8 @@ export function createPlannerStore(
       setChamferDist: (chamferDist) => set({ chamferDist }),
       theme: prefs.theme,
       grid: prefs.grid,
+      checks: prefs.checks,
+      snaps: prefs.snaps,
       toolbars: prefs.toolbars,
       dockToolbar: (id, area, index) => {
         set({ toolbars: moveToolbar(get().toolbars, id, area, index) });
@@ -1632,7 +1655,26 @@ export function createPlannerStore(
       addCurve: (pieces, inside) => {
         const kept = pieces.filter((p) => Math.hypot(p.x2 - p.x1, p.y2 - p.y1) > MIN_WALL_PX);
         if (!kept.length) return;
-        const asLines = get().site.curveMake === 'line';
+        const { curveMake, pathWidthMm } = get().site;
+        if (curveMake === 'path') {
+          // A paved path of the set width along the curve, on the ground.
+          const points = pathOutline(kept, pathWidthMm / MM_PER_UNIT / 2);
+          if (points.length < 3) return;
+          const concrete = get().doc.materials.some((m) => m.id === 'mat_concrete');
+          const block: Block = {
+            id: newId(),
+            type: 'block',
+            points,
+            heightMm: PATH_HEIGHT_MM,
+            shape: 'polygon',
+            path: true,
+            ...(concrete && { material: 'mat_concrete' }),
+          };
+          updateElements((els) => [...els, onActive(block)]);
+          get().select(null);
+          return;
+        }
+        const asLines = curveMake === 'line';
         get().beginBatch();
         for (const p of kept) {
           const a = { x: p.x1, y: p.y1 };
@@ -1891,7 +1933,7 @@ export function createPlannerStore(
         return true;
       },
       updatePlot: (next) => {
-        const problem = outlineProblem(next.points);
+        const problem = outlineProblem(next.points) ?? outlineProblem(outlinePoints(next));
         if (problem) {
           get().setWarning(problem);
           return false;
@@ -1917,11 +1959,11 @@ export function createPlannerStore(
       movePlotCorner: (plotId, index, p) => {
         const plot = get().doc.elements.find((el): el is Plot => el.type === 'plot' && el.id === plotId);
         if (!plot) return false;
-        const points = plot.points.map((q, i) => (i === index ? p : q));
-        if (outlineProblem(points)) return false;
+        const next = withCorner(plot, index, p);
+        if (outlineProblem(next.points) || outlineProblem(outlinePoints(next))) return false;
         // Corners can't be dragged round past each other: the plot keeps going the same way round.
-        if (signedArea2(points) <= 0) return false;
-        get().updateElement({ ...plot, points });
+        if (signedArea2(next.points) <= 0) return false;
+        get().updateElement(next);
         return true;
       },
       addSideGate: (plotId, side) => {
@@ -2055,7 +2097,7 @@ export function createPlannerStore(
         // A full floor: this floor's height and the slab over it (a basement's own height).
         const riseMm =
           site.climb === 'plinth' ? doc.plinthMm : levelWallMm(doc, activeLevel, wallHeightMm) + slabMm(doc);
-        const spec = { shape: site.stairShape, width: site.stairWidthMm / MM_PER_UNIT, riseMm, treadMm: site.treadMm };
+        const spec = stairSpec(site, riseMm);
         const layout = stairLayout(spec);
         const stair: PlanElement = {
           id: newId(),
@@ -2111,10 +2153,6 @@ export function createPlannerStore(
       },
       setPlinthMm: (mm) =>
         get().commit((doc) => (doc.plinthMm === mm ? doc : { ...doc, plinthMm: Math.max(0, Math.min(3000, mm)) })),
-      setMode: (mode) => {
-        set((s) => ({ mode, tool: mode === 'simple' && !SIMPLE_TOOLS.includes(s.tool) ? 'select' : s.tool }));
-        persistPrefs();
-      },
       setWallThicknessMm: (wallThicknessMm) => {
         set({ wallThicknessMm });
         persistPrefs();
@@ -2149,6 +2187,20 @@ export function createPlannerStore(
         if (spacingMm !== undefined && Number.isFinite(spacingMm))
           next.spacingMm = { ...grid.spacingMm, [units]: Math.min(GRID_MAX_MM, Math.max(GRID_MIN_MM, spacingMm)) };
         set({ grid: next, gridPx: gridFor(next, units) });
+        persistPrefs();
+      },
+      setChecks: ({ on, category, categoryOn }) => {
+        const { checks } = get();
+        const next = { ...checks, on: on ?? checks.on };
+        if (category) next.off = checks.off.filter((c) => c !== category).concat(categoryOn ? [] : [category]);
+        set({ checks: next });
+        persistPrefs();
+      },
+      setSnaps: ({ on, group, groupOn }) => {
+        const { snaps } = get();
+        const next = { ...snaps, on: on ?? snaps.on };
+        if (group) next.off = snaps.off.filter((g) => g !== group).concat(groupOn ? [] : [group]);
+        set({ snaps: next });
         persistPrefs();
       },
       setGridColor: (line, color) => {

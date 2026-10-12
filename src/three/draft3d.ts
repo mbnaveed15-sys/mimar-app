@@ -1,5 +1,5 @@
 import { outlineProblem } from '../lib/plot';
-import { plotRect, stairLayout } from '../lib/site';
+import { plotRect, stairLayout, stairSpec } from '../lib/site';
 import { MM_PER_UNIT } from '../lib/scale';
 import { levelWallMm, slabMm } from '../lib/levels';
 import type { PlannerState } from '../store/plannerStore';
@@ -111,7 +111,7 @@ export function draftElements(s: PlannerState): PlanElement[] {
     const { site } = s;
     const riseMm =
       site.climb === 'plinth' ? s.doc.plinthMm : levelWallMm(s.doc, s.activeLevel, s.wallHeightMm) + slabMm(s.doc);
-    const spec = { shape: site.stairShape, width: site.stairWidthMm / MM_PER_UNIT, riseMm, treadMm: site.treadMm };
+    const spec = stairSpec(site, riseMm);
     const l = stairLayout(spec);
     return [
       { id: `${DRAFT}-stair`, type: 'stair', x: p.x, y: p.y, ...spec, riserMm: l.riserMm, w: l.w, h: l.h, ...at },

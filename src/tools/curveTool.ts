@@ -356,7 +356,7 @@ export function curveHint(s: PlannerState): string {
   const d = s.draft?.type === 'curve' ? s.draft : null;
   const mode = d?.mode ?? s.site.curveMode;
   const n = d?.points.length ?? 0;
-  const what = s.site.curveMake === 'line' ? 'line' : 'wall';
+  const what = s.site.curveMake === 'line' ? 'line' : s.site.curveMake === 'path' ? 'path' : 'wall';
   switch (mode) {
     case 'arc':
       if (!d) return `Click where the curved ${what} starts (or drag to its end).`;
