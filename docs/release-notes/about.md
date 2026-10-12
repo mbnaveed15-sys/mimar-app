@@ -28,25 +28,26 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 
 ### Draw the plan
 - **Walls** in 4½", 9" and 13½" brick, retaining walls, and **glass curtain walls** with mullions and transoms. Walls can be straight or **curved** (true arcs).
-- **Curves:** a Curve tool draws arcs (by their ends and a bend, by 3 points, by their centre, or carrying on smoothly from the last piece), **circles**, **ovals** and **freeform curves**, as walls or layout lines. Circles, ovals and closed curves get their room inside. The Rectangle tool can round its corners.
+- **Curves:** a Curve tool draws arcs (by their ends and a bend, by 3 points, by their centre, or carrying on smoothly from the last piece), **circles**, **ovals** and **freeform curves**, as walls, layout lines or **paths and driveways** of a set width. Circles, ovals and closed curves get their room inside. The Rectangle tool can round its corners, and slab, levelled-area and plot edges can be bent into curves.
 - **Rooms** show their area in sq ft or m² and in **marla** (225 or 272.25 sq ft), measured to the centre of the walls.
-- **Doors:** single, double, sliding, folding, rolling shutter, a plain opening, and gates. **Windows:** sliding, casement, double casement, fixed and ventilator. Placing one shows the clear distance to each corner and never puts it flush against a corner.
-- **Structure:** columns, beams, slabs with voids, stairs (straight, L, U, ramp), plinth, **basements** with retaining walls, and **pitched roofs** (hip, gable, shed, flat) that work on L, T and any other plan shape.
+- **Doors:** single, double, sliding, folding, rolling shutter, a plain opening, and gates. **Windows:** sliding, casement, double casement, fixed and ventilator. Placing one shows the clear distance to each corner and never puts it flush against a corner. Windows in a curved wall follow the curve.
+- **Structure:** columns, beams, slabs with voids, stairs (straight, L, U, ramp, **curved** and **spiral**), plinth, **basements** with retaining walls, and **pitched roofs** (hip, gable, shed, flat) that work on L, T and any other plan shape.
 - **Floors:** as many as you need, each with its own height, plus a basement and the mumty.
 - **Furniture and garden:** a library of beds, sofas, dining, kitchen, bath, cars, plants and garden items at their real sizes. Each item shows the **free space it needs** to be used, from the ADA standards or common practice.
 - **Layout lines** for drafting, straight or curved, which can be turned into walls.
 
 ### Draw quickly and precisely (AutoCAD and SketchUp habits work)
-- **Snapping** to ends, midpoints, wall faces, crossings, perpendiculars, the building line and the grid, with red and green axis guides.
+- **Snapping** to ends, midpoints, wall faces, crossings, perpendiculars, the building line and the grid, with red and green axis guides. The **Snap** button at the bottom turns snapping off, or each kind of snap on or off. The pointer's X and Y show beside it.
 - **Typed input:** `12' 6"`, `3.5 m`, `@x,y`, `length<angle`, and AutoCAD aliases (CO, RO, TR, EX, MI, SC, FIL…).
 - **Modify tools:** move, copy, rotate, mirror, scale, stretch, offset, trim, extend, break, join, fillet, chamfer, on straight and curved walls alike.
 - **Push/Pull and Shape** as in SketchUp: pull shapes into blocks, and push them into walls to make niches, projections (chajjas) and arched or round openings.
 - **Groups, components, layers** that you can hide and lock, and full undo and redo.
 
 ### Plot, site and bylaws
-- **Plots:** plot size presets, or any shape drawn corner by corner. Each side has its own type (road, neighbour, back, park), setback and boundary wall. Corner plots are supported.
+- **Plots:** plot size presets, or any shape drawn corner by corner. Each side has its own type (road, neighbour, back, park), setback and boundary wall, and can be straight or curved. Corner plots are supported.
 - **Bylaws:** CDA sectors, Islamabad private schemes, DHA Islamabad/Rawalpindi (official); DHA Lahore, Bahria Lahore and LDA (provisional). Picking one fills in the setbacks from the plot's size and frontage.
-- **Live plan check:** setbacks, coverage, storeys, height, plinth, boundary walls, mumty, car porch and room sizes. Each problem names the bylaw clause and is marked in red on the plan. Click it to go to the item.
+- **Live plan check:** setbacks, coverage, storeys, height, plinth, boundary walls, mumty, car porch and room sizes. Each problem names the bylaw clause and is marked in red on the plan. Click it to go to the item. The **Checks** button at the bottom turns all checks and their marks off while you sketch, or one kind at a time.
+- **Non-residential buildings** (offices, schools, clinics, shops, mosques) are checked for exits, stair and corridor widths, travel distance, toilets, an accessible toilet, a ramp and a lift.
 - **Plan hints:** good practice rather than law. Rooms reached only through a bedroom, kitchens and living rooms without an outside window, the kitchen far from dining, blocked furniture, and more.
 - **Terrain:** spot levels, contours and levelled areas build a ground surface, measured from the road level.
 

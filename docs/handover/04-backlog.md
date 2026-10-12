@@ -7,8 +7,9 @@ In the order agreed with the owner. Confirm the plan with the owner before start
 From the 1.23 QA pass (six testers; full reports in the git-ignored `.qa/<tester>/REPORT.md`, combined in
 `.qa/SUMMARY.md`). 1.23.1 fixed the blockers and wrong results; plan each of these with the owner first.
 
-1. **Still open from the 2D review (after 1.24):** a persistent dimension tool; zoom window and zoom previous; a cursor
-   X,Y readout; grips for beams, rooms, slabs and columns (lines have them since 1.41); shared
+1. **Still open from the 2D review (after 1.24):** a persistent dimension tool; zoom window and zoom previous; grips for
+   beams, rooms and columns (lines have them since 1.41; slab, levelled-area and plot edges have bend grips since 1.42; a
+   cursor X,Y readout came in 1.42); shared
    properties for a multi-selection (done for doors and windows in 1.29.1); Mirror of a group keeping it a group; Paste then place. 2D pan on very large
    plans (~5,000 walls) is limited by SVG layout.
 2. **Custom plots (1.30, planned with the owner):** any shape clicked corner by corner, each side its own type
@@ -29,13 +30,17 @@ spot levels, contours, survey import, levelled plot and pads, cut and fill, Open
 freer form: curved walls, double-height rooms, glass curtain walls and pitched roofs (1.37); faster 3D and IFC export (1.38);
 movable side panels: reorder, tabs, dock left or right, resize (1.39); iPad polish: compact portrait layout, touch buttons, bigger touch targets, release descriptions (1.40);
 curves part 1: the Curve tool (arcs by ends and bend, 3 points, centre, tangent; circles, ovals, freeform curves), rounded
-rectangles, curved layout lines, and Fillet, Extend, Join, Chamfer and Push/Pull on curves (1.41).
+rectangles, curved layout lines, and Fillet, Extend, Join, Chamfer and Push/Pull on curves (1.41); one mode (no Simple/Pro),
+Checks and Snap buttons with per-kind menus, an X,Y readout, checks for non-residential buildings, and curves part 2:
+windows bent with curved walls, curved and spiral stairs, curved slab, levelled-area and plot edges, curved paths and
+driveways (1.42, all in one release as the owner asked).
 
-Planned next (the roadmap agreed with the owner for all kinds of work; plan each with the owner first):
-1.42 curves part 2 (agreed with the owner on 11 Oct 2026, plan in the project files `curvilinear/plan.md`): curved doors
-and windows on arc walls (curved in plan, bent frame and glass in 3D), curved and spiral stairs, curved edges on slabs,
-voids, levelled areas and plot sides, and curved site paths and driveways. Then 1.43 checks for non-residential
-buildings (1.39 went to movable side panels, 1.40 to iPad polish and 1.41 to curves, all asked for by the owner).
+Planned next (plan each with the owner first): nothing is booked after 1.42. Left from curves part 2: doors in curved
+walls stay straight (only windows bend); slab voids can't be curved; a curved plot side can't meet a cut corner (the
+splay needs two straight sides, and those two sides have no bend grip); a path is one flat paving block (on a sloping
+site it sits at the ground's height at its middle) and a ring path has a seam line where it closes; each arc of a
+3-point chain makes its own path piece. The non-residential checks are good-practice hints (from common building-code
+figures), not any Pakistani authority's bylaws.
 Phones are not laid out yet (the side panel fills a phone screen); a phone layout would be its own release.
 Floating side panels were assessed with 1.39 and left out; revisit only if the owner still wants them.
 First-floor plans from a room list are a later idea.
@@ -50,7 +55,7 @@ options.
 
 Left from freer form for later: no domes, vaults or free-form roofs, no dormers or roof windows (skylights); walls
 are circular arcs only: ovals are four-centred and freeform curves are biarcs (both true arcs, not ellipses or
-splines); no spiral stairs (planned for 1.42); curved glass is flat panes between mullions; a roof is one
+splines); curved glass is flat panes between mullions; a roof is one
 pitch all round (no per-side pitches or mansards) and doesn't clip the walls under it (walls stop at their own
 height, gable walls fill up to the roof); roofs aren't drawn in the auto-planner's layouts; the roof over a house with
 curved walls follows the curve as short straight eaves.

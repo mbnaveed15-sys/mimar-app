@@ -251,6 +251,33 @@ autosaves to local storage on every change.
     boundary walls, context blocks and roads). Drawings: `views.ts` adds a ground `profile` (finished and natural)
     and `hiddenLines.ts` clips elevations under a varying ground (`ViewFrame.ground`).
 
+- 1.42 (one mode, checks and snaps your way, building-use checks, curves part 2):
+  - No modes: `Mode`, `SIMPLE_TOOLS` and `setMode` are gone; every tool is on the bars (`useBarTools`).
+  - Checks: `src/lib/checks.ts` (pure) has `CheckCategory`/`CHECK_CATEGORIES`, `rowCategory`/`hintCategory`,
+    `filterCheck`/`filterHints`; the store's `checks` ({ on, off[] }, saved in prefs, `setChecks`). `usePlanCheck` and
+    `usePlanHints` return the filtered results (so the panel, marks and PDF follow); `useFullCheck` is unfiltered.
+    Snaps: `SNAP_GROUPS` and `snapAllowed(snaps, checks)` (the building line needs plot checks, door gaps need opening
+    checks); `InferOptions.allow` in `inference.ts`; `inferAt` returns the raw point when snapping is off (unless an
+    axis is locked); the grid needs `snaps.on` too. The bottom bar is `src/components/StatusChips.tsx` (`ChipMenu`
+    opens on hover after 350 ms or on its ▴ button; `SnapChip`, `ChecksChip`, `PointerReadout` from
+    `src/store/pointerStore.ts`). Commands `view.snapping` (F3) and `view.checks` (F4).
+  - Building use: `src/lib/buildingUse.ts` (pure) `buildingUseHints(doc, use, floors, len)`, called from
+    `planHints.ts` for Building projects: occupants per floor from room areas, exits, exit/stair/corridor/door widths,
+    travel distance, WCs, an accessible toilet, a ramp and a lift; hints of kind 'use', ids `use-*`.
+  - Windows on arcs: `openingBend` / `bendPoint` / `bendPath` in `arc.ts` bend a window's symbol in the plan and the
+    DXF; `straightPieces` splits a lone window into panes along the curve in 3D.
+  - Stairs: `Stair.shape` 'curved' | 'spiral' with `innerMm` and `turn`; `stairLayout` in `site.ts` gives wedge
+    treads (`partOutline`, `roundStair`), a spiral's `pole` part and its `overhead` treads; `spiralTurnRiseMm` for the
+    headroom note; 3D in `stairBlocks` (role 'stair', spiral treads as plates). Format 13.
+  - Curved edges: `src/lib/curvedEdges.ts` (pure). `Slab.curve` / `Pad.curve` (`EdgeCurve`: corners and a middle
+    point per edge, null when straight); `points` always hold the faceted outline, so every consumer works unchanged.
+    `curveOf` checks the curve still matches the points (a stretch drops it); `mapOutline` moves, mirrors and scales
+    the curve; `bendEdge` is the `edge-bend-i` grip. Plots: `PlotSide.bow`; `plotOutline` facets curved sides
+    (`sideLine`, `sideMiddle`), so the setback line, area, 3D lawn and DXF follow; `sideWallLines` merges the facets of
+    a side back into one bowed wall line, which `plotWalls.ts` builds as a curved wall; `withCorner` keeps the bow in
+    proportion; `canBendSide` (not at a cut corner); the `plot-bend-i` grip.
+  - Paths: `pathOutline(pieces, half)` in `curves.ts` (mitred offsets; a ring for a closed curve); a path is a
+    `Block` with `path: true` (76.2 mm high, concrete), on the ground in 3D, left out of `planCheck`.
 - Curves (1.41):
   - `src/lib/curves.ts` (pure, tested) builds curves out of arc pieces (`WallLine`s with a bow): `segThrough`
     (3 points), `tangentArc`, `centreArc` with `trackSweep` (follows the pointer past a half circle), `circleSegs`
@@ -262,7 +289,7 @@ autosaves to local storage on every change.
   - The tool: `src/tools/curveTool.ts` (press, hover, release, typed values, readout, hint; `curvePreview` for the
     overlay and `draft3d.ts`; `directionInto` finds the direction a wall or line ends in for tangent arcs). Draft
     `{ type: 'curve', mode, points, cursor, sweep?, tangent?, chainStart? }`; settings `site.curveMode`,
-    `site.curveMake` ('wall' | 'line'), `site.rectRadiusMm`; options in `src/components/CurveOptions.tsx`. The store's
+    `site.curveMake` ('wall' | 'line' | 'path', with `site.pathWidthMm`), `site.rectRadiusMm`; options in `src/components/CurveOptions.tsx`. The store's
     `addCurve(pieces, inside?)` adds them as walls or lines in one step, the room inside a closed curve of walls, and
     clears the selection. `undo` in a run of arcs carries on from where the last arc started.
   - `SketchLine.bow` (format 12): `isNear`, `elementCenter`, outlines, mirror (bow negated), scale, stretch,

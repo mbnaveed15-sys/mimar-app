@@ -53,8 +53,8 @@ test('shapes on the floor and a wall, pushed and pulled in 3D: a block and an op
   await expect(view).toHaveAttribute('data-shapes', '1');
 
   // Pull the floor shape up into a 3' block.
-  await page.mouse.move(545, 405);
-  await page.mouse.click(545, 405);
+  await page.mouse.move(585, 410);
+  await page.mouse.click(585, 410);
   await page.keyboard.type(`3'`);
   await page.keyboard.press('Enter');
   await expect(view).toHaveAttribute('data-blocks', '1');
