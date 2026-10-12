@@ -257,6 +257,46 @@ autosaves to local storage on every change.
     boundary walls, context blocks and roads). Drawings: `views.ts` adds a ground `profile` (finished and natural)
     and `hiddenLines.ts` clips elevations under a varying ground (`ViewFrame.ground`).
 
+- 1.44 (dimensions, zoom window, the rest of the curves, phones, first floors):
+  - Dimensions: `Dimension` element (`types.ts`: `x1,y1,x2,y2`, line point `lx,ly`, `angle` 0/90 for horizontal or
+    vertical (none = aligned), `radius`, ties `tie1`/`tie2` = `DimTie` naming the item and the point on it).
+    `src/lib/dimLine.ts` (pure) gives the drawn line, extension lines and value; `src/lib/dimensions.ts` (pure):
+    `tieFor`/`tieOn`/`tiePoint` (what an end sticks to), `syncDimensions(prev, next)` in every commit moves tied ends
+    (deleted items untie), `remapTies` for paste and duplicate, `dragDimension` (its grip moves the line),
+    `radiusDimension`. Tool `src/tools/dimensionTool.ts` (draft `dimension`: points, ties, `chain`; `site.dimMode`
+    linear / aligned / radius, `site.dimChain`; typed lengths in `dimMeasure`). Drawn by
+    `shapes/DimensionShape.tsx` (canvas and `PlanDrawing`, so sheets and the PDF); layer `dimensions`; DXF writes
+    lines and text on `A-ANNO-DIMS`. Aliases DIM and ZP (`aliases.ts`).
+  - Zoom: the Zoom tool's drag is a window (`zoom-box` in `DrawingOverlay.tsx`); zooms and pans push the old view
+    on the store's `viewBack` (`VIEW_HISTORY` deep), `zoomPrevious` pops it (command `view.zoomPrevious`, `ViewControls`).
+  - Curved doors: `openingBend` takes doors too; `bentSymbol` (`openingKinds.ts`) keeps a swing leaf straight
+    (`SWING_KINDS`) and bends the rest; 3D `doorPanel`/`doorLeaves`/`closedDoor` in `model.ts` bend panels via
+    `bendPath`; `straightPieces` splits a lone door into panes.
+  - Curved voids: `Slab.holeCurves` (one `EdgeCurve | null` per hole), `curvedEdges.ts` `holeOutline`, `bendHoleEdge`
+    (grip `void-bend-h-e`), `straightHoles`, `holeEdgeMiddles`; `mapOutline` maps them; `storage.ts` drops them if
+    they no longer match the holes. Format 15.
+  - Splay on a curved side: `plotOutline` takes each side's span along its arc (`t0..t1`), `sidePath` builds the
+    sub-arc with `bowThrough`, and the splay runs straight between the cut ends.
+  - First floor from a room list: `generateUpperLayouts(program, W, D, ground, opts)` in `layoutGen.ts`. `Ground`
+    = the stair rect (frame units), `open` (the stair's room is open to below), terrace depth, wet rooms and wall
+    lines below. `candidate(..., stair)` keeps a hall column over the stair (`stairColumn`), splits each strip
+    either side of it (`stretches`, `splitColumns`), and turns the hall into the 'stair' room plus 'Landing'
+    passages; `scorePlan` with `upper` links rooms from the stair (`UPPER_FROM`), wants the TV lounge by it;
+    `overGround` scores baths over wet rooms and walls over walls; `withTerrace` adds the front terrace and its
+    door. `layoutBuild.ts`: `upperSite(doc, plot)` (the ground floor's outline, stair, wet rooms; a message
+    string when it can't), `terraceDepth`, and `buildLayout` options `noStair`/`openStair`; terraces get a
+    `parapet` wall (3') on open sides and no Room. Store: `placeUpperLayout(built, levelId, stairRoomId)` adds the
+    First floor level after the ground if needed, sets `openAbove` on the ground stair room, one commit;
+    `replacedByLayout` shared with `placeLayout`. Panel: "Plans for" radio, list `mimar.firstFloorList`.
+  - Phones: `usePhone()` (`useCompact.ts`, `PHONE_QUERY`: under 640 px wide, or under 500 px tall with a coarse
+    pointer) and the same query as Tailwind variants `phone:` / `phone-short:` (`index.css`). `PlannerApp` drops the
+    tool docks for `PhoneTools.tsx` (groups `PHONE_GROUPS`, `PHONE_ALWAYS`, `phoneGroupOf` in `toolbars.ts`; a tested
+    rule that every tool is in it once) and puts `main` and the panel in one column; `SidePanel` renders
+    `PhoneSheet` (peek / half / full, `data-sheet`; state in `panelSheet.ts` `overStore`, which also holds the iPad
+    drawer's open state; `revealPanel()` opens either for menu commands via `showSection`). MenuBar adds Undo/Redo
+    and hides Split (split view renders 2D on a phone); `StatusBar` has a two-line phone form; `Welcome` places the
+    tour card above or below its target; `DrawingsView` stacks. Tests: `e2e/phone.spec.ts`.
+
 - 1.42 (one mode, checks and snaps your way, building-use checks, curves part 2):
   - No modes: `Mode`, `SIMPLE_TOOLS` and `setMode` are gone; every tool is on the bars (`useBarTools`).
   - Checks: `src/lib/checks.ts` (pure) has `CheckCategory`/`CHECK_CATEGORIES`, `rowCategory`/`hintCategory`,
@@ -299,7 +339,7 @@ autosaves to local storage on every change.
     the curve; `bendEdge` is the `edge-bend-i` grip. Plots: `PlotSide.bow`; `plotOutline` facets curved sides
     (`sideLine`, `sideMiddle`), so the setback line, area, 3D lawn and DXF follow; `sideWallLines` merges the facets of
     a side back into one bowed wall line, which `plotWalls.ts` builds as a curved wall; `withCorner` keeps the bow in
-    proportion; `canBendSide` (not at a cut corner); the `plot-bend-i` grip.
+    proportion; the `plot-bend-i` grip (every side, cut corner or not, since 1.44).
   - Paths: `pathOutline(pieces, half)` in `curves.ts` (mitred offsets; a ring for a closed curve); a path is a
     `Block` with `path: true` (76.2 mm high, concrete), on the ground in 3D, left out of `planCheck`.
 - Curves (1.41):

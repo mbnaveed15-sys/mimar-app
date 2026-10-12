@@ -7,7 +7,7 @@ In the order agreed with the owner. Confirm the plan with the owner before start
 From the 1.23 QA pass (six testers; full reports in the git-ignored `.qa/<tester>/REPORT.md`, combined in
 `.qa/SUMMARY.md`). 1.23.1 fixed the blockers and wrong results; plan each of these with the owner first.
 
-1. **Still open from the 2D review (after 1.24):** a persistent dimension tool; zoom window and zoom previous; grips for
+1. **Still open from the 2D review (after 1.24):** grips for
    beams, rooms and columns (lines have them since 1.41; slab, levelled-area and plot edges have bend grips since 1.42; a
    cursor X,Y readout came in 1.42); shared
    properties for a multi-selection (done for doors and windows in 1.29.1); Mirror of a group keeping it a group; Paste then place. 2D pan on very large
@@ -35,21 +35,26 @@ Checks and Snap buttons with per-kind menus, an X,Y readout, checks for non-resi
 windows bent with curved walls, curved and spiral stairs, curved slab, levelled-area and plot edges, curved paths and
 driveways (1.42, all in one release as the owner asked); furniture for every kind of building with a grouped library,
 checks for every building type and locality, more building uses, left and right setbacks, and snapping to every
-corner with more grips (1.43, one release).
+corner with more grips (1.43, one release); dimensions that follow the plan, zoom window and zoom previous, curved doors,
+curved slab voids, a cut corner on a curved plot side, a phone layout, and first floors from a room list (1.44, one release).
 
-Planned next (plan each with the owner first): nothing is booked after 1.43.2 (the 1.43 bug report is all fixed). Left from 1.43: the authorities'
+Planned next (plan each with the owner first): the authorities' commercial bylaw figures (the owner set these aside
+for the step after 1.44 and may send CDA/DHA/LDA schedules). Left from 1.43: the authorities'
 non-residential (commercial, institutional) figures, needed from the owner's official schedules; room corners are
 where walls meet (drag a wall end), not their own grips; stairs and furniture have no corner grips (furniture keeps
 its resize grip); grips are 2D only (3D edits by Move, Push/Pull and the panel); the older library items keep their
-hand-drawn symbols. Left from curves part 2: doors in curved
-walls stay straight (only windows bend); slab voids can't be curved; a curved plot side can't meet a cut corner (the
-splay needs two straight sides, and those two sides have no bend grip); a path is one flat paving block (on a sloping
+hand-drawn symbols. Left from curves: a single or double swing door in a curved wall keeps a flat leaf (its frame
+bends; sliding, folding and shutter doors bend too); a path is one flat paving block (on a sloping
 site it sits at the ground's height at its middle) and a ring path has a seam line where it closes; each arc of a
 3-point chain makes its own path piece. The non-residential checks are good-practice hints (from common building-code
 figures), not any Pakistani authority's bylaws.
-Phones are not laid out yet (the side panel fills a phone screen); a phone layout would be its own release.
+Left from 1.44: dimensions have no text-size or arrow-style setting and go to DXF as lines and text (not DIMENSION
+entities); there is no ZW alias (the Zoom tool's drag is the zoom window). First floors from a room list: the first
+floor only (no second floor, no basement from the list), the ground stair room is left open to below (the stair
+doesn't carry on to the roof), no Mirror for first-floor plans, and the ground floor needs a stair first. On phones,
+the tool bars can't be docked (one strip at the bottom) and the panel's sections are tabs only; the welcome tour's
+hover hints still mention keys.
 Floating side panels were assessed with 1.39 and left out; revisit only if the owner still wants them.
-First-floor plans from a room list are a later idea.
 
 Left from sections and elevations for later: dimension strings on sections (only level marks now); each section and
 elevation is worked out whole (about 0.5 s at 576 walls, 3 s at 2,500), and the suggested sheets need them all, so the
