@@ -12,7 +12,7 @@ import { GROUND_LEVEL, levelOf, type Furniture, type PlanElement, type Point, ty
 import { wallPolygon, wallsOf } from '../walls';
 import { pointAlong } from '../lib/arc';
 import { edgeMiddles, holeEdgeMiddles } from '../lib/curvedEdges';
-import { canBendSide, sideMiddle } from '../lib/plot';
+import { sideMiddle } from '../lib/plot';
 import { voidsOver } from '../lib/voids';
 import { DrawingOverlay } from './DrawingOverlay';
 import { CheckMarks } from './CheckMarks';
@@ -325,12 +325,9 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         {tool === 'select' &&
           selected?.type === 'plot' &&
           !selected.locked &&
-          selected.points.map(
-            (_, i) =>
-              canBendSide(selected, i) && (
-                <Handle key={`b${i}`} name={`plot-bend-${i}`} p={sideMiddle(selected, i)} k={hk} />
-              ),
-          )}
+          selected.points.map((_, i) => (
+            <Handle key={`b${i}`} name={`plot-bend-${i}`} p={sideMiddle(selected, i)} k={hk} />
+          ))}
         {tool === 'select' &&
           (selected?.type === 'slab' || selected?.type === 'pad') &&
           !selected.locked &&

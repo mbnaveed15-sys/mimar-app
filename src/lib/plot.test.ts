@@ -14,18 +14,19 @@ import {
   plotSides,
   polygonArea,
   reversedSides,
+  plotOutline,
   roadCorner,
+  sideLine,
   sideSetbacks,
   sideSlots,
   sideWallLines,
-  canBendSide,
   frontage,
   isCurvedSide,
   sideMiddle,
   withCorner,
   withSideBow,
 } from './plot';
-import { bowThrough } from './arc';
+import { arcOf, bowThrough } from './arc';
 import { mapOutline } from '../geometry';
 import { plotRect } from './site';
 
@@ -306,12 +307,46 @@ describe('curved plot sides', () => {
     expect(withSideBow(curved, 2, 0).sideList![2].bow).toBeUndefined();
   });
 
-  it('has no curve on the two sides at a cut corner', () => {
-    const corner = plot(rect, {
-      sideList: [{ kind: 'back' }, { kind: 'neighbour' }, { kind: 'road' }, { kind: 'road' }],
-      splay: { sizeMm: 1524 },
-    });
-    expect([0, 1, 2, 3].map((i) => canBendSide(corner, i))).toEqual([true, true, false, false]);
+  it('cuts a corner on a curved side, measured along the curve', () => {
+    // The road side curved, and the left side a road too: the corner between them (bottom left) is cut.
+    const corner = withSideBow(
+      plot(rect, {
+        sideList: [
+          { kind: 'back', wall },
+          { kind: 'neighbour', wall },
+          { kind: 'road', wall },
+          { kind: 'road', wall },
+        ],
+      }),
+      2,
+      bow,
+    );
+    expect(roadCorner(corner)).toBe(3);
+    const cut = { ...corner, splay: { sizeMm: 3048 } }; // 10'
+    const edges = plotOutline(cut);
+    const splay = edges.find((e) => e.side === 'splay')!;
+    // One end 10' up the straight side from the corner (0, 60)…
+    expect(splay.b.x).toBeCloseTo(0, 6);
+    expect(splay.b.y).toBeCloseTo(ft(50), 6);
+    // …the other 10' along the curve from it: on the arc, its arc length from the corner 10'.
+    const road = sideLine(cut, 2);
+    const arc = arcOf(road)!;
+    expect(Math.hypot(splay.a.x - arc.cx, splay.a.y - arc.cy)).toBeCloseTo(arc.r, 6);
+    const along = Math.abs(
+      Math.atan2(splay.a.y - arc.cy, splay.a.x - arc.cx) - Math.atan2(rect[3].y - arc.cy, rect[3].x - arc.cx),
+    );
+    expect(along * arc.r).toBeCloseTo(ft(10), 3);
+    // The curved side keeps its curve up to the cut, the area loses the corner, and both sides can still bend.
+    expect(edges.filter((e) => e.side === 2).length).toBeGreaterThan(4);
+    expect(plotArea(cut)).toBeLessThan(plotArea(corner));
+    expect(plotArea(cut)).toBeGreaterThan(plotArea(corner) - ft(10) * ft(10));
+    // The building line is never bigger for the cut, and the walls follow it.
+    expect(polygonArea(buildableArea(cut))).toBeGreaterThan(0);
+    expect(polygonArea(buildableArea(cut))).toBeLessThanOrEqual(polygonArea(buildableArea(corner)) + 1e-6);
+    const lines = sideWallLines(cut);
+    expect(lines.map((l) => l.side)).toEqual([0, 1, 2, 'splay', 3]);
+    expect(lines.find((l) => l.side === 2)!.bow).toBeDefined();
+    expect(lines.find((l) => l.side === 'splay')!.bow).toBeUndefined();
   });
 });
 
