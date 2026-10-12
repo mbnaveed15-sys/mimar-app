@@ -179,7 +179,7 @@ export function modelPrisms(model: Model3D, skip: Set<Id> = new Set()): Prism[] 
     for (const face of r.faces) if (face.length >= 3) out.push({ rings: [face], extrude: [0, r.h, 0] });
   }
   for (const s of [...model.slabs, ...model.blocks]) {
-    if (s.role === 'shape' || !keep(s.id) || s.h <= 0 || s.points.length < 3) continue;
+    if (s.role === 'shape' || s.role === 'furniture' || !keep(s.id) || s.h <= 0 || s.points.length < 3) continue;
     const ring = (pts: [number, number][]) => pts.map(([x, z]): V3 => [x, s.y0, z]);
     out.push({ rings: [ring(s.points), ...(s.holes ?? []).map(ring)], extrude: [0, s.h, 0] });
   }
