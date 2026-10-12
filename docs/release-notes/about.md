@@ -33,21 +33,21 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 - **Doors:** single, double, sliding, folding, rolling shutter, a plain opening, and gates. **Windows:** sliding, casement, double casement, fixed and ventilator. Placing one shows the clear distance to each corner and never puts it flush against a corner. Windows in a curved wall follow the curve.
 - **Structure:** columns, beams, slabs with voids, stairs (straight, L, U, ramp, **curved** and **spiral**), plinth, **basements** with retaining walls, and **pitched roofs** (hip, gable, shed, flat) that work on L, T and any other plan shape.
 - **Floors:** as many as you need, each with its own height, plus a basement and the mumty.
-- **Furniture and garden:** a library of beds, sofas, dining, kitchen, bath, cars, plants and garden items at their real sizes. Each item shows the **free space it needs** to be used, from the ADA standards or common practice.
+- **Furniture and garden:** a library of about 100 items at their real sizes, in groups for homes, offices, schools, clinics and hospitals, shops, mosques, restaurants, public toilets and gardens, with search and recent picks. Each item shows the **free space it needs** to be used, from the ADA standards or common practice.
 - **Layout lines** for drafting, straight or curved, which can be turned into walls.
 
 ### Draw quickly and precisely (AutoCAD and SketchUp habits work)
-- **Snapping** to ends, midpoints, wall faces, crossings, perpendiculars, the building line and the grid, with red and green axis guides. The **Snap** button at the bottom turns snapping off, or each kind of snap on or off. The pointer's X and Y show beside it.
+- **Snapping** to ends, midpoints, wall faces and corners, the corners of every item (in 2D and 3D), crossings, perpendiculars, the building line and the grid, with red and green axis guides. The **Snap** button at the bottom turns snapping off, or each kind of snap on or off. The pointer's X and Y show beside it.
 - **Typed input:** `12' 6"`, `3.5 m`, `@x,y`, `length<angle`, and AutoCAD aliases (CO, RO, TR, EX, MI, SC, FIL…).
 - **Modify tools:** move, copy, rotate, mirror, scale, stretch, offset, trim, extend, break, join, fillet, chamfer, on straight and curved walls alike.
 - **Push/Pull and Shape** as in SketchUp: pull shapes into blocks, and push them into walls to make niches, projections (chajjas) and arched or round openings.
 - **Groups, components, layers** that you can hide and lock, and full undo and redo.
 
 ### Plot, site and bylaws
-- **Plots:** plot size presets, or any shape drawn corner by corner. Each side has its own type (road, neighbour, back, park), setback and boundary wall, and can be straight or curved. Corner plots are supported.
+- **Plots:** plot size presets, or any shape drawn corner by corner, with front, rear, left and right setbacks. Each side has its own type (road, neighbour, back, park), setback and boundary wall, and can be straight or curved. Corner plots are supported.
 - **Bylaws:** CDA sectors, Islamabad private schemes, DHA Islamabad/Rawalpindi (official); DHA Lahore, Bahria Lahore and LDA (provisional). Picking one fills in the setbacks from the plot's size and frontage.
-- **Live plan check:** setbacks, coverage, storeys, height, plinth, boundary walls, mumty, car porch and room sizes. Each problem names the bylaw clause and is marked in red on the plan. Click it to go to the item. The **Checks** button at the bottom turns all checks and their marks off while you sketch, or one kind at a time.
-- **Non-residential buildings** (offices, schools, clinics, shops, mosques) are checked for exits, stair and corridor widths, travel distance, toilets, an accessible toilet, a ramp and a lift.
+- **Live plan check:** setbacks, coverage, storeys, height, plinth, boundary walls, mumty, car porch and room sizes, for every locality (a plot with no authority is checked against its own setbacks, and figures a locality's table lacks are flagged to check). Each problem names the bylaw clause and is marked in red on the plan. Click it to go to the item. The **Checks** button at the bottom turns all checks and their marks off while you sketch, or one kind at a time.
+- **Non-residential buildings** (offices, schools, clinics, hospitals, shops, restaurants, hotels, apartments, halls, mosques, factories and warehouses) are checked for exits, stair and corridor widths, travel distance, toilets, an accessible toilet, a ramp and a lift, in the plan check with the plot's setbacks.
 - **Plan hints:** good practice rather than law. Rooms reached only through a bedroom, kitchens and living rooms without an outside window, the kitchen far from dining, blocked furniture, and more.
 - **Terrain:** spot levels, contours and levelled areas build a ground surface, measured from the road level.
 

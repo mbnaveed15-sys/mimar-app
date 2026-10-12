@@ -96,6 +96,11 @@ export function ProjectPanel() {
       </div>
       <div className="text-muted">A floor can have its own wall height: set it in the floor switcher at the top.</div>
       <div className="mt-1 font-medium">Show</div>
+      {project.type === 'free' && !shows(doc, 'bylaws') && (
+        <div className="text-muted" data-testid="free-checks-note">
+          A free project starts without bylaws. Tick “{PANEL_NAMES.bylaws}” to check a plot’s setbacks too.
+        </div>
+      )}
       {PANELS.map((panel) => (
         <label key={panel} className="flex items-center gap-2">
           <input

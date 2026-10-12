@@ -21,11 +21,16 @@ import {
 import { roomAreaSqMm } from '../rooms';
 import { MM_PER_UNIT } from './scale';
 import type { Hint } from './planHints';
+import type { CheckRow } from './planCheck';
 
 /** Floor area per person (m²) by room name, the first match winning; 0 = not counted (circulation, toilets). */
 const LOAD_BY_NAME: [RegExp, number][] = [
   [/toilet|\bwc\b|wash|bath|wudu|ablution|shaft|lift|elevator|stair|corridor|passage|lobby|duct|electric|plant/i, 0],
+  [/warehouse|godown|loading/i, 46.5],
   [/store|stock|server|archive/i, 28],
+  [/guest room|bedroom|suite|private room|flat\b|apartment|dorm/i, 18.6],
+  [/banquet|wedding|marriage|function|community|main hall|sports hall|exam hall|lecture|stage/i, 1.4],
+  [/workshop|production|factory/i, 9.3],
   [/class/i, 1.9],
   [/lab|library|reading/i, 4.6],
   [/meeting|conference|board|waiting|assembly|canteen|cafeteria|dining/i, 1.4],
@@ -43,6 +48,13 @@ const LOAD_BY_USE: Record<BuildingUse, number> = {
   clinic: 9.3,
   shop: 2.8,
   mosque: 0.65,
+  hospital: 22.3,
+  restaurant: 1.4,
+  hotel: 18.6,
+  apartments: 18.6,
+  hall: 1.4,
+  factory: 9.3,
+  warehouse: 46.5,
   other: 9.3,
 };
 
@@ -53,6 +65,14 @@ const WC_RULE: Record<BuildingUse, { firstPer: number; first: number; per: numbe
   clinic: { firstPer: 25, first: 0, per: 25 },
   shop: { firstPer: 500, first: 0, per: 500 },
   mosque: { firstPer: 150, first: 0, per: 150 },
+  hospital: { firstPer: 25, first: 0, per: 25 },
+  restaurant: { firstPer: 75, first: 0, per: 75 },
+  // One WC per guest room (about two guests), and per flat (about five people).
+  hotel: { firstPer: 2, first: 0, per: 2 },
+  apartments: { firstPer: 5, first: 0, per: 5 },
+  hall: { firstPer: 125, first: 0, per: 125 },
+  factory: { firstPer: 100, first: 0, per: 100 },
+  warehouse: { firstPer: 100, first: 0, per: 100 },
   other: { firstPer: 25, first: 50, per: 50 },
 };
 
@@ -65,6 +85,8 @@ const STAIR_MIN_SMALL_MM = 900;
 /** Narrowest corridor: 1100 mm; 1800 mm in a school corridor serving 100 people or more. */
 const CORRIDOR_MIN_MM = 1100;
 const SCHOOL_CORRIDOR_MIN_MM = 1800;
+/** A hospital corridor that beds are wheeled along: 2400 mm. */
+const HOSPITAL_CORRIDOR_MIN_MM = 2400;
 /** Narrowest door on the way out (leaf width), so its clear opening takes a wheelchair. */
 const DOOR_MIN_MM = 900;
 /** Longest straight-line distance from any room to an exit (the walk itself may be up to 60 m). */
@@ -72,8 +94,13 @@ const TRAVEL_MAX_MM = 45000;
 /** An accessible toilet needs a 1.5 m turning circle. */
 const ACCESSIBLE_MIN_MM = 1500;
 
+/** Library items that count as a WC. */
+const WC_KINDS = new Set<string>(['wc', 'wc-indian', 'wc-cubicle', 'accessible-wc']);
+
 const CORRIDOR = /corridor|passage|lobby|gallery|hall(way)?\b/i;
-const PRAYER_HALL = /prayer hall/i;
+/** Halls people gather in, not passages. */
+const PRAYER_HALL =
+  /(prayer|banquet|wedding|marriage|main|function|dining|assembly|sports|exam|community|lecture) hall/i;
 const TOILET = /toilet|\bwc\b|wash|bath/i;
 const ACCESSIBLE = /accessible|disabled|wheelchair|\bada\b/i;
 const LIFT = /lift|elevator/i;
@@ -190,7 +217,12 @@ export function buildingUseHints(
       });
 
     // Corridors.
-    const corridorMin = use === 'school' && people >= 100 ? SCHOOL_CORRIDOR_MIN_MM : CORRIDOR_MIN_MM;
+    const corridorMin =
+      use === 'hospital'
+        ? HOSPITAL_CORRIDOR_MIN_MM
+        : use === 'school' && people >= 100
+          ? SCHOOL_CORRIDOR_MIN_MM
+          : CORRIDOR_MIN_MM;
     for (const r of rooms)
       if (CORRIDOR.test(r.name) && !PRAYER_HALL.test(r.name) && shortSide(r.points) * MM_PER_UNIT + 1 < corridorMin)
         hints.push({
@@ -245,7 +277,7 @@ export function buildingUseHints(
   // Toilets for the whole building.
   const allRooms = floors.flatMap((f) => f.rooms);
   const wcs = doc.elements.filter(
-    (el): el is Furniture => el.type === 'furniture' && shown(el) && (el.kind === 'wc' || el.kind === 'wc-indian'),
+    (el): el is Furniture => el.type === 'furniture' && shown(el) && !!el.kind && WC_KINDS.has(el.kind),
   ).length;
   const needWcs = wcsNeeded(total, use);
   const toilets = allRooms.filter((r) => TOILET.test(r.name));
@@ -260,7 +292,7 @@ export function buildingUseHints(
     hints.push({
       id: 'use-wcs',
       kind: 'use',
-      text: `Put WCs in the toilets (Furniture › Bath) to check them: about ${total} people need ${needWcs}.`,
+      text: `Put WCs in the toilets (Furniture › Toilets) to check them: about ${total} people need ${needWcs}.`,
       ids: toilets.map((r) => r.id),
     });
   else if (wcs < needWcs)
@@ -273,7 +305,8 @@ export function buildingUseHints(
 
   // Access for wheelchair users.
   const accessible = allRooms.filter((r) => ACCESSIBLE.test(r.name) && TOILET.test(r.name));
-  if (!accessible.length)
+  const accessibleWc = doc.elements.some((el) => el.type === 'furniture' && shown(el) && el.kind === 'accessible-wc');
+  if (!accessible.length && !accessibleWc)
     hints.push({
       id: 'use-accessible-toilet',
       kind: 'use',
@@ -306,4 +339,106 @@ export function buildingUseHints(
       ids: [],
     });
   return hints;
+}
+
+/** How many people the whole building holds, by its rooms' names and sizes. */
+export function buildingPeople(doc: PlanDoc, use: BuildingUse): number {
+  return doc.rooms.filter((r) => !r.hidden).reduce((n, r) => n + occupantsOf(r, use), 0);
+}
+
+/** The plan check's building-use rows: each kind of hint above, with what it asks for and its code. */
+const USE_ROWS: { id: string; label: string; prefixes: string[]; required: string; clause: string }[] = [
+  {
+    id: 'use-exits',
+    label: 'Exits',
+    prefixes: ['use-exits-', 'use-exit-width-'],
+    required: '1 exit up to 49 people, 2 from 50, 3 over 500, 4 over 1,000; 5 mm of door (7.6 mm of stair) per person',
+    clause: 'BCP Fire 2016',
+  },
+  {
+    id: 'use-stairs',
+    label: 'Stair widths',
+    prefixes: ['use-stair-width-'],
+    required: 'At least 1100 mm once 50 people use a stair (900 mm below that)',
+    clause: 'BCP Fire 2016',
+  },
+  {
+    id: 'use-corridors',
+    label: 'Corridor widths',
+    prefixes: ['use-corridor-'],
+    required: 'At least 1100 mm (1800 mm in a school for 100 people or more, 2400 mm in a hospital)',
+    clause: 'BCP Fire 2016',
+  },
+  {
+    id: 'use-doors',
+    label: 'Door widths',
+    prefixes: ['use-doors-'],
+    required: 'Doors on the way out at least 900 mm, for a wheelchair',
+    clause: 'ACP 2006',
+  },
+  {
+    id: 'use-travel',
+    label: 'Distance to an exit',
+    prefixes: ['use-travel-'],
+    required: 'Under 45 m in a straight line from any room',
+    clause: 'BCP Fire 2016',
+  },
+  {
+    id: 'use-wcs',
+    label: 'WCs',
+    prefixes: ['use-toilets', 'use-wcs'],
+    required: 'Enough WCs for the people the building holds',
+    clause: 'Plumbing good practice',
+  },
+  {
+    id: 'use-accessible',
+    label: 'Accessible toilet',
+    prefixes: ['use-accessible-'],
+    required: 'At least one, 1.5 m each way inside for a wheelchair to turn',
+    clause: 'ACP 2006',
+  },
+  {
+    id: 'use-ramp',
+    label: 'Ramp to the entrance',
+    prefixes: ['use-ramp'],
+    required: 'A ramp where the entrance is above the ground',
+    clause: 'ACP 2006',
+  },
+  {
+    id: 'use-lift',
+    label: 'Lift',
+    prefixes: ['use-lift'],
+    required: 'A lift where people use upper floors',
+    clause: 'ACP 2006',
+  },
+];
+
+/**
+ * The building-use hints as plan check rows: one per kind, met when no hint of that kind is given.
+ * With no named rooms there are no people to count, and one row says so.
+ */
+export function buildingUseRows(hints: Hint[], people: number): CheckRow[] {
+  if (!people)
+    return [
+      {
+        id: 'use-people',
+        label: 'People in the building',
+        required: 'Name the rooms (Office, Classroom, Prayer hall…) to count people and check exits and toilets',
+        actual: 'No named rooms yet',
+        status: 'check',
+        clause: 'BCP Fire 2016',
+      },
+    ];
+  return USE_ROWS.map((row) => {
+    const found = hints.filter((h) => row.prefixes.some((p) => h.id.startsWith(p)));
+    return {
+      id: row.id,
+      label: row.label,
+      required: row.required,
+      actual: found.length ? found.map((h) => h.text).join(' ') : `Met, for about ${people} people`,
+      status: found.length ? 'fail' : 'ok',
+      clause: row.clause,
+      ids: [...new Set(found.flatMap((h) => h.ids))],
+    };
+  });
 }

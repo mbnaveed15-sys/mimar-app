@@ -71,8 +71,41 @@ describe('bylaw tables', () => {
 });
 
 describe('plan check', () => {
-  it('has nothing to check without a plot under bylaws', () => {
-    expect(planCheck(docOf([plotOf(50, 90, undefined)]), ctx)).toBeNull();
+  it('has nothing to check for a house without a plot', () => {
+    expect(planCheck(docOf([]), ctx)).toBeNull();
+  });
+
+  it('checks a plot with no authority against its own setbacks (General)', () => {
+    const plot: Plot = { ...plotOf(50, 90, undefined), setbacks: { front: 10 * 304.8, rear: 0, sides: 0 } };
+    const check = planCheck(docOf([plot, wall('a', 5, 75, 45, 75)]), ctx)!;
+    expect(check.authority.id).toBe('general');
+    expect(check.rows.find((r) => r.id === 'local-bylaws')?.status).toBe('check');
+    // The road runs along the bottom (y = 90): a wall 15' in is inside the 10' front setback, one 5' in is not.
+    expect(check.rows.find((r) => r.id === 'setbacks')).toMatchObject({ status: 'ok', clause: 'Plot’s own' });
+    const crossing = planCheck(docOf([plot, wall('a', 5, 85, 45, 85)]), ctx)!;
+    expect(crossing.rows.find((r) => r.id === 'setbacks')?.status).toBe('fail');
+  });
+
+  it('shows the figures a locality’s table lacks as rows to check', () => {
+    const check = planCheck(docOf([plotOf(30, 60, 'lda'), wall('a', 10, 20, 20, 20)]), ctx)!;
+    expect(check.rows.find((r) => r.id === 'storeys')).toMatchObject({ status: 'check' });
+    expect(check.rows.find((r) => r.id === 'height')).toMatchObject({ status: 'check' });
+  });
+
+  it('checks a building’s plot by its own setbacks, not the house table, with a row for its bylaws', () => {
+    const doc: PlanDoc = {
+      ...docOf([plotOf(50, 90, 'cda'), wall('a', 10, 20, 20, 20)]),
+      project: { type: 'building', use: 'office' },
+    };
+    const check = planCheck(doc, ctx)!;
+    expect(check.rule).toBeNull();
+    expect(check.rows.find((r) => r.id === 'setbacks')?.clause).toBe('Plot’s own');
+    expect(check.rows.find((r) => r.id === 'building-bylaws')).toMatchObject({ status: 'check' });
+    expect(check.rows.some((r) => r.id === 'storeys' || r.id === 'height')).toBe(false);
+    // Without a plot, a building is still checked.
+    const bare = planCheck({ ...doc, elements: [] }, ctx)!;
+    expect(bare.plot).toBeNull();
+    expect(bare.rows.map((r) => r.id)).toEqual(['local-bylaws']);
   });
 
   it('passes a house inside the building line, and flags a wall that crosses it', () => {

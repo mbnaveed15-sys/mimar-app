@@ -104,3 +104,21 @@ when ticked it starts at 5' along each road. Replace these with the authorities'
 In the plan check: CDA Schedule-I, under the plinth area (the ground floor) only, clear height 8'6"–12'; DHA
 Islamabad 8.56.5.3, 100% after the setbacks (inside the building line); DHA Lahore (provisional summary), 100%.
 No figures yet for CDA private schemes (Schedule-5), Bahria or LDA: the check shows "check".
+
+## Every locality and every kind of building (1.43)
+
+- **No authority picked** (General): the plan check still runs, against the plot's own setbacks (as typed, per side
+  too), with a "Local bylaws" row to pick the authority.
+- **Gaps in a table** show as rows to check ("Not in Mimar's tables for this authority yet") for storeys, height,
+  boundary walls and room sizes: today LDA (all four), Bahria (storeys, rooms), CDA private schemes and DHA Lahore
+  where they lack one. Basements already did this.
+- **Building projects:** the authorities' tables here are for houses, so a building's plot is checked against its own
+  setbacks, with a "Height, coverage and parking" row to check the authority's non-residential figures (none are in
+  Mimar yet: add them when the owner uploads the commercial / institutional schedules). The building-use checks
+  (Building Code of Pakistan Fire Safety Provisions 2016 occupant loads, exits and widths; Accessibility Code of
+  Pakistan 2006) apply in every locality. Occupant loads added in 1.43: hospital 22.3 m² per person, restaurant and
+  hall 1.4, hotel and apartments 18.6, factory 9.3, warehouse 46.5; WCs (plumbing good practice): restaurant 1 per
+  75, hall 1 per 125, hotel 1 per 2 guests, apartments 1 per 5 people, hospital 1 per 25, factory and warehouse 1 per
+  100; hospital corridors 2400 mm.
+- **Left and right:** setbacks are shown as left and right seen from the road. The bylaw tables still give "side 1 /
+  side 2" (DHA Islamabad's side* is the car porch side); "Swap left and right" moves them.

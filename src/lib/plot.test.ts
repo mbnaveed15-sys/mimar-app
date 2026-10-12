@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Plot, Point } from '../types';
 import {
+  leftRightOf,
+  leftSlot,
+  setbacksFromLeftRight,
   buildableArea,
   guessSideKinds,
   insetPolygon,
@@ -309,5 +312,37 @@ describe('curved plot sides', () => {
       splay: { sizeMm: 1524 },
     });
     expect([0, 1, 2, 3].map((i) => canBendSide(corner, i))).toEqual([true, true, false, false]);
+  });
+});
+
+describe('left and right side setbacks', () => {
+  const square = (front: number, flip = false) => {
+    const pts = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 },
+    ];
+    return { points: flip ? [...pts].reverse() : pts, front };
+  };
+
+  it('knows which side is on the left, seen from the road, whichever way the corners go round', () => {
+    // Road along the bottom (y down the plan): the left is the x = 0 side.
+    expect(leftSlot(square(2))).toBe('side1');
+    // The same plot with its corners the other way round: the road is still the bottom edge.
+    expect(leftSlot(square(0, true))).toBe('side2');
+  });
+
+  it('puts left and right setbacks on the right sides, and reads them back', () => {
+    for (const plot of [square(2), square(0, true)]) {
+      const setbacks = setbacksFromLeftRight(plot, { front: 10, rear: 5, left: 3, right: 7 });
+      const sides = sideSetbacks({ id: 'p', type: 'plot', ...plot, setbacks });
+      const leftSide = plot.points.findIndex((p, i) => {
+        const q = plot.points[(i + 1) % 4];
+        return p.x === 0 && q.x === 0;
+      });
+      expect(sides[leftSide].mm).toBe(3);
+      expect(leftRightOf({ ...plot, setbacks })).toEqual({ left: 3, right: 7 });
+    }
   });
 });

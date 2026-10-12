@@ -50,6 +50,7 @@ import {
   outlineProblem,
   outlinePoints,
   plotSides,
+  setbacksFromLeftRight,
   signedArea2,
   withCorner,
 } from '../lib/plot';
@@ -117,7 +118,8 @@ export interface StructureSpec {
 }
 
 export interface SiteSpec {
-  setbacks: { front: number; rear: number; sides: number };
+  /** Setbacks for new plots: `sides` is the left side and `side2` the right (as `sides` when missing), seen from the road. */
+  setbacks: { front: number; rear: number; sides: number; side2?: number };
   /** Bylaws for new plots: their setbacks come from the authority's table. */
   authority?: AuthorityId;
   /** A plot size picked from the presets (feet, width along the road × depth): the next click places it. */
@@ -1922,7 +1924,9 @@ export function createPlannerStore(
         const front = edge(road % corners.length);
         const wall = site.boundaryWall ? { heightMm: KIND_HEIGHT_MM.boundary, thicknessMm: BOUNDARY_MM } : undefined;
         const sideList = guessSideKinds(points, front).map((kind): PlotSide => (wall ? { kind, wall } : { kind }));
-        let plot: Plot = { id: newId(), type: 'plot', points, front, sideList, setbacks: { ...site.setbacks } };
+        const { front: f, rear, sides: left, side2: right = left } = site.setbacks;
+        const setbacks = setbacksFromLeftRight({ points, front }, { front: f, rear, left, right });
+        let plot: Plot = { id: newId(), type: 'plot', points, front, sideList, setbacks };
         if (site.authority) {
           plot = { ...plot, authority: site.authority };
           const rule = plotRule(plot)?.rule;

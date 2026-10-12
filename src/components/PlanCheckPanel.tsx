@@ -110,10 +110,11 @@ function BylawRows() {
       </div>
     ) : (
       <div className="text-xs text-muted">
-        Draw a plot (Shift+P) and pick its bylaws (CDA, DHA and more) to check the plan against them as you draw.
+        Draw a plot (Shift+P) to check its setbacks, and pick its bylaws (CDA, DHA and more) to check the plan against
+        them as you draw.
       </div>
     );
-  const { authority, rule, rows } = check;
+  const { authority, rule, rows, note } = check;
   const failing = rows.filter((r) => r.status === 'fail' && !r.detail).length;
   return (
     <div className="flex flex-col gap-1.5 text-xs" data-testid="plan-check">
@@ -122,7 +123,7 @@ function BylawRows() {
         {authority.status === 'provisional' && (
           <span className="ml-1 rounded-sm bg-sunken px-1 text-[10px] text-muted">provisional</span>
         )}
-        <div className="text-muted">{rule ? rule.label : 'No row of the table fits this plot'}</div>
+        <div className="text-muted">{note}</div>
       </div>
       <div className={failing ? 'font-medium text-danger' : 'font-medium'} data-testid="plan-check-summary">
         {failing ? `${failing} ${failing === 1 ? 'rule' : 'rules'} not met` : 'No problems found'}

@@ -335,6 +335,23 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
           !selected.locked &&
           edgeMiddles(selected).length <= MAX_BEND_GRIPS &&
           edgeMiddles(selected).map((p, i) => <Handle key={i} name={`edge-bend-${i}`} p={p} k={hk} />)}
+        {tool === 'select' &&
+          selected &&
+          !selected.locked &&
+          cornerGrips(selected).map((p, i) => <Handle key={`c${i}`} name={`shape-corner-${i}`} p={p} k={hk} />)}
+        {tool === 'select' && selected?.type === 'beam' && !selected.locked && (
+          <>
+            <Handle name="beam-start" p={{ x: selected.x1, y: selected.y1 }} k={hk} />
+            <Handle name="beam-end" p={{ x: selected.x2, y: selected.y2 }} k={hk} />
+          </>
+        )}
+        {tool === 'select' && selected?.type === 'column' && !selected.locked && (
+          <Handle
+            name="column-size"
+            p={fromFurnitureLocal(selected, { x: selected.w / 2, y: selected.h / 2 })}
+            k={hk}
+          />
+        )}
         {tool === 'select' && selected?.type === 'furniture' && showFurniture && (
           <FurnitureHandles item={selected} k={hk} />
         )}
@@ -363,6 +380,17 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     </svg>
   );
 }
+
+/** Corners of an outline that can be dragged: straight slabs, levelled areas, blocks and roofs (not round ones). */
+function cornerGrips(el: PlanElement): Point[] {
+  if (el.type !== 'slab' && el.type !== 'pad' && el.type !== 'block' && el.type !== 'roof') return [];
+  if ('curve' in el && el.curve) return [];
+  if (el.type === 'block' && el.path) return [];
+  return el.points.length <= MAX_CORNER_GRIPS ? el.points : [];
+}
+
+/** Outlines with more corners than this are round: no corner grips. */
+const MAX_CORNER_GRIPS = 24;
 
 function Handle({ name, p, k }: { name: string; p: Point; k: number }) {
   return (

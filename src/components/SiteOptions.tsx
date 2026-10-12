@@ -150,13 +150,13 @@ export function SiteOptions() {
         {bylaws && site.authority ? (
           <div className="text-muted">Setbacks come from the bylaws table for the plot's size.</div>
         ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {(['front', 'rear', 'sides'] as const).map((side) => (
+          <div className="grid grid-cols-2 gap-2">
+            {(['front', 'rear', 'sides', 'side2'] as const).map((side) => (
               <LengthField
                 key={side}
                 id={`setback-${side}`}
-                label={side === 'front' ? 'Front' : side === 'rear' ? 'Rear' : 'Sides'}
-                mm={site.setbacks[side]}
+                label={{ front: 'Front', rear: 'Rear', sides: 'Left side', side2: 'Right side' }[side]}
+                mm={side === 'side2' ? (site.setbacks.side2 ?? site.setbacks.sides) : site.setbacks[side]}
                 units={units}
                 min={0}
                 onCommit={(v) => setSite({ setbacks: { ...site.setbacks, [side]: v } })}

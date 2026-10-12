@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { exitsNeeded, occupantsOf, wcsNeeded } from './buildingUse';
+import { buildingPeople, buildingUseRows, exitsNeeded, occupantsOf, wcsNeeded } from './buildingUse';
+import { fullCheck } from './fullCheck';
 import { planHints } from './planHints';
 import { plotRect } from './site';
 import { emptyDoc } from './storage';
@@ -161,5 +162,45 @@ describe('non-residential checks', () => {
     );
     expect(hintsOfUse(doc).find((h) => h.id === 'use-corridor-k')?.text).toContain('a corridor wants at least');
     expect(hintsOfUse({ ...doc, project: undefined })).toEqual([]);
+  });
+});
+
+describe('more building uses, and the use checked as plan check rows', () => {
+  it('counts people in halls, hotels, hospitals and warehouses', () => {
+    expect(occupantsOf(room('a', 'Main hall', 0, 0, 20, 14), 'hall')).toBe(200);
+    expect(occupantsOf(room('a', 'Wedding hall', 0, 0, 14, 10), 'hall')).toBe(100);
+    expect(occupantsOf(room('a', 'Guest room', 0, 0, 4, 6), 'hotel')).toBe(2);
+    expect(occupantsOf(room('a', 'Warehouse', 0, 0, 30, 20), 'warehouse')).toBe(13);
+    expect(wcsNeeded(150, 'restaurant')).toBe(2);
+  });
+
+  it('asks for wide corridors in a hospital, and counts library WCs and accessible WCs', () => {
+    const hospital = {
+      ...building(box(30, 20), [room('c', 'Corridor', 0, 0, 2, 20), room('w', 'Ward', 2, 0, 28, 20)]),
+    };
+    const doc: PlanDoc = { ...hospital, project: { type: 'building', use: 'hospital', units: 'metric' } };
+    expect(ids(doc)).toContain('use-corridor-c');
+    const wc = (id: string, kind: Furniture['kind']): Furniture => ({
+      id,
+      type: 'furniture',
+      kind,
+      x: 100,
+      y: 100,
+      w: 90,
+      h: 150,
+    });
+    const withWcs: PlanDoc = { ...doc, elements: [...doc.elements, wc('f1', 'wc-cubicle'), wc('f2', 'accessible-wc')] };
+    expect(ids(withWcs)).not.toContain('use-toilets');
+    expect(ids(withWcs)).not.toContain('use-accessible-toilet');
+  });
+
+  it('turns the hints into one row per kind, met or not', () => {
+    const doc = building(box(10, 9.3), [room('o', 'Open office', 0, 0, 10, 9.3)]);
+    const rows = buildingUseRows(hintsOfUse(doc), buildingPeople(doc, 'office'));
+    expect(rows.find((r) => r.id === 'use-wcs')?.status).toBe('fail');
+    expect(rows.find((r) => r.id === 'use-stairs')?.status).toBe('ok');
+    expect(buildingUseRows([], 0).map((r) => r.id)).toEqual(['use-people']);
+    const check = fullCheck(doc, { wallHeightMm: 3000, units: 'metric' })!;
+    expect(check.rows.some((r) => r.id === 'use-wcs')).toBe(true);
   });
 });

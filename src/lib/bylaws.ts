@@ -12,6 +12,8 @@ import type { Plot } from '../types';
 const ft = (feet: number, inches = 0) => feet * MM_PER_FOOT + inches * MM_PER_INCH;
 
 export type AuthorityId = 'cda' | 'cda-private' | 'dha-isb' | 'dha-lhr' | 'bahria-lhr' | 'lda';
+/** No local authority: the plot's own setbacks and the national codes (see GENERAL). */
+export type CheckAuthorityId = AuthorityId | 'general';
 
 /** Setbacks in mm: front, rear, and the two sides (side 2 is the smaller or only one). */
 export interface Setbacks {
@@ -51,9 +53,10 @@ export interface RoomRule {
 }
 
 export interface Authority {
-  id: AuthorityId;
+  id: CheckAuthorityId;
   name: string;
-  status: 'official' | 'provisional';
+  /** 'general': no local table, only the plot's own setbacks and the national codes. */
+  status: 'official' | 'provisional' | 'general';
   /** The document (and where in it) the figures come from. */
   source: string;
   /** Clause for the setback table. */
@@ -122,7 +125,7 @@ export function roomRuleFor(rules: RoomRule[], name: string): RoomRule | null {
 }
 
 /** CDA Schedule-2 room sizes (both CDA tables). */
-const CDA_ROOMS: RoomRule[] = [
+export const CDA_ROOMS: RoomRule[] = [
   { names: HABITABLE, label: 'Habitable room', minSqFt: 100, minWidthMm: ft(8, 6) },
   { names: /kitchen/i, label: 'Kitchen', minSqFt: 45, minWidthMm: ft(5) },
   { names: /bath|toilet/i, label: 'Bathroom', minSqFt: 24, minWidthMm: ft(3) },
@@ -390,7 +393,10 @@ export const AUTHORITIES: Authority[] = [
       { label: '35×70', w: 35, d: 70 },
       { label: '50×90', w: 50, d: 90 },
     ],
-    notes: ['Side 1 is the car porch side.', 'The first floor may be 90% of the ground floor on 400 sq yd and above.'],
+    notes: [
+      'The side setback marked * in the bylaws goes on the car porch side; Swap left and right moves it.',
+      'The first floor may be 90% of the ground floor on 400 sq yd and above.',
+    ],
   },
   {
     id: 'dha-lhr',
@@ -480,6 +486,22 @@ export const AUTHORITIES: Authority[] = [
 ];
 
 export const authorityById = (id: string | undefined) => AUTHORITIES.find((a) => a.id === id);
+
+/**
+ * The check for a plot with no authority picked (or a building with no plot): the plot's own
+ * setbacks, and for buildings the national fire and access codes (see `buildingUse.ts`).
+ */
+export const GENERAL: Authority = {
+  id: 'general',
+  name: 'General (no local authority picked)',
+  status: 'general',
+  source:
+    'the plot’s own setbacks; Building Code of Pakistan (Fire Safety Provisions 2016) and Accessibility Code of Pakistan 2006 for buildings',
+  setbackClause: 'Plot’s own',
+  rules: [],
+  presets: CDA_PRESETS,
+  notes: [],
+};
 
 const SQ_FT_PER_SQ_YD = 9;
 const within = (v: number, [lo, hi]: [number, number?]) => v >= lo && (hi === undefined || v <= hi);

@@ -1,5 +1,6 @@
 import { AUTHORITIES, plotMeasures, plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
 import { shows } from '../lib/project';
+import { leftRightOf, setbacksFromLeftRight } from '../lib/plot';
 import { usePlanner } from '../store/plannerStore';
 import type { Plot } from '../types';
 import { LengthField } from './LengthField';
@@ -75,6 +76,7 @@ export function PlotBylawsPanel({ plot }: { plot: Plot }) {
   const rule = found?.rule;
   const { areaSqFt, frontageFt } = plotMeasures(plot);
   const sb = plot.setbacks;
+  const lr = leftRightOf(plot);
   const fromRule = rule ? plotSetbacks(rule) : null;
   const swapped = rule ? plotSetbacks(rule, true) : null;
   const same = (a: Plot['setbacks'] | null) =>
@@ -118,31 +120,43 @@ export function PlotBylawsPanel({ plot }: { plot: Plot }) {
       )}
       <div className="text-muted">Setbacks for each kind of side (a side can have its own, below)</div>
       <div className="grid grid-cols-2 gap-2">
-        {(
-          [
-            ['front', 'Front (main road)'],
-            ['rear', 'Rear (back)'],
-            ['sides', 'Side 1'],
-            ['side2', 'Side 2'],
-          ] as const
-        ).map(([key, label]) => (
+        <LengthField
+          id="plot-front"
+          label="Front (main road)"
+          mm={sb.front}
+          units={units}
+          min={0}
+          onCommit={(mm) => updateElement({ ...plot, setbacks: { ...sb, front: mm } })}
+        />
+        <LengthField
+          id="plot-rear"
+          label="Rear (back)"
+          mm={sb.rear}
+          units={units}
+          min={0}
+          onCommit={(mm) => updateElement({ ...plot, setbacks: { ...sb, rear: mm } })}
+        />
+        {(['left', 'right'] as const).map((side) => (
           <LengthField
-            key={key}
-            id={`plot-${key}`}
-            label={label}
-            mm={key === 'side2' ? (sb.side2 ?? sb.sides) : sb[key]}
+            key={side}
+            id={`plot-${side}`}
+            label={side === 'left' ? 'Left side' : 'Right side'}
+            mm={lr[side]}
             units={units}
             min={0}
-            onCommit={(mm) => updateElement({ ...plot, setbacks: { ...sb, [key]: mm } })}
+            onCommit={(mm) =>
+              updateElement({ ...plot, setbacks: setbacksFromLeftRight(plot, { ...sb, ...lr, [side]: mm }) })
+            }
           />
         ))}
       </div>
+      <div className="text-muted">Left and right as seen from the main road, looking into the plot.</div>
       <div className="flex flex-wrap gap-1">
         <button
           className="m-btn px-2 py-0.5"
           onClick={() => updateElement({ ...plot, setbacks: { ...sb, sides: sb.side2 ?? sb.sides, side2: sb.sides } })}
         >
-          Swap sides
+          Swap left and right
         </button>
         {fromRule && !followsRule && (
           <button className="m-btn px-2 py-0.5" onClick={() => updateElement({ ...plot, setbacks: fromRule })}>

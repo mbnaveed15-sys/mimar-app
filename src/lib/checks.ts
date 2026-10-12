@@ -26,7 +26,7 @@ export const CHECK_CATEGORIES: { id: CheckCategory; label: string; title: string
   {
     id: 'use',
     label: 'Building use',
-    title: 'Exits, stairs, corridors, doors and toilets for offices, schools, clinics, shops and mosques',
+    title: 'Exits, stairs, corridors, doors and toilets for every kind of building',
   },
   { id: 'layout', label: 'Layout and access', title: 'Doors, stairs and how rooms are reached and placed' },
   { id: 'daylight', label: 'Daylight and air', title: 'Outside walls, windows and air shafts' },
@@ -94,6 +94,7 @@ export type SnapGroup =
   | 'endpoint'
   | 'midpoint'
   | 'faces'
+  | 'items'
   | 'intersection'
   | 'perpendicular'
   | 'on'
@@ -107,6 +108,7 @@ export const SNAP_GROUPS: { id: SnapGroup; label: string; kinds: SnapKind[] }[] 
   { id: 'endpoint', label: 'Endpoint', kinds: ['endpoint'] },
   { id: 'midpoint', label: 'Midpoint', kinds: ['midpoint'] },
   { id: 'faces', label: 'Wall corner and face', kinds: ['corner', 'on-face'] },
+  { id: 'items', label: 'Corners of items', kinds: ['item-corner'] },
   { id: 'intersection', label: 'Intersection', kinds: ['intersection'] },
   { id: 'perpendicular', label: 'Perpendicular', kinds: ['perpendicular'] },
   { id: 'on', label: 'On wall or line', kinds: ['on-wall', 'on-line'] },
