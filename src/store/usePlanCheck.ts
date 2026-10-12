@@ -1,4 +1,5 @@
-import { planCheck, type PlanCheck } from '../lib/planCheck';
+import { fullCheck } from '../lib/fullCheck';
+import type { PlanCheck } from '../lib/planCheck';
 import { planHints, type Hint } from '../lib/planHints';
 import type { PlanDoc, Units } from '../types';
 import { usePlanner } from './plannerStore';
@@ -17,7 +18,7 @@ let lastHints: {
 
 function checkFor(doc: PlanDoc, wallHeightMm: number, units: Units): PlanCheck | null {
   if (lastCheck?.doc !== doc || lastCheck.wallHeightMm !== wallHeightMm || lastCheck.units !== units)
-    lastCheck = { doc, wallHeightMm, units, result: planCheck(doc, { wallHeightMm, units }) };
+    lastCheck = { doc, wallHeightMm, units, result: fullCheck(doc, { wallHeightMm, units }) };
   return lastCheck.result;
 }
 
@@ -37,7 +38,10 @@ function hintsFor(doc: PlanDoc, units: Units, check: PlanCheck | null, gapMm: nu
       check,
       gapMm,
       accessible,
-      result: planHints(doc, { units, skipSizes, gapMm, accessible }),
+      // A building's use is checked in the plan check's own rows: not repeated as hints.
+      result: planHints(doc, { units, skipSizes, gapMm, accessible }).filter(
+        (h) => !(h.kind === 'use' && check?.rows.some((r) => r.id.startsWith('use-'))),
+      ),
     };
   }
   return lastHints.result;

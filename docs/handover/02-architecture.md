@@ -193,6 +193,12 @@ autosaves to local storage on every change.
   (`tightOpenings` in `planHints.ts`).
 - Plants and garden items are ordinary furniture kinds (`furniture/catalog.ts`, categories Plants and Garden);
   `isPlant` gives them a green plan fill; their 3D forms are stacked boxes in `furnitureSolids`.
+- Library (1.43): each catalog item has a `group` (`FURNITURE_GROUPS`: Home, Office, School, Health, Shop, Prayer,
+  Food, Toilets, Garden & plants, General) and a `category` (a folding heading). Items added from 1.43 are drawn
+  from one parts list in `src/furniture/shapes.ts` (`SHAPES`: boxes, discs and lines placed by shares of the
+  footprint, with heights for 3D), used by `FurnitureSymbol` and `furnitureSolids`; the older items stay hand-drawn.
+  `groupForProject` picks the group the library opens on; Recent picks are kept in localStorage
+  (`mimar.furniture.recent`).
 - Furniture use zones (1.34): `src/furniture/useZones.ts` holds `USE_ZONES` (free space in mm in front, behind and at
   the sides of each library kind, an optional ADA wheelchair zone, and a source), `zoneRects` (in the item's own
   frame: centred, back at the top) and `zoneSamples` (lines of test points out from the item). `blockedZones` in
@@ -263,7 +269,23 @@ autosaves to local storage on every change.
     `src/store/pointerStore.ts`). Commands `view.snapping` (F3) and `view.checks` (F4).
   - Building use: `src/lib/buildingUse.ts` (pure) `buildingUseHints(doc, use, floors, len)`, called from
     `planHints.ts` for Building projects: occupants per floor from room areas, exits, exit/stair/corridor/door widths,
-    travel distance, WCs, an accessible toilet, a ramp and a lift; hints of kind 'use', ids `use-*`.
+    travel distance, WCs, an accessible toilet, a ramp and a lift; hints of kind 'use', ids `use-*`. From 1.43
+    `src/lib/fullCheck.ts` adds them to the plan check as rows (`buildingUseRows`, one per kind, ids `use-*`), and
+    `usePlanCheck`/the PDF use `fullCheck`; the hints list then leaves the 'use' hints out.
+  - Checks everywhere (1.43): `planCheck` falls back to `GENERAL` (`bylaws.ts`) for a plot with no authority (its
+    own setbacks, a `local-bylaws` row) and for a building with no plot; a Building project ignores the house tables
+    (`rule` null, its own setbacks, a `building-bylaws` row); `missing(...)` adds "not in Mimar's tables" rows for
+    storeys, height, boundary wall and room sizes an authority lacks. `PlanCheck.note` is the line under the
+    authority's name; `PlanCheck.plot` can be null.
+  - Left/right setbacks (1.43): data unchanged (`setbacks.sides` = side 1, `side2`); `leftSlot`, `leftRightOf` and
+    `setbacksFromLeftRight` in `plot.ts` translate to left and right seen from the road. `site.setbacks.sides` is the
+    left and `side2` the right for new plots (`addPlot` converts).
+  - Corners (1.43): `src/lib/snapPoints.ts` gives every item's corners (`item-corner`), edge middles and round
+    centres; `inferAt` passes them (memoised per plan) as `InferOptions.points`; `infer` also finds true wall corners
+    where faces of nearby walls cross, and ranks a midpoint 1.6× further than it is so corners win. Snap group
+    `items`. In 3D, `cornerNear` in `Plan3DView.tsx` moves the pick to the nearest mesh vertex within 10 px (not
+    behind the face hit). Grips use `snapGrip` (`usePlanInput.ts`); new grips `shape-corner-i`, `beam-start/end`,
+    `column-size`.
   - Windows on arcs: `openingBend` / `bendPoint` / `bendPath` in `arc.ts` bend a window's symbol in the plan and the
     DXF; `straightPieces` splits a lone window into panes along the curve in 3D.
   - Stairs: `Stair.shape` 'curved' | 'spiral' with `innerMm` and `turn`; `stairLayout` in `site.ts` gives wedge

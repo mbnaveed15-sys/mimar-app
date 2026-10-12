@@ -22,7 +22,8 @@ export const PROJECT_TYPES: { id: ProjectType; label: string; blurb: string }[] 
   {
     id: 'building',
     label: 'Building',
-    blurb: 'Offices, schools, clinics, shops and mosques: room types for its use, metric to start.',
+    blurb:
+      'Offices, schools, clinics, shops, mosques and more: room types for its use, its own checks, metric to start.',
   },
 ];
 
@@ -30,8 +31,15 @@ export const BUILDING_USES: { id: BuildingUse; label: string }[] = [
   { id: 'office', label: 'Office' },
   { id: 'school', label: 'School' },
   { id: 'clinic', label: 'Clinic' },
+  { id: 'hospital', label: 'Hospital' },
   { id: 'shop', label: 'Shop' },
+  { id: 'restaurant', label: 'Restaurant / café' },
+  { id: 'hotel', label: 'Hotel / hostel' },
+  { id: 'apartments', label: 'Apartments' },
+  { id: 'hall', label: 'Hall (wedding, community)' },
   { id: 'mosque', label: 'Mosque / prayer hall' },
+  { id: 'factory', label: 'Factory / workshop' },
+  { id: 'warehouse', label: 'Warehouse' },
   { id: 'other', label: 'Other' },
 ];
 
@@ -39,7 +47,7 @@ export const BUILDING_USES: { id: BuildingUse; label: string }[] = [
 const USUAL: Record<ProjectType, Record<ProjectPanel, boolean>> = {
   house: { bylaws: true, hints: true, roomList: true, cost: true },
   free: { bylaws: false, hints: true, roomList: false, cost: false },
-  building: { bylaws: false, hints: true, roomList: false, cost: false },
+  building: { bylaws: true, hints: true, roomList: false, cost: false },
 };
 
 export const PANEL_NAMES: Record<ProjectPanel, string> = {
@@ -113,6 +121,65 @@ export const ROOM_TYPES: Record<BuildingUse, RoomType[]> = {
     { name: "Imam's room", w: 3.5, d: 3.5, daylight: true },
     ...TOILETS,
     { name: 'Store', w: 2.5, d: 2 },
+  ],
+  hospital: [
+    { name: 'Ward', w: 8, d: 6, daylight: true },
+    { name: 'Private room', w: 4, d: 4.5, daylight: true },
+    { name: 'Nurses station', w: 4, d: 3 },
+    { name: 'Consultation', w: 3.5, d: 3.5, daylight: true },
+    { name: 'Operating theatre', w: 7, d: 6.5 },
+    { name: 'Waiting', w: 8, d: 6, daylight: true },
+    { name: 'Corridor', w: 2.4, d: 20 },
+    ...TOILETS,
+    { name: 'Store', w: 3, d: 2.5 },
+  ],
+  restaurant: [
+    { name: 'Dining hall', w: 10, d: 8, daylight: true },
+    { name: 'Kitchen', w: 6, d: 5, daylight: true },
+    { name: 'Counter', w: 4, d: 2.5 },
+    { name: 'Cold store', w: 3, d: 2.5 },
+    ...TOILETS,
+    { name: 'Store', w: 3, d: 2.5 },
+  ],
+  hotel: [
+    { name: 'Guest room', w: 4, d: 6, daylight: true },
+    { name: 'Suite', w: 7, d: 6, daylight: true },
+    { name: 'Lobby', w: 10, d: 8, daylight: true },
+    { name: 'Reception', w: 5, d: 3, daylight: true },
+    { name: 'Dining hall', w: 10, d: 8, daylight: true },
+    { name: 'Kitchen', w: 6, d: 5, daylight: true },
+    { name: 'Corridor', w: 1.8, d: 20 },
+    ...TOILETS,
+  ],
+  apartments: [
+    { name: 'Bedroom', w: 3.6, d: 4, daylight: true },
+    { name: 'Lounge', w: 4.5, d: 5, daylight: true },
+    { name: 'Kitchen', w: 3, d: 3, daylight: true },
+    { name: 'Bath', w: 2, d: 2.5 },
+    { name: 'Lobby', w: 4, d: 4 },
+    { name: 'Corridor', w: 1.5, d: 15 },
+  ],
+  hall: [
+    { name: 'Main hall', w: 20, d: 15, daylight: true },
+    { name: 'Stage', w: 8, d: 4 },
+    { name: 'Bridal room', w: 4, d: 4, daylight: true },
+    { name: 'Kitchen', w: 8, d: 6, daylight: true },
+    { name: 'Lobby', w: 8, d: 6, daylight: true },
+    ...TOILETS,
+    { name: 'Store', w: 4, d: 3 },
+  ],
+  factory: [
+    { name: 'Workshop', w: 20, d: 15, daylight: true },
+    { name: 'Office', w: 4, d: 3.5, daylight: true },
+    { name: 'Canteen', w: 8, d: 6, daylight: true },
+    { name: 'Store', w: 8, d: 6 },
+    ...TOILETS,
+  ],
+  warehouse: [
+    { name: 'Warehouse', w: 30, d: 20 },
+    { name: 'Loading bay', w: 10, d: 6 },
+    { name: 'Office', w: 4, d: 3.5, daylight: true },
+    ...TOILETS,
   ],
   other: [...TOILETS, { name: 'Store', w: 2.5, d: 2 }],
 };

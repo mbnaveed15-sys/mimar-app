@@ -2,7 +2,8 @@ import { findElementNear } from '../geometry';
 import { snapAllowed } from '../lib/checks';
 import { copyOpeningTo, loneOpenings, slideOpening } from '../store/openingAt';
 import { newId } from '../lib/ids';
-import { axisDirection, infer, type Inference, type Segment } from '../lib/inference';
+import { axisDirection, infer, type Inference, type Segment, type SnapPoint } from '../lib/inference';
+import { snapPoints } from '../lib/snapPoints';
 import { buildingGuide } from '../lib/site';
 import { parseMeasure, type MeasureKind } from '../lib/measure';
 import {
@@ -18,7 +19,7 @@ import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
 import { levelBaseM, M_PER_UNIT } from '../three/model';
 import { getPicker, getPointer } from '../three/picker';
-import type { Id, PlanDoc, Plot, Point, SketchLine, Tool } from '../types';
+import type { Id, PlanDoc, PlanElement, Plot, Point, SketchLine, Tool } from '../types';
 import { MODIFY_TOOLS } from '../types';
 import { wallsOf } from '../walls';
 import { bowForRadius, bowThrough, radiusOf } from '../lib/arc';
@@ -141,6 +142,18 @@ function takeCopyNext() {
   return on;
 }
 
+/** The last plan's item snap points, kept while the plan, floor and what is shown stay the same. */
+let pointsMemo: { key: unknown[]; points: SnapPoint[] } | null = null;
+
+function itemPoints(s: PlannerState, elements: PlanElement[], ignoreIds: Set<Id> | undefined, previewing: boolean) {
+  const key = [s.doc, s.activeLevel, s.showFurniture, previewing, s.batchBase, ...(ignoreIds ?? [])];
+  if (pointsMemo && pointsMemo.key.length === key.length && pointsMemo.key.every((k, i) => k === key[i]))
+    return pointsMemo.points;
+  const points = snapPoints(elements, ignoreIds);
+  pointsMemo = { key, points };
+  return points;
+}
+
 /** Snap a point for the active tool, drawing from `from` when there is one. */
 export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreIds?: Set<Id>): Inference {
   const lock = from ? (s.axisLock === 'x' || s.axisLock === 'y' ? axisDirection(s.axisLock) : s.shiftLock) : null;
@@ -163,6 +176,7 @@ export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreI
     lock,
     ignoreIds,
     allow,
+    points: allow('item-corner') || allow('midpoint') ? itemPoints(s, elements, ignoreIds, previewing) : [],
   });
 }
 

@@ -395,6 +395,7 @@ const SNAP_COLORS: Record<SnapKind, string> = {
   'from-corner': '#dc2626',
   aligned: '#7c3aed',
   centre: '#0891b2',
+  'item-corner': '#16a34a',
 };
 
 const levelIndex = (s: PlannerState, id: string | undefined) =>
@@ -543,6 +544,53 @@ function partOf(hit: THREE.Intersection): PartRange | undefined {
 
 /** The item a hit landed on. */
 const idOf = (hit: THREE.Intersection): string | undefined => hit.object.userData.id ?? partOf(hit)?.id;
+
+/** Tools that only look or pick, which don't snap to corners. */
+const LOOK_TOOLS = new Set<string>(['select', 'pan', 'zoom', 'orbit']);
+
+/** Meshes with more corners than this are left to the plan's own snapping (too slow to search on every move). */
+const MAX_CORNER_SEARCH = 150_000;
+
+/**
+ * The corner of a mesh nearest a screen position, within `px` pixels, in world space (null when none
+ * is that close). Lets any corner seen in 3D be picked exactly, at its own height.
+ */
+function cornerNear(
+  hit: THREE.Intersection,
+  camera: THREE.Camera,
+  rect: DOMRect,
+  clientX: number,
+  clientY: number,
+  px: number,
+): THREE.Vector3 | null {
+  const mesh = hit.object as THREE.Mesh;
+  const pos = mesh.geometry?.getAttribute('position');
+  if (!pos || pos.count > MAX_CORNER_SEARCH) return null;
+  const eye = camera.getWorldPosition(new THREE.Vector3());
+  // Corners further away than the face under the pointer are behind it, out of sight.
+  const reach = hit.distance * 1.02 + 0.05;
+  const world = new THREE.Vector3();
+  const v = new THREE.Vector3();
+  const best = new THREE.Vector3();
+  let bestD = px * px;
+  let found = false;
+  mesh.updateMatrixWorld();
+  for (let i = 0; i < pos.count; i++) {
+    world.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+    if (world.distanceTo(eye) > reach) continue;
+    v.copy(world).project(camera);
+    if (v.z > 1 || v.z < -1) continue;
+    const dx = rect.left + ((v.x + 1) / 2) * rect.width - clientX;
+    const dy = rect.top + ((1 - v.y) / 2) * rect.height - clientY;
+    const d = dx * dx + dy * dy;
+    if (d < bestD) {
+      bestD = d;
+      best.copy(world);
+      found = true;
+    }
+  }
+  return found ? best : null;
+}
 
 /** A hit on something that can be picked: an item (not a part with no item) on a floor that isn't faded. */
 const pickable = (hit: THREE.Intersection) =>
@@ -1137,7 +1185,12 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     // A hit on the floor being drawn gives the point on it (a wall face, a floor, a table top);
     // anything else (open space, a floor below) lands on the floor's level.
     if (hit && (hit.object.userData.level ?? 'ground') === s.activeLevel) {
-      world = hit.point.clone();
+      // Close to a corner of what is under the pointer (on screen), take the corner itself, at its height.
+      const corner =
+        s.snaps.on && !LOOK_TOOLS.has(s.tool)
+          ? cornerNear(hit, stage.rig.active, rect, clientX, clientY, 10 * s.reach())
+          : null;
+      world = corner ?? hit.point.clone();
       id = idOf(hit) ?? null;
     } else {
       world = stage.raycaster.ray.intersectPlane(

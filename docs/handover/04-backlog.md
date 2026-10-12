@@ -33,9 +33,15 @@ curves part 1: the Curve tool (arcs by ends and bend, 3 points, centre, tangent;
 rectangles, curved layout lines, and Fillet, Extend, Join, Chamfer and Push/Pull on curves (1.41); one mode (no Simple/Pro),
 Checks and Snap buttons with per-kind menus, an X,Y readout, checks for non-residential buildings, and curves part 2:
 windows bent with curved walls, curved and spiral stairs, curved slab, levelled-area and plot edges, curved paths and
-driveways (1.42, all in one release as the owner asked).
+driveways (1.42, all in one release as the owner asked); furniture for every kind of building with a grouped library,
+checks for every building type and locality, more building uses, left and right setbacks, and snapping to every
+corner with more grips (1.43, one release).
 
-Planned next (plan each with the owner first): nothing is booked after 1.42. Left from curves part 2: doors in curved
+Planned next (plan each with the owner first): nothing is booked after 1.43. Left from 1.43: the authorities'
+non-residential (commercial, institutional) figures, needed from the owner's official schedules; room corners are
+where walls meet (drag a wall end), not their own grips; stairs and furniture have no corner grips (furniture keeps
+its resize grip); grips are 2D only (3D edits by Move, Push/Pull and the panel); the older library items keep their
+hand-drawn symbols. Left from curves part 2: doors in curved
 walls stay straight (only windows bend); slab voids can't be curved; a curved plot side can't meet a cut corner (the
 splay needs two straight sides, and those two sides have no bend grip); a path is one flat paving block (on a sloping
 site it sits at the ground's height at its middle) and a ring path has a seam line where it closes; each arc of a

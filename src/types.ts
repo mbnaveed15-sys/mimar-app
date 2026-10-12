@@ -565,7 +565,20 @@ export interface Sheet {
 /** A house on a plot (with bylaws and marla), a free project (studio work, no rules), or a non-residential building. */
 export type ProjectType = 'house' | 'free' | 'building';
 /** What a building is for: it gives the room types and their hints. */
-export type BuildingUse = 'office' | 'school' | 'clinic' | 'shop' | 'mosque' | 'other';
+export type BuildingUse =
+  | 'office'
+  | 'school'
+  | 'clinic'
+  | 'hospital'
+  | 'shop'
+  | 'restaurant'
+  | 'hotel'
+  | 'apartments'
+  | 'hall'
+  | 'mosque'
+  | 'factory'
+  | 'warehouse'
+  | 'other';
 /** The side panel's sections a project can hide. */
 export type ProjectPanel = 'bylaws' | 'hints' | 'roomList' | 'cost';
 

@@ -4,7 +4,6 @@ import {
   findElementNear,
   isNear,
   nearestWall,
-  nearestWallEnd,
   pointInPolygon,
   pointToSegmentDistance,
   snap,
@@ -19,18 +18,22 @@ import { faceOf } from '../lib/pushPull';
 import { itemsInBox, moveItems } from '../lib/selection';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, type PlannerState } from '../store/plannerStore';
-import { DRAG_PX, hover, MEASURE_TOOLS, press, release } from '../tools/controller';
+import { DRAG_PX, hover, inferAt, MEASURE_TOOLS, press, release } from '../tools/controller';
 import { slideOpening } from '../store/openingAt';
 import { getPicker, setPointer } from '../three/picker';
 import { setPlanPointer } from '../store/pointerStore';
 import {
   hasPoints,
+  type Beam,
+  type Block,
   type Bounds,
+  type Column,
   type Furniture,
   type Pad,
   type PlanElement,
   type Plot,
   type Point,
+  type Roof,
   type SketchLine,
   type Slab,
   type Wall,
@@ -51,6 +54,12 @@ type Drag =
   /** Dragging a wall's (or layout line's) middle sideways to bend it into an arc (or back to straight). */
   | { kind: 'wall-bend'; orig: Wall | SketchLine }
   | { kind: 'resize' | 'rotate'; orig: Furniture }
+  /** Dragging a column's corner to resize it about its centre. */
+  | { kind: 'column-size'; orig: Column }
+  /** Dragging one end of a beam. */
+  | { kind: 'beam-start' | 'beam-end'; orig: Beam }
+  /** Dragging a corner of a slab, levelled area, block or roof outline. */
+  | { kind: 'shape-corner'; orig: Slab | Pad | Block | Roof; index: number }
   /** Dragging a corner of a plot to reshape it. */
   | { kind: 'plot-corner'; plotId: string; index: number }
   | { kind: 'edge-bend'; orig: Slab | Pad; index: number }
@@ -75,10 +84,15 @@ function gridSnap(raw: Point): Point {
   return s.grid.snap && s.snaps.on ? snap(raw, s.gridPx) : raw;
 }
 
-/** Snap to a nearby wall end (so walls join cleanly), otherwise to the grid. */
-function snapPoint(raw: Point, ignoreId?: string): Point {
+/**
+ * Snap a grip being dragged as drawing does: to any wall or item corner, end, middle or line nearby
+ * (the item itself left out), else the grid. Shows the snap marker while it drags.
+ */
+function snapGrip(raw: Point, id: string, from: Point | null = null): Point {
   const s = plannerStore.getState();
-  return nearestWallEnd(s.doc.elements, raw, 10 * s.pxUnits(), ignoreId) ?? gridSnap(raw);
+  const inf = inferAt(s, raw, from, new Set([id]));
+  s.setInference(inf.kind === 'free' || inf.kind === 'grid' ? null : inf);
+  return inf.point;
 }
 
 const boundsOf = (a: Point, b: Point): Bounds => ({
@@ -227,6 +241,18 @@ export function usePlanInput(
         startDrag(e, { kind: handle, orig: selected });
       } else if (selected.type === 'furniture' && (handle === 'resize' || handle === 'rotate')) {
         startDrag(e, { kind: handle, orig: selected });
+      } else if (selected.type === 'column' && handle === 'column-size') {
+        startDrag(e, { kind: 'column-size', orig: selected });
+      } else if (selected.type === 'beam' && (handle === 'beam-start' || handle === 'beam-end')) {
+        startDrag(e, { kind: handle, orig: selected });
+      } else if (
+        (selected.type === 'slab' ||
+          selected.type === 'pad' ||
+          selected.type === 'block' ||
+          selected.type === 'roof') &&
+        handle.startsWith('shape-corner-')
+      ) {
+        startDrag(e, { kind: 'shape-corner', orig: selected, index: Number(handle.slice('shape-corner-'.length)) });
       } else if (selected.type === 'plot' && handle.startsWith('plot-corner-')) {
         startDrag(e, { kind: 'plot-corner', plotId: selected.id, index: Number(handle.slice('plot-corner-'.length)) });
       } else if (selected.type === 'plot' && handle.startsWith('plot-bend-')) {
@@ -393,14 +419,16 @@ export function usePlanInput(
                   ? orig.points[0]
                   : { x: orig.x, y: orig.y };
             const moved = { x: anchor.x + raw.x - drag.start.x, y: anchor.y + raw.y - drag.start.y };
-            const target = orig.type === 'wall' ? snapPoint(moved, orig.id) : gridSnap(moved);
+            const target = snapGrip(moved, orig.id);
             s.updateElement(translateElement(orig, target.x - anchor.x, target.y - anchor.y));
           }
           break;
         }
         case 'wall-start':
         case 'wall-end': {
-          const p = snapPoint(raw, drag.orig.id);
+          const o0 = drag.orig;
+          const other = drag.kind === 'wall-start' ? { x: o0.x2, y: o0.y2 } : { x: o0.x1, y: o0.y1 };
+          const p = snapGrip(raw, o0.id, other);
           const next =
             drag.kind === 'wall-start' ? { ...drag.orig, x1: p.x, y1: p.y } : { ...drag.orig, x2: p.x, y2: p.y };
           // A curved wall keeps its shape: its bow grows or shrinks with the distance between its ends.
@@ -440,6 +468,31 @@ export function usePlanInput(
           const ok = s.movePlotCorner(drag.plotId, drag.index, gridSnap(raw));
           if (!ok) s.setWarning('The sides of the plot would cross: that corner can’t go there.');
           else if (s.warnings.length) s.setWarning(null);
+          break;
+        }
+        case 'column-size': {
+          const local = toFurnitureLocal(drag.orig, snapGrip(raw, drag.orig.id));
+          const size = (v: number) => Math.max(SIZE_STEP, Math.round((2 * Math.abs(v)) / SIZE_STEP) * SIZE_STEP);
+          s.updateElement({ ...drag.orig, w: size(local.x), h: size(local.y) });
+          break;
+        }
+        case 'beam-start':
+        case 'beam-end': {
+          const o = drag.orig;
+          const start = drag.kind === 'beam-start';
+          const p = snapGrip(raw, o.id, start ? { x: o.x2, y: o.y2 } : { x: o.x1, y: o.y1 });
+          const next = start ? { ...o, x1: p.x, y1: p.y } : { ...o, x2: p.x, y2: p.y };
+          if (next.x1 !== next.x2 || next.y1 !== next.y2) s.updateElement(next);
+          break;
+        }
+        case 'shape-corner': {
+          const p = snapGrip(raw, drag.orig.id);
+          const points = drag.orig.points.map((q, i) => (i === drag.index ? p : q));
+          if (outlineProblem(points)) s.setWarning('The edges would cross: that corner can’t go there.');
+          else {
+            if (s.warnings.length) s.setWarning(null);
+            s.updateElement({ ...drag.orig, points } as PlanElement);
+          }
           break;
         }
         case 'resize': {
@@ -499,7 +552,10 @@ export function usePlanInput(
         finishBox(drag, toPlan(e));
         return;
       }
-      if (drag.kind !== 'pan' && drag.kind !== 'zoom') s.endBatch();
+      if (drag.kind !== 'pan' && drag.kind !== 'zoom') {
+        s.endBatch();
+        s.setInference(null);
+      }
       return;
     }
     const dragged = !!start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > DRAG_PX;

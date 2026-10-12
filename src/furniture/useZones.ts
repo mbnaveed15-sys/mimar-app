@@ -75,6 +75,89 @@ export const USE_ZONES: Partial<Record<FurnitureKind, ItemZones>> = {
   },
   // ADA 502.3.1: a 60" access aisle beside an accessible parking space.
   car: { zone: { sides: 750 }, accessible: { sides: 1525, oneSide: true }, source: `${GENERAL}; ADA 502.3.1` },
+  // Added in 1.43: home extras, offices, schools, clinics, shops, prayer halls, cafés and public toilets.
+  'dressing-table': { zone: { front: 600 }, source: GENERAL },
+  'bunk-bed': { zone: { ...BED, oneSide: true }, source: GENERAL },
+  'study-desk': { zone: { front: 750 }, source: `${GENERAL} (a chair pulled out)` },
+  bookshelf: { zone: { front: 750 }, source: GENERAL },
+  'washing-machine': { zone: { front: 800 }, source: `${GENERAL} (door and loading)` },
+  'office-desk': { zone: { front: 1000 }, source: `${GENERAL} (a chair and room to pass)` },
+  'l-desk': { zone: { front: 1000 }, source: `${GENERAL} (a chair and room to pass)` },
+  'workstation-4': { zone: { front: 1000, back: 1000 }, source: `${GENERAL} (chairs on both sides)` },
+  'meeting-6': { zone: { front: 600, back: 600, sides: 600 }, source: GENERAL },
+  'meeting-10': { zone: { front: 600, back: 600, sides: 600 }, source: GENERAL },
+  // ADA 904.4.2: a 30" by 48" space in front of a sales or service counter.
+  'reception-desk': {
+    zone: { front: 1200, back: 900 },
+    accessible: { front: 1220, back: 900 },
+    source: `${GENERAL}; ADA 904.4.2`,
+  },
+  'filing-cabinet': { zone: { front: 1000 }, source: `${GENERAL} (a drawer pulled out)` },
+  bookcase: { zone: { front: 750 }, source: GENERAL },
+  lockers: { zone: { front: 900 }, source: GENERAL },
+  copier: { zone: { front: 900 }, source: GENERAL },
+  'student-desk': { zone: { sides: 600, oneSide: true }, source: `${GENERAL} (an aisle beside the desk)` },
+  'student-desk-2': { zone: { sides: 600, oneSide: true }, source: `${GENERAL} (an aisle beside the desk)` },
+  'teacher-desk': { zone: { front: 1000 }, source: GENERAL },
+  whiteboard: { zone: { front: 1200 }, source: `${GENERAL} (standing room for the teacher)` },
+  'cubby-lockers': { zone: { front: 900 }, source: GENERAL },
+  'lab-bench': { zone: { front: 1200 }, source: `${GENERAL} (room to pass behind someone working)` },
+  // ADA 403.5.1: a 36" clear width along an accessible route between shelves.
+  'library-shelves': {
+    zone: { front: 900, back: 900, backName: 'on the other side' },
+    accessible: { front: 915, back: 915, backName: 'on the other side' },
+    source: `${GENERAL}; ADA 403.5.1`,
+  },
+  'reading-table': { zone: { front: 600, back: 600, sides: 600 }, source: GENERAL },
+  'exam-couch': { zone: { sides: 800, oneSide: true }, source: `${GENERAL} (the doctor at one side)` },
+  'medicine-cabinet': { zone: { front: 900 }, source: GENERAL },
+  'scrub-sink': { zone: { front: 1000 }, source: GENERAL },
+  'hospital-bed': {
+    zone: { front: 1000, sides: 900, frontName: 'at its foot' },
+    source: `${GENERAL} (staff at both sides)`,
+  },
+  'waiting-seats': { zone: { front: 600 }, source: `${GENERAL} (legroom and passing)` },
+  gondola: {
+    zone: { front: 900, back: 900, backName: 'on the other side' },
+    accessible: { front: 915, back: 915, backName: 'on the other side' },
+    source: `${GENERAL}; ADA 403.5.1`,
+  },
+  'wall-shelving': { zone: { front: 900 }, accessible: { front: 915 }, source: `${GENERAL}; ADA 403.5.1` },
+  'clothes-rail': { zone: { front: 750 }, source: GENERAL },
+  'display-fridge': { zone: { front: 900 }, source: `${GENERAL} (door swing and standing room)` },
+  // ADA 904.3.1: check-out aisles 36" wide.
+  checkout: {
+    zone: { front: 900, back: 800 },
+    accessible: { front: 915, back: 800 },
+    source: `${GENERAL}; ADA 904.3.1`,
+  },
+  'fitting-room': { zone: { front: 900 }, source: GENERAL },
+  minbar: { zone: { front: 600 }, source: GENERAL },
+  'quran-shelf': { zone: { front: 600 }, source: GENERAL },
+  'wudu-taps': { zone: { front: 600 }, source: `${GENERAL} (room to pass behind the seats)` },
+  'shoe-rack': { zone: { front: 750 }, source: GENERAL },
+  // The table sizes take in the chairs: half of a 900 mm gap between tables.
+  'cafe-2': { zone: { front: 450, back: 450 }, source: GENERAL },
+  'cafe-4': { zone: { front: 450, back: 450 }, source: GENERAL },
+  'booth-4': { zone: { sides: 600, oneSide: true }, source: `${GENERAL} (way in at one end)` },
+  'serving-counter': { zone: { front: 1200, back: 900 }, source: `${GENERAL} (a queue in front, staff behind)` },
+  // ADA 605.3 and 305.3: 30" by 48" in front of an accessible urinal.
+  urinal: {
+    zone: { front: 600, sides: 150 },
+    accessible: { front: 1220, sides: 150 },
+    source: `${GENERAL}; ADA 605.3`,
+  },
+  'wc-cubicle': { zone: { front: 900 }, source: `${GENERAL} (way in)` },
+  // ADA 604.8.1: the stall is 60" wide and 56" or 59" deep; its door needs room in front.
+  'accessible-wc': { zone: { front: 1525 }, source: 'ADA 2010, 604.8.1 and 404.2.4' },
+  'basin-row': { zone: { front: 600 }, accessible: { front: 1220 }, source: `${GENERAL}; ADA 305.3, 606.2` },
+  'baby-change': { zone: { front: 900 }, source: GENERAL },
+  'hand-dryer': { zone: { front: 600 }, source: GENERAL },
+  // ADA 602.2: a forward approach to a drinking fountain.
+  'water-cooler': { zone: { front: 600 }, accessible: { front: 1220 }, source: `${GENERAL}; ADA 602.2, 305.3` },
+  vending: { zone: { front: 900 }, source: GENERAL },
+  'notice-board': { zone: { front: 600 }, source: GENERAL },
+  motorbike: { zone: { sides: 400 }, source: GENERAL },
 };
 
 export type ZoneSide = 'front' | 'back' | 'left' | 'right';

@@ -4,7 +4,8 @@ import { voidsOver } from './voids';
 import { planBounds } from '../geometry';
 import { plannerStore } from '../store/plannerStore';
 import { exportPdf } from './exportPdf';
-import { builtAreaSqFt, planCheck } from './planCheck';
+import { builtAreaSqFt } from './planCheck';
+import { fullCheck } from './fullCheck';
 import { shows } from './project';
 import { planHints } from './planHints';
 import { filterCheck, filterHints } from './checks';
@@ -83,12 +84,17 @@ export function exportPlanPng() {
 function pdfExtras() {
   const { units, pdfCheck, doc, wallHeightMm, fileName } = plannerStore.getState();
   const { showHints, pdfHints, openingGapMm: gapMm, accessibleZones: accessible, checks } = plannerStore.getState();
-  const check = planCheck(doc, { wallHeightMm, units });
+  const check = fullCheck(doc, { wallHeightMm, units });
   const skipSizes = new Set(check?.rows.find((r) => r.id === 'rooms')?.ids ?? []);
   // Checks paused with the Checks button are left out of the PDF too.
   const hints =
     showHints && pdfHints
-      ? filterHints(planHints(doc, { units, skipSizes, gapMm, accessible }), checks).map((h) => h.text)
+      ? filterHints(
+          planHints(doc, { units, skipSizes, gapMm, accessible }).filter(
+            (h) => !(h.kind === 'use' && check?.rows.some((r) => r.id.startsWith('use-'))),
+          ),
+          checks,
+        ).map((h) => h.text)
       : [];
   const printed = filterCheck(check, checks);
   return {
@@ -99,12 +105,12 @@ function pdfExtras() {
         ? costPdf(costReport(doc, wallHeightMm, 'all', costStore.getState()))
         : undefined,
     bylawNote: check
-      ? `Bylaws: ${check.authority.name}${check.authority.status === 'provisional' ? ' (provisional)' : ''}${check.rule ? `, ${check.rule.label}` : ''}`
+      ? `Bylaws: ${check.authority.name}${check.authority.status === 'provisional' ? ' (provisional)' : ''}${check.note ? `, ${check.note}` : ''}`
       : '',
     check:
       printed && pdfCheck
         ? {
-            heading: `${printed.authority.name}${printed.rule ? ` · ${printed.rule.label}` : ''} · ${printed.authority.source}`,
+            heading: `${printed.authority.name}${printed.note ? ` · ${printed.note}` : ''} · ${printed.authority.source}`,
             rows: printed.rows,
             footer:
               'Indicative only: measured from the drawing (areas and heights are approximate). Check with the authority before submitting.',

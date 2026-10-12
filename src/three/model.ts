@@ -1,3 +1,4 @@
+import { SHAPES } from '../furniture/shapes';
 import { centroid, fromFurnitureLocal, wallLength, wallParam } from '../geometry';
 import { patternSpanMm } from '../lib/patterns';
 import { MM_PER_UNIT } from '../lib/scale';
@@ -662,6 +663,23 @@ function furnitureSolids(f: Furniture, color?: string): Solid[] {
     }
   };
   // Parts passed `keep` (screens, hobs, sinks) keep their own colour when the item is painted.
+
+  const shaped = f.kind && SHAPES[f.kind];
+  if (shaped) {
+    const small = Math.min(f.w, f.h);
+    for (const p of shaped) {
+      if ('line' in p || !p.z) continue;
+      const c = p.color ?? '#cbd5e1';
+      if ('box' in p) part(...p.box, p.z[0], p.z[1], c, p.keep);
+      else {
+        // A round part as the square inside its circle.
+        const [fx, fy, fr] = p.disc;
+        const half = (fr * small) / Math.SQRT2;
+        part(fx - half / f.w, fy - half / f.h, (2 * half) / f.w, (2 * half) / f.h, p.z[0], p.z[1], c, p.keep);
+      }
+    }
+    return parts;
+  }
 
   switch (f.kind) {
     case 'bed-single':

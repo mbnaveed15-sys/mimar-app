@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { FurnitureKind } from './catalog';
+import { SHAPES, type ShapePart } from './shapes';
 
 interface Props {
   kind: FurnitureKind;
@@ -41,7 +42,7 @@ export function FurnitureSymbol({ kind, w, h, fill, stroke, sw }: Props) {
   );
   const small = Math.min(w, h);
 
-  const parts: Record<FurnitureKind, () => ReactNode> = {
+  const parts: Partial<Record<FurnitureKind, () => ReactNode>> = {
     'plant-small': () => plant(0.42),
     'plant-large': () => plant(0.45),
     planter: () => (
@@ -356,5 +357,22 @@ export function FurnitureSymbol({ kind, w, h, fill, stroke, sw }: Props) {
     );
   }
 
-  return <g data-symbol={kind}>{parts[kind]()}</g>;
+  /** An item drawn from its list of parts (see shapes.ts). */
+  function fromShape(list: ShapePart[]) {
+    const dashed = { strokeDasharray: `${sw * 4} ${sw * 3}` };
+    return list.map((p, i) => {
+      if ('line' in p) return <g key={i}>{ln(...p.line, p.dash ? dashed : {})}</g>;
+      if (p.plan === false) return null;
+      const extra = p.dash ? { style: { ...lineStyle, fill, ...dashed } } : {};
+      if ('disc' in p)
+        return (
+          <circle key={i} cx={L + p.disc[0] * w} cy={T + p.disc[1] * h} r={p.disc[2] * small} {...shape} {...extra} />
+        );
+      const [fx, fy, fw, fh] = p.box;
+      return <g key={i}>{r(fx, fy, fw, fh, (p.round ?? 0) * small, extra)}</g>;
+    });
+  }
+
+  const shaped = SHAPES[kind];
+  return <g data-symbol={kind}>{shaped ? fromShape(shaped) : (parts[kind]?.() ?? r(0, 0, 1, 1))}</g>;
 }

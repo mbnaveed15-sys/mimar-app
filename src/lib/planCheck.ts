@@ -4,14 +4,14 @@
  */
 import { elementOutline, pointInPolygon, pointToSegmentDistance } from '../geometry';
 import { roofTopMm } from './roof/roof';
-import { plotRule, plotSetbacks, roomRuleFor, type Authority, type PlotRule } from './bylaws';
+import { CDA_ROOMS, GENERAL, plotRule, plotSetbacks, roomRuleFor, type Authority, type PlotRule } from './bylaws';
 import { MM_PER_UNIT } from './scale';
-import { isCornerPlot, outlinePoints, plotSides, sideLine, sideSetbacks, SIDE_KIND_NAMES } from './plot';
+import { isCornerPlot, leftRightOf, outlinePoints, plotSides, sideLine, sideSetbacks, SIDE_KIND_NAMES } from './plot';
 import { distanceToWall } from './arc';
 import { buildableArea } from './site';
 import { basementOf, groundIndex, levelWallMm, slabMm } from './levels';
 import { outsideOutline } from './outline';
-import { shows } from './project';
+import { BUILDING_USES, projectOf, shows } from './project';
 import { formatLength, MM_PER_FOOT } from './units';
 import { boxOf, cellFor, GridIndex } from './spatial';
 import { labelPoint, polygonArea, roomAreaSqMm, wallFaces } from '../rooms';
@@ -52,8 +52,11 @@ export interface CheckRow {
 export interface PlanCheck {
   authority: Authority;
   rule: PlotRule | null;
-  plot: Plot;
+  /** The plot checked (none for a building drawn without one). */
+  plot: Plot | null;
   rows: CheckRow[];
+  /** What the figures are, under the authority's name (the table row, or why there is none). */
+  note: string;
 }
 
 const SQ_MM_PER_SQ_FT = 92903.04;
@@ -157,38 +160,78 @@ const pct = (v: number) => `${Math.round(v)}%`;
 const sqft = (v: number) => `${Math.round(v).toLocaleString('en-US')} sq ft`;
 
 /**
- * Check the plan against the first plot that has bylaws, or null when no plot has any.
- * `wallHeightMm` is the usual wall height (for floors and the total height).
+ * Check the plan against the first plot that has bylaws, or else the first plot's own setbacks
+ * (General). A house with no plot has no check; a building without one is still checked for its use
+ * (those rows are added in `fullCheck.ts`). `wallHeightMm` is the usual wall height (for floors and
+ * the total height).
  */
 export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Units }): PlanCheck | null {
   // A project that doesn't use bylaws (a free project, unless switched on) has no check.
   if (!shows(doc, 'bylaws')) return null;
-  const plot = doc.elements.find((el): el is Plot => el.type === 'plot' && !!plotRule(el));
-  const found = plot && plotRule(plot);
-  if (!plot || !found) return null;
-  const { authority, rule } = found;
+  const project = projectOf(doc);
+  // A non-residential building: the authorities' tables in Mimar are for houses.
+  const building = project.type === 'building';
+  const plots = doc.elements.filter((el): el is Plot => el.type === 'plot' && !el.hidden);
+  const plot = plots.find((el) => !!plotRule(el)) ?? plots[0];
+  const found = plot ? plotRule(plot) : null;
+  const authority = found?.authority ?? GENERAL;
+  const rule = building ? null : (found?.rule ?? null);
   const len = (mm: number) => formatLength(mm, ctx.units);
   const rows: CheckRow[] = [];
   const clause = (c: string) => (c === 'summary' ? 'Summary (provisional)' : c);
+  const useName = (BUILDING_USES.find((u) => u.id === (project.use ?? 'other'))?.label ?? 'Other').toLowerCase();
+  const note = building
+    ? `A ${useName} building: its plot’s own setbacks, and the national fire and access codes`
+    : !found
+      ? 'The plot’s own setbacks'
+      : rule
+        ? rule.label
+        : 'No row of the table fits this plot: its own setbacks are used';
 
-  if (rule) {
+  if (!plot) {
+    if (!building) return null;
+    rows.push({
+      id: 'local-bylaws',
+      label: 'Local bylaws',
+      required: 'Draw the plot (Shift+P) and pick its authority to check setbacks',
+      actual: 'No plot drawn',
+      status: 'check',
+      clause: 'General',
+    });
+    return { authority, rule, plot: null, rows, note };
+  }
+  if (!found)
+    rows.push({
+      id: 'local-bylaws',
+      label: 'Local bylaws',
+      required: 'Pick the plot’s authority (CDA, DHA and more) for its figures',
+      actual: 'None picked: only the plot’s own setbacks are checked',
+      status: 'check',
+      clause: 'General',
+    });
+
+  {
     // Setbacks: the plan's own, if they are the bylaws' either way round; otherwise the bylaws'.
-    const fromRule = plotSetbacks(rule);
-    const swapped = plotSetbacks(rule, true);
-    const matches = (a: Plot['setbacks']) =>
-      Math.abs(a.sides - plot.setbacks.sides) < 1 &&
-      Math.abs((a.side2 ?? 0) - (plot.setbacks.side2 ?? plot.setbacks.sides)) < 1;
-    const setbacks = matches(swapped) && !matches(fromRule) ? swapped : fromRule;
-    // The bylaws' setbacks on every side, whatever was typed for a side.
-    const ruled: Plot = {
-      ...plot,
-      setbacks,
-      sideList: plotSides(plot).map((side) => {
-        const copy = { ...side };
-        delete copy.setbackMm;
-        return copy;
-      }),
-    };
+    // Without a table row (or for a building), the plot's own setbacks as typed.
+    let ruled: Plot = plot;
+    if (rule) {
+      const fromRule = plotSetbacks(rule);
+      const swapped = plotSetbacks(rule, true);
+      const matches = (a: Plot['setbacks']) =>
+        Math.abs(a.sides - plot.setbacks.sides) < 1 &&
+        Math.abs((a.side2 ?? 0) - (plot.setbacks.side2 ?? plot.setbacks.sides)) < 1;
+      const setbacks = matches(swapped) && !matches(fromRule) ? swapped : fromRule;
+      // The bylaws' setbacks on every side, whatever was typed for a side.
+      ruled = {
+        ...plot,
+        setbacks,
+        sideList: plotSides(plot).map((side) => {
+          const copy = { ...side };
+          delete copy.setbackMm;
+          return copy;
+        }),
+      };
+    }
     const line = buildableArea(ruled);
     const outside = (pts: Point[]) => pts.some((p) => !inside(p, line));
     const hard: Id[] = [];
@@ -200,19 +243,23 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       if (el.type === 'wall' || (el.type === 'block' && el.heightMm > 0)) hard.push(el.id);
       else soft.push(el.id);
     }
-    const { front, rear, side1, side2 } = rule.setbacks;
+    const own = leftRightOf(plot);
+    const required = rule
+      ? `Front ${len(rule.setbacks.front)}, rear ${len(rule.setbacks.rear)}, sides ${rule.setbacks.side1 ? len(rule.setbacks.side1) : '–'} / ${rule.setbacks.side2 ? len(rule.setbacks.side2) : '–'}`
+      : `The plot’s own: front ${len(plot.setbacks.front)}, rear ${len(plot.setbacks.rear)}, left ${len(own.left)}, right ${len(own.right)}`;
+    const setbackClause = rule ? clause(authority.setbackClause) : 'Plot’s own';
     rows.push({
       id: 'setbacks',
       label: 'Setbacks',
-      required: `Front ${len(front)}, rear ${len(rear)}, sides ${side1 ? len(side1) : '–'} / ${side2 ? len(side2) : '–'}`,
+      required,
       actual: hard.length
         ? `${hard.length} ${hard.length === 1 ? 'item crosses' : 'items cross'} the building line`
         : 'Inside the building line',
       status: hard.length ? 'fail' : 'ok',
-      clause: clause(authority.setbackClause),
+      clause: setbackClause,
       ids: hard,
     });
-    rows.push(...sideRows(doc, ruled, len, clause(authority.setbackClause)));
+    rows.push(...sideRows(doc, ruled, len, setbackClause));
     if (soft.length)
       rows.push({
         id: 'setback-items',
@@ -220,12 +267,12 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
         required: 'Only porches, open stairs, projections and the like',
         actual: `${soft.length} ${soft.length === 1 ? 'item' : 'items'} (columns, slabs, stairs…)`,
         status: 'check',
-        clause: clause(authority.setbackClause),
+        clause: setbackClause,
         ids: soft,
       });
 
     // Projections (chajjas, ledges) that reach into the setbacks.
-    if (authority.projection) {
+    if (rule && authority.projection) {
       const max = authority.projection.maxMm;
       const deep = doc.elements.filter((el) => el.type === 'window' && el.flat && (el.depthMm ?? 0) > max);
       if (doc.elements.some((el) => el.type === 'window' && el.flat && (el.depthMm ?? 0) > 0))
@@ -247,9 +294,11 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
         required: 'Both roads kept clear. The second road uses the side setback until corner-plot figures are added',
         actual: plot.splay ? `Corner cut ${len(plot.splay.sizeMm)}` : 'Corner not cut',
         status: 'check',
-        clause: clause(authority.setbackClause),
+        clause: setbackClause,
       });
+  }
 
+  if (rule) {
     const plotSqFt = plotAreaSqFt(plot);
     const ground = GROUND_LEVEL;
     const groundSqFt = builtAreaSqFt(doc, ground);
@@ -288,6 +337,32 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       });
   }
 
+  if (building) {
+    rows.push({
+      id: 'building-bylaws',
+      label: 'Height, coverage and parking',
+      required:
+        authority.id === 'general'
+          ? 'Set by the local authority for this kind of building'
+          : `${authority.name}’s figures for ${useName} buildings aren’t in Mimar yet`,
+      actual: 'Check with the authority',
+      status: 'check',
+      clause: authority.id === 'general' ? 'General' : clause(authority.setbackClause),
+    });
+    return { authority, rule, plot, rows, note };
+  }
+  /** A figure this authority's table in Mimar doesn't have: shown as a row to check, not left out. */
+  const missing = (id: string, label: string, actual: string) =>
+    authority.id !== 'general' &&
+    rows.push({
+      id,
+      label,
+      required: 'Not in Mimar’s tables for this authority yet',
+      actual,
+      status: 'check',
+      clause: clause(authority.setbackClause),
+    });
+
   // Storeys and height: floors that have ordinary walls, and the top of everything built.
   const built = doc.elements.filter((el) => !el.hidden && el.type !== 'plot' && el.type !== 'line');
   const mumtys = mumtyLevelIds(doc);
@@ -298,6 +373,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       !mumtys.has(l.id) &&
       built.some((el) => el.type === 'wall' && BUILT_KINDS(el) && levelOf(el) === l.id),
   );
+  if (!authority.storeys && storeyLevels.length) missing('storeys', 'Storeys', String(storeyLevels.length));
   if (authority.storeys && storeyLevels.length)
     rows.push({
       id: 'storeys',
@@ -368,6 +444,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
     withMumty ? built : built.filter((el) => !mumtys.has(levelOf(el))),
     ctx.wallHeightMm,
   );
+  if (!authority.height && topMm > 0) missing('height', 'Height', `About ${len(topMm)} from the ground`);
   if (authority.height && topMm > 0)
     rows.push({
       id: 'height',
@@ -380,6 +457,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
 
   // Boundary walls.
   const boundary = built.filter((el): el is Wall => el.type === 'wall' && el.kind === 'boundary');
+  if (!authority.boundaryWall && boundary.length) missing('boundary', 'Boundary wall', 'Drawn');
   if (authority.boundaryWall && boundary.length) {
     const { minMm, maxMm } = authority.boundaryWall;
     const bad = boundary.filter((w) => {
@@ -400,6 +478,8 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
   }
 
   // Rooms by name: area and (roughly) width.
+  if (!authority.rooms && doc.rooms.some((r) => !r.hidden && roomRuleFor(CDA_ROOMS, r.name)))
+    missing('rooms', 'Room sizes', 'The plan hints still check good sizes');
   if (authority.rooms) {
     const small: { id: Id; name: string }[] = [];
     let checked = 0;
@@ -536,7 +616,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       });
   }
 
-  return { authority, rule, plot, rows };
+  return { authority, rule, plot, rows, note };
 }
 
 /** The outline an item takes up on the plan, for the setback check (null for things that don't count). */

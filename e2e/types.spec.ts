@@ -40,6 +40,7 @@ test('door and window types: pick one to place, change it in the side panel', as
 
 test('plants and garden items are in the furniture library and draw green', async ({ page }) => {
   await page.keyboard.press('k');
+  await page.getByRole('button', { name: 'Garden & plants', exact: true }).click();
   await page.getByRole('button', { name: 'Tree (large)' }).click();
   await page.mouse.click(...(await at(page, ...P(10, 10))));
   const tree = page.getByTestId('plan-canvas').locator('[data-symbol="tree-large"]');

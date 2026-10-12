@@ -28,7 +28,9 @@ export type SnapKind =
   // Lined up with the end of another wall or line.
   | 'aligned'
   // The centre of a curved wall or line.
-  | 'centre';
+  | 'centre'
+  // A corner of any other item: a slab, column, beam, stair, furniture, plot, roof, door or window jamb.
+  | 'item-corner';
 
 export interface Inference {
   point: Point;
@@ -58,7 +60,14 @@ export const SNAP_LABELS: Record<SnapKind, string> = {
   'from-corner': 'From corner',
   aligned: 'Lined up',
   centre: 'Centre of arc',
+  'item-corner': 'Corner',
 };
+
+/** A point of an item (not a wall or line) to snap to: its corners and the middles of its edges. */
+export interface SnapPoint {
+  point: Point;
+  kind: 'item-corner' | 'midpoint' | 'centre';
+}
 
 /** A straight piece to snap to: a wall's centre line or a layout line. */
 export interface Segment {
@@ -92,7 +101,24 @@ export interface InferOptions {
   ignoreIds?: Set<string>;
   /** Which kinds of snap may be used (all when missing): the Snap button's menu. */
   allow?: (kind: SnapKind) => boolean;
+  /** Corners and edge middles of other items (see `snapPoints.ts`). */
+  points?: SnapPoint[];
 }
+
+/** Where the lines through two segments cross (null when they are parallel). */
+function lineCrossing(a: Segment, b: Segment): Point | null {
+  const rx = a.x2 - a.x1;
+  const ry = a.y2 - a.y1;
+  const sx = b.x2 - b.x1;
+  const sy = b.y2 - b.y1;
+  const den = rx * sy - ry * sx;
+  if (Math.abs(den) < 1e-9 * Math.hypot(rx, ry) * Math.hypot(sx, sy)) return null;
+  const t = ((b.x1 - a.x1) * sy - (b.y1 - a.y1) * sx) / den;
+  return { x: a.x1 + rx * t, y: a.y1 + ry * t };
+}
+
+/** Distance from p to a wall's centre line (between its ends). */
+const toWall = (p: Point, w: Segment) => dist(closestOnSegment(p, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }), p);
 
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
@@ -197,9 +223,11 @@ export function infer(raw: Point, opts: InferOptions): Inference {
   const consider = (point: Point, kind: SnapKind, within = tolerance) => {
     if (!allow(kind)) return;
     const d = dist(point, raw);
-    if (d < within && d < bestD) {
+    // A corner wins over a middle under the pointer, unless the middle is clearly nearer.
+    const rank = kind === 'midpoint' ? d * 1.6 : d;
+    if (d < within && rank < bestD) {
       best = { point, kind };
-      bestD = d;
+      bestD = rank;
     }
   };
 
@@ -214,6 +242,19 @@ export function infer(raw: Point, opts: InferOptions): Inference {
       consider({ x: seg.x1, y: seg.y1 }, 'corner');
       consider({ x: seg.x2, y: seg.y2 }, 'corner');
     }
+  // The real corners where walls meet, inside and out: where their faces cross, close to both walls.
+  const thick = others.filter((w) => toWall(raw, w) < tolerance + thicknessOf(w));
+  for (let i = 0; i < thick.length; i++)
+    for (let j = i + 1; j < thick.length; j++) {
+      const [a, b] = [thick[i], thick[j]];
+      const reach = (thicknessOf(a) + thicknessOf(b)) * 1.5;
+      for (const fa of wallFaces(a))
+        for (const fb of wallFaces(b)) {
+          const x = lineCrossing(fa, fb);
+          if (x && toWall(x, a) <= reach && toWall(x, b) <= reach) consider(x, 'corner');
+        }
+    }
+  for (const { point, kind } of opts.points ?? []) consider(point, kind);
   // Midpoints of the pieces between the walls that meet a wall (the middle of each room's side).
   for (const w of nearWalls) {
     const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1);

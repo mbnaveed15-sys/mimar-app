@@ -155,6 +155,37 @@ export function sideSlots(plot: Plot, sides = plotSides(plot)): SetbackSlot[] {
   return slots.map((s, i) => s ?? (dot(outward(plot.points, i), along) > 0 ? 'side1' : 'side2'));
 }
 
+/**
+ * Which side setback (side 1 or side 2) is on the left, seen standing on the main road looking into
+ * the plot. Side 1 is the one going round from the road's end corner.
+ */
+export function leftSlot(plot: Pick<Plot, 'points' | 'front'>): 'side1' | 'side2' {
+  const n = plot.points.length;
+  if (n < 3) return 'side1';
+  const front = plot.front % n;
+  const along = sub(plot.points[(front + 1) % n], plot.points[front]);
+  const out = outward(plot.points, front);
+  // Facing into the plot (against `out`), with y pointing down the plan, the right hand is (out.y, -out.x).
+  const right = { x: out.y, y: -out.x };
+  return dot(along, right) > 0 ? 'side2' : 'side1';
+}
+
+/** A plot's setbacks from left and right ones (seen from the road), in its side 1 and side 2. */
+export function setbacksFromLeftRight(
+  plot: Pick<Plot, 'points' | 'front'>,
+  sb: { front: number; rear: number; left: number; right: number },
+): Plot['setbacks'] {
+  const [sides, side2] = leftSlot(plot) === 'side1' ? [sb.left, sb.right] : [sb.right, sb.left];
+  return { front: sb.front, rear: sb.rear, sides, side2 };
+}
+
+/** A plot's left and right side setbacks, seen from the road. */
+export function leftRightOf(plot: Pick<Plot, 'points' | 'front' | 'setbacks'>): { left: number; right: number } {
+  const side1 = plot.setbacks.sides;
+  const side2 = plot.setbacks.side2 ?? plot.setbacks.sides;
+  return leftSlot(plot) === 'side1' ? { left: side1, right: side2 } : { left: side2, right: side1 };
+}
+
 /** What each side is set back by, and where that comes from. */
 export interface SideSetback {
   mm: number;

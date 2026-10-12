@@ -47,9 +47,10 @@ export const STORAGE_KEY = 'mimar.plan';
 /**
  * 4 added groups and components; 5 added levels, columns, beams and slabs; 9 section lines and sheets;
  * 10 the ground; 11 curved and glass walls, pitched roofs and double-height rooms; 12 curved layout lines;
- * 13 curved and spiral stairs, and curved edges on slabs, levelled areas and plots.
+ * 13 curved and spiral stairs, and curved edges on slabs, levelled areas and plots; 14 furniture for
+ * every kind of building, and more building uses.
  */
-export const CURRENT_VERSION = 13;
+export const CURRENT_VERSION = 14;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -470,7 +471,21 @@ function readPoints(raw: unknown): Point[] {
 }
 
 const PROJECT_TYPES: ProjectType[] = ['house', 'free', 'building'];
-const USES: BuildingUse[] = ['office', 'school', 'clinic', 'shop', 'mosque', 'other'];
+const USES: BuildingUse[] = [
+  'office',
+  'school',
+  'clinic',
+  'hospital',
+  'shop',
+  'restaurant',
+  'hotel',
+  'apartments',
+  'hall',
+  'mosque',
+  'factory',
+  'warehouse',
+  'other',
+];
 const PANELS: ProjectPanel[] = ['bylaws', 'hints', 'roomList', 'cost'];
 
 /** A project's type and settings, keeping only sound values (none: a house on a plot, as before 1.33). */

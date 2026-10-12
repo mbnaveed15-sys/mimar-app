@@ -43,6 +43,7 @@ const SNAP_COLORS: Partial<Record<Inference['kind'], string>> = {
   'from-corner': 'var(--snap-edge)',
   aligned: 'var(--selection)',
   centre: 'var(--snap-mid)',
+  'item-corner': 'var(--snap-end)',
 };
 
 /** Colour of a rubber band: red or green when it runs along an axis, like SketchUp. */
