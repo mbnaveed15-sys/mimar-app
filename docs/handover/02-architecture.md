@@ -285,7 +285,9 @@ autosaves to local storage on every change.
     where faces of nearby walls cross, and ranks a midpoint 1.6× further than it is so corners win. Snap group
     `items`. In 3D, `cornerNear` in `Plan3DView.tsx` moves the pick to the nearest mesh vertex within 10 px (not
     behind the face hit). Grips use `snapGrip` (`usePlanInput.ts`); new grips `shape-corner-i`, `beam-start/end`,
-    `column-size`.
+    `column-size`. Dragging a whole item: walls, beams, lines and sections snap their start like a grip; any
+    other item goes through `cornerSnap` (`controller.ts`, 1.43.1): its 4 corners nearest the pointer are each
+    inferred, the smallest nudge to a face, corner, item corner or line wins, else the anchor goes to the grid.
   - Windows on arcs: `openingBend` / `bendPoint` / `bendPath` in `arc.ts` bend a window's symbol in the plan and the
     DXF; `straightPieces` splits a lone window into panes along the curve in 3D.
   - Stairs: `Stair.shape` 'curved' | 'spiral' with `innerMm` and `turn`; `stairLayout` in `site.ts` gives wedge

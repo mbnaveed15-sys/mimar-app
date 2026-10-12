@@ -18,7 +18,7 @@ import { faceOf } from '../lib/pushPull';
 import { itemsInBox, moveItems } from '../lib/selection';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, type PlannerState } from '../store/plannerStore';
-import { DRAG_PX, hover, inferAt, MEASURE_TOOLS, press, release } from '../tools/controller';
+import { cornerSnap, DRAG_PX, hover, inferAt, MEASURE_TOOLS, press, release } from '../tools/controller';
 import { slideOpening } from '../store/openingAt';
 import { getPicker, setPointer } from '../three/picker';
 import { setPlanPointer } from '../store/pointerStore';
@@ -93,6 +93,17 @@ function snapGrip(raw: Point, id: string, from: Point | null = null): Point {
   const inf = inferAt(s, raw, from, new Set([id]));
   s.setInference(inf.kind === 'free' || inf.kind === 'grid' ? null : inf);
   return inf.point;
+}
+
+/** Items dragged by one end, which snaps as a wall end does. */
+const STRAIGHT_PIECES = new Set<string>(['wall', 'beam', 'line', 'section']);
+
+/** Snap a dragged item by its corners (see `cornerSnap`), else its anchor to the grid as before 1.43. */
+function snapItemCorner(orig: PlanElement, dx: number, dy: number, raw: Point, moved: Point): Point {
+  const s = plannerStore.getState();
+  const found = cornerSnap(s, orig, dx, dy, raw);
+  s.setInference(found?.inf ?? null);
+  return found ? { x: moved.x + found.shift.x, y: moved.y + found.shift.y } : gridSnap(moved);
 }
 
 const boundsOf = (a: Point, b: Point): Bounds => ({
@@ -419,7 +430,9 @@ export function usePlanInput(
                   ? orig.points[0]
                   : { x: orig.x, y: orig.y };
             const moved = { x: anchor.x + raw.x - drag.start.x, y: anchor.y + raw.y - drag.start.y };
-            const target = snapGrip(moved, orig.id);
+            const target = STRAIGHT_PIECES.has(orig.type)
+              ? snapGrip(moved, orig.id)
+              : snapItemCorner(orig, raw.x - drag.start.x, raw.y - drag.start.y, raw, moved);
             s.updateElement(translateElement(orig, target.x - anchor.x, target.y - anchor.y));
           }
           break;

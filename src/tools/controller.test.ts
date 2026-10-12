@@ -5,9 +5,11 @@ import { MM_PER_FOOT } from '../lib/units';
 import { createPlannerStore } from '../store/plannerStore';
 import { resetPickers, setPicker } from '../three/picker';
 import type { Block, Furniture, Wall } from '../types';
+import { thicknessOf } from '../walls';
 import {
   applyMeasure,
   cancel,
+  cornerSnap,
   hover,
   measureReadout,
   pasteToPlace,
@@ -340,5 +342,31 @@ describe('paste, AutoCAD style', () => {
     cancel(store);
     expect(walls(store)).toHaveLength(1);
     expect(store.getState().past.length).toBe(history);
+  });
+});
+
+describe('dragging an item by its corners (1.43.1)', () => {
+  // A wall along y = 0 (the usual thickness, so its face is about 11 off its centre line).
+  const withBoard = (centreY: number) => {
+    const store = setup();
+    store.getState().addWall({ x: 0, y: 0 }, { x: 600, y: 0 });
+    const board: Furniture = { id: 'board', type: 'furniture', kind: 'whiteboard', x: 300, y: centreY, w: 240, h: 10 };
+    store.setState((st) => ({ doc: { ...st.doc, elements: [...st.doc.elements, board] } }));
+    return { store, board };
+  };
+
+  it('a thin item near a wall puts its back edge on the face, not its middle', () => {
+    const { store, board } = withBoard(17);
+    const found = cornerSnap(store.getState(), board, 0, 0, { x: 300, y: 17 });
+    expect(found?.inf.kind).toBe('on-face');
+    // Its back edge (y = 12) moves onto the face: the centre ends 5 off the face, not on it.
+    const face = thicknessOf(walls(store)[0]) / 2;
+    expect(found!.inf.point.y).toBeCloseTo(face);
+    expect(board.y + found!.shift.y).toBeCloseTo(face + 5);
+  });
+
+  it('an item far from everything is left to the grid', () => {
+    const { store, board } = withBoard(300);
+    expect(cornerSnap(store.getState(), board, 0, 0, { x: 300, y: 300 })).toBeNull();
   });
 });
