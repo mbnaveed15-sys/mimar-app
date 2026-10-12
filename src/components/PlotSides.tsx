@@ -1,5 +1,14 @@
 import { plotRule } from '../lib/bylaws';
-import { isCornerPlot, plotSides, roadCorner, sideSetbacks, SIDE_KIND_NAMES } from '../lib/plot';
+import { runLength } from '../lib/arc';
+import {
+  isCornerPlot,
+  isCurvedSide,
+  plotSides,
+  roadCorner,
+  sideLine,
+  sideSetbacks,
+  SIDE_KIND_NAMES,
+} from '../lib/plot';
 import { formatLength } from '../lib/units';
 import { BOUNDARY_MM, KIND_HEIGHT_MM, MM_PER_UNIT, usePlanner } from '../store/plannerStore';
 import type { Plot, PlotSide, PlotSideKind } from '../types';
@@ -49,7 +58,8 @@ export function PlotSidesPanel({ plot }: { plot: Plot }) {
         const side = sides[i];
         const a = plot.points[i];
         const b = plot.points[(i + 1) % n];
-        const lengthMm = Math.hypot(b.x - a.x, b.y - a.y) * MM_PER_UNIT;
+        const lengthMm = runLength(sideLine(plot, i)) * MM_PER_UNIT;
+        const curved = isCurvedSide(plot, i);
         const sb = setbacks[i];
         const main = i === plot.front % n;
         return (
@@ -63,6 +73,7 @@ export function PlotSidesPanel({ plot }: { plot: Plot }) {
             <div className="flex items-center justify-between gap-1">
               <span className="font-medium tabular-nums">
                 {k + 1}. {len(lengthMm)}
+                {curved && <span className="ml-1 text-muted">(curved)</span>}
                 {main && <span className="ml-1 text-muted">(main road)</span>}
               </span>
               <select
@@ -150,6 +161,11 @@ export function PlotSidesPanel({ plot }: { plot: Plot }) {
               {sb.typed && (
                 <button className="m-btn px-2 py-0.5" onClick={() => setSide(i, (s) => withoutKey(s, 'setbackMm'))}>
                   {hasBylaws ? 'Use the bylaws' : 'Use the plot’s setback'}
+                </button>
+              )}
+              {curved && (
+                <button className="m-btn px-2 py-0.5" onClick={() => setSide(i, (s) => withoutKey(s, 'bow'))}>
+                  Make straight
                 </button>
               )}
               {side.kind === 'road' && !main && (

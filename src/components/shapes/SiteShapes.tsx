@@ -1,5 +1,5 @@
 import { fromFurnitureLocal } from '../../geometry';
-import { outlinePoints, plotSides, sideOutward } from '../../lib/plot';
+import { outlinePoints, plotSides, sideMiddle, sideOutward } from '../../lib/plot';
 import { buildableArea, partOutline, stairLayout } from '../../lib/site';
 import { PLAN } from '../../theme/plan';
 import type { Plot, Point, Stair } from '../../types';
@@ -18,10 +18,9 @@ export function PlotShape({ plot, selected, k }: { plot: Plot; selected: boolean
   const outline = outlinePoints(plot);
   // A mark just outside (or inside) the middle of side i, `off` screen pixels from it.
   const beside = (i: number, off: number) => {
-    const a = plot.points[i];
-    const b = plot.points[(i + 1) % n];
+    const m = sideMiddle(plot, i);
     const o = sideOutward(plot, i);
-    return { x: (a.x + b.x) / 2 + o.x * off * k, y: (a.y + b.y) / 2 + o.y * off * k };
+    return { x: m.x + o.x * off * k, y: m.y + o.y * off * k };
   };
   return (
     <g data-type="plot" data-id={plot.id}>

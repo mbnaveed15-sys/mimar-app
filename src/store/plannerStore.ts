@@ -43,7 +43,16 @@ import {
 } from '../lib/selection';
 import { boundaryWallLines, buildableArea, stairLayout, stairSpec } from '../lib/site';
 import { plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
-import { guessSideKinds, insetPolygon, orientOutline, outlineProblem, plotSides, signedArea2 } from '../lib/plot';
+import {
+  guessSideKinds,
+  insetPolygon,
+  orientOutline,
+  outlineProblem,
+  outlinePoints,
+  plotSides,
+  signedArea2,
+  withCorner,
+} from '../lib/plot';
 import { boundaryWallsAlong, buildPlotWalls, syncPlotWalls } from '../lib/plotWalls';
 import { formatLength } from '../lib/units';
 import { basementOf, levelWallMm, slabMm } from '../lib/levels';
@@ -1899,7 +1908,7 @@ export function createPlannerStore(
         return true;
       },
       updatePlot: (next) => {
-        const problem = outlineProblem(next.points);
+        const problem = outlineProblem(next.points) ?? outlineProblem(outlinePoints(next));
         if (problem) {
           get().setWarning(problem);
           return false;
@@ -1925,11 +1934,11 @@ export function createPlannerStore(
       movePlotCorner: (plotId, index, p) => {
         const plot = get().doc.elements.find((el): el is Plot => el.type === 'plot' && el.id === plotId);
         if (!plot) return false;
-        const points = plot.points.map((q, i) => (i === index ? p : q));
-        if (outlineProblem(points)) return false;
+        const next = withCorner(plot, index, p);
+        if (outlineProblem(next.points) || outlineProblem(outlinePoints(next))) return false;
         // Corners can't be dragged round past each other: the plot keeps going the same way round.
-        if (signedArea2(points) <= 0) return false;
-        get().updateElement({ ...plot, points });
+        if (signedArea2(next.points) <= 0) return false;
+        get().updateElement(next);
         return true;
       },
       addSideGate: (plotId, side) => {

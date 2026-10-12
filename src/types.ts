@@ -188,11 +188,22 @@ export interface Beam extends Grouped {
   material?: Id;
 }
 
+/**
+ * How an outline's edges are curved: its corners, and for each edge (corner i to i + 1) the point it
+ * passes through at its middle, or null when straight. The outline's `points` follow the curves.
+ */
+export interface EdgeCurve {
+  corners: Point[];
+  mids: (Point | null)[];
+}
+
 /** A floor or roof slab: an outline with a thickness, at the top of its level. */
 export interface Slab extends Grouped {
   id: Id;
   type: 'slab';
   points: Point[];
+  /** Curved edges (see `curvedEdges.ts`). */
+  curve?: EdgeCurve;
   /** Thickness in plan units. */
   thickness: number;
   /** Voids through it (stair openings, skylights, shafts): outlines in plan units. */
@@ -238,6 +249,8 @@ export interface PlotSide {
   wall?: { heightMm: number; thicknessMm: number };
   /** The wall built for this side: it follows the plot when the plot is reshaped. */
   wallId?: Id;
+  /** A curved side: how far its middle bows out from the straight line between its corners, as on Wall. */
+  bow?: number;
 }
 
 export interface Plot extends Grouped {
@@ -370,6 +383,8 @@ export interface Pad extends Grouped {
   id: Id;
   type: 'pad';
   points: Point[];
+  /** Curved edges (see `curvedEdges.ts`). */
+  curve?: EdgeCurve;
   zMm: number;
   material?: Id;
 }

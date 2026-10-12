@@ -8,7 +8,7 @@ import { placeWallDimension, thicknessOf, wallExtensions, wallPolygon, wallsOf }
 import { arcOf, directionAlong, isArc, openingBend, paramAlong, pointAlong, wallPath } from './arc';
 import { isCurtain, metricProject, mullionStops } from './curtain';
 import { MM_PER_UNIT } from './scale';
-import { outlinePoints, plotSides, sideOutward } from './plot';
+import { outlinePoints, plotSides, sideMiddle, sideOutward } from './plot';
 import { buildableArea, partOutline, stairLayout } from './site';
 import { formatArea, formatLength, formatMarla } from './units';
 import { sectionLook } from './drawings/refs';
@@ -366,11 +366,10 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       // ROAD beside each road side, 5' outside it.
       plotSides(el).forEach((side, i) => {
         if (side.kind !== 'road') return;
-        const a = el.points[i];
-        const b = el.points[(i + 1) % el.points.length];
+        const m = sideMiddle(el, i);
         const o = sideOutward(el, i);
         const off = 1524 / MM_PER_UNIT;
-        dxf.text('C-PROP', { x: (a.x + b.x) / 2 + o.x * off, y: (a.y + b.y) / 2 + o.y * off }, 'ROAD');
+        dxf.text('C-PROP', { x: m.x + o.x * off, y: m.y + o.y * off }, 'ROAD');
       });
     }
 

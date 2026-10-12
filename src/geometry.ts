@@ -1,17 +1,20 @@
 import { arcOf, distanceToWall, isArc, paramAlong, placeOnArc, pointAlong, runLength, wallPath } from './lib/arc';
 import { boxOf } from './lib/spatial';
-import { reversedSides } from './lib/plot';
+import { outlinePoints, reversedSides } from './lib/plot';
 import { MM_PER_UNIT } from './lib/scale';
 import {
   hasPoints,
   type Bounds,
   type Mask,
   type Opening,
+  type Pad,
   type PlanElement,
   type Point,
   type PointsElement,
+  type Slab,
   type Wall,
 } from './types';
+import { curveOf, mapCurve, withCurve } from './lib/curvedEdges';
 
 /** Anything placed by its centre, with a size and an optional rotation (furniture, columns). */
 type Placed = { x: number; y: number; rotation?: number };
@@ -72,6 +75,14 @@ export function centroid(points: Point[]): Point {
  */
 export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Point, reverse = false): T {
   const map = (pts: Point[]) => (reverse ? pts.map(f).reverse() : pts.map(f));
+  // Curved edges move with their corners, and the outline is worked out again from them.
+  if ((el.type === 'slab' || el.type === 'pad') && el.curve) {
+    const curve = curveOf(el);
+    const plain: Slab | Pad = { ...el };
+    delete plain.curve;
+    const moved = mapOutline(plain as T, f, reverse);
+    return curve ? (withCurve(moved as Slab | Pad, mapCurve(curve, f, reverse)) as T) : moved;
+  }
   if (el.type === 'slab' && el.holes) return { ...el, points: map(el.points), holes: el.holes.map(map) };
   // A plot's road and sides stay on the same edges as its corners turn round.
   if (el.type === 'plot' && reverse) return { ...el, points: map(el.points), ...reversedSides(el) };
@@ -122,7 +133,8 @@ export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
     case 'slab':
     case 'plot': {
       // A slab is picked by its edge, so rooms and furniture on it stay clickable.
-      return el.points.some((a, i) => pointToSegmentDistance(p, a, el.points[(i + 1) % el.points.length]) < threshold);
+      const pts = el.type === 'plot' ? outlinePoints(el) : el.points;
+      return pts.some((a, i) => pointToSegmentDistance(p, a, pts[(i + 1) % pts.length]) < threshold);
     }
     case 'block':
       // A block (or a flat shape) is solid: anywhere on it counts.
@@ -305,8 +317,9 @@ function elementPoints(el: PlanElement): Point[] {
         { x: el.x1, y: el.y1 },
         { x: el.x2, y: el.y2 },
       ];
-    case 'slab':
     case 'plot':
+      return outlinePoints(el);
+    case 'slab':
     case 'block':
     case 'contour':
     case 'pad':

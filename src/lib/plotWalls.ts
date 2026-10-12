@@ -46,7 +46,7 @@ const isLinked = (wall: PlanElement | undefined, plot: Plot): wall is Wall =>
 
 /** A wall along a line, as the side's wall spec gives it. */
 function wallFor(line: SideWallLine, plot: Plot, wall: Partial<Wall> & { id: Id }): Wall {
-  return {
+  const next: Wall = {
     ...wall,
     type: 'wall',
     x1: line.a.x,
@@ -60,6 +60,9 @@ function wallFor(line: SideWallLine, plot: Plot, wall: Partial<Wall> & { id: Id 
     plotSide: line.side,
     ...(plot.levelId ? { levelId: plot.levelId } : {}),
   };
+  if (line.bow) next.bow = line.bow;
+  else delete next.bow;
+  return next;
 }
 
 /** Put each linked wall where the plot's sides put it now; doors and gates on it slide with it. */
@@ -78,6 +81,7 @@ export function placePlotWalls(doc: PlanDoc, plot: Plot): PlanDoc {
       old.y1 === next.y1 &&
       old.x2 === next.x2 &&
       old.y2 === next.y2 &&
+      old.bow === next.bow &&
       old.thickness === next.thickness &&
       old.heightMm === next.heightMm &&
       old.kind === 'boundary' &&

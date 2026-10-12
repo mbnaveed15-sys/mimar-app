@@ -1,4 +1,5 @@
 import { cleanText } from './text';
+import { curveOf } from './curvedEdges';
 import { MAX_RISE_MM } from './site';
 import {
   GROUND_LEVEL,
@@ -21,6 +22,7 @@ import {
   type Room,
   type ShapeKind,
   type DoorKind,
+  type EdgeCurve,
   type WindowKind,
   type WallKind,
   type DrawingRef,
@@ -146,6 +148,7 @@ function plotExtras(raw: Record<string, unknown>, corners: number): Pick<Plot, '
           ? { wall: { heightMm: wall.heightMm, thicknessMm: wall.thicknessMm } }
           : {}),
         ...(wall && side.wallId !== undefined ? { wallId: idOf(side.wallId) } : {}),
+        ...(typeof side.bow === 'number' && sane(side.bow) && Math.abs(side.bow) > 0.05 ? { bow: side.bow } : {}),
       };
     });
     if (sides.some((s) => s.kind === 'road')) out.sideList = sides;
@@ -291,8 +294,16 @@ function normaliseElement(raw: unknown): PlanElement | null {
       const points = readPoints(raw.points);
       const thickness = num('thickness');
       const holes = (Array.isArray(raw.holes) ? raw.holes : []).map(readPoints).filter((h) => h.length >= 3);
+      const curve = readCurve(raw.curve, points);
       return points.length >= 3 && thickness > 0
-        ? { ...base, type: 'slab' as const, points, thickness, ...(holes.length ? { holes } : {}) }
+        ? {
+            ...base,
+            type: 'slab' as const,
+            points,
+            thickness,
+            ...(holes.length ? { holes } : {}),
+            ...(curve && { curve }),
+          }
         : null;
     }
     case 'roof': {
@@ -329,7 +340,8 @@ function normaliseElement(raw: unknown): PlanElement | null {
     case 'pad': {
       const points = readPoints(raw.points);
       if (points.length < (raw.type === 'pad' ? 3 : 2) || !inRange(raw.zMm, -MAX_LEVEL_MM, MAX_LEVEL_MM)) return null;
-      return { ...base, levelId: undefined, type: raw.type, points, zMm: raw.zMm };
+      const curve = raw.type === 'pad' ? readCurve(raw.curve, points) : null;
+      return { ...base, levelId: undefined, type: raw.type, points, zMm: raw.zMm, ...(curve && { curve }) };
     }
     case 'context': {
       const points = readPoints(raw.points);
@@ -433,6 +445,19 @@ function windowShapeOf(raw: Record<string, unknown>) {
     ...(raw.flat === true ? { flat: true, face: raw.face === -1 ? (-1 as const) : (1 as const) } : {}),
     ...(raw.flat === true && inRange(raw.depthMm, -3000, 3000) && raw.depthMm !== 0 ? { depthMm: raw.depthMm } : {}),
   };
+}
+
+/** Curved edges of an outline, kept only when sound and still matching its points. */
+function readCurve(raw: unknown, points: Point[]): EdgeCurve | null {
+  if (!isObject(raw) || !Array.isArray(raw.mids)) return null;
+  const corners = readPoints(raw.corners);
+  const mids = raw.mids.map((m) =>
+    isObject(m) && typeof m.x === 'number' && typeof m.y === 'number' && sane(m.x) && sane(m.y)
+      ? { x: m.x, y: m.y }
+      : null,
+  );
+  const curve = { corners, mids };
+  return mids.length === corners.length && curveOf({ points, curve }) ? curve : null;
 }
 
 function readPoints(raw: unknown): Point[] {

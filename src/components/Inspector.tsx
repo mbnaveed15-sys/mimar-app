@@ -16,7 +16,9 @@ import {
   levelOf,
   type DoorKind,
   type Opening,
+  type Pad,
   type PlanElement,
+  type Slab,
   type Stair,
   type Units,
   type Wall,
@@ -25,6 +27,7 @@ import {
 import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
 import { CURTAIN_MM, thicknessOf } from '../walls';
 import { bowForRadius, isArc, radiusOf } from '../lib/arc';
+import { curveOf, isCurved, withCurve } from '../lib/curvedEdges';
 import { levelAbove } from '../lib/voids';
 import { metricProject, mullionSpacingMm, TRANSOM_MM } from '../lib/curtain';
 import { useLevelDoc } from '../store/useLevelDoc';
@@ -482,6 +485,7 @@ export function Inspector() {
                 </button>
               </div>
             )}
+            {(el.type === 'slab' || el.type === 'pad') && <CurvedEdges el={el} />}
             {el.type === 'block' && (
               <>
                 <LengthField
@@ -872,6 +876,30 @@ function UseZoneNote({ kind, units }: { kind: FurnitureKind; units: Units }) {
         {accessible && USE_ZONES[kind]?.accessible ? 'Wheelchair space, ' : ''}
         {USE_ZONES[kind]?.source}.
       </span>
+    </div>
+  );
+}
+
+/** A slab's or levelled area's curved edges: how many, and a button to make them straight again. */
+function CurvedEdges({ el }: { el: Slab | Pad }) {
+  const curve = curveOf(el);
+  if (!curve || !isCurved(curve)) {
+    return <div className="text-muted">Drag the round grip in the middle of an edge to curve it.</div>;
+  }
+  const n = curve.mids.filter((m) => m).length;
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span data-testid="curved-edges">
+        {n} curved {n === 1 ? 'edge' : 'edges'}
+      </span>
+      <button
+        className="m-btn"
+        onClick={() =>
+          plannerStore.getState().updateElement(withCurve(el, { ...curve, mids: curve.mids.map(() => null) }))
+        }
+      >
+        Make edges straight
+      </button>
     </div>
   );
 }

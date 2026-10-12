@@ -13,6 +13,8 @@ import {
 } from '../geometry';
 import { trimAt } from '../lib/modify';
 import { bowThrough } from '../lib/arc';
+import { bendEdge } from '../lib/curvedEdges';
+import { outlineProblem, outlinePoints, sideLine, withSideBow } from '../lib/plot';
 import { faceOf } from '../lib/pushPull';
 import { itemsInBox, moveItems } from '../lib/selection';
 import { panBy } from '../lib/view';
@@ -25,9 +27,12 @@ import {
   hasPoints,
   type Bounds,
   type Furniture,
+  type Pad,
   type PlanElement,
+  type Plot,
   type Point,
   type SketchLine,
+  type Slab,
   type Wall,
 } from '../types';
 
@@ -47,7 +52,9 @@ type Drag =
   | { kind: 'wall-bend'; orig: Wall | SketchLine }
   | { kind: 'resize' | 'rotate'; orig: Furniture }
   /** Dragging a corner of a plot to reshape it. */
-  | { kind: 'plot-corner'; plotId: string; index: number };
+  | { kind: 'plot-corner'; plotId: string; index: number }
+  | { kind: 'edge-bend'; orig: Slab | Pad; index: number }
+  | { kind: 'plot-bend'; orig: Plot; index: number };
 
 /** Furniture sizes snap to 50 mm; rotation snaps to 15° unless Shift is held. */
 const SIZE_STEP = 50 / MM_PER_UNIT;
@@ -222,6 +229,10 @@ export function usePlanInput(
         startDrag(e, { kind: handle, orig: selected });
       } else if (selected.type === 'plot' && handle.startsWith('plot-corner-')) {
         startDrag(e, { kind: 'plot-corner', plotId: selected.id, index: Number(handle.slice('plot-corner-'.length)) });
+      } else if (selected.type === 'plot' && handle.startsWith('plot-bend-')) {
+        startDrag(e, { kind: 'plot-bend', orig: selected, index: Number(handle.slice('plot-bend-'.length)) });
+      } else if ((selected.type === 'slab' || selected.type === 'pad') && handle.startsWith('edge-bend-')) {
+        startDrag(e, { kind: 'edge-bend', orig: selected, index: Number(handle.slice('edge-bend-'.length)) });
       }
       return;
     }
@@ -406,6 +417,22 @@ export function usePlanInput(
           const next: Wall | SketchLine = { ...drag.orig, bow };
           if (straight) delete next.bow;
           s.updateElement(next);
+          break;
+        }
+        case 'edge-bend':
+          // Like a wall's bend: within a few pixels of the straight edge, it snaps straight again.
+          s.updateElement(bendEdge(drag.orig, drag.index, raw, 6 * s.pxUnits()));
+          break;
+        case 'plot-bend': {
+          // Like a wall's bend: within a few pixels of the straight side, it snaps straight again.
+          const bow = bowThrough(sideLine(drag.orig, drag.index), raw);
+          const next = withSideBow(drag.orig, drag.index, Math.abs(bow) < 6 * s.pxUnits() ? 0 : bow);
+          if (outlineProblem(outlinePoints(next))) {
+            s.setWarning('The sides of the plot would cross: that side can’t bend so far.');
+          } else {
+            if (s.warnings.length) s.setWarning(null);
+            s.updateElement(next);
+          }
           break;
         }
         case 'plot-corner': {
