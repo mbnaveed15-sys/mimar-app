@@ -853,20 +853,31 @@ function stairSolids(st: Stair, color?: string): Solid[] {
   return solids;
 }
 
-/** A curved or spiral stair's wedge treads (and pole), each a block from the floor to its top. */
+/** A spiral stair's treads are plates cantilevered from its pole. */
+const SPIRAL_TREAD_M = 0.06;
+
+/**
+ * A curved stair's wedge treads, each a block from the floor to its top; a spiral stair's, plates
+ * round its pole, which stands the full height.
+ */
 function stairBlocks(st: Stair, color?: string): Slab3D[] {
+  const spiral = st.shape === 'spiral';
   return stairLayout(st)
     .parts.filter((p) => p.points)
-    .map((p) => ({
-      points: p.points!.map((q) => {
-        const w = fromFurnitureLocal(st, q);
-        return [m(w.x), m(w.y)] as [number, number];
-      }),
-      y0: 0,
-      h: Math.max(0.01, mmToM(p.topMm)),
-      color: color ?? CONCRETE,
-      role: 'stair' as const,
-    }));
+    .map((p) => {
+      const top = Math.max(0.01, mmToM(p.topMm));
+      const plate = spiral && p.kind === 'tread';
+      return {
+        points: p.points!.map((q) => {
+          const w = fromFurnitureLocal(st, q);
+          return [m(w.x), m(w.y)] as [number, number];
+        }),
+        y0: plate ? Math.max(0, top - SPIRAL_TREAD_M) : 0,
+        h: plate ? Math.min(top, SPIRAL_TREAD_M) : top,
+        color: color ?? CONCRETE,
+        role: 'stair' as const,
+      };
+    });
 }
 
 function columnSolid(c: Column, top: number, color?: string): Solid {
