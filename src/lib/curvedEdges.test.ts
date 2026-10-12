@@ -2,7 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { mapOutline } from '../geometry';
 import { polygonArea } from '../rooms';
 import type { Pad, Point, Slab } from '../types';
-import { bendEdge, curveOf, edgeMiddles, isCurved, withCurve } from './curvedEdges';
+import {
+  bendEdge,
+  bendHoleEdge,
+  curvedHoleEdges,
+  curveOf,
+  edgeMiddles,
+  holeEdgeMiddles,
+  holeOutline,
+  isCurved,
+  straightHoles,
+  withCurve,
+} from './curvedEdges';
+import { quantities } from './quantities';
 import { emptyDoc, normaliseDoc } from './storage';
 
 const square: Slab = {
@@ -74,5 +86,58 @@ describe('curved edges', () => {
     const opened = normaliseDoc(JSON.parse(JSON.stringify({ ...emptyDoc(), elements: [broken] })));
     expect((opened.elements[0] as Slab).curve).toBeUndefined();
     expect((opened.elements[0] as Slab).points).toEqual(slab.points);
+  });
+
+  describe('voids', () => {
+    const hole = [
+      { x: 100, y: 100 },
+      { x: 200, y: 100 },
+      { x: 200, y: 200 },
+      { x: 100, y: 200 },
+    ];
+    const holed: Slab = { ...square, holes: [hole, hole.map((p) => ({ x: p.x + 150, y: p.y + 150 }))] };
+
+    it('bends a void’s edge from its middle grip, and makes it straight again', () => {
+      expect(holeEdgeMiddles(holed)).toHaveLength(8);
+      near(holeEdgeMiddles(holed)[0].p, { x: 150, y: 100 });
+      const bent = bendHoleEdge(holed, 0, 0, { x: 150, y: 60 });
+      expect(bent.holes![0].length).toBeGreaterThan(8);
+      expect(bent.holes![1]).toEqual(holed.holes![1]);
+      expect(bent.holeCurves).toEqual([curveOf(holeOutline(bent, 0)), null]);
+      expect(curvedHoleEdges(bent)).toBe(1);
+      // The grip is now on the curve, and the void is bigger by the bulge.
+      near(holeEdgeMiddles(bent)[0].p, { x: 150, y: 60 });
+      expect(polygonArea(bent.holes![0])).toBeGreaterThan(100 * 100 + (2 / 3) * 100 * 40);
+      // Back near the straight line it is straight; the button straightens every void.
+      expect(bendHoleEdge(bent, 0, 0, { x: 150, y: 101 }, 5).holeCurves).toBeUndefined();
+      const straight = straightHoles(bent);
+      expect(straight.holes).toEqual(holed.holes);
+      expect(straight.holeCurves).toBeUndefined();
+    });
+
+    it('keeps a curved void when the slab is moved or mirrored, and saves it', () => {
+      const bent = bendHoleEdge(holed, 1, 2, { x: 300, y: 400 });
+      const moved = mapOutline(bent, (p) => ({ x: p.x + 50, y: p.y - 20 }));
+      expect(curvedHoleEdges(moved)).toBe(1);
+      near(holeEdgeMiddles(moved)[6].p, { x: 350, y: 380 });
+      const mirrored = mapOutline(bent, (p) => ({ x: -p.x, y: p.y }), true);
+      expect(curvedHoleEdges(mirrored)).toBe(1);
+      expect(polygonArea(mirrored.holes![1])).toBeCloseTo(polygonArea(bent.holes![1]), 3);
+      const doc = normaliseDoc(JSON.parse(JSON.stringify({ ...emptyDoc(), elements: [bent] })));
+      expect(doc.elements[0]).toEqual(bent);
+      // A curve that no longer matches its void is left out.
+      const broken = { ...bent, holeCurves: [null, { corners: hole, mids: [null, null, null, null] }] };
+      expect(normaliseDoc(JSON.parse(JSON.stringify({ ...emptyDoc(), elements: [broken] }))).elements[0]).toEqual({
+        ...bent,
+        holeCurves: undefined,
+      });
+    });
+
+    it('counts the void’s curved area off the slab’s concrete', () => {
+      const flat = quantities({ ...emptyDoc(), elements: [holed] }, 3048).total.slabCft;
+      const bent = quantities({ ...emptyDoc(), elements: [bendHoleEdge(holed, 0, 0, { x: 150, y: 60 })] }, 3048).total
+        .slabCft;
+      expect(bent).toBeLessThan(flat);
+    });
   });
 });

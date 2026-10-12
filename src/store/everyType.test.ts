@@ -8,6 +8,7 @@ import { pushPull } from '../lib/pushPull';
 import { sideDrawing } from '../lib/drawings/views';
 import type { PlanDoc, PlanElement, PushFace, Wall } from '../types';
 import { placeOnArc } from '../lib/arc';
+import { bendHoleEdge } from '../lib/curvedEdges';
 
 /** A curved wall across the back, bowing out, with a door flat across its curve. */
 const curved: Wall = { id: 'wa', type: 'wall', x1: 500, y1: 400, x2: 0, y2: 400, bow: -60, thickness: 23 };
@@ -26,25 +27,31 @@ const ELEMENTS: PlanElement[] = [
   { id: 'c', type: 'column', x: 0, y: 0, w: 23, h: 30, shape: 'rect' },
   { id: 'c2', type: 'column', x: 500, y: 400, w: 30, h: 30, shape: 'round' },
   { id: 'b', type: 'beam', x1: 0, y1: 0, x2: 500, y2: 0, width: 23, depth: 46 },
-  {
-    id: 's',
-    type: 'slab',
-    thickness: 15,
-    holes: [
-      [
-        { x: 200, y: 200 },
-        { x: 260, y: 200 },
-        { x: 260, y: 260 },
-        { x: 200, y: 260 },
+  // A slab with a void, one edge of it curved.
+  bendHoleEdge(
+    {
+      id: 's',
+      type: 'slab' as const,
+      thickness: 15,
+      holes: [
+        [
+          { x: 200, y: 200 },
+          { x: 260, y: 200 },
+          { x: 260, y: 260 },
+          { x: 200, y: 260 },
+        ],
       ],
-    ],
-    points: [
-      { x: 0, y: 0 },
-      { x: 500, y: 0 },
-      { x: 500, y: 400 },
-      { x: 0, y: 400 },
-    ],
-  },
+      points: [
+        { x: 0, y: 0 },
+        { x: 500, y: 0 },
+        { x: 500, y: 400 },
+        { x: 0, y: 400 },
+      ],
+    },
+    0,
+    0,
+    { x: 230, y: 185 },
+  ),
   {
     id: 'p',
     type: 'plot',
@@ -362,6 +369,8 @@ describe('every kind of item', () => {
     expect(wedges.filter((b) => b.id === 'sts')).toHaveLength(18);
     expect(meshes.some((m) => m.name.startsWith('stair'))).toBe(true);
     expect(model.slabs[0].holes).toHaveLength(1);
+    // Its curved edge is built as short pieces round the curve.
+    expect(model.slabs[0].holes![0].length).toBeGreaterThan(8);
     // Flat shapes aren't built, so they aren't exported.
     expect(meshes.some((m) => m.name.startsWith('block'))).toBe(true);
     expect(meshes.some((m) => m.name.startsWith('shape'))).toBe(false);
@@ -390,7 +399,8 @@ describe('every kind of item', () => {
         for (const mm of [300, -300, -5000]) {
           const out = pushPull(doc(), el.id, face, mm, { wallHeightMm: 3048 });
           const json = JSON.stringify(out.doc);
-          expect(json).not.toContain('null');
+          // No lost numbers (NaN saves as null); a straight edge's middle is null on purpose.
+          expect(json).not.toMatch(/":null/);
           expect(normaliseDoc(JSON.parse(json)).elements.length).toBeGreaterThanOrEqual(ELEMENTS.length - 1);
         }
   });

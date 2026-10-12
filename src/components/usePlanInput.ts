@@ -12,7 +12,7 @@ import {
 } from '../geometry';
 import { trimAt } from '../lib/modify';
 import { bowThrough } from '../lib/arc';
-import { bendEdge } from '../lib/curvedEdges';
+import { bendEdge, bendHoleEdge } from '../lib/curvedEdges';
 import { outlineProblem, outlinePoints, sideLine, withSideBow } from '../lib/plot';
 import { faceOf } from '../lib/pushPull';
 import { itemsInBox, moveItems } from '../lib/selection';
@@ -66,6 +66,7 @@ type Drag =
   /** Dragging a corner of a plot to reshape it. */
   | { kind: 'plot-corner'; plotId: string; index: number }
   | { kind: 'edge-bend'; orig: Slab | Pad; index: number }
+  | { kind: 'void-bend'; orig: Slab; hole: number; index: number }
   | { kind: 'plot-bend'; orig: Plot; index: number };
 
 /** Furniture sizes snap to 50 mm; rotation snaps to 15° unless Shift is held. */
@@ -277,6 +278,9 @@ export function usePlanInput(
         startDrag(e, { kind: 'plot-bend', orig: selected, index: Number(handle.slice('plot-bend-'.length)) });
       } else if ((selected.type === 'slab' || selected.type === 'pad') && handle.startsWith('edge-bend-')) {
         startDrag(e, { kind: 'edge-bend', orig: selected, index: Number(handle.slice('edge-bend-'.length)) });
+      } else if (selected.type === 'slab' && handle.startsWith('void-bend-')) {
+        const [hole, index] = handle.slice('void-bend-'.length).split('-').map(Number);
+        startDrag(e, { kind: 'void-bend', orig: selected, hole, index });
       }
       return;
     }
@@ -480,6 +484,9 @@ export function usePlanInput(
         case 'edge-bend':
           // Like a wall's bend: within a few pixels of the straight edge, it snaps straight again.
           s.updateElement(bendEdge(drag.orig, drag.index, raw, 6 * s.pxUnits()));
+          break;
+        case 'void-bend':
+          s.updateElement(bendHoleEdge(drag.orig, drag.hole, drag.index, raw, 6 * s.pxUnits()));
           break;
         case 'plot-bend': {
           // Like a wall's bend: within a few pixels of the straight side, it snaps straight again.

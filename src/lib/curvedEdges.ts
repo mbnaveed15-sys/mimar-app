@@ -5,7 +5,7 @@
  * outline (3D, drawings, exports, areas) works unchanged. `curve` keeps the corners and the point
  * each edge passes through at its middle, so the curves can be changed again. Pure.
  */
-import type { EdgeCurve, Point } from '../types';
+import type { EdgeCurve, Point, Slab } from '../types';
 import { bowThrough, pointAlong, wallPath, type WallLine } from './arc';
 
 /** A bow smaller than this (plan units) is a straight edge. */
@@ -102,4 +102,61 @@ export function mapCurve(curve: EdgeCurve, f: (p: Point) => Point, reverse = fal
     // Edge j of the reversed outline is edge n - 2 - j of the original, walked the other way.
     mids: corners.map((_, j) => mids[(((n - 2 - j) % n) + n) % n]),
   };
+}
+
+/** Void j of a slab as an outline with its curve, for the same edge helpers as any outline. */
+export function holeOutline(
+  slab: Pick<Slab, 'holes' | 'holeCurves'>,
+  j: number,
+): { points: Point[]; curve?: EdgeCurve } {
+  const curve = slab.holeCurves?.[j];
+  return { points: slab.holes?.[j] ?? [], ...(curve && { curve }) };
+}
+
+/** A slab with void j made this outline (curved or not); `holeCurves` is kept only while a void is curved. */
+export function withHole<T extends Pick<Slab, 'holes' | 'holeCurves'>>(
+  slab: T,
+  j: number,
+  hole: { points: Point[]; curve?: EdgeCurve },
+): T {
+  const holes = (slab.holes ?? []).map((h, k) => (k === j ? hole.points : h));
+  const curves = holes.map((_, k) => (k === j ? (hole.curve ?? null) : (slab.holeCurves?.[k] ?? null)));
+  const next = { ...slab, holes };
+  if (curves.some((c) => c)) next.holeCurves = curves;
+  else delete next.holeCurves;
+  return next;
+}
+
+/** Bend edge i of void j so it passes through p at its middle (as `bendEdge`). */
+export function bendHoleEdge<T extends Pick<Slab, 'holes' | 'holeCurves'>>(
+  slab: T,
+  j: number,
+  i: number,
+  p: Point | null,
+  straight = STRAIGHT,
+): T {
+  return withHole(slab, j, bendEdge(holeOutline(slab, j), i, p, straight));
+}
+
+/** Every void made straight again (each keeps its corners). */
+export function straightHoles<T extends Pick<Slab, 'holes' | 'holeCurves'>>(slab: T): T {
+  return (slab.holes ?? []).reduce(
+    (s, _, j) => withHole(s, j, { points: edgesOf(holeOutline(slab, j)).corners }),
+    slab,
+  );
+}
+
+/** How many void edges are curved. */
+export const curvedHoleEdges = (slab: Pick<Slab, 'holes' | 'holeCurves'>): number =>
+  (slab.holes ?? []).reduce((n, _, j) => n + (curveOf(holeOutline(slab, j))?.mids.filter((m) => m).length ?? 0), 0);
+
+/** The middle of each edge of each void (where its bend grip goes), with no more than `max` edges a void. */
+export function holeEdgeMiddles(
+  slab: Pick<Slab, 'holes' | 'holeCurves'>,
+  max = Infinity,
+): { hole: number; edge: number; p: Point }[] {
+  return (slab.holes ?? []).flatMap((_, j) => {
+    const mids = edgeMiddles(holeOutline(slab, j));
+    return mids.length <= max ? mids.map((p, i) => ({ hole: j, edge: i, p })) : [];
+  });
 }

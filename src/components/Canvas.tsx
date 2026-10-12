@@ -11,7 +11,7 @@ import { selectionBounds } from '../lib/selection';
 import { GROUND_LEVEL, levelOf, type Furniture, type PlanElement, type Point, type SectionLine } from '../types';
 import { wallPolygon, wallsOf } from '../walls';
 import { pointAlong } from '../lib/arc';
-import { edgeMiddles } from '../lib/curvedEdges';
+import { edgeMiddles, holeEdgeMiddles } from '../lib/curvedEdges';
 import { canBendSide, sideMiddle } from '../lib/plot';
 import { voidsOver } from '../lib/voids';
 import { DrawingOverlay } from './DrawingOverlay';
@@ -336,6 +336,12 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
           !selected.locked &&
           edgeMiddles(selected).length <= MAX_BEND_GRIPS &&
           edgeMiddles(selected).map((p, i) => <Handle key={i} name={`edge-bend-${i}`} p={p} k={hk} />)}
+        {tool === 'select' &&
+          selected?.type === 'slab' &&
+          !selected.locked &&
+          holeEdgeMiddles(selected, MAX_BEND_GRIPS).map(({ hole, edge, p }) => (
+            <Handle key={`v${hole}-${edge}`} name={`void-bend-${hole}-${edge}`} p={p} k={hk} />
+          ))}
         {tool === 'select' &&
           selected &&
           !selected.locked &&

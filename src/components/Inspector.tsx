@@ -28,7 +28,7 @@ import {
 import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
 import { CURTAIN_MM, thicknessOf } from '../walls';
 import { bowForRadius, isArc, radiusOf } from '../lib/arc';
-import { curveOf, isCurved, withCurve } from '../lib/curvedEdges';
+import { curvedHoleEdges, curveOf, isCurved, straightHoles, withCurve } from '../lib/curvedEdges';
 import { levelAbove } from '../lib/voids';
 import { dimLine } from '../lib/dimLine';
 import { metricProject, mullionSpacingMm, TRANSOM_MM } from '../lib/curtain';
@@ -540,11 +540,15 @@ export function Inspector() {
                 <span data-testid="slab-voids">
                   {el.holes.length} {el.holes.length === 1 ? 'void' : 'voids'}
                 </span>
-                <button className={btn} onClick={() => updateElement({ ...el, holes: undefined })}>
+                <button
+                  className={btn}
+                  onClick={() => updateElement({ ...el, holes: undefined, holeCurves: undefined })}
+                >
                   Fill voids
                 </button>
               </div>
             )}
+            {el.type === 'slab' && !!el.holes?.length && <CurvedVoids el={el} />}
             {(el.type === 'slab' || el.type === 'pad') && <CurvedEdges el={el} />}
             {el.type === 'block' && (
               <>
@@ -939,6 +943,22 @@ function UseZoneNote({ kind, units }: { kind: FurnitureKind; units: Units }) {
         {accessible && USE_ZONES[kind]?.accessible ? 'Wheelchair space, ' : ''}
         {USE_ZONES[kind]?.source}.
       </span>
+    </div>
+  );
+}
+
+/** A slab's curved void edges: how many, and a button to make them straight again. */
+function CurvedVoids({ el }: { el: Slab }) {
+  const n = curvedHoleEdges(el);
+  if (!n) return <div className="text-muted">Drag the round grip in the middle of a void’s edge to curve it.</div>;
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span data-testid="curved-void-edges">
+        {n} curved void {n === 1 ? 'edge' : 'edges'}
+      </span>
+      <button className="m-btn" onClick={() => plannerStore.getState().updateElement(straightHoles(el))}>
+        Make voids straight
+      </button>
     </div>
   );
 }

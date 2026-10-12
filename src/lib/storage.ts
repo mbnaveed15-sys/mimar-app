@@ -328,7 +328,13 @@ function normaliseElement(raw: unknown): PlanElement | null {
     case 'slab': {
       const points = readPoints(raw.points);
       const thickness = num('thickness');
-      const holes = (Array.isArray(raw.holes) ? raw.holes : []).map(readPoints).filter((h) => h.length >= 3);
+      // Each void with its curve (if any), read together so they stay in step.
+      const rawCurves = Array.isArray(raw.holeCurves) ? raw.holeCurves : [];
+      const kept = (Array.isArray(raw.holes) ? raw.holes : [])
+        .map((h, j) => ({ points: readPoints(h), curve: rawCurves[j] as unknown }))
+        .filter((h) => h.points.length >= 3);
+      const holes = kept.map((h) => h.points);
+      const holeCurves = kept.map((h) => readCurve(h.curve, h.points));
       const curve = readCurve(raw.curve, points);
       return points.length >= 3 && thickness > 0
         ? {
@@ -337,6 +343,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
             points,
             thickness,
             ...(holes.length ? { holes } : {}),
+            ...(holeCurves.some((c) => c) && { holeCurves }),
             ...(curve && { curve }),
           }
         : null;

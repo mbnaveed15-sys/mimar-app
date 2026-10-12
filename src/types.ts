@@ -208,6 +208,8 @@ export interface Slab extends Grouped {
   thickness: number;
   /** Voids through it (stair openings, skylights, shafts): outlines in plan units. */
   holes?: Point[][];
+  /** Curved edges of each void, in the same order as `holes` (null or missing: straight). */
+  holeCurves?: (EdgeCurve | null)[];
   material?: Id;
 }
 

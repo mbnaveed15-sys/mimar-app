@@ -14,7 +14,7 @@ import {
   type Slab,
   type Wall,
 } from './types';
-import { curveOf, mapCurve, withCurve } from './lib/curvedEdges';
+import { curveOf, holeOutline, mapCurve, withCurve, withHole } from './lib/curvedEdges';
 import { dimLine, dimOutline, mapDimension } from './lib/dimLine';
 
 /** Anything placed by its centre, with a size and an optional rotation (furniture, columns). */
@@ -84,7 +84,15 @@ export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Poin
     const moved = mapOutline(plain as T, f, reverse);
     return curve ? (withCurve(moved as Slab | Pad, mapCurve(curve, f, reverse)) as T) : moved;
   }
-  if (el.type === 'slab' && el.holes) return { ...el, points: map(el.points), holes: el.holes.map(map) };
+  if (el.type === 'slab' && el.holes) {
+    const moved = { ...el, points: map(el.points), holes: el.holes.map(map) };
+    if (!el.holeCurves) return moved;
+    // Curved voids: their curves move with their corners, and each outline is worked out again.
+    return el.holes.reduce((s, _, j) => {
+      const c = curveOf(holeOutline(el, j));
+      return withHole(s, j, c ? withCurve({ points: s.holes![j] }, mapCurve(c, f, reverse)) : { points: s.holes![j] });
+    }, moved) as T;
+  }
   // A plot's road and sides stay on the same edges as its corners turn round.
   if (el.type === 'plot' && reverse) return { ...el, points: map(el.points), ...reversedSides(el) };
   // A roof's gable ends and low side stay on the same edges too.
