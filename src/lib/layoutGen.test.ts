@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { newId } from './ids';
-import { buildLayout, largestRect, layoutSite } from './layoutBuild';
+import { buildLayout, largestRect, layoutSite, terraceDepth, upperSite } from './layoutBuild';
 import {
   DEFAULT_PROGRAM,
   feetToUnits as ft,
   generateLayouts,
+  generateUpperLayouts,
   mirrorLayout,
   programArea,
   shared,
@@ -165,5 +166,117 @@ describe('building a plan on a plot', () => {
     expect(hints.some((h) => h.id === 'opening-gaps')).toBe(false);
     // Rooms close round their walls (none left as bare outlines but the porch).
     for (const r of built.rooms) expect(r.points.length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('a first floor from a room list', () => {
+  /** A 35' × 65' plot with a ground floor from the room list on it (placed through the store). */
+  const groundFloor = () => {
+    const store = createPlannerStore(emptyDoc(), undefined, DEFAULT_PREFS);
+    store.getState().addPlot(plotRect({ x: 0, y: 0 }, { x: ft(35), y: ft(65) }));
+    const plot = store.getState().doc.elements.find((e): e is Plot => e.type === 'plot')!;
+    const site = layoutSite(plot)!;
+    const [plan] = generateLayouts(DEFAULT_PROGRAM, site.W, site.D, { seed: 3 });
+    store.getState().placeLayout(buildLayout(plan, site.frame, { newId, riseMm: 3200 }));
+    return { store, plot };
+  };
+  const upperList: Program = { ...DEFAULT_PROGRAM, upper: true, store: true, laundry: true, powder: false };
+
+  it('says what is missing when there is no ground floor or stair', () => {
+    const store = createPlannerStore(emptyDoc(), undefined, DEFAULT_PREFS);
+    store.getState().addPlot(plotRect({ x: 0, y: 0 }, { x: ft(35), y: ft(65) }));
+    const plot = store.getState().doc.elements.find((e): e is Plot => e.type === 'plot')!;
+    expect(upperSite(store.getState().doc, plot)).toMatch(/ground floor first/);
+    const { store: s2, plot: p2 } = groundFloor();
+    const noStair = { ...s2.getState().doc, elements: s2.getState().doc.elements.filter((e) => e.type !== 'stair') };
+    expect(upperSite(noStair, p2)).toMatch(/stair on the ground floor/);
+  });
+
+  it('plans the rooms round the stair below, with a terrace in front, every room reached', () => {
+    const { store, plot } = groundFloor();
+    const at = upperSite(store.getState().doc, plot);
+    if (typeof at === 'string') throw new Error(at);
+    const stair = store.getState().doc.elements.find((e) => e.type === 'stair')!;
+    expect(at.stairRoomId).toBeDefined();
+    const terrace = terraceDepth(at, programArea(upperList));
+    expect(terrace).toBeGreaterThan(ft(5));
+    const plans = generateUpperLayouts(upperList, at.W, at.D, { ...at.ground, terrace }, { seed: 2 });
+    expect(plans.length).toBeGreaterThan(0);
+    for (const plan of plans) {
+      tiles(plan);
+      expect(plan.notes.some((n) => /can't be reached/.test(n))).toBe(false);
+      const kinds = plan.rooms.map((r) => r.kind);
+      expect(kinds).toContain('terrace');
+      expect(kinds).not.toContain('kitchen');
+      expect(kinds.filter((k) => k === 'bath')).toHaveLength(3);
+      // The stair room is where the stair is below, and the TV lounge opens off it.
+      const hall = plan.rooms.find((r) => r.kind === 'stair')!.rects[0];
+      const s = at.ground.stair;
+      expect(hall.x0).toBeLessThanOrEqual(s.x0 + 1e-6);
+      expect(hall.x1).toBeGreaterThanOrEqual(s.x1 - 1e-6);
+      expect(hall.y0).toBeLessThanOrEqual(s.y0 + 1e-6);
+      expect(hall.y1).toBeGreaterThanOrEqual(s.y1 - 1e-6);
+      const lounge = plan.rooms.find((r) => r.kind === 'lounge')!;
+      expect(lounge.name).toBe('TV lounge');
+      // The terrace is in front, the whole width, with a door out to it.
+      const t = plan.rooms.findIndex((r) => r.kind === 'terrace');
+      expect(plan.rooms[t].rects[0]).toMatchObject({ x0: 0, y0: 0, x1: plan.W });
+      expect(plan.doors.some((d) => d.b === t)).toBe(true);
+    }
+
+    // Built on the first floor: no stair of its own, a parapet round the terrace, and the stair room
+    // below left open to it.
+    const first = plans[0];
+    const levelId = 'first';
+    const built = buildLayout(first, at.frame, { newId, levelId, riseMm: 0, noStair: true });
+    expect(built.stairs).toHaveLength(0);
+    expect(built.walls.filter((w) => w.kind === 'parapet')).toHaveLength(3);
+    expect(built.rooms.map((r) => r.name)).toContain('Terrace');
+    store.getState().placeUpperLayout(built, levelId, at.stairRoomId);
+    const doc = store.getState().doc;
+    expect(doc.levels.map((l) => l.name)).toEqual(['Ground floor', 'First floor']);
+    expect(store.getState().activeLevel).toBe(levelId);
+    expect(doc.rooms.find((r) => r.id === at.stairRoomId)!.openAbove).toBe(true);
+    expect(doc.elements.filter((e) => e.type === 'wall' && e.levelId === levelId).length).toBe(built.walls.length);
+    // The ground floor is as it was, and the stair still climbs from it.
+    expect(doc.elements.filter((e) => e.type === 'stair')).toEqual([stair]);
+    // Placing again replaces the first floor (parapets too), in one undo step.
+    expect(store.getState().upperClash().walls).toBe(built.walls.length);
+    store
+      .getState()
+      .placeUpperLayout(
+        buildLayout(plans[1] ?? first, at.frame, { newId, levelId, riseMm: 0, noStair: true }),
+        levelId,
+      );
+    expect(store.getState().doc.levels).toHaveLength(2);
+    store.getState().undo();
+    expect(store.getState().doc.elements.filter((e) => e.levelId === levelId).length).toBe(
+      built.walls.length + built.openings.length,
+    );
+    const hints = planHints(store.getState().doc, { units: 'imperial' });
+    expect(hints.filter((h) => h.kind === 'reach').map((h) => h.text)).toEqual([]);
+  });
+
+  it('puts baths over the wet rooms below when it can, and keeps within the bylaws’ first-floor limit', () => {
+    const { store, plot } = groundFloor();
+    const at = upperSite(store.getState().doc, plot);
+    if (typeof at === 'string') throw new Error(at);
+    expect(at.ground.wet!.length).toBeGreaterThan(2);
+    const plans = generateUpperLayouts(upperList, at.W, at.D, { ...at.ground, terrace: 0 }, { seed: 2 });
+    const overWet = (plan: Layout) =>
+      plan.rooms
+        .filter((r) => r.kind === 'bath')
+        .some((r) =>
+          at.ground.wet!.some(
+            (w) =>
+              Math.min(r.rects[0].x1, w.x1) > Math.max(r.rects[0].x0, w.x0) &&
+              Math.min(r.rects[0].y1, w.y1) > Math.max(r.rects[0].y0, w.y0),
+          ),
+        );
+    expect(overWet(plans[0])).toBe(true);
+    // A tight limit leaves a deeper terrace, but never past the stair.
+    const deep = terraceDepth(at, programArea(upperList), 600);
+    expect(deep).toBeGreaterThan(terraceDepth(at, programArea(upperList)));
+    expect(deep).toBeLessThanOrEqual(at.ground.stair.y0 + 1e-6);
   });
 });

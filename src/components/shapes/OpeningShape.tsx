@@ -21,7 +21,7 @@ interface Props {
   wallThickness: number;
   /** A preview of one about to be placed: not an item on the plan, so it isn't marked as one. */
   ghost?: boolean;
-  /** A window on a curved wall: drawn round the curve. */
+  /** A door or window on a curved wall: drawn round the curve. */
   bend?: Bend | null;
 }
 
@@ -65,9 +65,17 @@ export function OpeningShape({ opening, color, selected, wallThickness, ghost, b
       <g
         data-type={ghost ? undefined : opening.type}
         data-id={ghost ? undefined : opening.id}
-        data-kind={opening.windowKind ?? 'plain'}
+        data-kind={opening.type === 'door' ? doorKindOf(opening) : (opening.windowKind ?? 'plain')}
         data-bent
-        data-testid={ghost ? undefined : opening.open ? 'open-hole' : undefined}
+        data-testid={
+          ghost
+            ? undefined
+            : opening.gate
+              ? 'gate'
+              : opening.type === 'window' && opening.open
+                ? 'open-hole'
+                : undefined
+        }
         transform={`translate(${opening.x},${opening.y}) rotate(${opening.angle})`}
       >
         <polygon points={ptsOf(bent.cover)} style={{ fill: PLAN.paper }} />

@@ -14,7 +14,8 @@ import {
   type Slab,
   type Wall,
 } from './types';
-import { curveOf, mapCurve, withCurve } from './lib/curvedEdges';
+import { curveOf, holeOutline, mapCurve, withCurve, withHole } from './lib/curvedEdges';
+import { dimLine, dimOutline, mapDimension } from './lib/dimLine';
 
 /** Anything placed by its centre, with a size and an optional rotation (furniture, columns). */
 type Placed = { x: number; y: number; rotation?: number };
@@ -83,7 +84,15 @@ export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Poin
     const moved = mapOutline(plain as T, f, reverse);
     return curve ? (withCurve(moved as Slab | Pad, mapCurve(curve, f, reverse)) as T) : moved;
   }
-  if (el.type === 'slab' && el.holes) return { ...el, points: map(el.points), holes: el.holes.map(map) };
+  if (el.type === 'slab' && el.holes) {
+    const moved = { ...el, points: map(el.points), holes: el.holes.map(map) };
+    if (!el.holeCurves) return moved;
+    // Curved voids: their curves move with their corners, and each outline is worked out again.
+    return el.holes.reduce((s, _, j) => {
+      const c = curveOf(holeOutline(el, j));
+      return withHole(s, j, c ? withCurve({ points: s.holes![j] }, mapCurve(c, f, reverse)) : { points: s.holes![j] });
+    }, moved) as T;
+  }
   // A plot's road and sides stay on the same edges as its corners turn round.
   if (el.type === 'plot' && reverse) return { ...el, points: map(el.points), ...reversedSides(el) };
   // A roof's gable ends and low side stay on the same edges too.
@@ -105,6 +114,10 @@ export function elementCenter(el: PlanElement): Point {
   if (el.type === 'wall' || el.type === 'beam' || el.type === 'line' || el.type === 'section')
     return { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 };
   if (hasPoints(el)) return centroid(el.points);
+  if (el.type === 'dimension') {
+    const { a, b } = dimLine(el);
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
   return { x: el.x, y: el.y };
 }
 
@@ -130,6 +143,11 @@ export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
       return distanceToWall(el, p) < threshold;
     case 'section':
       return pointToSegmentDistance(p, { x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 }) < threshold;
+    case 'dimension': {
+      // Picked by its line (a radius by its leader), not by the points it measures.
+      const { a, b } = dimLine(el);
+      return pointToSegmentDistance(p, a, b) < threshold;
+    }
     case 'slab':
     case 'plot': {
       // A slab is picked by its edge, so rooms and furniture on it stay clickable.
@@ -271,6 +289,7 @@ export function translateElement<T extends PlanElement>(el: T, dx: number, dy: n
   if (el.type === 'wall' || el.type === 'beam' || el.type === 'line' || el.type === 'section')
     return { ...el, x1: el.x1 + dx, y1: el.y1 + dy, x2: el.x2 + dx, y2: el.y2 + dy };
   if (hasPoints(el)) return mapOutline(el, (p) => ({ x: p.x + dx, y: p.y + dy }));
+  if (el.type === 'dimension') return mapDimension(el, (p) => ({ x: p.x + dx, y: p.y + dy })) as T;
   return { ...el, x: el.x + dx, y: el.y + dy };
 }
 
@@ -297,6 +316,12 @@ export function rotateElement<T extends PlanElement>(el: T, c: Point, degrees: n
     return { ...el, x: p.x, y: p.y, rotation: ((((el.rotation ?? 0) + degrees) % 360) + 360) % 360 };
   }
   if (el.type === 'level') return { ...el, ...rotatePoint({ x: el.x, y: el.y }, c, degrees) };
+  if (el.type === 'dimension')
+    return mapDimension(
+      el,
+      (p) => rotatePoint(p, c, degrees),
+      (a) => a + degrees,
+    ) as T;
   const p = rotatePoint({ x: el.x, y: el.y }, c, degrees);
   return { ...el, x: p.x, y: p.y, angle: el.angle + degrees };
 }
@@ -337,6 +362,8 @@ function elementPoints(el: PlanElement): Point[] {
         { x: el.w / 2, y: el.h / 2 },
         { x: -el.w / 2, y: el.h / 2 },
       ].map((c) => fromFurnitureLocal(el, c));
+    case 'dimension':
+      return dimOutline(el);
     case 'door':
     case 'window':
       // A door's swing reaches one width away from the wall.

@@ -12,10 +12,11 @@ import {
 } from '../geometry';
 import { trimAt } from '../lib/modify';
 import { bowThrough } from '../lib/arc';
-import { bendEdge } from '../lib/curvedEdges';
+import { bendEdge, bendHoleEdge } from '../lib/curvedEdges';
 import { outlineProblem, outlinePoints, sideLine, withSideBow } from '../lib/plot';
 import { faceOf } from '../lib/pushPull';
 import { itemsInBox, moveItems } from '../lib/selection';
+import { dragDimension } from '../lib/dimensions';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, type PlannerState } from '../store/plannerStore';
 import { cornerSnap, DRAG_PX, hover, inferAt, MEASURE_TOOLS, press, release } from '../tools/controller';
@@ -42,6 +43,8 @@ import {
 type Drag =
   | { kind: 'pan'; lastX: number; lastY: number }
   | { kind: 'zoom'; lastY: number; at: Point }
+  /** The Zoom tool's window: the plan inside it fills the view when let go (a click zooms in). */
+  | { kind: 'zoomBox'; start: Point; at: Point }
   | { kind: 'move'; start: Point; orig: PlanElement }
   /** Dragging several selected items (or a group) together. */
   | { kind: 'moveMany'; start: Point; ids: string[] }
@@ -63,6 +66,7 @@ type Drag =
   /** Dragging a corner of a plot to reshape it. */
   | { kind: 'plot-corner'; plotId: string; index: number }
   | { kind: 'edge-bend'; orig: Slab | Pad; index: number }
+  | { kind: 'void-bend'; orig: Slab; hole: number; index: number }
   | { kind: 'plot-bend'; orig: Plot; index: number };
 
 /** Furniture sizes snap to 50 mm; rotation snaps to 15° unless Shift is held. */
@@ -97,6 +101,8 @@ function snapGrip(raw: Point, id: string, from: Point | null = null): Point {
 
 /** Items dragged by one end, which snaps as a wall end does. */
 const STRAIGHT_PIECES = new Set<string>(['wall', 'beam', 'line', 'section']);
+/** Drags that only change the view or select: no undo step of their own. */
+const VIEW_DRAGS = new Set<string>(['pan', 'zoom', 'zoomBox', 'box', 'erase']);
 
 /** Snap a dragged item by its corners (see `cornerSnap`), else its anchor to the grid as before 1.43. */
 function snapItemCorner(orig: PlanElement, dx: number, dy: number, raw: Point, moved: Point): Point {
@@ -213,8 +219,7 @@ export function usePlanInput(
 
   function startDrag(e: PointerEvent<Element>, drag: Drag) {
     capture(e);
-    if (drag.kind !== 'pan' && drag.kind !== 'zoom' && drag.kind !== 'box' && drag.kind !== 'erase')
-      plannerStore.getState().beginBatch();
+    if (!VIEW_DRAGS.has(drag.kind)) plannerStore.getState().beginBatch();
     dragRef.current = drag;
   }
 
@@ -238,7 +243,10 @@ export function usePlanInput(
     const clicks = clickCount(e);
     if (s.tool === 'zoom') {
       const r = e.currentTarget.getBoundingClientRect();
-      startDrag(e, { kind: 'zoom', lastY: e.clientY, at: { x: e.clientX - r.left, y: e.clientY - r.top } });
+      const at = { x: e.clientX - r.left, y: e.clientY - r.top };
+      // Shift+drag zooms in and out by moving up and down; a plain drag draws a window to zoom to.
+      if (e.shiftKey || screenBox) startDrag(e, { kind: 'zoom', lastY: e.clientY, at });
+      else startDrag(e, { kind: 'zoomBox', start: raw, at });
       return;
     }
 
@@ -270,6 +278,9 @@ export function usePlanInput(
         startDrag(e, { kind: 'plot-bend', orig: selected, index: Number(handle.slice('plot-bend-'.length)) });
       } else if ((selected.type === 'slab' || selected.type === 'pad') && handle.startsWith('edge-bend-')) {
         startDrag(e, { kind: 'edge-bend', orig: selected, index: Number(handle.slice('edge-bend-'.length)) });
+      } else if (selected.type === 'slab' && handle.startsWith('void-bend-')) {
+        const [hole, index] = handle.slice('void-bend-'.length).split('-').map(Number);
+        startDrag(e, { kind: 'void-bend', orig: selected, hole, index });
       }
       return;
     }
@@ -368,6 +379,13 @@ export function usePlanInput(
           s.zoomBy(Math.exp((drag.lastY - e.clientY) * 0.01), drag.at);
           drag.lastY = e.clientY;
           break;
+        case 'zoomBox': {
+          const start = pressRef.current;
+          if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) <= DRAG_PX && s.draft?.type !== 'zoomBox')
+            break;
+          s.setDraft({ type: 'zoomBox', x1: drag.start.x, y1: drag.start.y, x2: raw.x, y2: raw.y });
+          break;
+        }
         case 'erase': {
           const start = pressRef.current;
           const d = s.draft;
@@ -422,6 +440,9 @@ export function usePlanInput(
             const slide = slideOpening(s, s.batchBase ?? s.doc, orig, raw);
             s.setInference(slide.snap ? { point: slide.opening, kind: slide.snap } : null);
             s.updateElement(slide.opening);
+          } else if (orig.type === 'dimension') {
+            // Dragging a dimension moves its line nearer or further; a radius slides round its curve.
+            s.updateElement(dragDimension(s.doc, orig, raw.x - drag.start.x, raw.y - drag.start.y, raw));
           } else {
             const anchor =
               orig.type === 'wall' || orig.type === 'beam' || orig.type === 'line' || orig.type === 'section'
@@ -463,6 +484,9 @@ export function usePlanInput(
         case 'edge-bend':
           // Like a wall's bend: within a few pixels of the straight edge, it snaps straight again.
           s.updateElement(bendEdge(drag.orig, drag.index, raw, 6 * s.pxUnits()));
+          break;
+        case 'void-bend':
+          s.updateElement(bendHoleEdge(drag.orig, drag.hole, drag.index, raw, 6 * s.pxUnits()));
           break;
         case 'plot-bend': {
           // Like a wall's bend: within a few pixels of the straight side, it snaps straight again.
@@ -550,6 +574,10 @@ export function usePlanInput(
         } else if (!dragged && !d) drag.click();
         return;
       }
+      if (drag.kind === 'zoomBox') {
+        finishZoomBox(drag, start ? Math.hypot(e.clientX - start.x, e.clientY - start.y) > DRAG_PX : false, e);
+        return;
+      }
       if (drag.kind === 'box') {
         if (screenBox && drag.moved) {
           screenBox.show(null);
@@ -565,7 +593,7 @@ export function usePlanInput(
         finishBox(drag, toPlan(e));
         return;
       }
-      if (drag.kind !== 'pan' && drag.kind !== 'zoom') {
+      if (!VIEW_DRAGS.has(drag.kind)) {
         s.endBatch();
         s.setInference(null);
       }
@@ -580,6 +608,23 @@ export function usePlanInput(
       s.endBatch();
       s.setDraft(null);
     }
+  }
+
+  /** Let go of the Zoom tool: zoom to the window drawn, or in on the point clicked. */
+  function finishZoomBox(drag: Extract<Drag, { kind: 'zoomBox' }>, dragged: boolean, e: PointerEvent<Element>) {
+    const s = plannerStore.getState();
+    if (s.draft?.type === 'zoomBox') s.setDraft(null);
+    if (!dragged) {
+      s.zoomBy(2, drag.at);
+      return;
+    }
+    const end = toPlan(e);
+    s.zoomToBox({
+      minX: Math.min(drag.start.x, end.x),
+      minY: Math.min(drag.start.y, end.y),
+      maxX: Math.max(drag.start.x, end.x),
+      maxY: Math.max(drag.start.y, end.y),
+    });
   }
 
   /**
@@ -663,10 +708,9 @@ export function usePlanInput(
     const drag = dragRef.current;
     dragRef.current = null;
     pressRef.current = null;
-    if (drag && drag.kind !== 'pan' && drag.kind !== 'zoom' && drag.kind !== 'box' && drag.kind !== 'erase')
-      s.cancelBatch();
+    if (drag && !VIEW_DRAGS.has(drag.kind)) s.cancelBatch();
     if (drag?.kind === 'box') screenBox?.show(null);
-    if (s.draft?.type === 'marquee' || s.draft?.type === 'erase') s.setDraft(null);
+    if (s.draft?.type === 'marquee' || s.draft?.type === 'erase' || s.draft?.type === 'zoomBox') s.setDraft(null);
     if (s.draft?.type === 'brush') {
       s.endBatch();
       s.setDraft(null);

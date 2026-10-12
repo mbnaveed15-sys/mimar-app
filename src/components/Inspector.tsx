@@ -14,6 +14,7 @@ import { kindHeightMm, MM_PER_UNIT, plannerStore, usePlanner } from '../store/pl
 import {
   isSiteItem,
   levelOf,
+  type Dimension,
   type DoorKind,
   type Opening,
   type Pad,
@@ -27,8 +28,9 @@ import {
 import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
 import { CURTAIN_MM, thicknessOf } from '../walls';
 import { bowForRadius, isArc, radiusOf } from '../lib/arc';
-import { curveOf, isCurved, withCurve } from '../lib/curvedEdges';
+import { curvedHoleEdges, curveOf, isCurved, straightHoles, withCurve } from '../lib/curvedEdges';
 import { levelAbove } from '../lib/voids';
+import { dimLine } from '../lib/dimLine';
 import { metricProject, mullionSpacingMm, TRANSOM_MM } from '../lib/curtain';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { RoofFields } from './RoofOptions';
@@ -74,12 +76,69 @@ function itemName(el: PlanElement): string {
   if (el.type === 'window' && el.shape) return el.open ? `${el.shape} opening` : `${el.shape} window`;
   if (el.type === 'window' && el.open) return 'opening';
   if (el.type === 'section') return `section line ${el.label}–${el.label}`;
+  if (el.type === 'dimension')
+    return el.radius
+      ? 'radius dimension'
+      : el.angle === undefined
+        ? 'aligned dimension'
+        : el.angle === 0
+          ? 'horizontal dimension'
+          : el.angle === 90
+            ? 'vertical dimension'
+            : 'dimension';
   if (el.type === 'level') return el.approx ? 'approximate level' : 'spot level';
   if (el.type === 'contour') return 'contour line';
   if (el.type === 'pad') return 'levelled area';
   if (el.type === 'roof') return `${el.shape} roof`;
   if (el.type === 'context') return el.kind === 'road' ? 'road (surroundings)' : 'building (surroundings)';
   return el.type;
+}
+
+/** Section lines and dimensions: drawn on the plan, with no height or material. */
+const isAnnotation = (el: PlanElement) => el.type === 'section' || el.type === 'dimension';
+
+/** A dimension: what it measures, whether it follows the plan, and a switch to stop it following. */
+function DimensionFields({
+  dim,
+  units,
+  onChange,
+}: {
+  dim: Dimension;
+  units: Units;
+  onChange: (el: Dimension) => void;
+}) {
+  const value = formatLength(dimLine(dim).value * MM_PER_UNIT, units);
+  const follows = !!(dim.tie1 || dim.tie2);
+  return (
+    <>
+      <div>
+        {dim.radius ? 'Radius' : 'Length'}: <span className="tabular-nums">{value}</span>
+      </div>
+      <div className="text-muted">
+        {follows
+          ? dim.tie1 && dim.tie2
+            ? 'Both ends follow what they were drawn on: it keeps measuring as you change the plan.'
+            : 'One end follows what it was drawn on; the other stays where it was put.'
+          : 'It stays where it was put (its ends are not on anything that moves).'}{' '}
+        {!dim.radius && 'Drag it to move its line nearer or further.'}
+      </div>
+      {follows && (
+        <div>
+          <button
+            className="m-btn px-2 py-1"
+            onClick={() => {
+              const rest = { ...dim };
+              delete rest.tie1;
+              delete rest.tie2;
+              onChange(rest);
+            }}
+          >
+            Stop following
+          </button>
+        </div>
+      )}
+    </>
+  );
 }
 
 /**
@@ -481,11 +540,15 @@ export function Inspector() {
                 <span data-testid="slab-voids">
                   {el.holes.length} {el.holes.length === 1 ? 'void' : 'voids'}
                 </span>
-                <button className={btn} onClick={() => updateElement({ ...el, holes: undefined })}>
+                <button
+                  className={btn}
+                  onClick={() => updateElement({ ...el, holes: undefined, holeCurves: undefined })}
+                >
                   Fill voids
                 </button>
               </div>
             )}
+            {el.type === 'slab' && !!el.holes?.length && <CurvedVoids el={el} />}
             {(el.type === 'slab' || el.type === 'pad') && <CurvedEdges el={el} />}
             {el.type === 'block' && (
               <>
@@ -687,6 +750,7 @@ export function Inspector() {
                 </div>
               </>
             )}
+            {el.type === 'dimension' && <DimensionFields dim={el} units={units} onChange={updateElement} />}
             {(el.type === 'level' || el.type === 'contour' || el.type === 'pad') && (
               <>
                 <LengthField
@@ -740,7 +804,7 @@ export function Inspector() {
             {el.type !== 'door' &&
               el.type !== 'window' &&
               el.type !== 'plot' &&
-              el.type !== 'section' &&
+              !isAnnotation(el) &&
               !isSiteItem(el) && (
                 <LengthField
                   id="elevation"
@@ -751,10 +815,10 @@ export function Inspector() {
                   onCommit={(mm) => updateElement({ ...el, elevMm: Math.min(mm, 30000) || undefined })}
                 />
               )}
-            {el.type !== 'section' && !isSiteItem(el) && <div>Material: {materialName(el.material) ?? '—'}</div>}
+            {!isAnnotation(el) && !isSiteItem(el) && <div>Material: {materialName(el.material) ?? '—'}</div>}
             {el.type === 'wall' && <WallSides wall={el} materialName={materialName} />}
             <div className="flex flex-wrap gap-2">
-              {el.type !== 'section' && !isSiteItem(el) && (
+              {!isAnnotation(el) && !isSiteItem(el) && (
                 <button onClick={() => applyMaterial(el.id)} className={btn}>
                   Apply selected material
                 </button>
@@ -879,6 +943,22 @@ function UseZoneNote({ kind, units }: { kind: FurnitureKind; units: Units }) {
         {accessible && USE_ZONES[kind]?.accessible ? 'Wheelchair space, ' : ''}
         {USE_ZONES[kind]?.source}.
       </span>
+    </div>
+  );
+}
+
+/** A slab's curved void edges: how many, and a button to make them straight again. */
+function CurvedVoids({ el }: { el: Slab }) {
+  const n = curvedHoleEdges(el);
+  if (!n) return <div className="text-muted">Drag the round grip in the middle of a void’s edge to curve it.</div>;
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span data-testid="curved-void-edges">
+        {n} curved void {n === 1 ? 'edge' : 'edges'}
+      </span>
+      <button className="m-btn" onClick={() => plannerStore.getState().updateElement(straightHoles(el))}>
+        Make voids straight
+      </button>
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { OpeningShape } from './shapes/OpeningShape';
 import { RoomShape } from './shapes/RoomShape';
 import { PlotShape, StairShape } from './shapes/SiteShapes';
 import { SectionShape } from './shapes/SectionShape';
+import { DimensionShape } from './shapes/DimensionShape';
 import { SketchLineShape } from './shapes/SketchLineShape';
 import { BeamShape, BlockShape, ColumnShape, RoofShape, SlabShape } from './shapes/StructureShapes';
 import { WallDimension } from './shapes/WallDimension';
@@ -108,7 +109,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
           case 'door':
           case 'window': {
             const host = wallById.get(el.wallId);
-            // A window round a curve covers just the wall; one flat across it, the curve's rise too.
+            // An opening round a curve covers just the wall; one flat across it, the curve's rise too.
             const bend = openingBend(el, host);
             return (
               <OpeningShape
@@ -158,6 +159,12 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
 
       {doc.elements.map((el) =>
         el.type === 'section' ? <SectionShape key={el.id} line={el} selected={selected.has(el.id)} k={k} /> : null,
+      )}
+
+      {doc.elements.map((el) =>
+        el.type === 'dimension' ? (
+          <DimensionShape key={el.id} dim={el} units={units} selected={selected.has(el.id)} k={k} />
+        ) : null,
       )}
 
       {doc.elements.map((el) => {

@@ -33,6 +33,7 @@ import {
   type SheetScale,
   type GroundSettings,
   type RoofKind,
+  type DimTie,
 } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
 import { authorityById, type AuthorityId } from './bylaws';
@@ -48,9 +49,9 @@ export const STORAGE_KEY = 'mimar.plan';
  * 4 added groups and components; 5 added levels, columns, beams and slabs; 9 section lines and sheets;
  * 10 the ground; 11 curved and glass walls, pitched roofs and double-height rooms; 12 curved layout lines;
  * 13 curved and spiral stairs, and curved edges on slabs, levelled areas and plots; 14 furniture for
- * every kind of building, and more building uses.
+ * every kind of building, and more building uses; 15 dimensions and curved slab voids.
  */
-export const CURRENT_VERSION = 14;
+export const CURRENT_VERSION = 15;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -278,6 +279,39 @@ function normaliseElement(raw: unknown): PlanElement | null {
       };
       return [el.x1, el.y1, el.x2, el.y2].every(Number.isFinite) ? el : null;
     }
+    case 'dimension': {
+      const tieOf = (t: unknown): DimTie | undefined => {
+        if (!isObject(t)) return undefined;
+        const id = idOf(t.id);
+        const n = (v: unknown) => typeof v === 'number' && sane(v);
+        if (!id || !n(t.u) || !n(t.v)) return undefined;
+        return {
+          id,
+          u: t.u as number,
+          v: t.v as number,
+          ...(n(t.d) && { d: t.d as number }),
+          ...(Number.isInteger(t.i) && (t.i as number) >= 0 && { i: t.i as number }),
+        };
+      };
+      const tie1 = tieOf(raw.tie1);
+      const tie2 = tieOf(raw.tie2);
+      const angle = num('angle');
+      const el = {
+        ...base,
+        type: 'dimension' as const,
+        x1: num('x1'),
+        y1: num('y1'),
+        x2: num('x2'),
+        y2: num('y2'),
+        lx: num('lx'),
+        ly: num('ly'),
+        ...(Number.isFinite(angle) && { angle: ((angle % 180) + 180) % 180 }),
+        ...(raw.radius === true && { radius: true }),
+        ...(tie1 && { tie1 }),
+        ...(tie2 && { tie2 }),
+      };
+      return [el.x1, el.y1, el.x2, el.y2, el.lx, el.ly].every(Number.isFinite) ? el : null;
+    }
     case 'beam': {
       const el = {
         ...base,
@@ -294,7 +328,13 @@ function normaliseElement(raw: unknown): PlanElement | null {
     case 'slab': {
       const points = readPoints(raw.points);
       const thickness = num('thickness');
-      const holes = (Array.isArray(raw.holes) ? raw.holes : []).map(readPoints).filter((h) => h.length >= 3);
+      // Each void with its curve (if any), read together so they stay in step.
+      const rawCurves = Array.isArray(raw.holeCurves) ? raw.holeCurves : [];
+      const kept = (Array.isArray(raw.holes) ? raw.holes : [])
+        .map((h, j) => ({ points: readPoints(h), curve: rawCurves[j] as unknown }))
+        .filter((h) => h.points.length >= 3);
+      const holes = kept.map((h) => h.points);
+      const holeCurves = kept.map((h) => readCurve(h.curve, h.points));
       const curve = readCurve(raw.curve, points);
       return points.length >= 3 && thickness > 0
         ? {
@@ -303,6 +343,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
             points,
             thickness,
             ...(holes.length ? { holes } : {}),
+            ...(holeCurves.some((c) => c) && { holeCurves }),
             ...(curve && { curve }),
           }
         : null;

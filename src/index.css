@@ -1,6 +1,18 @@
 @import 'tailwindcss';
 @import './theme/themes.css';
 
+/* A phone (see PHONE_QUERY in useCompact.ts): phone:hidden and so on. */
+@custom-variant phone {
+  @media (max-width: 639px) {
+    @slot;
+  }
+  @media (max-height: 499px) and (pointer: coarse) {
+    @slot;
+  }
+}
+/* A phone on its side: the screen is short, so the tool groups fold into a list. */
+@custom-variant phone-short (@media (max-height: 499px) and (pointer: coarse));
+
 /* Theme colours as Tailwind utilities: bg-surface, text-ink, border-line, bg-accent and so on. */
 @theme inline {
   --color-canvas: var(--canvas);

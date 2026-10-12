@@ -5,6 +5,7 @@
  * edges, and the centres of round things. Pure.
  */
 import { elementOutline } from '../geometry';
+import { curveOf, holeOutline } from './curvedEdges';
 import type { PlanElement, Point, Wall } from '../types';
 import { thicknessOf } from '../walls';
 import type { SnapPoint } from './inference';
@@ -76,7 +77,11 @@ function pointsOf(el: PlanElement, walls: Map<string, Wall>, out: SnapPoint[]) {
       return;
     case 'slab':
       outline(el.curve?.corners ?? el.points, out, !el.curve);
-      for (const hole of el.holes ?? []) outline(hole, out);
+      // A curved void snaps at its corners (its straight edges at their middles too).
+      (el.holes ?? []).forEach((hole, j) => {
+        const curve = curveOf(holeOutline(el, j));
+        outline(curve?.corners ?? hole, out, !curve);
+      });
       return;
     case 'pad':
       outline(el.curve?.corners ?? el.points, out, !el.curve);

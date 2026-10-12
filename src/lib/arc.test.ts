@@ -8,6 +8,7 @@ import { applyMeasure, hover, measureReadout, press, release } from '../tools/co
 import { finishStep } from '../tools/finish';
 import { infer } from './inference';
 import { quantities } from './quantities';
+import { bentSymbol, openingSymbol } from './openingKinds';
 import { planToDxf } from './exportDxf';
 import { offsetWall as offsetItem, breakWall, mirrorItems, scaleItems } from './modify';
 import { placeOnWallPiece } from './openingPlace';
@@ -100,7 +101,7 @@ describe('curved walls', () => {
     expect(poly.some((p) => p.y > 5)).toBe(true);
   });
 
-  it('holds a door flat across the curve, in a straight piece of its own', () => {
+  it('places a door across the curve, its gap in 3D following the curve in short pieces', () => {
     const at = placeOnArc(curve, { x: 500, y: -520 }, 100)!;
     expect(at.width).toBeCloseTo(100);
     expect(Math.abs(Math.sin((at.angle * Math.PI) / 180))).toBeCloseTo(0);
@@ -110,8 +111,18 @@ describe('curved walls', () => {
     const door: Opening = { id: 'd', type: 'door', wallId: 'b', ...at };
     const pieces = straightPieces(curve, [door], 10);
     const own = pieces.filter((p) => p.openings.length);
-    expect(own).toHaveLength(1);
-    expect(dist({ x: own[0].wall.x1, y: own[0].wall.y1 }, { x: own[0].wall.x2, y: own[0].wall.y2 })).toBeCloseTo(100);
+    expect(own.length).toBeGreaterThan(1);
+    for (const p of own) {
+      expect(p.openings[0]).toMatchObject({ id: 'd', type: 'door' });
+      expect(p.openings[0].width).toBeCloseTo(dist({ x: p.wall.x1, y: p.wall.y1 }, { x: p.wall.x2, y: p.wall.y2 }));
+      expect(dist({ x: p.wall.x1, y: p.wall.y1 }, centre)).toBeCloseTo(500);
+    }
+    // Together they span the door's ends.
+    const [first, last] = [own[0].wall, own[own.length - 1].wall];
+    expect(dist({ x: first.x1, y: first.y1 }, { x: last.x2, y: last.y2 })).toBeCloseTo(100);
+    // Two doors overlapping stay in one flat piece.
+    const twin = { ...door, id: 'd2', x: door.x + 10 };
+    expect(straightPieces(curve, [door, twin], 10).filter((p) => p.openings.length)).toHaveLength(1);
     // The pieces run end to end round the curve, each joint closed on the outside.
     for (let i = 0; i + 1 < pieces.length; i++) {
       expect(pieces[i].wall.x2).toBeCloseTo(pieces[i + 1].wall.x1);
@@ -120,7 +131,7 @@ describe('curved walls', () => {
     expect(pieces[0].start).toBeUndefined();
   });
 
-  it('bends a window round the curve, in plan and as panes in 3D; doors stay flat', () => {
+  it('bends a window round the curve, in plan and as panes in 3D', () => {
     const at = placeOnArc(curve, { x: 500, y: -520 }, 200)!;
     const win: Opening = { id: 'w', type: 'window', wallId: 'b', ...at };
     const bend = openingBend(win, curve)!;
@@ -135,7 +146,7 @@ describe('curved walls', () => {
     expect(bendPoint(bend, 100, 0).y).toBeCloseTo(0);
     for (const x of [-100, -40, 0, 70]) expect(dist(world(bendPoint(bend, x, 0)), centre)).toBeCloseTo(500);
     expect(dist(world(bendPoint(bend, 0, 10)), centre) - 500).toBeCloseTo(Math.abs(10));
-    expect(openingBend({ ...win, type: 'door' }, curve)).toBeNull();
+    expect(openingBend({ ...win, flat: true }, curve)).toBeNull();
     expect(openingBend({ ...win, shape: 'circle' }, curve)).toBeNull();
     expect(openingBend(win, flat)).toBeNull();
     // In 3D: several short panes, end to end along the curve, each the window (so it picks as one).
@@ -146,6 +157,37 @@ describe('curved walls', () => {
       const o = p.openings[0];
       expect(o.width).toBeCloseTo(dist({ x: p.wall.x1, y: p.wall.y1 }, { x: p.wall.x2, y: p.wall.y2 }));
     }
+  });
+
+  it('bends a door’s frame round the curve; a swing leaf stays flat, a sliding door follows', () => {
+    const at = placeOnArc(curve, { x: 500, y: -520 }, 150)!;
+    const door: Opening = { id: 'd', type: 'door', wallId: 'b', ...at };
+    const bend = openingBend(door, curve)!;
+    expect(bend).not.toBeNull();
+    const a = (door.angle * Math.PI) / 180;
+    const world = (p: { x: number; y: number }) => ({
+      x: door.x + p.x * Math.cos(a) - p.y * Math.sin(a),
+      y: door.y + p.x * Math.sin(a) + p.y * Math.cos(a),
+    });
+    const onCurve = (p: { x: number; y: number }) => dist(world(p), centre);
+    // A single door: the cover follows the curve, the leaf and swing are as on a straight wall.
+    const single = bentSymbol(door, 6, bend);
+    expect(Math.max(...single.cover.map(onCurve))).toBeCloseTo(506);
+    const straight = openingSymbol(door, 6);
+    expect(single.paths.map((p) => p.points.map((q) => [q.x, q.y]))).toEqual(straight.map((p) => p.points));
+    // Flipped, it is the mirror image.
+    const flipped = bentSymbol({ ...door, flipHinge: true }, 6, bend);
+    expect(flipped.paths[0].points[0].x).toBeCloseTo(-straight[0].points[0][0]);
+    // A sliding door's panels run round the curve, the same distance off it all along.
+    const sliding = bentSymbol({ ...door, doorKind: 'sliding' }, 6, bend);
+    for (const path of sliding.paths) {
+      const radii = path.points.map(onCurve);
+      expect(path.points.length).toBeGreaterThan(4);
+      // Each panel is 2 deep (a third of the half-thickness, at least 1), the same all round.
+      expect(Math.max(...radii) - Math.min(...radii)).toBeCloseTo(2);
+    }
+    // In 3D its gap follows the curve too, in panes.
+    expect(straightPieces(curve, [door], 10).filter((p) => p.openings.length).length).toBeGreaterThan(1);
   });
 
   it('places doors along the curve like a straight wall, clear of the corners', () => {

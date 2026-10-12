@@ -126,3 +126,38 @@ test('curves: a curved path of a set width', async ({ page }) => {
   await click(10, 16);
   await expect(page.getByText('Selected: path')).toBeVisible();
 });
+
+test('curves: a slab void’s edge bent by its middle grip', async ({ page }) => {
+  const sq = (x0: number, y0: number, s: number) =>
+    [
+      [x0, y0],
+      [x0 + s, y0],
+      [x0 + s, y0 + s],
+      [x0, y0 + s],
+    ].map(([x, y]) => ({ x: x * FT, y: y * FT }));
+  const plan = {
+    version: 15,
+    doc: { elements: [{ id: 's', type: 'slab', thickness: 15, points: sq(0, 0, 20), holes: [sq(6, 6, 8)] }] },
+  };
+  await page.evaluate((p) => localStorage.setItem('mimar.plan', JSON.stringify(p)), plan);
+  await page.reload();
+  await ready(page);
+  await page.keyboard.press('Shift+Z');
+  await page.mouse.click(...(await at(page, ...P(10, 0))));
+  await expect(page.locator('[data-handle^="void-bend-"]')).toHaveCount(4);
+  await expect(page.getByText('Drag the round grip in the middle of a void’s edge to curve it.')).toBeVisible();
+  const box = (await page.locator('[data-handle="void-bend-0-0"]').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(...(await at(page, ...P(10, 3))), { steps: 6 });
+  await page.mouse.up();
+  await expect(page.getByTestId('curved-void-edges')).toHaveText('1 curved void edge');
+  await expect(page.getByTestId('slab-voids')).toHaveText('1 void');
+  // Undo puts it straight; so does the panel's button.
+  await page.keyboard.press('Control+z');
+  await expect(page.getByTestId('curved-void-edges')).toHaveCount(0);
+  await page.keyboard.press('Control+y');
+  await expect(page.getByTestId('curved-void-edges')).toHaveText('1 curved void edge');
+  await page.getByRole('button', { name: 'Make voids straight' }).click();
+  await expect(page.getByTestId('curved-void-edges')).toHaveCount(0);
+});

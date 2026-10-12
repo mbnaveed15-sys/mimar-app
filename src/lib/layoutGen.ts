@@ -4,8 +4,10 @@
  * with their baths), with a passage when the back rooms can't all open onto the lounge. Many ways
  * of ordering and sizing the strips are tried; each is scored on the plan hints' rules (every room
  * reached through doors, daylight on an outside wall, kitchen by the dining room or lounge, room
- * sizes and shapes) and the best few that differ are kept. Pure; all lengths in plan units, in a
- * frame with x along the road and y going in from it (0 at the road side of the building area).
+ * sizes and shapes) and the best few that differ are kept. A first floor is laid out the same way
+ * round the ground floor's stair, which keeps its place (see `generateUpperLayouts`). Pure; all
+ * lengths in plan units, in a frame with x along the road and y going in from it (0 at the road
+ * side of the building area).
  */
 import { MM_PER_UNIT } from './scale';
 import { MM_PER_FOOT } from './units';
@@ -26,10 +28,11 @@ export type RoomKind =
   | 'stair'
   | 'powder'
   | 'gym'
-  | 'passage';
+  | 'passage'
+  | 'terrace';
 
 /** Kinds of room with a size the owner can set. */
-export type SizedKind = Exclude<RoomKind, 'passage'>;
+export type SizedKind = Exclude<RoomKind, 'passage' | 'terrace'>;
 
 /** A room's usual size in feet: width (along the road) and depth, and the narrowest it may be. */
 export interface RoomSize {
@@ -74,6 +77,7 @@ export const ROOM_NAMES: Record<RoomKind, string> = {
   powder: 'Guest bath',
   gym: 'Gym',
   passage: 'Passage',
+  terrace: 'Terrace',
 };
 
 /** What the owner asks for. The lounge and kitchen are always there. */
@@ -95,6 +99,11 @@ export interface Program {
    * bath, store, laundry, guest bath and stair; no kitchen, porch or daylight.
    */
   basement?: boolean;
+  /**
+   * A first floor's list instead: bedrooms with their baths, a TV lounge and the rooms ticked (store,
+   * laundry, guest bath, prayer room); the stair is the ground floor's, and what is left is a terrace.
+   */
+  upper?: boolean;
   gym?: boolean;
   /** Sizes that differ from the usual ones. */
   sizes?: Partial<Record<SizedKind, { w: number; d: number }>>;
@@ -179,6 +188,18 @@ function roomsOf(program: Program): { kind: SizedKind; name: string; bath?: bool
     return out;
   }
   const beds = Math.max(0, Math.min(8, Math.round(program.bedrooms)));
+  if (program.upper) {
+    for (let i = 0; i < beds; i++)
+      out.push({
+        kind: i === 0 ? 'master' : 'bed',
+        name: i === 0 ? ROOM_NAMES.master : `Bedroom ${i + 1}`,
+        bath: i < program.attachedBaths,
+      });
+    out.push({ kind: 'lounge', name: 'TV lounge' });
+    for (const k of ['prayer', 'store', 'laundry', 'powder'] as const)
+      if (program[k]) out.push({ kind: k, name: ROOM_NAMES[k] });
+    return out;
+  }
   for (let i = 0; i < beds; i++)
     out.push({
       kind: i === 0 ? 'master' : 'bed',
@@ -326,6 +347,46 @@ function columnsOf(items: Item[], rand: () => number): Column[] {
 
 const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.min(a1, b1) - Math.max(a0, b0);
 
+/** A stair's column across the plan: its own width, out to the plan's edge when that leaves less than 5'. */
+function stairColumn(stair: Rect, W: number): [number, number] {
+  const x0 = Math.max(0, stair.x0);
+  const x1 = Math.min(W, stair.x1);
+  return [x0 < ft(5) ? 0 : x0, W - x1 < ft(5) ? W : x1];
+}
+
+/**
+ * A strip's columns shared out over its stretches (one, or two either side of a stair), each
+ * stretch filled: their widths, or null when they can't be shared so that every stretch fits.
+ */
+function splitColumns(
+  cols: Column[],
+  stretches: [number, number][],
+  depth: number,
+  rand: () => number,
+): { cols: Column[]; ws: number[]; x0: number; x1: number }[] | null {
+  if (stretches.length === 1) {
+    const [x0, x1] = stretches[0];
+    const ws = widths(cols, depth, x1 - x0);
+    return ws ? [{ cols, ws, x0, x1 }] : null;
+  }
+  const [[a0, a1], [b0, b1]] = stretches;
+  for (const k of shuffle(
+    cols.map((_, i) => i).filter((i) => i > 0),
+    rand,
+  )) {
+    const left = cols.slice(0, k);
+    const right = cols.slice(k);
+    const wl = widths(left, depth, a1 - a0);
+    const wr = widths(right, depth, b1 - b0);
+    if (wl && wr)
+      return [
+        { cols: left, ws: wl, x0: a0, x1: a1 },
+        { cols: right, ws: wr, x0: b0, x1: b1 },
+      ];
+  }
+  return null;
+}
+
 /** The length two rooms share along a wall. */
 export function shared(a: LayoutRoom, b: LayoutRoom): number {
   let best = 0;
@@ -353,8 +414,12 @@ export function outside(room: LayoutRoom, W: number, D: number, sides = { front:
   return len;
 }
 
-/** One candidate plan from a set of random choices, or null when the rooms don't fit. */
-function candidate(program: Program, W: number, D: number, rand: () => number): Layout | null {
+/**
+ * One candidate plan from a set of random choices, or null when the rooms don't fit. `stair` (a first
+ * floor's) is where the stair is: it gets a column of its own, as deep as the strips it reaches into.
+ */
+function candidate(program: Program, W: number, D: number, rand: () => number, stair?: Rect): Layout | null {
+  const hallX = stair ? stairColumn(stair, W) : null;
   const bathSize = sizeOf(program, 'bath');
   const items: Item[] = roomsOf(program).map((r) => ({
     ...r,
@@ -370,6 +435,7 @@ function candidate(program: Program, W: number, D: number, rand: () => number): 
     let prefs = BANDS[it.kind];
     if (prefs.length > 1 && rand() < 0.2) prefs = [...prefs.slice(1), prefs[0]];
     const need = ft(it.size.minW) * (SMALL(it) ? 0.5 : 1);
+    // (A strip the stair's column cuts across has less, which laying it out finds.)
     const choice = prefs.find((b) => used[b] + need <= W + 1e-6);
     if (!choice) return null;
     used[choice] += need;
@@ -406,6 +472,42 @@ function candidate(program: Program, W: number, D: number, rand: () => number): 
     dF = ((D - passage) * dF) / total;
     dM = 0;
   }
+  if (stair) {
+    // Strips meet the stair's ends where they nearly do, so no sliver is left beside it.
+    const near = (y: number) => [stair.y0, stair.y1].find((e) => Math.abs(e - y) < ft(3) && e > 1e-6 && e < D - 1e-6);
+    const deep = ft(7.5);
+    const f = band.front.length ? near(dF) : undefined;
+    if (f !== undefined && f >= deep && (!band.middle.length || dF + dM - f >= deep)) {
+      if (band.middle.length) dM += dF - f;
+      dF = f;
+    }
+    const m = band.middle.length ? near(dF + dM) : undefined;
+    if (m !== undefined && m - dF >= deep && D - m - passage >= (band.back.length ? deep : 0)) dM = m - dF;
+  }
+  // The stair's column runs through every strip the stair reaches into.
+  const yB = dF + dM + passage;
+  const strips: [number, number][] = [
+    [0, dF],
+    [dF, dF + dM],
+    [dF + dM, yB],
+    [yB, D],
+  ];
+  const hits = stair ? strips.filter(([a, b]) => b - a > 1e-6 && overlap(a, b, stair.y0, stair.y1) > 1e-6) : [];
+  if (stair && !hits.length) return null;
+  const hall: Rect | null =
+    hallX && hits.length
+      ? { x0: hallX[0], x1: hallX[1], y0: Math.min(...hits.map((h) => h[0])), y1: Math.max(...hits.map((h) => h[1])) }
+      : null;
+  /** The stretches across the plan a strip from y0 to y1 has for rooms: either side of the stair's column. */
+  const stretches = (y0: number, y1: number): [number, number][] =>
+    hall && overlap(y0, y1, hall.y0, hall.y1) > 1e-6
+      ? (
+          [
+            [0, hall.x0],
+            [hall.x1, W],
+          ] as [number, number][]
+        ).filter(([a, b]) => b - a > 1e-6)
+      : [[0, W]];
 
   const rooms: LayoutRoom[] = [];
   const keyParts: string[] = [];
@@ -420,12 +522,24 @@ function candidate(program: Program, W: number, D: number, rand: () => number): 
       if (rand() < 0.5) cols.unshift(porch);
       else cols.push(porch);
     }
-    const ws = widths(cols, depth, W);
-    if (!ws) return false;
-    keyParts.push(`${name}:${cols.map((c) => c.map((it) => it.kind).join('+')).join(',')}`);
-    let x = 0;
+    const groups = splitColumns(cols, stretches(y0, y0 + depth), depth, rand);
+    if (!groups) return false;
+    keyParts.push(
+      `${name}:${groups.map((g) => g.cols.map((c) => c.map((it) => it.kind).join('+')).join(',')).join('/')}`,
+    );
+    for (const g of groups) layColumns(g, y0, depth, name);
+    return true;
+  };
+  const layColumns = (
+    g: { cols: Column[]; ws: number[]; x0: number; x1: number },
+    y0: number,
+    depth: number,
+    name: string,
+  ) => {
+    const { cols, ws } = g;
+    let x = g.x0;
     cols.forEach((col, i) => {
-      const x1 = i === cols.length - 1 ? W : x + ws[i];
+      const x1 = i === cols.length - 1 ? g.x1 : x + ws[i];
       // Stacked rooms split the depth by their own depths.
       const total = col.reduce((s, it) => s + it.size.d, 0);
       let y = y0;
@@ -479,7 +593,6 @@ function candidate(program: Program, W: number, D: number, rand: () => number): 
       });
       x = x1;
     });
-    return true;
   };
   if (!layBand(band.front, 0, dF, 'front')) return null;
   if (!layBand(band.middle, dF, dM, 'middle')) return null;
@@ -487,10 +600,34 @@ function candidate(program: Program, W: number, D: number, rand: () => number): 
     rooms.push({
       kind: 'passage',
       name: ROOM_NAMES.passage,
-      rects: [{ x0: 0, y0: dF + dM, x1: W, y1: dF + dM + passage }],
+      rects: stretches(dF + dM, yB).map(([x0, x1]) => ({ x0, y0: dF + dM, x1, y1: yB })),
     });
-  if (!layBand(band.back, dF + dM + passage, D - dF - dM - passage, 'back')) return null;
+  if (!layBand(band.back, yB, D - yB, 'back')) return null;
   keyParts.push(withPassage ? 'passage' : '');
+  if (hall && stair) {
+    // The stair's room is where the stair (or its room) is below; the rest of its column is a
+    // landing, and a sliver of less than 3' goes with the stair's room.
+    const v = {
+      x0: Math.max(hall.x0, stair.x0),
+      x1: Math.min(hall.x1, stair.x1),
+      y0: Math.max(hall.y0, stair.y0),
+      y1: Math.min(hall.y1, stair.y1),
+    };
+    const pieces: Rect[] = [
+      { ...hall, y1: v.y0 },
+      { ...hall, y0: v.y1 },
+      { x0: hall.x0, x1: v.x0, y0: v.y0, y1: v.y1 },
+      { x0: v.x1, x1: hall.x1, y0: v.y0, y1: v.y1 },
+    ].filter((r) => rw(r) > 1e-6 && rd(r) > 1e-6);
+    const wide = pieces.filter((r) => Math.min(rw(r), rd(r)) >= ft(3));
+    rooms.push({ kind: 'stair', name: ROOM_NAMES.stair, rects: [v, ...pieces.filter((r) => !wide.includes(r))] });
+    // Pieces beside the stair join those in front of and behind it into one landing.
+    const sides = wide.some((r) => r.y0 >= v.y0 - 1e-6 && r.y1 <= v.y1 + 1e-6);
+    const groups = sides ? [wide] : wide.map((r) => [r]);
+    for (const g of groups.filter((g) => g.length))
+      rooms.push({ kind: 'passage', name: 'Landing', rects: [...g].sort((a, b) => rw(b) * rd(b) - rw(a) * rd(a)) });
+    keyParts.push(`hall:${hits.length}:${wide.length}`);
+  }
   return scorePlan({ W, D, rooms, doors: [], score: 0, notes: [], key: keyParts.join('|') }, program);
 }
 
@@ -512,6 +649,19 @@ const ENTERED_FROM: Record<RoomKind, RoomKind[]> = {
   servant: ['kitchen', 'passage', 'lounge'],
   porch: [],
   gym: ['lounge', 'passage', 'stair'],
+  terrace: [],
+};
+
+/** On a first floor everything starts from the stair: the TV lounge and passage open off it. */
+const UPPER_FROM: Partial<Record<RoomKind, RoomKind[]>> = {
+  lounge: ['stair', 'passage'],
+  passage: ['stair', 'lounge'],
+  master: ['passage', 'lounge', 'stair'],
+  bed: ['passage', 'lounge', 'stair'],
+  prayer: ['lounge', 'passage', 'stair'],
+  store: ['lounge', 'passage', 'stair'],
+  laundry: ['passage', 'lounge', 'stair'],
+  powder: ['lounge', 'passage', 'stair'],
 };
 
 /** Rooms nobody should have to walk through. */
@@ -549,9 +699,10 @@ function scorePlan(plan: Layout, program: Program): Layout {
   // drawing room. A basement is entered by its stair, which opens onto its hall.
   const drawing = idx('drawing');
   const basement = !!program.basement;
+  const upper = !!program.upper;
   const roadSide = (i: number) => outside(rooms[i], W, D, { front: true, back: false, ends: false });
   let viaDrawing = false;
-  if (basement) {
+  if (basement || upper) {
     // No way in from outside to find.
   } else if (porch >= 0 && shared(rooms[porch], rooms[lounge]) >= need(3.5))
     doors.push({ a: lounge, b: porch, widthFt: 3.5, main: true });
@@ -577,10 +728,13 @@ function scorePlan(plan: Layout, program: Program): Layout {
     }
   }
 
-  const linked = new Set<number>([lounge]);
+  // A first floor is reached up its stair.
+  const stair = idx('stair');
+  const linked = new Set<number>([upper ? stair : lounge]);
   if (porch >= 0) linked.add(porch);
   // Rooms join in order, so a kitchen can open off a dining room joined before it.
   const order = [
+    ...(upper ? ['lounge'] : []),
     'passage',
     'drawing',
     'dining',
@@ -595,7 +749,9 @@ function scorePlan(plan: Layout, program: Program): Layout {
     'servant',
     'gym',
   ];
-  const pending = rooms.map((_, i) => i).filter((i) => i !== lounge && i !== porch && rooms[i].kind !== 'bath');
+  const pending = rooms
+    .map((_, i) => i)
+    .filter((i) => !linked.has(i) && i !== porch && rooms[i].kind !== 'bath' && (upper || i !== lounge));
   pending.sort((a, b) => order.indexOf(rooms[a].kind) - order.indexOf(rooms[b].kind));
   for (let pass = 0; pass < 2; pass++)
     for (const i of pending) {
@@ -603,11 +759,14 @@ function scorePlan(plan: Layout, program: Program): Layout {
       const room = rooms[i];
       const width = DOOR_FT[room.kind] ?? 3;
       let joined = false;
-      for (const fromKind of ENTERED_FROM[room.kind]) {
+      for (const fromKind of (upper && UPPER_FROM[room.kind]) || ENTERED_FROM[room.kind]) {
         const j = rooms.findIndex((r, k) => r.kind === fromKind && linked.has(k) && shared(room, r) >= need(width));
         if (j < 0) continue;
         const open =
-          (room.kind === 'dining' && fromKind === 'lounge') || room.kind === 'stair' || room.kind === 'passage';
+          (room.kind === 'dining' && fromKind === 'lounge') ||
+          room.kind === 'stair' ||
+          room.kind === 'passage' ||
+          (room.kind === 'lounge' && fromKind === 'stair');
         doors.push({
           a: j,
           b: i,
@@ -639,6 +798,10 @@ function scorePlan(plan: Layout, program: Program): Layout {
         notes.push(`${room.name} can't be reached.`);
       }
     }
+  if (upper && lounge >= 0 && stair >= 0 && shared(rooms[lounge], rooms[stair]) < need(3)) {
+    score += 3;
+    notes.push('The TV lounge isn’t by the stair.');
+  }
   // Baths open off their bedroom.
   rooms.forEach((r, i) => {
     if (r.kind !== 'bath' || r.of === undefined) return;
@@ -651,7 +814,7 @@ function scorePlan(plan: Layout, program: Program): Layout {
 
   // Sizes and shapes against what was asked for.
   for (const r of rooms) {
-    if (r.kind === 'passage') continue;
+    if (r.kind === 'passage' || r.kind === 'terrace') continue;
     const want = sizeOf(program, r.kind);
     const got = sqft(areaOf(r));
     const target = want.w * want.d;
@@ -713,23 +876,158 @@ export function generateLayouts(
     const have = best.get(plan.key);
     if (!have || plan.score < have.score) best.set(plan.key, plan);
   }
+  return bestOf(best, opts.count ?? 3);
+}
+
+/** The best plans kept, that differ in more than the order of small rooms. */
+function bestOf(best: Map<string, Layout>, count: number): Layout[] {
   // Plans with a room that can't be reached come last (shown only when nothing better fits).
   const ranked = [...best.values()].sort(
     (a, b) => Number(a.notes.some(UNREACHED)) - Number(b.notes.some(UNREACHED)) || a.score - b.score,
   );
-  // Keep plans that differ in more than the order of small rooms.
   const out: Layout[] = [];
   const coarse = (p: Layout) => p.key.replace(/\+?(store|laundry|powder|prayer)/g, '');
   for (const p of ranked) {
-    if (out.length >= (opts.count ?? 3)) break;
+    if (out.length >= count) break;
     if (out.some((q) => coarse(q) === coarse(p))) continue;
     out.push(p);
   }
   for (const p of ranked) {
-    if (out.length >= (opts.count ?? 3)) break;
+    if (out.length >= count) break;
     if (!out.includes(p)) out.push(p);
   }
   return out;
+}
+
+/** A straight wall of the floor below, in the plan's frame: along x at y = at ('h'), or along y at x = at ('v'). */
+export interface GroundLine {
+  dir: 'h' | 'v';
+  at: number;
+  from: number;
+  to: number;
+}
+
+/** What a first floor is planned over, in the plan's frame (see `upperSite` in `layoutBuild.ts`). */
+export interface Ground {
+  /**
+   * Where the stair is: the stair's room below (to its walls' centre lines) when it is open to the
+   * first floor (`open`), else a little more than the stair itself. The first floor's stair room is this.
+   */
+  stair: Rect;
+  /** The stair's room below is left open to the first floor, as its stair well. */
+  open?: boolean;
+  /** How deep the terrace in front is (none: 0): the rooms go behind it. */
+  terrace: number;
+  /** The baths, kitchens and laundries below. */
+  wet?: Rect[];
+  /** The walls below. */
+  lines?: GroundLine[];
+}
+
+/**
+ * First-floor plans over a ground floor whose building area is W × D (plan units): the rooms behind
+ * a terrace `ground.terrace` deep, round the stair where it is on the ground floor. Plans whose
+ * baths sit over the wet rooms below and whose walls stand on the walls below score better.
+ */
+export function generateUpperLayouts(
+  program: Program,
+  W: number,
+  D: number,
+  ground: Ground,
+  opts: { seed?: number; count?: number; tries?: number } = {},
+): Layout[] {
+  const off = Math.max(0, Math.min(ground.terrace, ground.stair.y0));
+  const shift = (r: Rect): Rect => ({ ...r, y0: r.y0 - off, y1: r.y1 - off });
+  const stair = shift(ground.stair);
+  const wet = (ground.wet ?? []).map(shift);
+  const lines = (ground.lines ?? []).map((l) =>
+    l.dir === 'h' ? { ...l, at: l.at - off } : { ...l, from: l.from - off, to: l.to - off },
+  );
+  const rand = rng(opts.seed ?? 1);
+  const best = new Map<string, Layout>();
+  const tries = opts.tries ?? 1500;
+  const upper = { ...program, upper: true, basement: false, stair: false };
+  for (let i = 0; i < tries; i++) {
+    const plan = candidate(upper, W, D - off, rand, stair);
+    if (!plan) continue;
+    const fitted = overGround(plan, wet, lines);
+    const have = best.get(fitted.key);
+    if (!have || fitted.score < have.score) best.set(fitted.key, fitted);
+  }
+  return bestOf(best, opts.count ?? 3).map((plan) => withTerrace(plan, off, D));
+}
+
+/** How well a first floor sits on the floor below: baths over wet rooms, walls over walls. */
+function overGround(plan: Layout, wet: Rect[], lines: GroundLine[]): Layout {
+  const { W, D, rooms } = plan;
+  const eps = 1e-6;
+  let score = plan.score;
+  const notes = [...plan.notes];
+  // Baths, guest baths and laundries over the wet rooms below.
+  const wetKinds = new Set<RoomKind>(['bath', 'powder', 'laundry']);
+  const wetRooms = rooms.filter((r) => wetKinds.has(r.kind));
+  const over = (r: LayoutRoom) =>
+    r.rects.reduce(
+      (sum, a) =>
+        sum +
+        wet.reduce(
+          (s, b) => s + Math.max(0, overlap(a.x0, a.x1, b.x0, b.x1)) * Math.max(0, overlap(a.y0, a.y1, b.y0, b.y1)),
+          0,
+        ),
+      0,
+    ) >=
+    areaOf(r) * 0.3;
+  const dry = wetRooms.filter((r) => !over(r));
+  score += dry.length * 1.5;
+  if (wet.length && wetRooms.length && dry.length === wetRooms.length)
+    notes.push('No bath is over a bath or kitchen below.');
+  // Inside walls standing on walls below (each room's edges, so a wall counts from both its sides).
+  if (lines.length) {
+    const near = ft(0.75);
+    let loose = 0;
+    for (const room of rooms)
+      for (const r of room.rects) {
+        const edges: GroundLine[] = [
+          { dir: 'h', at: r.y0, from: r.x0, to: r.x1 },
+          { dir: 'h', at: r.y1, from: r.x0, to: r.x1 },
+          { dir: 'v', at: r.x0, from: r.y0, to: r.y1 },
+          { dir: 'v', at: r.x1, from: r.y0, to: r.y1 },
+        ];
+        for (const e of edges) {
+          const edgeOfPlan = e.dir === 'h' ? e.at < eps || e.at > D - eps : e.at < eps || e.at > W - eps;
+          if (edgeOfPlan) continue;
+          const held = lines
+            .filter((l) => l.dir === e.dir && Math.abs(l.at - e.at) <= near)
+            .reduce(
+              (s, l) => s + Math.max(0, overlap(e.from, e.to, Math.min(l.from, l.to), Math.max(l.from, l.to))),
+              0,
+            );
+          loose += Math.max(0, e.to - e.from - held);
+        }
+      }
+    score += (loose / ft(10)) * 0.3;
+  }
+  return { ...plan, score, notes };
+}
+
+/** A first floor's plan moved back behind its terrace, with the terrace and a door out to it. */
+function withTerrace(plan: Layout, off: number, D: number): Layout {
+  if (off <= 1e-6) return plan;
+  const rooms: LayoutRoom[] = plan.rooms.map((room) => ({
+    ...room,
+    rects: room.rects.map((r) => ({ ...r, y0: r.y0 + off, y1: r.y1 + off })),
+  }));
+  const terrace = rooms.length;
+  rooms.push({ kind: 'terrace', name: ROOM_NAMES.terrace, rects: [{ x0: 0, y0: 0, x1: plan.W, y1: off }] });
+  const doors = [...plan.doors];
+  // Out from the TV lounge, or else the passage, the stair or a bedroom.
+  for (const kind of ['lounge', 'passage', 'stair', 'master', 'bed'] as RoomKind[]) {
+    const i = rooms.findIndex((r) => r.kind === kind && shared(r, rooms[terrace]) >= ft(5));
+    if (i < 0) continue;
+    doors.push({ a: i, b: terrace, widthFt: 3 });
+    break;
+  }
+  return { ...plan, D, rooms, doors };
 }
 
 /** The plan turned left for right. */

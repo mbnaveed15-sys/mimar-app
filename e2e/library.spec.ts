@@ -67,7 +67,7 @@ test('layers hide furniture and dimensions on screen and in the PDF', async ({ p
   await page.mouse.click(...(await at(page, 10, 7)));
 
   await page.getByRole('button', { name: 'Hide Furniture' }).click();
-  await page.getByLabel('Dimensions').uncheck();
+  await page.getByLabel('Wall lengths').uncheck();
   await page.getByLabel('Room names & areas').uncheck();
   await expect(page.locator('[data-type="furniture"]')).toHaveCount(0);
   await expect(page.locator('[data-type="dimension"]')).toHaveCount(0);

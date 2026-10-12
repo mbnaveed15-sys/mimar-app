@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { plotMeasures, plotRule } from '../lib/bylaws';
 import { newId } from '../lib/ids';
-import { basementOutline, buildLayout, layoutSite } from '../lib/layoutBuild';
+import { basementOutline, buildLayout, layoutSite, terraceDepth, upperSite } from '../lib/layoutBuild';
 import {
   DEFAULT_PROGRAM,
   generateLayouts,
+  generateUpperLayouts,
   mirrorLayout,
   programArea,
   ROOM_NAMES,
@@ -19,10 +20,14 @@ import { formatLength, MM_PER_FOOT } from '../lib/units';
 import { MM_PER_UNIT, RETAINING_MM, usePlanner, plannerStore } from '../store/plannerStore';
 import { isBasement, levelWallMm, slabMm } from '../lib/levels';
 import { GROUND_LEVEL, levelOf, type Plot, type Stair } from '../types';
+import { builtAreaSqFt } from '../lib/planCheck';
 import { LengthField } from './LengthField';
 
 const PROGRAM_KEY = 'mimar.roomList';
 const BASEMENT_KEY = 'mimar.basementList';
+const UPPER_KEY = 'mimar.firstFloorList';
+
+type ListKind = 'house' | 'basement' | 'upper';
 
 /** A basement's usual list: a hall, a servant room with its bath, a store and a stair. */
 const BASEMENT_PROGRAM: Program = {
@@ -42,11 +47,36 @@ const BASEMENT_PROGRAM: Program = {
   stair: true,
 };
 
-function loadProgram(basement: boolean): Program {
-  const base = basement ? BASEMENT_PROGRAM : DEFAULT_PROGRAM;
+/** A first floor's usual list: three bedrooms with their baths, a TV lounge, a store and a laundry. */
+const UPPER_PROGRAM: Program = {
+  ...DEFAULT_PROGRAM,
+  upper: true,
+  drawing: false,
+  dining: false,
+  porch: false,
+  stair: false,
+  servant: false,
+  powder: false,
+  prayer: false,
+  store: true,
+  laundry: true,
+};
+
+const LISTS: Record<ListKind, { key: string; base: Program }> = {
+  house: { key: PROGRAM_KEY, base: DEFAULT_PROGRAM },
+  basement: { key: BASEMENT_KEY, base: BASEMENT_PROGRAM },
+  upper: { key: UPPER_KEY, base: UPPER_PROGRAM },
+};
+
+const listOf = (p: Program): ListKind => (p.basement ? 'basement' : p.upper ? 'upper' : 'house');
+
+function loadProgram(kind: ListKind): Program {
+  const { key, base } = LISTS[kind];
   try {
-    const saved = JSON.parse(browserStorage()?.getItem(basement ? BASEMENT_KEY : PROGRAM_KEY) ?? 'null');
-    return saved && typeof saved === 'object' ? { ...base, ...saved, basement } : base;
+    const saved = JSON.parse(browserStorage()?.getItem(key) ?? 'null');
+    return saved && typeof saved === 'object'
+      ? { ...base, ...saved, basement: kind === 'basement', upper: kind === 'upper' }
+      : base;
   } catch {
     return base;
   }
@@ -54,7 +84,7 @@ function loadProgram(basement: boolean): Program {
 
 function saveProgram(p: Program) {
   try {
-    browserStorage()?.setItem(p.basement ? BASEMENT_KEY : PROGRAM_KEY, JSON.stringify(p));
+    browserStorage()?.setItem(LISTS[listOf(p)].key, JSON.stringify(p));
   } catch {
     // Only a convenience.
   }
@@ -67,6 +97,13 @@ const BASEMENT_OPTIONAL: { key: keyof Program; label: string }[] = [
   { key: 'laundry', label: 'Laundry' },
   { key: 'powder', label: 'Guest bath' },
   { key: 'stair', label: 'Stair up' },
+];
+
+const UPPER_OPTIONAL: { key: keyof Program & SizedKind; label: string }[] = [
+  { key: 'store', label: 'Store' },
+  { key: 'laundry', label: 'Laundry' },
+  { key: 'powder', label: 'Guest bath' },
+  { key: 'prayer', label: 'Prayer room' },
 ];
 
 const OPTIONAL: { key: keyof Program & SizedKind; label: string }[] = [
@@ -94,6 +131,7 @@ const FILL: Partial<Record<RoomKind, string>> = {
   porch: '#d9f99d',
   stair: '#e5e7eb',
   passage: '#f5f5f4',
+  terrace: '#ecfccb',
 };
 
 const SHORT: Partial<Record<RoomKind, string>> = {
@@ -108,6 +146,7 @@ const SHORT: Partial<Record<RoomKind, string>> = {
   porch: 'Porch',
   stair: 'Stair',
   passage: '',
+  terrace: 'Terrace',
   prayer: 'Prayer',
   store: 'Store',
   laundry: 'Laundry',
@@ -180,18 +219,23 @@ export function LayoutPanel() {
   const levels = usePlanner((s) => s.doc.levels);
   const activeLevel = usePlanner((s) => s.activeLevel);
   const inBasement = usePlanner((s) => isBasement(s.doc, s.activeLevel));
-  const [programs, setPrograms] = useState<{ house: Program; basement: Program }>(() => ({
-    house: loadProgram(false),
-    basement: loadProgram(true),
+  const onFirst = usePlanner((s) => !!s.firstFloorId() && s.firstFloorId() === s.activeLevel);
+  const [programs, setPrograms] = useState<Record<ListKind, Program>>(() => ({
+    house: loadProgram('house'),
+    basement: loadProgram('basement'),
+    upper: loadProgram('upper'),
   }));
-  const program = inBasement ? programs.basement : programs.house;
+  // Which floor the plans are for: the ground floor, or the first floor over it.
+  const [floorPick, setFloorPick] = useState<'ground' | 'first' | null>(null);
+  const upper = !inBasement && (floorPick ?? (onFirst ? 'first' : 'ground')) === 'first';
+  const program = inBasement ? programs.basement : upper ? programs.upper : programs.house;
   const [seed, setSeed] = useState(1);
   const [plans, setPlans] = useState<Layout[] | null>(null);
   const [mirrored, setMirrored] = useState<boolean[]>([]);
   const [confirm, setConfirm] = useState<number | null>(null);
 
   const setProgram = (p: Program) => {
-    setPrograms((all) => (p.basement ? { ...all, basement: p } : { ...all, house: p }));
+    setPrograms((all) => ({ ...all, [listOf(p)]: p }));
     saveProgram(p);
     setPlans(null);
     setConfirm(null);
@@ -211,6 +255,16 @@ export function LayoutPanel() {
   }, [plot, inBasement]);
   // A basement fills the outside of its walls; with none yet, what its bylaws allow.
   const doc = usePlanner((s) => s.doc);
+  // A first floor goes over the ground floor, round its stair, with a terrace in front of what's left.
+  const upperAt = useMemo(() => (plot && upper ? upperSite(doc, plot) : null), [plot, upper, doc]);
+  const firstMax = useMemo(() => {
+    const pct = plot && upper ? plotRule(plot)?.rule?.firstFloorPct : undefined;
+    return pct ? (builtAreaSqFt(doc, GROUND_LEVEL) * pct) / 100 : undefined;
+  }, [plot, upper, doc]);
+  const terrace = useMemo(
+    () => (upperAt && typeof upperAt !== 'string' ? terraceDepth(upperAt, need, firstMax) : 0),
+    [upperAt, need, firstMax],
+  );
   const within = useMemo(() => (plot && inBasement ? basementOutline(doc, plot) : undefined), [plot, inBasement, doc]);
   const outer = inBasement ? RETAINING_MM / MM_PER_UNIT : undefined;
   const room = useMemo(
@@ -234,9 +288,44 @@ export function LayoutPanel() {
   if (!room || !site)
     return <div className="text-xs text-danger">The setbacks leave no room to build on this plot.</div>;
 
-  const canSqFt = Math.round(ft(room.fullW) * ft(room.fullD));
+  const floorPicker = !inBasement && (
+    <div className="flex items-center gap-1" role="radiogroup" aria-label="Plans for">
+      <span className="text-muted">Plans for</span>
+      {(['ground', 'first'] as const).map((f) => (
+        <button
+          key={f}
+          role="radio"
+          aria-checked={(f === 'first') === upper}
+          className={`m-btn px-2 py-0.5 ${(f === 'first') === upper ? 'font-medium' : ''}`}
+          onClick={() => {
+            setFloorPick(f);
+            setPlans(null);
+            setConfirm(null);
+          }}
+        >
+          {f === 'ground' ? 'Ground floor' : 'First floor'}
+        </button>
+      ))}
+    </div>
+  );
+  if (upper && typeof upperAt === 'string')
+    return (
+      <div className="flex flex-col gap-2 text-xs" data-testid="layout-panel">
+        {floorPicker}
+        <div className="text-muted" data-testid="layout-upper-problem">
+          {upperAt}
+        </div>
+      </div>
+    );
+  const over = upper && upperAt && typeof upperAt !== 'string' ? upperAt : null;
+
+  const canSqFt = over
+    ? Math.round(Math.min(ft(over.fullW) * ft(over.fullD), firstMax ?? Infinity))
+    : Math.round(ft(room.fullW) * ft(room.fullD));
   const make = (s: number) => {
-    const found = generateLayouts(plan, site.W, site.D, { seed: s });
+    const found = over
+      ? generateUpperLayouts(plan, over.W, over.D, { ...over.ground, terrace }, { seed: s })
+      : generateLayouts(plan, site.W, site.D, { seed: s });
     setSeed(s);
     setPlans(found);
     setMirrored(found.map(() => false));
@@ -247,9 +336,20 @@ export function LayoutPanel() {
     const plan = shown(i);
     if (!plan) return;
     const s = plannerStore.getState();
-    const clash = s.layoutClash(inBasement);
+    const clash = over ? s.upperClash() : s.layoutClash(inBasement);
     if (!sure && clash.walls + clash.rooms + clash.other > 0) {
       setConfirm(i);
+      return;
+    }
+    if (over) {
+      const levelId = s.firstFloorId() ?? newId();
+      s.placeUpperLayout(
+        buildLayout(plan, over.frame, { newId, levelId, riseMm: 0, noStair: true, openStair: over.ground.open }),
+        levelId,
+        over.stairRoomId,
+      );
+      s.fitToPlan();
+      setConfirm(null);
       return;
     }
     const levelMm = levelWallMm(plannerStore.getState().doc, activeLevel, wallHeightMm);
@@ -265,8 +365,16 @@ export function LayoutPanel() {
     s.fitToPlan();
     setConfirm(null);
   };
-  const clash = confirm !== null ? plannerStore.getState().layoutClash(inBasement) : null;
-  const floorName = levels.find((l) => l.id === activeLevel)?.name ?? 'this floor';
+  const clash =
+    confirm !== null
+      ? over
+        ? plannerStore.getState().upperClash()
+        : plannerStore.getState().layoutClash(inBasement)
+      : null;
+  const firstId = plannerStore.getState().firstFloorId();
+  const floorName = over
+    ? (levels.find((l) => l.id === firstId)?.name ?? 'first floor')
+    : (levels.find((l) => l.id === activeLevel)?.name ?? 'this floor');
   const sizeKinds: SizedKind[] = inBasement
     ? [
         'lounge',
@@ -278,12 +386,13 @@ export function LayoutPanel() {
         ...(program.bedrooms > 1 ? (['bed'] as const) : []),
         ...(program.attachedBaths > 0 ? (['bath'] as const) : []),
         'lounge',
-        'kitchen',
-        ...OPTIONAL.filter((o) => program[o.key]).map((o) => o.key),
+        ...(upper ? [] : (['kitchen'] as const)),
+        ...(upper ? UPPER_OPTIONAL : OPTIONAL).filter((o) => program[o.key]).map((o) => o.key),
       ];
 
   return (
     <div className="flex flex-col gap-2 text-xs" data-testid="layout-panel">
+      {floorPicker}
       {inBasement && (
         <>
           <div className="font-medium">Basement plans</div>
@@ -343,9 +452,13 @@ export function LayoutPanel() {
               </select>
             </label>
           </div>
-          <div className="text-muted">Always: lounge and kitchen. Also:</div>
+          <div className="text-muted">
+            {upper
+              ? 'Always: a TV lounge, by the ground floor’s stair; what is left in front is a terrace. Also:'
+              : 'Always: lounge and kitchen. Also:'}
+          </div>
           <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-            {OPTIONAL.map((o) => (
+            {(upper ? UPPER_OPTIONAL : OPTIONAL).map((o) => (
               <label key={o.key} className="flex items-center gap-1.5">
                 <input
                   type="checkbox"
@@ -379,7 +492,9 @@ export function LayoutPanel() {
                         : 'Their baths'
                       : kind === 'lounge' && inBasement
                         ? 'Hall'
-                        : ROOM_NAMES[kind]}
+                        : kind === 'lounge' && upper
+                          ? 'TV lounge'
+                          : ROOM_NAMES[kind]}
                 </span>
                 <LengthField
                   id={`size-${kind}-w`}
@@ -411,11 +526,20 @@ export function LayoutPanel() {
         </div>
       </details>
 
-      <div data-testid="layout-budget" className={Math.round(need) > canSqFt ? 'text-danger' : 'text-muted'}>
-        Your rooms need about {Math.round(need).toLocaleString('en-US')} sq ft; you can build about{' '}
-        {canSqFt.toLocaleString('en-US')} sq ft here ({len(room.fullW)} × {len(room.fullD)}
-        {coverage ? ', within the bylaws’ coverage' : ''}).
-      </div>
+      {over ? (
+        <div data-testid="layout-budget" className={Math.round(need) > canSqFt ? 'text-danger' : 'text-muted'}>
+          Your rooms need about {Math.round(need).toLocaleString('en-US')} sq ft; over the ground floor (
+          {len(over.fullW)} × {len(over.fullD)}) you can build about {canSqFt.toLocaleString('en-US')} sq ft
+          {firstMax ? ', within the bylaws’ first-floor limit' : ''}.{' '}
+          {terrace > 0 ? `A terrace ${len(terrace)} deep is left in front.` : 'No terrace is left in front.'}
+        </div>
+      ) : (
+        <div data-testid="layout-budget" className={Math.round(need) > canSqFt ? 'text-danger' : 'text-muted'}>
+          Your rooms need about {Math.round(need).toLocaleString('en-US')} sq ft; you can build about{' '}
+          {canSqFt.toLocaleString('en-US')} sq ft here ({len(room.fullW)} × {len(room.fullD)}
+          {coverage ? ', within the bylaws’ coverage' : ''}).
+        </div>
+      )}
       <div className="flex gap-1">
         <button className="m-btn px-2 py-0.5 font-medium" onClick={() => make(seed)}>
           Make plans
@@ -429,8 +553,9 @@ export function LayoutPanel() {
 
       {plans && !plans.length && (
         <div className="text-danger" data-testid="layout-none">
-          These rooms don’t fit side by side on this plot ({len(site.W)} wide inside the walls). Try fewer rooms,
-          smaller sizes, or leave out the drawing room or the stair.
+          {over
+            ? `These rooms don’t fit round the stair over the ground floor (${len(over.W)} wide inside the walls). Try fewer rooms or smaller sizes.`
+            : `These rooms don’t fit side by side on this plot (${len(site.W)} wide inside the walls). Try fewer rooms, smaller sizes, or leave out the drawing room or the stair.`}
         </div>
       )}
       {plans?.map((_, i) => {
@@ -479,13 +604,16 @@ export function LayoutPanel() {
                 <button className="m-btn px-2 py-0.5 font-medium" onClick={() => use(i)}>
                   Use this plan
                 </button>
-                <button
-                  className="m-btn px-2 py-0.5"
-                  aria-pressed={!!mirrored[i]}
-                  onClick={() => setMirrored(mirrored.map((m, j) => (j === i ? !m : m)))}
-                >
-                  Mirror
-                </button>
+                {/* A first floor keeps the stair where it is below, so it can't be turned round. */}
+                {!over && (
+                  <button
+                    className="m-btn px-2 py-0.5"
+                    aria-pressed={!!mirrored[i]}
+                    onClick={() => setMirrored(mirrored.map((m, j) => (j === i ? !m : m)))}
+                  >
+                    Mirror
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -493,8 +621,10 @@ export function LayoutPanel() {
       })}
       {plans && plans.length > 0 && (
         <div className="text-muted">
-          The plan is built from ordinary walls, rooms, doors and windows: change anything afterwards. Plans go on the
-          floor you are viewing{levelOf({}) === activeLevel ? '' : ` (${floorName})`}.
+          The plan is built from ordinary walls, rooms, doors and windows: change anything afterwards.{' '}
+          {over
+            ? `It goes on the ${floorName.toLowerCase()}${firstId ? '' : ' (added for it)'}, with the stair’s room below left open to it.`
+            : `Plans go on the floor you are viewing${levelOf({}) === activeLevel ? '' : ` (${floorName})`}.`}
         </div>
       )}
     </div>

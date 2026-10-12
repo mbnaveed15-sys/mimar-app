@@ -3,7 +3,8 @@ import { formatPitch, roofShape } from './roof/roof';
 import { bentSymbol, openingSymbol } from './openingKinds';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
-import type { MarlaSqFt, Opening, PlanDoc, Point, Room, Units, Wall } from '../types';
+import type { Dimension, MarlaSqFt, Opening, PlanDoc, Point, Room, Units, Wall } from '../types';
+import { dimLine } from './dimLine';
 import { placeWallDimension, thicknessOf, wallExtensions, wallPolygon, wallsOf } from '../walls';
 import { arcOf, directionAlong, isArc, openingBend, paramAlong, pointAlong, wallPath } from './arc';
 import { isCurtain, metricProject, mullionStops } from './curtain';
@@ -429,7 +430,7 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
     const layer: Layer = o.type === 'door' ? 'A-DOOR' : 'A-GLAZ';
     const bend = openingBend(o, host);
     if (bend) {
-      // A window round a curved wall: its symbol bent to the curve (flips already in the points).
+      // A door or window round a curved wall: its symbol bent to the curve (flips already in the points).
       const flat = (p: Point): Point => ({
         x: o.x + p.x * Math.cos(a) - p.y * Math.sin(a),
         y: o.y + p.x * Math.sin(a) + p.y * Math.cos(a),
@@ -530,6 +531,9 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
         }
         break;
       }
+      case 'dimension':
+        dimensionToDxf(dxf, el, opts.units);
+        break;
       case 'stair': {
         const layout = stairLayout(el);
         const world = (p: Point) => fromFurnitureLocal(el, p);
@@ -621,6 +625,57 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
     min: { x: b.minX * MM_PER_UNIT, y: -b.maxY * MM_PER_UNIT },
     max: { x: b.maxX * MM_PER_UNIT, y: -b.minY * MM_PER_UNIT },
   });
+}
+
+/**
+ * A placed dimension: extension lines, the dimension line with a slash at each end, and its length
+ * above the line, never upside down; a radius as a line from the centre with an arrow on the curve.
+ */
+function dimensionToDxf(dxf: Dxf, el: Dimension, units: Units) {
+  const { p1, p2, a, b, u, n, value } = dimLine(el);
+  const mm = (v: number) => v / MM_PER_UNIT;
+  const text = formatLength(value * MM_PER_UNIT, units);
+  // Text angles on the drawing, where y is up.
+  const readable = (d: Point) => {
+    let angle = (-Math.atan2(d.y, d.x) * 180) / Math.PI;
+    if (angle > 90 || angle <= -90) angle += 180;
+    return angle;
+  };
+  if (el.radius) {
+    const len = value || 1;
+    const d = { x: (p2.x - p1.x) / len, y: (p2.y - p1.y) / len };
+    const arrow = mm(150);
+    const base = { x: p2.x - d.x * arrow, y: p2.y - d.y * arrow };
+    const w = { x: -d.y * arrow * 0.3, y: d.x * arrow * 0.3 };
+    dxf.line('A-ANNO-DIMS', p1, base);
+    dxf.solid('A-ANNO-DIMS', [p2, { x: base.x + w.x, y: base.y + w.y }, { x: base.x - w.x, y: base.y - w.y }, p2]);
+    const mid = { x: (p1.x + p2.x) / 2 - d.y * mm(150), y: (p1.y + p2.y) / 2 + d.x * mm(150) };
+    dxf.text('A-ANNO-DIMS', mid, `R ${text}`, readable(d), TEXT_MM * 0.8);
+    return;
+  }
+  const gap = mm(50);
+  const past = mm(100);
+  const tick = mm(100);
+  for (const [p, q] of [
+    [p1, a],
+    [p2, b],
+  ]) {
+    const len = Math.hypot(q.x - p.x, q.y - p.y);
+    if (len < gap) continue;
+    const e = { x: (q.x - p.x) / len, y: (q.y - p.y) / len };
+    dxf.line('A-ANNO-DIMS', { x: p.x + e.x * gap, y: p.y + e.y * gap }, { x: q.x + e.x * past, y: q.y + e.y * past });
+  }
+  dxf.line('A-ANNO-DIMS', a, b);
+  for (const q of [a, b])
+    dxf.line(
+      'A-ANNO-DIMS',
+      { x: q.x - (u.x - n.x) * tick, y: q.y - (u.y - n.y) * tick },
+      { x: q.x + (u.x - n.x) * tick, y: q.y + (u.y - n.y) * tick },
+    );
+  // Above the line as it reads: up the drawing (away from n, which points down the page for a line read left to right).
+  const flip = Math.abs(readable(u) - (-Math.atan2(u.y, u.x) * 180) / Math.PI) < 1e-6 ? 1 : -1;
+  const mid = { x: (a.x + b.x) / 2 - n.x * mm(150) * flip, y: (a.y + b.y) / 2 - n.y * mm(150) * flip };
+  dxf.text('A-ANNO-DIMS', mid, text, readable(u), TEXT_MM * 0.8);
 }
 
 /** A line's middle point along its length (for its label). */

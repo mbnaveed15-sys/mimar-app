@@ -42,6 +42,9 @@ export const WINDOW_SIZE_MM: Record<WindowKind, { width: number; sillMm?: number
 /** The door's type ("single" for doors made before there were types; a gate is a double). */
 export const doorKindOf = (o: Opening): DoorKind => (o.gate ? 'double' : (o.doorKind ?? 'single'));
 
+/** Door types whose leaves swing (flat leaves, even on a curved wall). */
+export const SWING_KINDS: ReadonlySet<DoorKind> = new Set(['single', 'double']);
+
 /**
  * How a line of a door or window symbol is drawn: a door leaf or casement sash, its swing, the
  * window frame, the glass, or something above the cut (dashed).
@@ -153,9 +156,9 @@ export function openingSymbol(o: Opening, t: number): SymbolPath[] {
 }
 
 /**
- * A window's plan symbol bent round its curved wall (`openingBend`), in its own frame with the
- * flips already applied: the patch of paper over the wall, the two jambs (square to the curve) and
- * the symbol's lines.
+ * A door or window's plan symbol bent round its curved wall (`openingBend`), in its own frame with
+ * the flips already applied: the patch of paper over the wall, the two jambs (square to the curve)
+ * and the symbol's lines (a swinging leaf and its swing stay straight).
  */
 export function bentSymbol(
   o: Opening,
@@ -167,6 +170,8 @@ export function bentSymbol(
   const step = Math.max(1, o.width / 16);
   const h = o.width / 2;
   const flip = (pts: [number, number][]) => pts.map(([x, y]): [number, number] => [x * hx, y * sy]);
+  // A swinging leaf is flat: it and its swing stay straight, hinged at the frame's ends on the curve.
+  const swings = o.type === 'door' && SWING_KINDS.has(doorKindOf(o));
   return {
     cover: bendPath(
       bend,
@@ -181,7 +186,7 @@ export function bentSymbol(
     ),
     jambs: [-h, h].map((x): [Point, Point] => [bendPoint(bend, x, -t), bendPoint(bend, x, t)]),
     paths: openingSymbol(o, t).map((p) => ({
-      points: bendPath(bend, flip(p.points), step, p.closed),
+      points: swings ? flip(p.points).map(([x, y]) => ({ x, y })) : bendPath(bend, flip(p.points), step, p.closed),
       stroke: p.stroke,
       closed: p.closed,
     })),

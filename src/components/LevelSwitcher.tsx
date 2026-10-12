@@ -27,7 +27,7 @@ export function LevelSwitcher() {
   return (
     <div ref={ref} className="relative flex-none">
       <button
-        className="m-btn h-7 max-w-40 text-xs whitespace-nowrap"
+        className="m-btn h-7 max-w-40 text-xs whitespace-nowrap phone:max-w-24 phone:px-2"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Floor: ${current.name}`}

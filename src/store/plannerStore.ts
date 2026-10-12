@@ -19,7 +19,8 @@ import { DEFAULT_PANELS, clampPanelWidth, movePanel, type PanelLayout, type Sect
 import { DEFAULT_TOOLBARS, moveToolbar, type DockArea, type ToolbarId, type ToolbarLayout } from '../lib/toolbars';
 import { emptyDoc, loadFileInfo, loadPlan, saveFileInfo, savePlan, STORAGE_KEY, type FileInfo } from '../lib/storage';
 import { MM_PER_UNIT } from '../lib/scale';
-import { DEFAULT_AREA, fitView, zoomAt, type Size } from '../lib/view';
+import { DEFAULT_AREA, fitView, MAX_ZOOM, VIEW_HISTORY, VIEW_STEP_MS, zoomAt, type Size } from '../lib/view';
+import { syncDimensions } from '../lib/dimensions';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { detectRoom, openWallEnds } from '../rooms';
 import type { Inference } from '../lib/inference';
@@ -56,7 +57,7 @@ import {
 } from '../lib/plot';
 import { boundaryWallsAlong, buildPlotWalls, syncPlotWalls } from '../lib/plotWalls';
 import { formatLength } from '../lib/units';
-import { basementOf, levelWallMm, slabMm } from '../lib/levels';
+import { basementOf, groundIndex, levelWallMm, slabMm } from '../lib/levels';
 import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
 import { CURTAIN_MM, isBuildingWall } from '../walls';
@@ -104,6 +105,8 @@ import type {
   Units,
   View,
   WindowKind,
+  Bounds,
+  Dimension,
 } from '../types';
 
 export const HISTORY_LIMIT = 100;
@@ -134,6 +137,9 @@ export interface SiteSpec {
   /** How the Curve tool draws, and whether it makes walls or layout lines. */
   curveMode: CurveMode;
   curveMake: 'wall' | 'line' | 'path';
+  /** How the Dimension tool measures, and whether each dimension carries on from the last. */
+  dimMode: DimMode;
+  dimChain: boolean;
   /** Width of a path or driveway made with the Curve tool, mm. */
   pathWidthMm: number;
   /** The Rectangle tool rounds its corners to this radius (mm); 0 for square corners. */
@@ -170,6 +176,9 @@ export interface SiteSpec {
   roofOverhangMm?: number;
 }
 
+/** The Dimension tool: along the two points, horizontal or vertical (by where the pointer goes), or a radius. */
+export type DimMode = 'aligned' | 'linear' | 'radius';
+
 /** Heights of boundary walls (7') and parapets (3'). */
 /** A path or driveway made with the Curve tool: 4' wide, paving 3" thick, standing on the ground. */
 export const PATH_WIDTH_MM = 1219.2;
@@ -191,6 +200,8 @@ export const DEFAULT_SITE: SiteSpec = {
   curveMake: 'wall',
   pathWidthMm: PATH_WIDTH_MM,
   rectRadiusMm: 0,
+  dimMode: 'linear',
+  dimChain: false,
   gate: false,
   gateWidthMm: 3048,
   doorKind: 'single',
@@ -215,6 +226,28 @@ function omit<T extends object, K extends keyof T>(obj: T, key: K): T {
 const inch = (n: number) => (n * 25.4) / MM_PER_UNIT;
 /** Items a plan from the room list takes the place of on its floor (with ordinary walls). */
 const REPLACED_BY_LAYOUT = new Set<string>(['stair', 'furniture', 'column', 'beam', 'slab', 'block']);
+
+/**
+ * What a plan from the room list replaces on a floor: its house walls (and walls of the `also`
+ * kinds) with their doors and windows, its rooms, and the items in `REPLACED_BY_LAYOUT`. Gives what
+ * is kept, and how many of each go.
+ */
+function replacedByLayout(doc: PlanDoc, level: Id, also: WallKind[] = []) {
+  const here = (el: { levelId?: Id }) => levelOf(el) === level;
+  const going = doc.elements.filter(
+    (el) =>
+      here(el) &&
+      ((el.type === 'wall' && (isBuildingWall(el) || (!!el.kind && also.includes(el.kind)))) ||
+        REPLACED_BY_LAYOUT.has(el.type)),
+  );
+  const gone = new Set(going.map((el) => el.id));
+  const kept = doc.elements.filter(
+    (el) => !gone.has(el.id) && !((el.type === 'door' || el.type === 'window') && gone.has(el.wallId)),
+  );
+  const walls = going.filter((el) => el.type === 'wall').length;
+  const rooms = doc.rooms.filter(here).length;
+  return { kept, count: { walls, rooms, other: going.length - walls } };
+}
 /** A 9-inch boundary wall, in millimetres. */
 export const BOUNDARY_MM = 228.6;
 /** 9" × 12" columns, 9" × 18" beams and a 6" slab: common RCC sizes for Pakistani houses. */
@@ -276,6 +309,8 @@ export interface PlannerState {
   addBeam: (a: Point, b: Point) => void;
   /** A layout (drafting) line on the floor being drawn. */
   addLine: (a: Point, b: Point, bow?: number) => void;
+  /** A dimension on the floor being drawn (its id is made here); returns the id. */
+  addDimension: (dim: Omit<Dimension, 'id'>) => Id;
   /**
    * Add a curve from the Curve tool: walls or layout lines (as the tool is set), one per piece, as
    * one step. A closed curve of walls gets the room inside it, found from `inside`.
@@ -363,6 +398,16 @@ export interface PlannerState {
   layoutClash: (retaining?: boolean) => { walls: number; rooms: number; other: number };
   /** Put a plan built from the room list on the floor being viewed, in place of what `layoutClash` counts (one undo step). */
   placeLayout: (built: Built, retaining?: boolean) => void;
+  /** The first floor (the floor just above the ground floor), if there is one. */
+  firstFloorId: () => Id | null;
+  /** What placing a first-floor plan would take away there: as `layoutClash`, parapets included. */
+  upperClash: () => { walls: number; rooms: number; other: number };
+  /**
+   * Put a first-floor plan (built on `levelId`) on the first floor, adding that floor when there is
+   * none, in place of what `upperClash` counts; the ground-floor stair room `stairRoomId` is left open
+   * to it (its stair well). One undo step; the first floor is then shown.
+   */
+  placeUpperLayout: (built: Built, levelId: Id, stairRoomId?: Id) => void;
   /** Put a plot under an authority's bylaws (or none), taking its setbacks from their table. */
   setPlotAuthority: (plotId: Id, authority: AuthorityId | undefined) => void;
   addStair: (p: Point) => void;
@@ -425,6 +470,8 @@ export interface PlannerState {
   snaps: SnapsPrefs;
   view: View;
   viewport: Size;
+  /** Earlier views, newest last, for Zoom previous. */
+  viewBack: View[];
 
   /** Name of the open plan file, and its path in the desktop app. */
   fileName: string;
@@ -596,6 +643,10 @@ export interface PlannerState {
   setView: (view: View) => void;
   zoomBy: (factor: number, screen?: Point) => void;
   fitToPlan: () => void;
+  /** Zoom so the box (plan units) fills the view. */
+  zoomToBox: (box: Bounds) => void;
+  /** Back to the view before the last zoom or pan; false when there is none. */
+  zoomPrevious: () => boolean;
   /** Screen-independent distance for clicking on things (12 screen pixels). */
   hitTolerance: () => number;
   /** The last press was a finger: targets and snapping reach further. */
@@ -737,6 +788,23 @@ export function createPlannerStore(
       get().cancelBatch();
       if (d?.type === 'move' && d.pasted) get().discardLastStep();
     };
+    /**
+     * Before the view changes: remember it for Zoom previous, unless it is part of the same gesture
+     * (changes within VIEW_STEP_MS of the last one). `step` always counts it (a fit, a window zoom).
+     */
+    let lastViewAt = 0;
+    const noteView = (step = false) => {
+      const now = Date.now();
+      const fresh = step || now - lastViewAt > VIEW_STEP_MS;
+      lastViewAt = now;
+      const { view, viewport, viewBack } = get();
+      if (!fresh || !viewport.width) return;
+      const top = viewBack[viewBack.length - 1];
+      if (top && top.x === view.x && top.y === view.y && top.zoom === view.zoom) return;
+      set({ viewBack: [...viewBack, view].slice(-VIEW_HISTORY) });
+    };
+    // Every change: a plot's boundary walls follow it, then dimensions follow what they measure.
+    const settle = (prev: PlanDoc, next: PlanDoc) => syncDimensions(prev, syncPlotWalls(prev, next));
     const updateElements = (fn: (els: PlanElement[]) => PlanElement[]) =>
       get().commit((doc) => {
         const elements = fn(doc.elements);
@@ -833,8 +901,8 @@ export function createPlannerStore(
 
       commit: (recipe) => {
         const { doc, past, batchBase } = get();
-        // A plot's boundary walls follow it, whatever changed it.
-        const next = syncPlotWalls(doc, recipe(doc));
+        // A plot's boundary walls follow it, whatever changed it, and dimensions what they measure.
+        const next = settle(doc, recipe(doc));
         if (next === doc) return;
         if (batchBase) set({ doc: next });
         else set({ doc: next, past: [...past, doc].slice(-HISTORY_LIMIT), future: [] });
@@ -982,7 +1050,7 @@ export function createPlannerStore(
       },
       commitFromBase: (recipe) => {
         const base = get().batchBase;
-        if (base) set({ doc: syncPlotWalls(base, recipe(base)) });
+        if (base) set({ doc: settle(base, recipe(base)) });
         else get().commit(recipe);
       },
       selectedGroup: () => {
@@ -1654,6 +1722,11 @@ export function createPlannerStore(
         };
         updateElements((els) => [...els, onActive(line)]);
       },
+      addDimension: (dim) => {
+        const id = newId();
+        updateElements((els) => [...els, onActive({ ...dim, id } as Dimension)]);
+        return id;
+      },
       addCurve: (pieces, inside) => {
         const kept = pieces.filter((p) => Math.hypot(p.x2 - p.x1, p.y2 - p.y1) > MIN_WALL_PX);
         if (!kept.length) return;
@@ -2053,38 +2126,56 @@ export function createPlannerStore(
         });
       },
       layoutClash: (retaining = false) => {
-        const els = get().levelElements();
-        const walls = els.filter(
-          (el) => el.type === 'wall' && (isBuildingWall(el) || (retaining && el.kind === 'retaining')),
-        ).length;
-        const rooms = get().levelRooms().length;
-        const other = els.filter((el) => REPLACED_BY_LAYOUT.has(el.type)).length;
-        return { walls, rooms, other };
+        const { doc, activeLevel } = get();
+        return replacedByLayout(doc, activeLevel, retaining ? ['retaining'] : []).count;
       },
       placeLayout: (built, retaining = false) => {
         const level = get().activeLevel;
         get().commit((doc) => {
-          const here = (el: { levelId?: Id }) => levelOf(el) === level;
-          const gone = new Set(
-            doc.elements
-              .filter(
-                (el) =>
-                  here(el) &&
-                  ((el.type === 'wall' && (isBuildingWall(el) || (retaining && el.kind === 'retaining'))) ||
-                    REPLACED_BY_LAYOUT.has(el.type)),
-              )
-              .map((el) => el.id),
-          );
-          const kept = doc.elements.filter(
-            (el) => !gone.has(el.id) && !((el.type === 'door' || el.type === 'window') && gone.has(el.wallId)),
-          );
+          const { kept } = replacedByLayout(doc, level, retaining ? ['retaining'] : []);
           const added = [...built.walls, ...built.openings, ...built.stairs].map((el) => onActive(el));
           return {
             ...doc,
             elements: [...kept, ...added],
-            rooms: [...doc.rooms.filter((r) => !here(r)), ...built.rooms.map((r) => onActive(r))],
+            rooms: [...doc.rooms.filter((r) => levelOf(r) !== level), ...built.rooms.map((r) => onActive(r))],
           };
         });
+        get().select(null);
+        get().setWarning(null);
+      },
+      firstFloorId: () => {
+        const { levels } = get().doc;
+        return levels[groundIndex(get().doc) + 1]?.id ?? null;
+      },
+      upperClash: () => {
+        const level = get().firstFloorId();
+        return level ? replacedByLayout(get().doc, level, ['parapet']).count : { walls: 0, rooms: 0, other: 0 };
+      },
+      placeUpperLayout: (built, levelId, stairRoomId) => {
+        const existing = get().firstFloorId();
+        const level = existing ?? levelId;
+        const on = <T extends { levelId?: Id }>(el: T): T => ({ ...el, levelId: level });
+        get().commit((doc) => {
+          // A new first floor goes just above the ground floor.
+          const levels = existing
+            ? doc.levels
+            : [
+                ...doc.levels.slice(0, groundIndex(doc) + 1),
+                { id: level, name: 'First floor' },
+                ...doc.levels.slice(groundIndex(doc) + 1),
+              ];
+          const { kept } = replacedByLayout(doc, level, ['parapet']);
+          const rooms = doc.rooms
+            .filter((r) => levelOf(r) !== level)
+            .map((r) => (r.id === stairRoomId && !r.openAbove ? { ...r, openAbove: true } : r));
+          return {
+            ...doc,
+            levels,
+            elements: [...kept, ...[...built.walls, ...built.openings, ...built.stairs].map(on)],
+            rooms: [...rooms, ...built.rooms.map(on)],
+          };
+        });
+        get().setActiveLevel(level);
         get().select(null);
         get().setWarning(null);
       },
@@ -2312,18 +2403,41 @@ export function createPlannerStore(
       setViewport: (viewport) => {
         const first = get().viewport.width === 0 || get().viewport.height === 0;
         set({ viewport });
-        if (first && viewport.width > 0 && viewport.height > 0) get().fitToPlan();
+        if (first && viewport.width > 0 && viewport.height > 0) {
+          get().fitToPlan();
+          // The first view isn't a step to go back to.
+          set({ viewBack: [] });
+        }
       },
-      setView: (view) => set({ view }),
+      setView: (view) => {
+        noteView();
+        set({ view });
+      },
       zoomBy: (factor, screen) => {
+        noteView();
         const { view, viewport } = get();
         set({ view: zoomAt(view, screen ?? { x: viewport.width / 2, y: viewport.height / 2 }, factor) });
       },
       fitToPlan: () => {
         const { doc, viewport } = get();
         if (!viewport.width || !viewport.height) return;
+        noteView(true);
         set({ view: fitView(planBounds(doc.elements, doc.masks) ?? DEFAULT_AREA, viewport) });
       },
+      zoomToBox: (box) => {
+        const { viewport } = get();
+        if (!viewport.width || !viewport.height) return;
+        noteView(true);
+        set({ view: fitView(box, viewport, 8, MAX_ZOOM) });
+      },
+      zoomPrevious: () => {
+        const back = get().viewBack;
+        if (!back.length) return false;
+        lastViewAt = 0;
+        set({ view: back[back.length - 1], viewBack: back.slice(0, -1) });
+        return true;
+      },
+      viewBack: [],
       hitTolerance: () => Math.max(2, 12 * get().reach() * get().pxUnits()),
       px3d: null,
       setPx3d: (px3d) => set({ px3d }),

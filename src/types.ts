@@ -208,6 +208,8 @@ export interface Slab extends Grouped {
   thickness: number;
   /** Voids through it (stair openings, skylights, shafts): outlines in plan units. */
   holes?: Point[][];
+  /** Curved edges of each void, in the same order as `holes` (null or missing: straight). */
+  holeCurves?: (EdgeCurve | null)[];
   material?: Id;
 }
 
@@ -355,6 +357,45 @@ export interface SectionLine extends Grouped {
 }
 
 /**
+ * What one end of a dimension follows: an item it was drawn on. For walls, layout lines and beams,
+ * `u` is how far along it (0 the start, 1 the end), `d` a distance on along it from there (plan units,
+ * so a corner past a wall's end stays at the corner) and `v` how far across it (in half thicknesses,
+ * side A positive; plan units for a line). For doors, windows, furniture, columns and stairs, `u` and
+ * `v` are across and up its own frame in halves of its width and depth. For outlines (slabs, blocks,
+ * roofs, pads, plots), `i` is the corner.
+ */
+export interface DimTie {
+  id: Id;
+  u: number;
+  v: number;
+  d?: number;
+  i?: number;
+}
+
+/**
+ * A dimension placed with the Dimension tool: the distance between two points, drawn as a line with
+ * ticks through (lx, ly). It measures along `angle` (degrees, clockwise on the plan from +x: 0 is
+ * horizontal, 90 vertical) when set, else straight between the points. A radius dimension measures
+ * from the centre (x1, y1) of a curved wall or line to the point (x2, y2) on it. Each end can follow
+ * the item it was drawn on (`tie1`, `tie2`), so it keeps measuring as the plan changes.
+ */
+export interface Dimension extends Grouped {
+  id: Id;
+  type: 'dimension';
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  lx: number;
+  ly: number;
+  angle?: number;
+  radius?: boolean;
+  tie1?: DimTie;
+  tie2?: DimTie;
+  material?: Id;
+}
+
+/**
  * A spot level: the height of the natural ground at a point, above the datum (±0, the road level at
  * the middle of the plot's road side), as on a survey sheet. Always on the ground floor.
  */
@@ -423,7 +464,8 @@ export type PlanElement =
   | Contour
   | Pad
   | ContextItem
-  | Roof;
+  | Roof
+  | Dimension;
 
 /** Items outlined (or, for contours and roads, drawn) by a list of points. */
 export type PointsElement = Slab | Plot | Block | Contour | Pad | ContextItem | Roof;
@@ -636,7 +678,8 @@ export type Tool =
   | 'level'
   | 'contour'
   | 'pad'
-  | 'roof';
+  | 'roof'
+  | 'dimension';
 
 /** Every tool, in tool-rail order. */
 export const TOOLS: Tool[] = [
@@ -667,6 +710,7 @@ export const TOOLS: Tool[] = [
   'move',
   'rotate',
   'tape',
+  'dimension',
   'paint',
   'erase',
   'brush',
@@ -757,6 +801,19 @@ export type Draft =
       copyId?: Id;
     }
   | { type: 'rotate'; ids: Id[]; center: Point; start?: Point; angle: number }
+  /**
+   * A dimension being placed: the points measured so far (with what each follows), and where the
+   * pointer is. In a chain, the next dimension carries on along `chain.angle` through `chain.l`.
+   */
+  | {
+      type: 'dimension';
+      points: Point[];
+      ties: (DimTie | undefined)[];
+      cursor: Point;
+      chain?: { angle: number; l: Point };
+    }
+  /** The Zoom tool's window: the plan inside it fills the view when let go. */
+  | { type: 'zoomBox'; x1: number; y1: number; x2: number; y2: number }
   /** Offset: a parallel copy of a wall follows the pointer. */
   | {
       type: 'offset';

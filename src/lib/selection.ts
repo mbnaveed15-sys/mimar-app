@@ -3,6 +3,7 @@ import { elementOutline, rotateElement, rotatePoint, translateElement } from '..
 import type { Bounds, ComponentDef, Group, Id, PlanDoc, PlanElement, Point, Room, Wall } from '../types';
 import { WINDOW_SILL_MM } from '../three/model';
 import { newId } from './ids';
+import { remapTies } from './dimensions';
 
 /** Something that can be selected: a plan element or a room. */
 export type Item = PlanElement | Room;
@@ -222,7 +223,7 @@ export function copyItems(doc: PlanDoc, ids: Id[], dx: number, dy: number): { do
   for (const el of doc.elements) {
     if (!set.has(el.id)) continue;
     if ('wallId' in el && !idMap.has(el.wallId)) continue; // a door without its wall can't be copied
-    const moved = translateElement({ ...el, id: idMap.get(el.id)! }, dx, dy);
+    const moved = remapTies(translateElement({ ...el, id: idMap.get(el.id)! }, dx, dy), idMap);
     elements.push(regroup('wallId' in moved ? { ...moved, wallId: idMap.get(moved.wallId)! } : moved));
   }
   const rooms = doc.rooms
@@ -290,7 +291,7 @@ function placeCopy(def: ComponentDef, g: Group): { elements: PlanElement[]; room
   const elements = def.elements
     .filter((el) => !('wallId' in el) || idMap.has(el.wallId))
     .map((el) => {
-      const placed = toPlaced({ ...el, id: idMap.get(el.id)!, groupId: g.id, defKey: el.id }, g);
+      const placed = remapTies(toPlaced({ ...el, id: idMap.get(el.id)!, groupId: g.id, defKey: el.id }, g), idMap);
       return 'wallId' in placed ? { ...placed, wallId: idMap.get(placed.wallId)! } : placed;
     });
   const rooms = def.rooms.map((r) => toPlaced({ ...r, id: newId(), groupId: g.id, defKey: r.id }, g));

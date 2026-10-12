@@ -241,13 +241,6 @@ export const sideMiddle = (plot: Plot, i: number): Point => pointAlong(sideLine(
 /** Whether side i is curved. */
 export const isCurvedSide = (plot: Plot, i: number): boolean => Math.abs(sideLine(plot, i).bow ?? 0) > 0.05;
 
-/** Whether side i can be curved: not a side at the cut corner (that corner needs two straight sides). */
-export function canBendSide(plot: Plot, i: number): boolean {
-  const n = plot.points.length;
-  const corner = plot.splay && plot.splay.sizeMm > 0 ? roadCorner(plot) : null;
-  return corner === null || (i !== corner && i !== (corner - 1 + n) % n);
-}
-
 /** The plot with side i bowed by `bow` (straight when 0), its sides listed. */
 export function withSideBow(plot: Plot, i: number, bow: number): Plot {
   const sideList = plotSides(plot).map((side, j) => {
@@ -286,39 +279,43 @@ export interface OutlineEdge {
 
 /**
  * The plot's outline with its cut corner, when it has one: the corner between the two roads is cut
- * `splay.sizeMm` back along each side (never more than half of either side).
+ * `splay.sizeMm` back along each side (along its curve, for a curved side; never more than half of
+ * either side), and the cut is a straight line between those two points.
  */
 export function plotOutline(plot: Plot, sides = plotSides(plot)): OutlineEdge[] {
-  const pts = plot.points;
-  const n = pts.length;
-  let corner = plot.splay && plot.splay.sizeMm > 0 ? roadCorner(plot, sides) : null;
-  // A corner is only cut between two straight sides.
-  if (corner !== null && (isCurvedSide(plot, corner) || isCurvedSide(plot, (corner - 1 + n) % n))) corner = null;
+  const n = plot.points.length;
+  const corner = plot.splay && plot.splay.sizeMm > 0 ? roadCorner(plot, sides) : null;
+  const size = corner === null ? 0 : plot.splay!.sizeMm / MM_PER_UNIT;
+  /** How far along side i its kept part starts and ends, as fractions of its length. */
+  const span = (i: number): [number, number] => {
+    const len = runLength(sideLine(plot, i)) || 1;
+    const cut = Math.min(size, len / 2) / len;
+    return [corner === i ? cut : 0, corner === (i + 1) % n ? 1 - cut : 1];
+  };
   const edges: OutlineEdge[] = [];
   for (let i = 0; i < n; i++) {
-    if (isCurvedSide(plot, i)) {
-      // A curved side is a row of short straight pieces along its arc.
-      const path = wallPath(sideLine(plot, i));
-      for (let j = 0; j + 1 < path.length; j++) edges.push({ a: path[j], b: path[j + 1], side: i });
-      continue;
-    }
-    let a = pts[i];
-    let b = pts[(i + 1) % n];
-    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-    const cut = corner === null ? 0 : Math.min(plot.splay!.sizeMm / MM_PER_UNIT, len / 2);
-    if (corner === i) a = { x: a.x + ((b.x - a.x) / len) * cut, y: a.y + ((b.y - a.y) / len) * cut };
-    if (corner === (i + 1) % n) b = { x: b.x - ((b.x - a.x) / len) * cut, y: b.y - ((b.y - a.y) / len) * cut };
+    const [t0, t1] = span(i);
+    const path = sidePath(sideLine(plot, i), t0, t1);
     if (corner === i) {
-      // The splay edge comes before this side: from the previous side's cut end to this side's.
-      const p = pts[(i - 1 + n) % n];
-      const c = pts[i];
-      const pl = Math.hypot(c.x - p.x, c.y - p.y) || 1;
-      const pc = Math.min(plot.splay!.sizeMm / MM_PER_UNIT, pl / 2);
-      edges.push({ a: { x: c.x - ((c.x - p.x) / pl) * pc, y: c.y - ((c.y - p.y) / pl) * pc }, b: a, side: 'splay' });
+      // The cut comes before this side: straight from the previous side's cut end to this side's.
+      const prev = (i - 1 + n) % n;
+      edges.push({ a: pointAlong(sideLine(plot, prev), span(prev)[1]), b: path[0], side: 'splay' });
     }
-    edges.push({ a, b, side: i });
+    // A curved side is a row of short straight pieces along its arc.
+    for (let j = 0; j + 1 < path.length; j++) edges.push({ a: path[j], b: path[j + 1], side: i });
   }
   return edges;
+}
+
+/** The part of a side from t0 to t1 (fractions along it) as points: its ends, or short pieces round its curve. */
+function sidePath(line: WallLine, t0: number, t1: number): Point[] {
+  if (t0 <= 0 && t1 >= 1) return wallPath(line);
+  const a = pointAlong(line, t0);
+  const b = pointAlong(line, t1);
+  if (!line.bow) return [a, b];
+  const part: WallLine = { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+  const bow = bowThrough(part, pointAlong(line, (t0 + t1) / 2));
+  return wallPath(Math.abs(bow) > 0.05 ? { ...part, bow } : part);
 }
 
 /** The corners of the plot as it really is (the cut corner included). */

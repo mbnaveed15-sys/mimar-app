@@ -15,3 +15,25 @@ export function useCompact(): boolean {
   }, []);
   return compact;
 }
+
+/**
+ * A phone: a narrow window, or a short one on a touch screen (a phone turned on its side). The same
+ * query is the `phone:` variant in index.css.
+ */
+export const PHONE_QUERY = '(max-width: 639px), (max-height: 499px) and (pointer: coarse)';
+
+const phoneNow = () => typeof window !== 'undefined' && !!window.matchMedia?.(PHONE_QUERY).matches;
+
+/** Whether the screen is a phone's: the plan fills it, tools run along the bottom, the panel is a sheet. */
+export function usePhone(): boolean {
+  const [phone, setPhone] = useState(phoneNow);
+  useEffect(() => {
+    const query = window.matchMedia?.(PHONE_QUERY);
+    if (!query) return;
+    const onChange = () => setPhone(query.matches);
+    onChange();
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+  return phone;
+}

@@ -66,7 +66,7 @@ export function LayersPanel() {
               <span className="flex-1">{l.label}</span>
               <span className="tabular-nums text-muted">{counts[l.id]}</span>
             </div>
-            {l.id === 'walls' && sub('layer-dimensions', 'Dimensions', showDimensions, setShowDimensions)}
+            {l.id === 'walls' && sub('layer-dimensions', 'Wall lengths', showDimensions, setShowDimensions)}
             {l.id === 'rooms' && (
               <>
                 {sub('layer-room-labels', 'Room names & areas', showRoomLabels, (v) => setLayer('showRoomLabels', v))}
