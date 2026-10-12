@@ -4,14 +4,14 @@
  * on the outside walls, and a U stair in the stair room. It goes in the largest rectangle inside the
  * plot's building line, square to the main road. Pure.
  */
-import { placeOnWall } from '../geometry';
-import { detectRoom } from '../rooms';
+import { elementOutline, placeOnWall, pointInPolygon } from '../geometry';
+import { detectRoom, polygonArea } from '../rooms';
 import { outsideOutline } from './outline';
 import { isBuildingWall } from '../walls';
 import { MM_PER_UNIT } from './scale';
 import { stairLayout } from './site';
 import { insetPolygon, plotSides, sideOutward, sideSetbacks } from './plot';
-import { feetToUnits as ft, type Layout, type LayoutRoom, type Rect } from './layoutGen';
+import { feetToUnits as ft, type Ground, type GroundLine, type Layout, type LayoutRoom, type Rect } from './layoutGen';
 import {
   GROUND_LEVEL,
   levelOf,
@@ -41,6 +41,8 @@ export const toPlan = (f: Frame, x: number, y: number): Point => ({
 });
 
 const OUTER_WALL = (9 * 25.4) / MM_PER_UNIT;
+/** A terrace's parapet: 3' high. */
+const PARAPET_MM = 914.4;
 const INNER = (4.5 * 25.4) / MM_PER_UNIT;
 /** A house wall beside a boundary wall stands this far off it (a gap for the plaster). */
 const CLEARANCE_MM = 25;
@@ -204,7 +206,8 @@ function wallSegments(plan: Layout, OUTER = OUTER_WALL): (Seg & { thickness: num
       add('v', r.x1, r.y0, r.y1, i, -1);
     }),
   );
-  const porch = (i: number) => i !== OUT && plan.rooms[i].kind === 'porch';
+  // The porch and a terrace are open: walls only where they meet rooms.
+  const porch = (i: number) => i !== OUT && (plan.rooms[i].kind === 'porch' || plan.rooms[i].kind === 'terrace');
   const out: (Seg & { thickness: number })[] = [];
   for (const line of lines.values()) {
     const cuts = [...new Set(line.edges.flatMap((e) => [key(e.from), key(e.to)]))].sort((a, b) => a - b);
@@ -282,6 +285,10 @@ export function buildLayout(
     noWindows?: boolean;
     /** Put the stair here (under the one on the floor above) rather than in the stair room. */
     stairAt?: Pick<Stair, 'x' | 'y' | 'rotation'>;
+    /** No stair (a first floor, reached by the ground floor's stair). */
+    noStair?: boolean;
+    /** The stair's room is open to the floor below (its stair well): no room or floor of its own. */
+    openStair?: boolean;
   },
 ): Built {
   const P = (x: number, y: number) => toPlan(frame, x, y);
@@ -305,6 +312,26 @@ export function buildLayout(
       ...on,
     };
   });
+  // A 3' parapet round a terrace, on the walls below, from the house's walls round its open sides.
+  for (const t of plan.rooms.filter((r) => r.kind === 'terrace').flatMap((r) => r.rects)) {
+    const pts: Point[] = [];
+    if (t.x0 < 1e-6) pts.push(P(t.x0, t.y1));
+    pts.push(P(t.x0, t.y0), P(t.x1, t.y0));
+    if (t.x1 > plan.W - 1e-6) pts.push(P(t.x1, t.y1));
+    for (let i = 0; i + 1 < pts.length; i++)
+      walls.push({
+        id: opts.newId(),
+        type: 'wall',
+        x1: pts[i].x,
+        y1: pts[i].y,
+        x2: pts[i + 1].x,
+        y2: pts[i + 1].y,
+        thickness: INNER,
+        kind: 'parapet',
+        heightMm: PARAPET_MM,
+        ...on,
+      });
+  }
   const wallAt = (seg: Seg, t: number) => {
     const i = segs.findIndex(
       (s) => s.dir === seg.dir && Math.abs(s.at - seg.at) < 1e-6 && s.from - 1e-6 <= t && t <= s.to + 1e-6,
@@ -345,7 +372,7 @@ export function buildLayout(
     const seg = sharedEdge(plan, a, b, d.b === 'out');
     if (!seg) continue;
     // Swing into the room being entered: the second room, or the house from outside or the porch.
-    const target = b && b.kind !== 'porch' ? b : a;
+    const target = b && b.kind !== 'porch' && b.kind !== 'terrace' ? b : a;
     const c = centre(target.rects[0]);
     const into = P(c.x, c.y);
     const o = place(seg, d.widthFt, { type: 'door', ...(d.open ? { doorKind: 'opening' as const } : {}) }, into);
@@ -356,6 +383,7 @@ export function buildLayout(
   }
 
   // Windows: on the longest stretch of outside wall, away from a door there.
+  const terraces = plan.rooms.filter((r) => r.kind === 'terrace').flatMap((r) => r.rects);
   plan.rooms.forEach((room) => {
     if (opts.noWindows) return;
     const vent = VENTED.has(room.kind);
@@ -366,6 +394,10 @@ export function buildLayout(
       if (r.y1 > plan.D - 1e-6) edges.push({ dir: 'h', at: plan.D, from: r.x0, to: r.x1 });
       if (r.x0 < 1e-6) edges.push({ dir: 'v', at: 0, from: r.y0, to: r.y1 });
       if (r.x1 > plan.W - 1e-6) edges.push({ dir: 'v', at: plan.W, from: r.y0, to: r.y1 });
+      // Onto a terrace in front, too.
+      for (const t of terraces)
+        if (Math.abs(r.y0 - t.y1) < 1e-6 && Math.min(r.x1, t.x1) - Math.max(r.x0, t.x0) > 1e-6)
+          edges.push({ dir: 'h', at: r.y0, from: Math.max(r.x0, t.x0), to: Math.min(r.x1, t.x1) });
     }
     // (A room's edges onto the porch are inside walls, so windows never face the porch.)
     const areaSqFt = room.rects.reduce((s, r) => s + (r.x1 - r.x0) * (r.y1 - r.y0), 0) / (ft(1) * ft(1));
@@ -399,10 +431,11 @@ export function buildLayout(
   // Rooms: the space the walls close round each one (the porch is open, so it's drawn as its outline).
   const rooms: Room[] = [];
   for (const room of plan.rooms) {
+    if (opts.openStair && room.kind === 'stair') continue;
     const main = room.rects[0];
     const c = centre(main);
     const p = P(c.x, c.y);
-    const found = room.kind === 'porch' ? null : detectRoom(walls, p);
+    const found = room.kind === 'porch' || room.kind === 'terrace' ? null : detectRoom(walls, p);
     const points = found ?? [P(main.x0, main.y0), P(main.x1, main.y0), P(main.x1, main.y1), P(main.x0, main.y1)];
     rooms.push({ id: opts.newId(), name: room.name, points, ...on });
   }
@@ -410,7 +443,9 @@ export function buildLayout(
   // A U stair in the stair room, turned to fit.
   const stairs: Stair[] = [];
   const stairRoom = plan.rooms.find((r) => r.kind === 'stair');
-  if (opts.stairAt) {
+  if (opts.noStair) {
+    // Reached by the stair below.
+  } else if (opts.stairAt) {
     const spec = { shape: 'U' as const, width: ft(3), riseMm: opts.riseMm, treadMm: 254 };
     const l = stairLayout(spec);
     stairs.push({
@@ -467,4 +502,139 @@ export function basementOutline(doc: PlanDoc, plot: Plot): Point[] | undefined {
       ),
     );
   return undefined;
+}
+
+/** What a first floor is planned on: the ground floor's building area and what stands in it. */
+export interface UpperSite {
+  frame: Frame;
+  /** The ground floor's building area between its outside walls' centre lines, and to their outside faces. */
+  W: number;
+  D: number;
+  fullW: number;
+  fullD: number;
+  /** The stair, the wet rooms and the walls below, in the frame (no terrace yet: see `terraceDepth`). */
+  ground: Ground;
+  /** The ground-floor room the stair is in, when it is little more than the stair: open to the floor above. */
+  stairRoomId?: Id;
+}
+
+/** Ground-floor rooms with water: baths, kitchens and laundries. */
+const WET_NAME = /bath|toilet|\bwc\b|kitchen|laundry|wash/i;
+
+/**
+ * Where a first floor goes: over the ground floor's outside walls, square to the plot's road (the
+ * same frame a ground floor from the room list was built in), round the ground floor's stair. Says
+ * why not, when there is no ground floor or stair to build on.
+ */
+export function upperSite(doc: PlanDoc, plot: Plot): UpperSite | string {
+  const onGround = <T extends { levelId?: Id; hidden?: boolean }>(el: T) => !el.hidden && levelOf(el) === GROUND_LEVEL;
+  const walls = doc.elements.filter((el): el is Wall => el.type === 'wall' && isBuildingWall(el) && onGround(el));
+  const outline = walls.length ? outsideOutline(walls) : null;
+  if (!outline) return 'Make or draw the ground floor first: the first floor goes over its walls.';
+  const stair = doc.elements.find((el): el is Stair => el.type === 'stair' && onGround(el));
+  if (!stair)
+    return 'Put a stair on the ground floor first (tick “Stair” in its room list, or draw one): the first floor is reached by it.';
+  const square = layoutSite(plot, { within: outline });
+  if (!square) return 'The ground floor’s walls leave no room to build on.';
+  const toLocal = (f: Frame) => (p: Point) => {
+    const dx = p.x - f.o.x;
+    const dy = p.y - f.o.y;
+    return { x: dx * f.u.x + dy * f.u.y, y: dx * f.v.x + dy * f.v.y };
+  };
+  // Over the whole house when it is nearly a rectangle (a car porch's corner left open, say, as
+  // the porch has a roof), else over the largest rectangle in it.
+  const l = outline.map(toLocal(square.frame));
+  const [x0, x1] = [Math.min(...l.map((p) => p.x)), Math.max(...l.map((p) => p.x))];
+  const [y0, y1] = [Math.min(...l.map((p) => p.y)), Math.max(...l.map((p) => p.y))];
+  const whole =
+    polygonArea(outline) >= 0.85 * (x1 - x0) * (y1 - y0)
+      ? layoutSite(plot, {
+          within: [
+            toPlan(square.frame, x0, y0),
+            toPlan(square.frame, x1, y0),
+            toPlan(square.frame, x1, y1),
+            toPlan(square.frame, x0, y1),
+          ],
+        })
+      : null;
+  const site = whole ?? square;
+  const { frame, W, D } = site;
+  const local = toLocal(frame);
+  const box = (pts: Point[]): Rect => {
+    const l = pts.map(local);
+    const xs = l.map((p) => p.x);
+    const ys = l.map((p) => p.y);
+    return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+  };
+  const foot = box(elementOutline(stair));
+  const tol = ft(1);
+  if (foot.x0 < -tol || foot.y0 < -tol || foot.x1 > W + tol || foot.y1 > D + tol)
+    return 'The ground floor’s stair is outside the main part of the house, so the first floor can’t be planned round it.';
+  // The walls below, straight ones square to the frame.
+  const lines: GroundLine[] = [];
+  for (const w of walls) {
+    if (w.bow) continue;
+    const a = local({ x: w.x1, y: w.y1 });
+    const b = local({ x: w.x2, y: w.y2 });
+    if (Math.abs(a.y - b.y) < 0.5)
+      lines.push({ dir: 'h', at: (a.y + b.y) / 2, from: Math.min(a.x, b.x), to: Math.max(a.x, b.x) });
+    else if (Math.abs(a.x - b.x) < 0.5)
+      lines.push({ dir: 'v', at: (a.x + b.x) / 2, from: Math.min(a.y, b.y), to: Math.max(a.y, b.y) });
+  }
+  // A wall below near x (way: -1 at or before it, 1 at or after it) along a 'v' line, or near y along an 'h' one.
+  const snapTo = (dir: 'h' | 'v', at: number, way: 1 | -1, span: [number, number], reach: number) => {
+    const near = lines
+      .filter((l) => l.dir === dir && (l.at - at) * way >= -1e-6 && Math.abs(l.at - at) <= reach)
+      .filter((l) => Math.min(l.to, span[1]) - Math.max(l.from, span[0]) > 0)
+      .sort((p, q) => Math.abs(p.at - at) - Math.abs(q.at - at))[0];
+    return near ? near.at : at;
+  };
+  const clamp = (v: number, hi: number) => Math.max(0, Math.min(hi, v));
+  const groundRooms = doc.rooms.filter((r) => onGround(r) && r.points.length >= 3);
+  const wet = groundRooms.filter((r) => WET_NAME.test(r.name)).map((r) => box(r.points));
+  // The stair's own room below (little more than the stair, and a plain rectangle) is left open to
+  // the first floor as its stair well: the first floor's stair room is the same, to the walls'
+  // centre lines. Otherwise the first floor's stair room just goes round the stair.
+  const centre = { x: stair.x, y: stair.y };
+  const stairRoom = groundRooms.find((r) => {
+    if (!pointInPolygon(centre, r.points) || polygonArea(r.points) > stair.w * stair.h * 2.5) return false;
+    const b = box(r.points);
+    return polygonArea(r.points) >= 0.95 * (b.x1 - b.x0) * (b.y1 - b.y0);
+  });
+  let stairRect: Rect;
+  if (stairRoom) {
+    const b = box(stairRoom.points);
+    const half = ft(1);
+    stairRect = {
+      x0: clamp(snapTo('v', b.x0, -1, [b.y0, b.y1], half), W),
+      x1: clamp(snapTo('v', b.x1, 1, [b.y0, b.y1], half), W),
+      y0: clamp(snapTo('h', b.y0, -1, [b.x0, b.x1], half), D),
+      y1: clamp(snapTo('h', b.y1, 1, [b.x0, b.x1], half), D),
+    };
+  } else {
+    const pad = ft(0.3);
+    stairRect = {
+      x0: clamp(snapTo('v', foot.x0 - pad, -1, [foot.y0, foot.y1], ft(1.5)), W),
+      x1: clamp(snapTo('v', foot.x1 + pad, 1, [foot.y0, foot.y1], ft(1.5)), W),
+      y0: clamp(foot.y0 - pad, D),
+      y1: clamp(foot.y1 + pad, D),
+    };
+  }
+  return {
+    ...site,
+    ground: { stair: stairRect, terrace: 0, wet, lines, ...(stairRoom ? { open: true } : {}) },
+    ...(stairRoom ? { stairRoomId: stairRoom.id } : {}),
+  };
+}
+
+/**
+ * How deep a terrace the first floor leaves in front: what is not needed for its rooms (a quarter
+ * more than their area) or allowed by the bylaws (`maxSqFt`), never past the stair, nor less than 5'.
+ */
+export function terraceDepth(site: UpperSite, needSqFt: number, maxSqFt?: number): number {
+  const units = (sq: number) => sq * ft(1) * ft(1);
+  let depth = Math.min(site.D, Math.max(ft(24), (units(needSqFt) * 1.25) / site.fullW));
+  if (maxSqFt) depth = Math.min(depth, units(maxSqFt) / site.fullW - (site.fullD - site.D));
+  const off = Math.min(site.D - depth, site.ground.stair.y0);
+  return off < ft(5) ? 0 : off;
 }

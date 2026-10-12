@@ -57,7 +57,7 @@ import {
 } from '../lib/plot';
 import { boundaryWallsAlong, buildPlotWalls, syncPlotWalls } from '../lib/plotWalls';
 import { formatLength } from '../lib/units';
-import { basementOf, levelWallMm, slabMm } from '../lib/levels';
+import { basementOf, groundIndex, levelWallMm, slabMm } from '../lib/levels';
 import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
 import { CURTAIN_MM, isBuildingWall } from '../walls';
@@ -226,6 +226,28 @@ function omit<T extends object, K extends keyof T>(obj: T, key: K): T {
 const inch = (n: number) => (n * 25.4) / MM_PER_UNIT;
 /** Items a plan from the room list takes the place of on its floor (with ordinary walls). */
 const REPLACED_BY_LAYOUT = new Set<string>(['stair', 'furniture', 'column', 'beam', 'slab', 'block']);
+
+/**
+ * What a plan from the room list replaces on a floor: its house walls (and walls of the `also`
+ * kinds) with their doors and windows, its rooms, and the items in `REPLACED_BY_LAYOUT`. Gives what
+ * is kept, and how many of each go.
+ */
+function replacedByLayout(doc: PlanDoc, level: Id, also: WallKind[] = []) {
+  const here = (el: { levelId?: Id }) => levelOf(el) === level;
+  const going = doc.elements.filter(
+    (el) =>
+      here(el) &&
+      ((el.type === 'wall' && (isBuildingWall(el) || (!!el.kind && also.includes(el.kind)))) ||
+        REPLACED_BY_LAYOUT.has(el.type)),
+  );
+  const gone = new Set(going.map((el) => el.id));
+  const kept = doc.elements.filter(
+    (el) => !gone.has(el.id) && !((el.type === 'door' || el.type === 'window') && gone.has(el.wallId)),
+  );
+  const walls = going.filter((el) => el.type === 'wall').length;
+  const rooms = doc.rooms.filter(here).length;
+  return { kept, count: { walls, rooms, other: going.length - walls } };
+}
 /** A 9-inch boundary wall, in millimetres. */
 export const BOUNDARY_MM = 228.6;
 /** 9" × 12" columns, 9" × 18" beams and a 6" slab: common RCC sizes for Pakistani houses. */
@@ -376,6 +398,16 @@ export interface PlannerState {
   layoutClash: (retaining?: boolean) => { walls: number; rooms: number; other: number };
   /** Put a plan built from the room list on the floor being viewed, in place of what `layoutClash` counts (one undo step). */
   placeLayout: (built: Built, retaining?: boolean) => void;
+  /** The first floor (the floor just above the ground floor), if there is one. */
+  firstFloorId: () => Id | null;
+  /** What placing a first-floor plan would take away there: as `layoutClash`, parapets included. */
+  upperClash: () => { walls: number; rooms: number; other: number };
+  /**
+   * Put a first-floor plan (built on `levelId`) on the first floor, adding that floor when there is
+   * none, in place of what `upperClash` counts; the ground-floor stair room `stairRoomId` is left open
+   * to it (its stair well). One undo step; the first floor is then shown.
+   */
+  placeUpperLayout: (built: Built, levelId: Id, stairRoomId?: Id) => void;
   /** Put a plot under an authority's bylaws (or none), taking its setbacks from their table. */
   setPlotAuthority: (plotId: Id, authority: AuthorityId | undefined) => void;
   addStair: (p: Point) => void;
@@ -2094,38 +2126,56 @@ export function createPlannerStore(
         });
       },
       layoutClash: (retaining = false) => {
-        const els = get().levelElements();
-        const walls = els.filter(
-          (el) => el.type === 'wall' && (isBuildingWall(el) || (retaining && el.kind === 'retaining')),
-        ).length;
-        const rooms = get().levelRooms().length;
-        const other = els.filter((el) => REPLACED_BY_LAYOUT.has(el.type)).length;
-        return { walls, rooms, other };
+        const { doc, activeLevel } = get();
+        return replacedByLayout(doc, activeLevel, retaining ? ['retaining'] : []).count;
       },
       placeLayout: (built, retaining = false) => {
         const level = get().activeLevel;
         get().commit((doc) => {
-          const here = (el: { levelId?: Id }) => levelOf(el) === level;
-          const gone = new Set(
-            doc.elements
-              .filter(
-                (el) =>
-                  here(el) &&
-                  ((el.type === 'wall' && (isBuildingWall(el) || (retaining && el.kind === 'retaining'))) ||
-                    REPLACED_BY_LAYOUT.has(el.type)),
-              )
-              .map((el) => el.id),
-          );
-          const kept = doc.elements.filter(
-            (el) => !gone.has(el.id) && !((el.type === 'door' || el.type === 'window') && gone.has(el.wallId)),
-          );
+          const { kept } = replacedByLayout(doc, level, retaining ? ['retaining'] : []);
           const added = [...built.walls, ...built.openings, ...built.stairs].map((el) => onActive(el));
           return {
             ...doc,
             elements: [...kept, ...added],
-            rooms: [...doc.rooms.filter((r) => !here(r)), ...built.rooms.map((r) => onActive(r))],
+            rooms: [...doc.rooms.filter((r) => levelOf(r) !== level), ...built.rooms.map((r) => onActive(r))],
           };
         });
+        get().select(null);
+        get().setWarning(null);
+      },
+      firstFloorId: () => {
+        const { levels } = get().doc;
+        return levels[groundIndex(get().doc) + 1]?.id ?? null;
+      },
+      upperClash: () => {
+        const level = get().firstFloorId();
+        return level ? replacedByLayout(get().doc, level, ['parapet']).count : { walls: 0, rooms: 0, other: 0 };
+      },
+      placeUpperLayout: (built, levelId, stairRoomId) => {
+        const existing = get().firstFloorId();
+        const level = existing ?? levelId;
+        const on = <T extends { levelId?: Id }>(el: T): T => ({ ...el, levelId: level });
+        get().commit((doc) => {
+          // A new first floor goes just above the ground floor.
+          const levels = existing
+            ? doc.levels
+            : [
+                ...doc.levels.slice(0, groundIndex(doc) + 1),
+                { id: level, name: 'First floor' },
+                ...doc.levels.slice(groundIndex(doc) + 1),
+              ];
+          const { kept } = replacedByLayout(doc, level, ['parapet']);
+          const rooms = doc.rooms
+            .filter((r) => levelOf(r) !== level)
+            .map((r) => (r.id === stairRoomId && !r.openAbove ? { ...r, openAbove: true } : r));
+          return {
+            ...doc,
+            levels,
+            elements: [...kept, ...[...built.walls, ...built.openings, ...built.stairs].map(on)],
+            rooms: [...rooms, ...built.rooms.map(on)],
+          };
+        });
+        get().setActiveLevel(level);
         get().select(null);
         get().setWarning(null);
       },

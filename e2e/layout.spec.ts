@@ -66,3 +66,40 @@ test('a room list too big for the plot says so', async ({ page }) => {
   await expect(page.getByTestId('layout-none')).toBeVisible();
   await expect(page.getByTestId('layout-budget')).toHaveClass(/text-danger/);
 });
+
+test('a first floor from a room list, over the ground floor and round its stair', async ({ page }) => {
+  await page.keyboard.press('Shift+P');
+  await drag(page, P(0, 0), P(35, 65));
+  await page.keyboard.press('Shift+Z');
+  await menu(page, 'Draw', 'Generate layout from a room list…');
+  const pick = page.getByRole('radiogroup', { name: 'Plans for' });
+  // Before there is a ground floor, the first floor can't be planned.
+  await pick.getByRole('radio', { name: 'First floor' }).click();
+  await expect(page.getByTestId('layout-upper-problem')).toContainText('ground floor first');
+
+  // The ground floor from its list, stair and all.
+  await pick.getByRole('radio', { name: 'Ground floor' }).click();
+  await page.getByRole('button', { name: 'Make plans' }).click();
+  await page.getByTestId('layout-plan').first().getByRole('button', { name: 'Use this plan' }).click();
+  await expect(page.locator('[data-type="stair"]')).toHaveCount(1);
+
+  // Then the first floor: bedrooms, a TV lounge and a terrace, on a new First floor.
+  await pick.getByRole('radio', { name: 'First floor' }).click();
+  await expect(page.getByTestId('layout-budget')).toContainText('terrace');
+  await page.getByRole('button', { name: 'Make plans' }).click();
+  const plan = page.getByTestId('layout-plan').first();
+  await expect(plan).toBeVisible();
+  await expect(plan.getByRole('button', { name: 'Mirror' })).toHaveCount(0);
+  await plan.getByRole('button', { name: 'Use this plan' }).click();
+  await expect(page.getByRole('button', { name: 'Floor: First floor' })).toBeVisible();
+  const plan2d = page.getByRole('main');
+  await expect(plan2d.getByText('TV lounge', { exact: true })).toHaveCount(1);
+  await expect(plan2d.getByText('Terrace', { exact: true })).toHaveCount(1);
+  // The stair's room below shows as open, the stair well.
+  await expect(plan2d.getByText('Open to below')).toBeVisible();
+  await expect(page.getByText(/can't be reached|has no door/)).toHaveCount(0);
+  // The panel now plans the first floor; one undo takes the floor back.
+  await expect(pick.getByRole('radio', { name: 'First floor' })).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Control+z');
+  await expect(plan2d.getByText('TV lounge', { exact: true })).toHaveCount(0);
+});
