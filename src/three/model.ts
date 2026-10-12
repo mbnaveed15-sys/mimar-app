@@ -1,4 +1,4 @@
-import { fromFurnitureLocal, wallLength, wallParam } from '../geometry';
+import { centroid, fromFurnitureLocal, wallLength, wallParam } from '../geometry';
 import { patternSpanMm } from '../lib/patterns';
 import { MM_PER_UNIT } from '../lib/scale';
 import { doorKindOf } from '../lib/openingKinds';
@@ -1173,7 +1173,12 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       if (el.type === 'block') {
         // On a slab it stands on the slab's top; otherwise on the floor.
         const host = el.slabId ? els.find((x): x is Slab => x.type === 'slab' && x.id === el.slabId) : undefined;
-        const foot = host ? base + wallTop + mmToM(host.elevMm ?? 0) + m(host.thickness) : base;
+        let foot = host ? base + wallTop + mmToM(host.elevMm ?? 0) + m(host.thickness) : base;
+        // A path or driveway lies on the ground (on a sloping site, at the ground's height at its middle).
+        if (el.path && ground && !host) {
+          const c = centroid(el.points);
+          foot = site ? (site.lawnY ?? mmToM(site.lawnAt(c.x, c.y))) : 0;
+        }
         const flatShape = el.heightMm <= 0;
         blocks.push({
           points: el.points.map(toXZ),

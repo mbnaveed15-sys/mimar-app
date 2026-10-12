@@ -109,3 +109,20 @@ test('curves: a slab edge and a plot side bent by their middle grips', async ({ 
   await page.getByRole('button', { name: 'Make edges straight' }).click();
   await expect(page.getByTestId('curved-edges')).toHaveCount(0);
 });
+
+test('curves: a curved path of a set width', async ({ page }) => {
+  const click = async (x: number, y: number) => page.mouse.click(...(await at(page, ...P(x, y))));
+  await page.keyboard.press('Shift+V');
+  await page.getByRole('button', { name: 'Path or driveway' }).click();
+  await expect(page.getByLabel('Width')).toBeVisible();
+  await page.getByRole('button', { name: 'Arc: 3 points' }).click();
+  await click(2, 10);
+  await click(10, 16);
+  await click(20, 12);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-type="wall"]')).toHaveCount(0);
+  await expect(page.locator('[data-type="block"]')).toHaveCount(1);
+  await page.keyboard.press('Space');
+  await click(10, 16);
+  await expect(page.getByText('Selected: path')).toBeVisible();
+});

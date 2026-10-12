@@ -550,7 +550,7 @@ function itemOutline(el: PlanElement): Point[] | null {
     case 'stair':
       return elementOutline(el);
     case 'block':
-      return el.heightMm > 0 ? el.points : null;
+      return el.heightMm > 0 && !el.path ? el.points : null;
     default:
       return null;
   }
@@ -571,7 +571,10 @@ function sideRows(doc: PlanDoc, plot: Plot, len: (mm: number) => string, clause:
   const outline = outlinePoints(plot);
   const items: { id: Id; pts: Point[] }[] = [];
   for (const el of doc.elements) {
-    if (el.hidden || !((el.type === 'wall' && el.kind !== 'boundary') || (el.type === 'block' && el.heightMm > 0)))
+    if (
+      el.hidden ||
+      !((el.type === 'wall' && el.kind !== 'boundary') || (el.type === 'block' && el.heightMm > 0 && !el.path))
+    )
       continue;
     const pts = itemOutline(el);
     if (pts && pts.some((p) => pointInPolygon(p, outline))) items.push({ id: el.id, pts });
@@ -610,7 +613,7 @@ function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: number)
     const base = levelBaseM(doc, levelOf(el), wallHeightMm) * 1000 + (el.elevMm ?? 0);
     if (el.type === 'wall' && el.kind !== 'boundary') top = Math.max(top, base + (el.heightMm ?? wallHeightMm));
     if (el.type === 'slab') top = Math.max(top, base + wallHeightMm + el.thickness * MM_PER_UNIT);
-    if (el.type === 'block' && el.heightMm > 0) top = Math.max(top, base + el.heightMm);
+    if (el.type === 'block' && el.heightMm > 0 && !el.path) top = Math.max(top, base + el.heightMm);
     // A pitched roof to its ridge.
     if (el.type === 'roof')
       top = Math.max(

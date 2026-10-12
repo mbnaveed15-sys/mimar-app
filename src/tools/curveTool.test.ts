@@ -10,7 +10,8 @@ import { mirrorItems, scaleItems } from '../lib/modify';
 import { planToDxf } from '../lib/exportDxf';
 import { faceOf, pushPull } from '../lib/pushPull';
 import { infer } from '../lib/inference';
-import type { PlanDoc, SketchLine, Wall } from '../types';
+import type { Block, PlanDoc, SketchLine, Wall } from '../types';
+import { polygonArea } from '../rooms';
 import { roomAreaSqMm } from '../rooms';
 
 function setup() {
@@ -181,6 +182,39 @@ describe('the Curve tool', () => {
     s().linesToWalls();
     expect(walls()).toHaveLength(1);
     expect(projectOnWall(walls()[0], { x: 200, y: -100 }).dist).toBeLessThan(0.01);
+  });
+});
+
+describe('paths and driveways', () => {
+  const paths = (s: ReturnType<typeof setup>['s']) =>
+    s().doc.elements.filter((el): el is Block => el.type === 'block' && !!el.path);
+
+  it('makes a paved path of the set width along an arc', () => {
+    const { s, click, walls } = setup();
+    s().setSite({ curveMode: 'arc3', curveMake: 'path', pathWidthMm: 1219.2 });
+    click(0, 0);
+    click(200, -100);
+    click(400, 0);
+    expect(walls()).toHaveLength(0);
+    const [path] = paths(s);
+    expect(path.heightMm).toBeGreaterThan(0);
+    expect(path.material).toBe('mat_concrete');
+    // Its area is its length along the middle times its width.
+    const arc = { x1: 0, y1: 0, x2: 400, y2: 0, bow: 100 };
+    expect(polygonArea(path.points) / (runLength(arc) * 121.92)).toBeCloseTo(1, 2);
+    // It is paving, not building: no setback or plan check counts it.
+    expect(normaliseDoc(JSON.parse(JSON.stringify(s().doc))).elements[0]).toMatchObject({ path: true });
+  });
+
+  it('makes a ring round a circle, open in the middle', () => {
+    const { store, s, click } = setup();
+    s().setSite({ curveMode: 'circle', curveMake: 'path', pathWidthMm: 3048 });
+    click(0, 0);
+    expect(applyMeasure(store, `20'`)).toBe(true);
+    expect(s().doc.rooms).toHaveLength(0);
+    const [ring] = paths(s);
+    // 2π × 20' round the middle, 10' wide.
+    expect(polygonArea(ring.points) / (2 * Math.PI * 609.6 * 304.8)).toBeCloseTo(1, 2);
   });
 });
 

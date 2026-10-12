@@ -369,6 +369,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
         heightMm: inRange(raw.heightMm, 0, 30000) ? raw.heightMm : 0,
         shape,
         slabId: idOf(raw.slabId),
+        ...(raw.path === true && { path: true }),
       };
     }
     case 'plot': {

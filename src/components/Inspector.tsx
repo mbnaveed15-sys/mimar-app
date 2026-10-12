@@ -66,6 +66,7 @@ const CONTEXT_ROAD_MM = 6000;
 /** What to call a selected item. */
 function itemName(el: PlanElement): string {
   if (el.type === 'furniture' && el.kind) return FURNITURE_CATALOG[el.kind].name;
+  if (el.type === 'block' && el.path) return 'path';
   if (el.type === 'block')
     return el.heightMm > 0 ? `block (${SHAPE_NAMES[el.shape]})` : `${SHAPE_NAMES[el.shape]} shape`;
   if (el.type === 'window' && el.flat)
@@ -497,11 +498,13 @@ export function Inspector() {
                   onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 30000) })}
                 />
                 <div className="text-muted">
-                  {el.heightMm > 0
-                    ? 'Push/Pull (P) its top or sides in 3D to change its size.'
-                    : el.slabId
-                      ? 'A flat shape on a slab: pull it up into a block, or push it down through the slab for a void.'
-                      : 'A flat shape: pull it up with Push/Pull (P) in 3D, or give it a height here.'}
+                  {el.path
+                    ? 'Paving on the ground: the plan check leaves it out, so it can run through the setbacks.'
+                    : el.heightMm > 0
+                      ? 'Push/Pull (P) its top or sides in 3D to change its size.'
+                      : el.slabId
+                        ? 'A flat shape on a slab: pull it up into a block, or push it down through the slab for a void.'
+                        : 'A flat shape: pull it up with Push/Pull (P) in 3D, or give it a height here.'}
                 </div>
               </>
             )}

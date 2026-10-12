@@ -60,7 +60,7 @@ import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
 import { CURTAIN_MM, isBuildingWall } from '../walls';
 import { wallPath, type WallLine } from '../lib/arc';
-import { roundedRect, type CurveMode } from '../lib/curves';
+import { pathOutline, roundedRect, type CurveMode } from '../lib/curves';
 import { groundOf, roundLevel } from '../lib/terrain/ground';
 import type { Built } from '../lib/layoutBuild';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
@@ -131,7 +131,9 @@ export interface SiteSpec {
   wallArc: boolean;
   /** How the Curve tool draws, and whether it makes walls or layout lines. */
   curveMode: CurveMode;
-  curveMake: 'wall' | 'line';
+  curveMake: 'wall' | 'line' | 'path';
+  /** Width of a path or driveway made with the Curve tool, mm. */
+  pathWidthMm: number;
   /** The Rectangle tool rounds its corners to this radius (mm); 0 for square corners. */
   rectRadiusMm: number;
   /** Door tool places a door or a gate. */
@@ -167,6 +169,9 @@ export interface SiteSpec {
 }
 
 /** Heights of boundary walls (7') and parapets (3'). */
+/** A path or driveway made with the Curve tool: 4' wide, paving 3" thick, standing on the ground. */
+export const PATH_WIDTH_MM = 1219.2;
+export const PATH_HEIGHT_MM = 76.2;
 export const KIND_HEIGHT_MM = { boundary: 2133.6, parapet: 914.4, retaining: 3048 + 152.4 } as const;
 /** The height a new wall of this type starts at, or undefined for the floor's own wall height. */
 export const kindHeightMm = (kind?: WallKind): number | undefined =>
@@ -182,6 +187,7 @@ export const DEFAULT_SITE: SiteSpec = {
   wallArc: false,
   curveMode: 'arc3',
   curveMake: 'wall',
+  pathWidthMm: PATH_WIDTH_MM,
   rectRadiusMm: 0,
   gate: false,
   gateWidthMm: 3048,
@@ -1649,7 +1655,26 @@ export function createPlannerStore(
       addCurve: (pieces, inside) => {
         const kept = pieces.filter((p) => Math.hypot(p.x2 - p.x1, p.y2 - p.y1) > MIN_WALL_PX);
         if (!kept.length) return;
-        const asLines = get().site.curveMake === 'line';
+        const { curveMake, pathWidthMm } = get().site;
+        if (curveMake === 'path') {
+          // A paved path of the set width along the curve, on the ground.
+          const points = pathOutline(kept, pathWidthMm / MM_PER_UNIT / 2);
+          if (points.length < 3) return;
+          const concrete = get().doc.materials.some((m) => m.id === 'mat_concrete');
+          const block: Block = {
+            id: newId(),
+            type: 'block',
+            points,
+            heightMm: PATH_HEIGHT_MM,
+            shape: 'polygon',
+            path: true,
+            ...(concrete && { material: 'mat_concrete' }),
+          };
+          updateElements((els) => [...els, onActive(block)]);
+          get().select(null);
+          return;
+        }
+        const asLines = curveMake === 'line';
         get().beginBatch();
         for (const p of kept) {
           const a = { x: p.x1, y: p.y1 };

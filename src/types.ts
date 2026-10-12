@@ -331,6 +331,8 @@ export interface Block extends Grouped {
   shape: ShapeKind;
   /** Drawn on top of this slab (its height above floor then counts from the slab's top). */
   slabId?: Id;
+  /** A paved path or driveway: paving on the ground, not part of the building (the plan check leaves it out). */
+  path?: boolean;
   material?: Id;
 }
 
