@@ -19,6 +19,7 @@ import {
   type Stair,
 } from '../types';
 import { roomAreaSqMm } from '../rooms';
+import { groundIndex } from './levels';
 import { MM_PER_UNIT } from './scale';
 import type { Hint } from './planHints';
 import type { CheckRow } from './planCheck';
@@ -184,7 +185,7 @@ export function buildingUseHints(
         id: `use-exits-${level.id}`,
         kind: 'use',
         text: on(
-          `${level.name} holds ${about}: it needs ${need} ${ground ? 'exits to outside' : 'stairs down'} (it has ${exits.length}), as far apart as you can.`,
+          `${level.name} holds ${about}: it needs ${need} ${ground ? (need === 1 ? 'exit to outside' : 'exits to outside') : need === 1 ? 'stair down' : 'stairs down'} (it has ${exits.length}), as far apart as you can.`,
         ),
         ids: ground ? exitDoors.map((d) => d.id) : floorStairs.map((s) => s.id),
       });
@@ -290,7 +291,7 @@ export function buildingUseHints(
     });
   else if (!wcs)
     hints.push({
-      id: 'use-wcs',
+      id: 'use-wcs-none',
       kind: 'use',
       text: `Put WCs in the toilets (Furniture › Toilets) to check them: about ${total} people need ${needWcs}.`,
       ids: toilets.map((r) => r.id),
@@ -330,8 +331,7 @@ export function buildingUseHints(
       text: `The entrance is ${len(doc.plinthMm)} above the ground: add a ramp (Stairs, Ramp shape) for wheelchair users.`,
       ids: [],
     });
-  const upper = floors.some((f) => f.index > 0 && !f.level.basement && f.rooms.some((r) => occupantsOf(r, use) > 0));
-  if (upper && use !== 'mosque' && !allRooms.some((r) => LIFT.test(r.name)))
+  if (needsLift(doc, use) && !allRooms.some((r) => LIFT.test(r.name)))
     hints.push({
       id: 'use-lift',
       kind: 'use',
@@ -339,6 +339,29 @@ export function buildingUseHints(
       ids: [],
     });
   return hints;
+}
+
+/** People use an upper floor (not a basement), so a lift is wanted (a mosque's upper hall aside). */
+function needsLift(doc: PlanDoc, use: BuildingUse): boolean {
+  if (use === 'mosque') return false;
+  const upper = new Set(doc.levels.filter((l, i) => i > groundIndex(doc) && !l.basement).map((l) => l.id));
+  return doc.rooms.some((r) => !r.hidden && upper.has(levelOf(r)) && occupantsOf(r, use) > 0);
+}
+
+/** Hints that ask for something to be drawn before it can be checked: their rows are to check, not failed. */
+const TO_DRAW = new Set(['use-wcs-none']);
+
+/**
+ * Which rows apply to this building at all: stairs only with a stair drawn, a ramp only with a
+ * raised entrance, a lift only with people upstairs. The others say why they aren't needed.
+ */
+export function rowsNotNeeded(doc: PlanDoc, use: BuildingUse): Record<string, string | null> {
+  const stairs = doc.elements.some((el) => el.type === 'stair' && !el.hidden && el.shape !== 'ramp');
+  return {
+    'use-stairs': stairs ? null : 'Not needed: no stairs drawn',
+    'use-ramp': doc.plinthMm > 0 ? null : 'Not needed: the entrance is at ground level',
+    'use-lift': needsLift(doc, use) ? null : 'Not needed: nobody uses an upper floor',
+  };
 }
 
 /** How many people the whole building holds, by its rooms' names and sizes. */
@@ -417,7 +440,11 @@ const USE_ROWS: { id: string; label: string; prefixes: string[]; required: strin
  * The building-use hints as plan check rows: one per kind, met when no hint of that kind is given.
  * With no named rooms there are no people to count, and one row says so.
  */
-export function buildingUseRows(hints: Hint[], people: number): CheckRow[] {
+export function buildingUseRows(
+  hints: Hint[],
+  people: number,
+  notNeeded: Record<string, string | null> = {},
+): CheckRow[] {
   if (!people)
     return [
       {
@@ -431,12 +458,13 @@ export function buildingUseRows(hints: Hint[], people: number): CheckRow[] {
     ];
   return USE_ROWS.map((row) => {
     const found = hints.filter((h) => row.prefixes.some((p) => h.id.startsWith(p)));
+    const skip = notNeeded[row.id];
     return {
       id: row.id,
       label: row.label,
       required: row.required,
-      actual: found.length ? found.map((h) => h.text).join(' ') : `Met, for about ${people} people`,
-      status: found.length ? 'fail' : 'ok',
+      actual: found.length ? found.map((h) => h.text).join(' ') : (skip ?? `Met, for about ${people} people`),
+      status: !found.length ? 'ok' : found.every((h) => TO_DRAW.has(h.id)) ? 'check' : 'fail',
       clause: row.clause,
       ids: [...new Set(found.flatMap((h) => h.ids))],
     };

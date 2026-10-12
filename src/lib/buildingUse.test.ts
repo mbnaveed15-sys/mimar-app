@@ -203,4 +203,15 @@ describe('more building uses, and the use checked as plan check rows', () => {
     const check = fullCheck(doc, { wallHeightMm: 3000, units: 'metric' })!;
     expect(check.rows.some((r) => r.id === 'use-wcs')).toBe(true);
   });
+
+  it('asks for WCs to be placed rather than failing, and says which rows are not needed (1.43.1)', () => {
+    const doc = building(box(10, 10), [room('o', 'Office', 0, 0, 7, 10), room('t', 'Toilet', 7, 0, 3, 3)]);
+    const rows = fullCheck(doc, { wallHeightMm: 3000, units: 'metric' })!.rows;
+    const row = (id: string) => rows.find((r) => r.id === id)!;
+    expect(row('use-wcs').status).toBe('check');
+    expect(row('use-stairs').actual).toMatch(/^Not needed/);
+    expect(row('use-ramp').actual).toMatch(/^Not needed/);
+    expect(row('use-lift').actual).toMatch(/^Not needed/);
+    expect(row('use-exits').actual).toContain('needs 1 exit to outside');
+  });
 });

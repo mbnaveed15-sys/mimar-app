@@ -1,4 +1,4 @@
-import { findElementNear } from '../geometry';
+import { findElementNear, translateElement } from '../geometry';
 import { snapAllowed } from '../lib/checks';
 import { copyOpeningTo, loneOpenings, slideOpening } from '../store/openingAt';
 import { newId } from '../lib/ids';
@@ -178,6 +178,49 @@ export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreI
     allow,
     points: allow('item-corner') || allow('midpoint') ? itemPoints(s, elements, ignoreIds, previewing) : [],
   });
+}
+
+/** Snaps that suit a dragged item's corner: not a wall's centre line, nor lining up with far points. */
+const CORNER_SNAPS = new Set<Inference['kind']>([
+  'endpoint',
+  'corner',
+  'item-corner',
+  'midpoint',
+  'on-face',
+  'on-line',
+  'intersection',
+  'building-line',
+]);
+
+/** How many of a dragged item's corners (the ones nearest the pointer) are tried. */
+const MAX_DRAG_CORNERS = 4;
+
+/**
+ * Snap an item (furniture, a slab, a column…) dragged by `dx, dy` by its corners: of the corners
+ * nearest the pointer, the one needing the smallest nudge goes to a wall face, a corner or another
+ * item's corner, so an edge lands where it should (its centre never snaps onto a wall). Returns that
+ * nudge, or null when no corner is near anything.
+ */
+export function cornerSnap(
+  s: PlannerState,
+  orig: PlanElement,
+  dx: number,
+  dy: number,
+  raw: Point,
+): { shift: Point; inf: Inference } | null {
+  const away = (p: Point, q: Point) => Math.hypot(p.x - q.x, p.y - q.y);
+  const corners = snapPoints([translateElement(orig, dx, dy)])
+    .filter((p) => p.kind === 'item-corner')
+    .map((p) => p.point)
+    .sort((a, b) => away(a, raw) - away(b, raw))
+    .slice(0, MAX_DRAG_CORNERS);
+  let best: { corner: Point; inf: Inference } | null = null;
+  for (const corner of corners) {
+    const inf = inferAt(s, corner, null, new Set([orig.id]));
+    if (CORNER_SNAPS.has(inf.kind) && (!best || away(inf.point, corner) < away(best.inf.point, best.corner)))
+      best = { corner, inf };
+  }
+  return best && { shift: { x: best.inf.point.x - best.corner.x, y: best.inf.point.y - best.corner.y }, inf: best.inf };
 }
 
 /** Where the active step is drawing from, for snapping and locks. */

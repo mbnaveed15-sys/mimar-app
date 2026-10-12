@@ -37,7 +37,7 @@ driveways (1.42, all in one release as the owner asked); furniture for every kin
 checks for every building type and locality, more building uses, left and right setbacks, and snapping to every
 corner with more grips (1.43, one release).
 
-Planned next (plan each with the owner first): nothing is booked after 1.43. Left from 1.43: the authorities'
+Planned next (plan each with the owner first): nothing is booked after 1.43.1. Left from the 1.43 bug report (low, 3D): round parts of library items are square blocks in 3D; 3D corner snapping skips corners more than 2% further away than the face under the pointer (far corners at shallow angles) and takes the joins along curved walls and round columns as corners. Left from 1.43: the authorities'
 non-residential (commercial, institutional) figures, needed from the owner's official schedules; room corners are
 where walls meet (drag a wall end), not their own grips; stairs and furniture have no corner grips (furniture keeps
 its resize grip); grips are 2D only (3D edits by Move, Push/Pull and the panel); the older library items keep their

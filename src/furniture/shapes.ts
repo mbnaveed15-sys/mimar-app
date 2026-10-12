@@ -308,7 +308,8 @@ export const SHAPES: Partial<Record<FurnitureKind, ShapePart[]>> = {
     { box: [0, 0.2, 0.02, 0.6], z: [0.85, 0.04], color: METAL, keep: true },
     { box: [0.05, 0, 0.5, 0.02], z: [0.85, 0.04], color: METAL, keep: true },
     { box: [0.68, 0, 0.27, 0.3], z: [0.75, 0.15], color: WHITE, round: 0.05 },
-    { disc: [0.6, 0.55, 0.45], dash: true },
+    // ADA 304.3.1: a turning space 1,500 mm across, inside the stall.
+    { disc: [0.5, 0.5, 0.5], dash: true },
   ],
   'basin-row': [
     { box: [0, 0, 1, 0.1], z: [0, 0.8], color: COUNTER, plan: false },

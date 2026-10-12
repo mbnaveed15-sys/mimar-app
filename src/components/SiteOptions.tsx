@@ -159,7 +159,12 @@ export function SiteOptions() {
                 mm={side === 'side2' ? (site.setbacks.side2 ?? site.setbacks.sides) : site.setbacks[side]}
                 units={units}
                 min={0}
-                onCommit={(v) => setSite({ setbacks: { ...site.setbacks, [side]: v } })}
+                // The right side keeps its figure when the left one changes (until 1.43.1 it followed it).
+                onCommit={(v) =>
+                  setSite({
+                    setbacks: { ...site.setbacks, side2: site.setbacks.side2 ?? site.setbacks.sides, [side]: v },
+                  })
+                }
               />
             ))}
           </div>

@@ -42,12 +42,20 @@ export interface ChecksPrefs {
 
 export const DEFAULT_CHECKS: ChecksPrefs = { on: true, off: [] };
 
-const PLOT_ROWS = ['setbacks', 'setback-items', 'boundary', 'corner-plot', 'projections'];
+const PLOT_ROWS = [
+  'setbacks',
+  'setback-items',
+  'boundary',
+  'corner-plot',
+  'projections',
+  'local-bylaws',
+  'building-bylaws',
+];
 
 /** The kind of check a plan check row is. */
 export function rowCategory(row: Pick<CheckRow, 'id'>): CheckCategory {
   const id = row.id;
-  if (PLOT_ROWS.includes(id)) return 'plot';
+  if (PLOT_ROWS.includes(id) || id.startsWith('setback-side-')) return 'plot';
   if (id === 'rooms') return 'rooms';
   if (id.startsWith('basement')) return 'basement';
   if (id.startsWith('use-')) return 'use';

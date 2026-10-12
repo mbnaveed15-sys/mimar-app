@@ -38,6 +38,12 @@ describe('the Checks button', () => {
   it('sorts every check row and hint into a kind', () => {
     expect(check.rows.map(rowCategory)).toEqual(['plot', 'size', 'rooms', 'basement']);
     expect(hints.map(hintCategory)).toEqual(['zones', 'openings', 'rooms', 'daylight', 'layout']);
+    // Each side's own setback row and the bylaw notes go with the plot (1.43.1).
+    expect(['setback-side-0', 'local-bylaws', 'building-bylaws'].map((id) => rowCategory({ id }))).toEqual([
+      'plot',
+      'plot',
+      'plot',
+    ]);
   });
 
   it('leaves paused kinds out, and everything when all checks are off', () => {
