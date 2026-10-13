@@ -11,6 +11,7 @@ import { snap } from '../geometry';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
 import type { Furniture, Point, Wall } from '../types';
 import { cornerSnap } from './controller';
+import { kindPlaced, PLACING_TOOLS, serviceOf } from '../lib/services';
 
 interface Store {
   getState: () => PlannerState;
@@ -23,11 +24,12 @@ function wallsShown(s: PlannerState): Wall[] {
 
 /** The item the Furniture tool places, centred at `p` and turned as set. */
 export function furnitureAt(s: PlannerState, p: Point): Furniture {
-  const size = FURNITURE_CATALOG[s.furnitureKind];
+  const kind = kindPlaced(s);
+  const size = FURNITURE_CATALOG[kind];
   return {
     id: 'furniture-ghost',
     type: 'furniture',
-    kind: s.furnitureKind,
+    kind,
     x: p.x,
     y: p.y,
     w: size.w / MM_PER_UNIT,
@@ -46,7 +48,8 @@ export function placeFurniture(s: PlannerState, item: Furniture, raw: Point): Fu
     s.setInference(null);
     return { ...item, x: raw.x, y: raw.y };
   }
-  const walled = snapFurniture(s, item, raw, s.furnitureAngle);
+  // Lights, fans and detectors hang from the ceiling: they don't back onto walls.
+  const walled = serviceOf(item)?.mount === 'ceiling' ? null : snapFurniture(s, item, raw, s.furnitureAngle);
   if (walled) {
     s.setInference(null);
     return walled;
@@ -108,7 +111,7 @@ export function furniturePress(store: Store, raw: Point) {
 /** Turn the item the Furniture tool places by `deg` (V: 90°). False when that tool isn't in use. */
 export function turnFurniture(store: Store, deg = 90): boolean {
   const s = store.getState();
-  if (s.tool !== 'furniture') return false;
+  if (!PLACING_TOOLS.includes(s.tool)) return false;
   s.setFurnitureAngle(s.furnitureAngle + deg);
   const g = s.furnitureGhost;
   // Show the turn at once, without waiting for the pointer to move.
@@ -126,6 +129,9 @@ export function furnitureMeasure(store: Store, m: Measure): string | null {
 export function furnitureReadout(s: PlannerState): { label: string; value: string } {
   return { label: 'Angle', value: `${Math.round(s.furnitureAngle)}°` };
 }
+
+export const SERVICES_HINT =
+  'Click to place the item. Switches, sockets and other wall items turn their back to the nearest wall; lights and fans go anywhere. Then join them up with the Wire or pipe tool (Shift+U).';
 
 export const FURNITURE_HINT =
   'Click to place the item. Near a wall it turns its back to it and sits flush; V turns it 90°, or type an angle. Hold Alt to place it freely.';

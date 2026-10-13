@@ -12,6 +12,7 @@ import { usePlanner } from '../store/plannerStore';
 import { TOOL_INFO } from '../tools/toolInfo';
 import { ComponentsPanel } from './ComponentsPanel';
 import { FurnitureLibrary } from './FurnitureLibrary';
+import { RunOptions } from './RunOptions';
 import { GridSettings } from './GridSettings';
 import { Inspector } from './Inspector';
 import { LayersPanel } from './LayersPanel';
@@ -200,6 +201,8 @@ function ToolOptions() {
   if (tool === 'dimension') return <DimensionPicker />;
   if (tool === 'plot' || tool === 'stairs' || tool === 'door' || tool === 'window') return <SiteOptions />;
   if (tool === 'furniture') return <FurnitureLibrary />;
+  if (tool === 'services') return <FurnitureLibrary services key="services" />;
+  if (tool === 'run') return <RunOptions />;
   if (tool === 'column' || tool === 'beam' || tool === 'slab') return <StructureOptions />;
   if (tool === 'roof') return <RoofToolOptions />;
   if (tool === 'scale') return <ScaleOptions />;

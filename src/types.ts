@@ -392,6 +392,27 @@ export interface SketchLine extends Grouped {
   material?: Id;
 }
 
+/** What a service run carries: a circuit (wiring) or a pipe. */
+export type RunSystem = 'lighting' | 'power' | 'ac' | 'data' | 'fire' | 'cold' | 'hot' | 'drain' | 'rain' | 'gas';
+
+/**
+ * A wire or pipe run on a services drawing: a line through its points, each end joined to the item it was
+ * drawn from or to (`from`, `to`, a Services item or a fixture), so it follows when that item moves.
+ */
+export interface ServiceRun extends Grouped {
+  id: Id;
+  type: 'run';
+  system: RunSystem;
+  points: Point[];
+  from?: Id;
+  to?: Id;
+  /** Pipe size or wire size, mm (the system's usual one when missing). */
+  sizeMm?: number;
+  /** A wire drawn straight (wires are drawn curved, as on electrical drawings, unless this is set). */
+  straight?: boolean;
+  material?: Id;
+}
+
 /** The outlines the Shape tool draws. */
 export type ShapeKind = 'rect' | 'circle' | 'polygon' | 'arch';
 
@@ -542,10 +563,11 @@ export type PlanElement =
   | Pad
   | ContextItem
   | Roof
-  | Dimension;
+  | Dimension
+  | ServiceRun;
 
 /** Items outlined (or, for contours and roads, drawn) by a list of points. */
-export type PointsElement = Slab | Plot | Block | Contour | Pad | ContextItem | Roof;
+export type PointsElement = Slab | Plot | Block | Contour | Pad | ContextItem | Roof | ServiceRun;
 
 /** Items outlined (or, for contours and roads, drawn) by a list of points. */
 export const hasPoints = (el: PlanElement): el is PointsElement =>
@@ -555,7 +577,8 @@ export const hasPoints = (el: PlanElement): el is PointsElement =>
   el.type === 'contour' ||
   el.type === 'pad' ||
   el.type === 'context' ||
-  el.type === 'roof';
+  el.type === 'roof' ||
+  el.type === 'run';
 
 /** Ground items: spot levels, contours, finished-ground pads and the surroundings (always on the ground floor). */
 export const isSiteItem = (el: PlanElement): el is SpotLevel | Contour | Pad | ContextItem =>
@@ -656,6 +679,8 @@ export interface PlanDoc {
   project?: ProjectSettings;
   /** The drawing sheets printed to PDF; the suggested set (worked out from the plan) when missing. */
   sheets?: Sheet[];
+  /** Views saved by name (part of a floor plan, or a 3D camera), to put on sheets. */
+  views?: SavedView[];
   /** How the ground is shown and finished (flat at ±0 and levelled there when missing). */
   ground?: GroundSettings;
   /** Where the site is on the map, for the surroundings and satellite levels. */
@@ -709,7 +734,24 @@ export type DrawingRef =
   | { kind: 'plan'; levelId: Id }
   | { kind: 'section'; id: Id }
   | { kind: 'elevation'; side: ElevationSide }
-  | { kind: 'view3d'; style: View3dStyle };
+  | { kind: 'view3d'; style: View3dStyle }
+  /** A saved view; a 3D one drawn in lines or as a coloured picture. */
+  | { kind: 'view'; id: Id; style?: View3dStyle };
+
+/** The 3D camera of a saved view: it circles `target` (metres) at `distance`, turned and tilted (radians). */
+export interface SavedCamera {
+  target: [number, number, number];
+  distance: number;
+  azimuth: number;
+  elevation: number;
+  /** Parallel projection (no perspective). */
+  parallel?: boolean;
+}
+
+/** A view saved by name: a part of a floor plan (plan units), or the 3D camera. */
+export type SavedView =
+  | { id: Id; name: string; kind: 'plan'; levelId: Id; area: Bounds }
+  | { id: Id; name: string; kind: '3d'; camera: SavedCamera };
 
 /** A 3D view on a sheet: an isometric line drawing, or a coloured picture with the materials. */
 export type View3dStyle = 'iso' | 'picture';
@@ -727,6 +769,10 @@ export interface Sheet {
   id: Id;
   name: string;
   paper: PaperSize;
+  /** Turned upright (the longer side down the page); sheets are landscape otherwise. */
+  portrait?: boolean;
+  /** A custom paper's size, mm across and down (when `paper` is 'custom'). */
+  customMm?: { w: number; h: number };
   items: SheetItem[];
 }
 
@@ -808,6 +854,8 @@ export type Tool =
   | 'skylight'
   | 'dormer'
   | 'north'
+  | 'services'
+  | 'run'
   | 'dimension';
 
 /** Every tool, in tool-rail order. */
@@ -832,6 +880,8 @@ export const TOOLS: Tool[] = [
   'door',
   'window',
   'furniture',
+  'services',
+  'run',
   'shape',
   'pushpull',
   'section',
@@ -896,6 +946,8 @@ export type Draft =
   /** A section line: its two ends, then (once both are down) the side it looks to, from the pointer. */
   | { type: 'section'; x1: number; y1: number; x2: number; y2: number; placed: boolean; flip: boolean }
   | { type: 'slab'; x1: number; y1: number; x2: number; y2: number }
+  /** A service run drawn point by point: its points so far, and where the pointer is. */
+  | { type: 'run'; system: RunSystem; points: Point[]; cursor: Point; from?: Id }
   /** The north arrow: where it stands, then the pointer turns it (north points at the pointer). */
   | { type: 'north'; at: Point; cursor: Point }
   | { type: 'plot'; x1: number; y1: number; x2: number; y2: number }
@@ -1059,7 +1111,30 @@ export const MODIFY_TOOLS: Tool[] = [
   'scale',
 ];
 
-export type PaperSize = 'A4' | 'A3' | 'A1';
+/** A paper size (see lib/paper.ts): ISO A and B, US architectural, US (ANSI), or custom. */
+export type PaperSize =
+  | 'A0'
+  | 'A1'
+  | 'A2'
+  | 'A3'
+  | 'A4'
+  | 'B1'
+  | 'B2'
+  | 'B3'
+  | 'B4'
+  | 'ARCH A'
+  | 'ARCH B'
+  | 'ARCH C'
+  | 'ARCH D'
+  | 'ARCH E1'
+  | 'ARCH E'
+  | 'Letter'
+  | 'Legal'
+  | 'Tabloid'
+  | 'ANSI C'
+  | 'ANSI D'
+  | 'ANSI E'
+  | 'custom';
 
 /** Size of one marla in square feet: 225 (LDA and most societies) or 272.25 (traditional). */
 export type MarlaSqFt = 225 | 272.25;

@@ -1,3 +1,4 @@
+import { isService } from '../lib/services';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { normaliseDoc } from '../lib/storage';
@@ -17,7 +18,8 @@ describe('furniture library', () => {
   it('has realistic sizes (between 300 mm and 5 m)', () => {
     for (const kind of FURNITURE_KINDS) {
       const { w, d } = FURNITURE_CATALOG[kind];
-      expect(w, kind).toBeGreaterThanOrEqual(300);
+      // Services points (switches, traps…) are small; their footprint is the symbol's.
+      expect(w, kind).toBeGreaterThanOrEqual(isService(kind) ? 100 : 300);
       expect(d, kind).toBeLessThanOrEqual(5000);
     }
     expect(FURNITURE_CATEGORIES.slice(0, 6)).toEqual([
@@ -69,7 +71,8 @@ describe('furniture library', () => {
     );
     expect(svg).toContain(`data-symbol="${kind}"`);
     expect(svg).not.toContain('NaN');
-    expect((svg.match(/<(rect|line|circle|ellipse|path)/g) ?? []).length).toBeGreaterThan(1);
+    // Services are drawn as standard symbols: one ring or box and a letter can be the whole of one.
+    expect((svg.match(/<(rect|line|circle|ellipse|path|polygon|polyline|text)/g) ?? []).length).toBeGreaterThan(1);
   });
 
   it('keeps the furniture type when loading, and drops unknown types', () => {

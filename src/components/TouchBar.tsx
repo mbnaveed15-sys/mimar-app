@@ -35,7 +35,7 @@ export function TouchBar({ onProperties }: { onProperties: () => void }) {
   const drawing = usePlanner((s) => !!s.draft && s.draft.type !== 'opening');
   const opening = usePlanner((s) => OPENING_TOOLS.includes(s.tool));
   // Placing furniture: turn it before it goes down.
-  const placing = usePlanner((s) => s.tool === 'furniture');
+  const placing = usePlanner((s) => s.tool === 'furniture' || s.tool === 'services');
   const selected = usePlanner((s) => s.selectedIds.length > 0);
   const copyable = usePlanner(canCopy);
   const turnable = usePlanner(canTransform);

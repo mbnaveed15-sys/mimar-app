@@ -3,8 +3,21 @@ import { formatPitch, roofEaves, roofShape } from './roof/roof';
 import { dormerParts, skylightParts } from './roof/roofOpenings';
 import { bentSymbol, openingSymbol } from './openingKinds';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
+import { curvedRunPoints, runCurved, runSizeLabel, serviceOf, serviceTag, type ServiceTrade } from './services';
 import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
-import type { AreaIn, Dimension, DrawingStyle, MarlaSqFt, Opening, PlanDoc, Point, Room, Units, Wall } from '../types';
+import type {
+  AreaIn,
+  Dimension,
+  DrawingStyle,
+  MarlaSqFt,
+  Opening,
+  PlanDoc,
+  Point,
+  Room,
+  RunSystem,
+  Units,
+  Wall,
+} from '../types';
 import { dimLine } from './dimLine';
 import { DEFAULT_DIM_STYLE, DIM_TEXT_SCALE, dimStyleOf, endMark, type DimStyle } from './dimStyle';
 import { hatchOf, hatchSegments, surfaceHatchOf, type Hatch } from './hatch';
@@ -63,7 +76,45 @@ const LAYERS = {
   'A-WALL-PATT': { color: 8, ltype: 'CONTINUOUS' },
   'A-FLOR-PATT': { color: 9, ltype: 'CONTINUOUS' },
   'A-SECT-PATT': { color: 8, ltype: 'CONTINUOUS' },
+  // Services: points on one layer per trade, runs on one per system.
+  'E-DEVC': { color: 30, ltype: 'CONTINUOUS' },
+  'E-LITE': { color: 40, ltype: 'DASHED' },
+  'E-POWR': { color: 1, ltype: 'DASHED' },
+  'E-COMM': { color: 4, ltype: 'CONTINUOUS' },
+  'E-COMM-CABL': { color: 4, ltype: 'DASHED' },
+  'F-ALRM': { color: 240, ltype: 'CONTINUOUS' },
+  'F-ALRM-CABL': { color: 240, ltype: 'DASHED' },
+  'M-HVAC': { color: 6, ltype: 'CONTINUOUS' },
+  'P-FIXT': { color: 5, ltype: 'CONTINUOUS' },
+  'P-DOMW': { color: 5, ltype: 'CONTINUOUS' },
+  'P-DOMW-HOT': { color: 30, ltype: 'DASHED' },
+  'P-SANR': { color: 34, ltype: 'CONTINUOUS' },
+  'P-STRM': { color: 140, ltype: 'DASHED' },
+  'P-GAS': { color: 50, ltype: 'DASHED' },
 } as const;
+
+/** Each trade's layer for its points, and each system's for its runs. */
+const TRADE_LAYER: Record<ServiceTrade, Layer> = {
+  electrical: 'E-DEVC',
+  hvac: 'M-HVAC',
+  plumbing: 'P-FIXT',
+  drainage: 'P-SANR',
+  gas: 'P-GAS',
+  data: 'E-COMM',
+  fire: 'F-ALRM',
+};
+const RUN_LAYER: Record<RunSystem, Layer> = {
+  lighting: 'E-LITE',
+  power: 'E-POWR',
+  ac: 'E-POWR',
+  data: 'E-COMM-CABL',
+  fire: 'F-ALRM-CABL',
+  cold: 'P-DOMW',
+  hot: 'P-DOMW-HOT',
+  drain: 'P-SANR',
+  rain: 'P-STRM',
+  gas: 'P-GAS',
+};
 type Layer = keyof typeof LAYERS;
 
 export interface DxfOptions {
@@ -635,7 +686,14 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
 
   for (const el of doc.elements) {
     switch (el.type) {
-      case 'furniture':
+      case 'furniture': {
+        const service = serviceOf(el);
+        if (service) {
+          const layer = TRADE_LAYER[service.trade];
+          dxf.poly(layer, elementOutline(el));
+          dxf.text(layer, { x: el.x, y: el.y }, el.label ?? serviceTag(el.kind!), 0, TEXT_MM * 0.5);
+          break;
+        }
         if (!opts.showFurniture) break;
         dxf.poly('A-FURN', elementOutline(el));
         dxf.text(
@@ -646,6 +704,17 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
           TEXT_MM * 0.6,
         );
         break;
+      }
+      case 'run': {
+        const layer = RUN_LAYER[el.system];
+        dxf.poly(layer, runCurved(el) ? curvedRunPoints(el.points) : el.points, false);
+        const size = runSizeLabel(el);
+        if (size && el.points.length >= 2) {
+          const [a, b] = [el.points[0], el.points[1]];
+          dxf.text(layer, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, size, 0, TEXT_MM * 0.5);
+        }
+        break;
+      }
       case 'column':
         if (el.shape === 'round') dxf.circle('S-COLS', { x: el.x, y: el.y }, el.w / 2);
         else dxf.poly('S-COLS', elementOutline(el));

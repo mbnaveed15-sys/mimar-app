@@ -11,22 +11,17 @@ import {
   type DrawingStyle,
   type PaperSize,
   type PlanDoc,
+  type SavedCamera,
   type Sheet,
   type SheetItem,
   type SheetScale,
 } from '../../types';
 import { groundAt } from './hiddenLines';
+import { paperMm, paperName, type PaperSetting } from '../paper';
 import { hatchSegments } from '../hatch';
 import { DIM_TEXT_MM, dimStyleOf, endMark, type DimStyle } from '../dimStyle';
 import { formatLength } from '../units';
-import { drawingKey, drawingTitle, sideDrawingRefs, type SideDrawing } from './views';
-
-/** Landscape paper sizes in millimetres. */
-export const SHEET_PAPER: Record<PaperSize, { w: number; h: number }> = {
-  A4: { w: 297, h: 210 },
-  A3: { w: 420, h: 297 },
-  A1: { w: 841, h: 594 },
-};
+import { drawingKey, drawingTitle, savedView, sideDrawingRefs, type SideDrawing } from './views';
 
 /** The usual scales, offered in the scale lists; any other whole number can be typed. */
 export const SHEET_SCALES: SheetScale[] = [20, 25, 50, 75, 100, 125, 150, 200, 250, 500];
@@ -61,7 +56,7 @@ export type Prim =
       angle?: number;
     }
   /** A coloured 3D picture of the building (rendered when the sheet is shown or printed), filling the box. */
-  | { t: 'picture'; x: number; y: number; w: number; h: number }
+  | { t: 'picture'; x: number; y: number; w: number; h: number; camera?: SavedCamera }
   /** A floor plan, drawn by the plan renderer: `area` (plan units) fills the box. */
   | { t: 'plan'; levelId: string; x: number; y: number; w: number; h: number; area: Bounds; scale: number };
 
@@ -104,19 +99,45 @@ export function planArea(doc: PlanDoc, levelId: string): Bounds | null {
   return planBounds(els, doc.masks);
 }
 
+/**
+ * The floor and the part of it a plan drawing shows: a whole floor (with room round it for its
+ * dimensions, `pad` paper mm), or a saved 2D view's own area. Null for other drawings, or an empty floor.
+ */
+export function planOf(doc: PlanDoc, ref: DrawingRef): { levelId: string; area: Bounds; pad: number } | null {
+  if (ref.kind === 'plan') {
+    const area = planArea(doc, ref.levelId);
+    return area ? { levelId: ref.levelId, area, pad: PLAN_PAD } : null;
+  }
+  if (ref.kind === 'view') {
+    const v = savedView(doc, ref.id);
+    if (v?.kind !== 'plan' || !doc.levels.some((l) => l.id === v.levelId)) return null;
+    return { levelId: v.levelId, area: v.area, pad: 0 };
+  }
+  return null;
+}
+
+/** Whether a drawing is a coloured 3D picture (the building's, or a saved 3D view's). */
+export const isPicture = (ref: DrawingRef) => (ref.kind === 'view3d' || ref.kind === 'view') && ref.style === 'picture';
+
+/** The line drawing a 3D drawing takes the room of: a picture is as big as its lines would be. */
+export const linesOf = (ref: DrawingRef): DrawingRef =>
+  ref.kind === 'view3d' ? { kind: 'view3d', style: 'iso' } : ref.kind === 'view' ? { kind: 'view', id: ref.id } : ref;
+
 /** A drawing's size on paper at 1:scale (without its caption), or null when it can't be drawn. */
 function drawingSize(src: SheetSource, ref: DrawingRef, scale: number): { w: number; h: number } | null {
-  if (ref.kind === 'plan') {
-    const a = planArea(src.doc, ref.levelId);
-    if (!a) return null;
+  const plan = planOf(src.doc, ref);
+  if (plan) {
+    const a = plan.area;
     return {
-      w: ((a.maxX - a.minX) * MM_PER_UNIT) / scale + 2 * PLAN_PAD,
-      h: ((a.maxY - a.minY) * MM_PER_UNIT) / scale + 2 * PLAN_PAD,
+      w: ((a.maxX - a.minX) * MM_PER_UNIT) / scale + 2 * plan.pad,
+      h: ((a.maxY - a.minY) * MM_PER_UNIT) / scale + 2 * plan.pad,
     };
   }
+  if (ref.kind === 'plan') return null;
   // A 3D picture takes the isometric's room.
-  const d = src.side(ref.kind === 'view3d' ? { kind: 'view3d', style: 'iso' } : ref);
-  if (!d || (ref.kind === 'view3d' && !d.bounds)) return null;
+  const iso = ref.kind === 'view3d' || ref.kind === 'view';
+  const d = src.side(linesOf(ref));
+  if (!d || (iso && !d.bounds)) return null;
   const e = sideExtent(d);
   const room = dimRoom(d, src.doc.drawing);
   return {
@@ -189,8 +210,8 @@ function sideExtent(d: SideDrawing) {
 }
 
 /** The drawing area of a sheet: inside the frame, above the title block. */
-function drawingArea(paper: PaperSize) {
-  const p = SHEET_PAPER[paper];
+function drawingArea(paper: PaperSetting) {
+  const p = paperMm(paper);
   return { x: MARGIN + GAP, y: MARGIN + GAP, w: p.w - 2 * (MARGIN + GAP), h: p.h - 2 * MARGIN - TITLE_BLOCK - 2 * GAP };
 }
 
@@ -203,7 +224,7 @@ interface Placed {
 }
 
 /** Rows of drawings, left to right, each row centred; null when they don't fit the paper. */
-function pack(src: SheetSource, items: SheetItem[], paper: PaperSize): { placed: Placed[]; fits: boolean } {
+function pack(src: SheetSource, items: SheetItem[], paper: PaperSetting): { placed: Placed[]; fits: boolean } {
   const area = drawingArea(paper);
   const boxes = items
     .map((item) => ({ item, size: drawingSize(src, item.drawing, item.scale) }))
@@ -243,17 +264,18 @@ export interface SheetLayout {
 
 /** Lay out a sheet: frame, drawings with their names and scales, and the title block. */
 export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count: number): SheetLayout {
-  const paper = SHEET_PAPER[sheet.paper];
+  const paper = paperMm(sheet);
   const prims: Prim[] = [];
-  const { placed, fits } = pack(src, sheet.items, sheet.paper);
+  const { placed, fits } = pack(src, sheet.items, sheet);
   for (const p of placed) {
     const ref = p.item.drawing;
-    if (ref.kind === 'plan') {
-      const a = planArea(src.doc, ref.levelId)!;
-      const pad = (PLAN_PAD * p.item.scale) / MM_PER_UNIT;
+    const plan = planOf(src.doc, ref);
+    if (plan) {
+      const a = plan.area;
+      const pad = (plan.pad * p.item.scale) / MM_PER_UNIT;
       prims.push({
         t: 'plan',
-        levelId: ref.levelId,
+        levelId: plan.levelId,
         x: p.x,
         y: p.y,
         w: p.w,
@@ -261,16 +283,18 @@ export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count
         area: { minX: a.minX - pad, minY: a.minY - pad, maxX: a.maxX + pad, maxY: a.maxY + pad },
         scale: p.item.scale,
       });
-    } else if (ref.kind === 'view3d' && ref.style === 'picture') {
-      prims.push({ t: 'picture', x: p.x, y: p.y, w: p.w, h: p.h });
+    } else if (isPicture(ref)) {
+      const v = ref.kind === 'view' ? savedView(src.doc, ref.id) : null;
+      prims.push({ t: 'picture', x: p.x, y: p.y, w: p.w, h: p.h, ...(v?.kind === '3d' && { camera: v.camera }) });
     } else {
       const d = src.side(ref);
       if (d) prims.push(...sidePrims(d, p.item.scale, p.x, p.y, src.doc.drawing));
     }
-    caption(prims, drawingTitle(src.doc, ref) ?? '', ref.kind === 'view3d' ? null : p.item.scale, p.x, p.y + p.h, p.w);
+    const notToScale = ref.kind === 'view3d' || (ref.kind === 'view' && !plan);
+    caption(prims, drawingTitle(src.doc, ref) ?? '', notToScale ? null : p.item.scale, p.x, p.y + p.h, p.w);
   }
-  if (placed.some((p) => p.item.drawing.kind === 'plan')) {
-    const area = drawingArea(sheet.paper);
+  if (placed.some((p) => planOf(src.doc, p.item.drawing))) {
+    const area = drawingArea(sheet);
     prims.push(...northArrowPrims(area.x + area.w - 6, area.y + 8, src.doc.northDeg ?? 0));
   }
   prims.push(...frame(src, sheet, index, count));
@@ -423,7 +447,7 @@ function northArrowPrims(cx: number, cy: number, deg: number): Prim[] {
 
 /** The frame round the sheet and its title block along the bottom. */
 function frame(src: SheetSource, sheet: Sheet, index: number, count: number): Prim[] {
-  const p = SHEET_PAPER[sheet.paper];
+  const p = paperMm(sheet);
   const x0 = MARGIN;
   const x1 = p.w - MARGIN;
   const top = p.h - MARGIN - TITLE_BLOCK;
@@ -434,7 +458,7 @@ function frame(src: SheetSource, sheet: Sheet, index: number, count: number): Pr
     { label: 'Drawing', value: sheet.name, share: 3, big: true },
     {
       label: 'Scale',
-      value: scales.length === 1 ? `1:${scales[0]} on ${sheet.paper}` : `As shown, ${sheet.paper}`,
+      value: scales.length === 1 ? `1:${scales[0]} on ${paperName(sheet)}` : `As shown, ${paperName(sheet)}`,
       share: 1.4,
     },
     { label: 'Date', value: src.date, share: 1.4 },
@@ -470,13 +494,13 @@ function frame(src: SheetSource, sheet: Sheet, index: number, count: number): Pr
 
 /** Try the scales from most detailed to least, then bigger paper, until the drawings fit. */
 function fitting(src: SheetSource, refs: DrawingRef[]): { paper: PaperSize; scale: SheetScale } {
-  for (const paper of ['A3', 'A1'] as PaperSize[])
+  for (const paper of ['A3', 'A2', 'A1'] as PaperSize[])
     for (const scale of FIT_SCALES)
       if (
         pack(
           src,
           refs.map((drawing) => ({ drawing, scale })),
-          paper,
+          { paper },
         ).fits
       )
         return { paper, scale };

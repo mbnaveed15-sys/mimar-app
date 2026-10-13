@@ -1,4 +1,5 @@
 import { SHAPES } from '../furniture/shapes';
+import { runSolids, serviceSolid } from './services3d';
 import { centroid, fromFurnitureLocal, wallLength, wallParam } from '../geometry';
 import { patternSpanMm } from '../lib/patterns';
 import { MM_PER_UNIT } from '../lib/scale';
@@ -84,7 +85,7 @@ export interface Solid {
   id?: string;
   level?: string;
   /** What it is, for tests and for picking materials. */
-  role: 'wall' | 'glass' | 'door' | 'furniture' | 'column' | 'beam' | 'stair';
+  role: 'wall' | 'glass' | 'door' | 'furniture' | 'column' | 'beam' | 'stair' | 'service';
 }
 
 /**
@@ -1185,7 +1186,11 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       solids.push(...placed.map(from(door.id)));
     }
     for (const el of els) {
-      if (el.type === 'furniture' && options.showFurniture) {
+      // Services show whatever the furniture setting: they are part of the building.
+      const service = el.type === 'furniture' ? serviceSolid(el, wallTop, colorOf(el.material)) : null;
+      if (service) solids.push(from(el.id)(withFinish(el.material)(lift(service))));
+      if (el.type === 'run') solids.push(...runSolids(el).map(lift).map(raise(el)).map(from(el.id)));
+      if (el.type === 'furniture' && !service && options.showFurniture) {
         const tall = furnitureStretch(el);
         solids.push(
           ...furnitureSolids(el, colorOf(el.material))

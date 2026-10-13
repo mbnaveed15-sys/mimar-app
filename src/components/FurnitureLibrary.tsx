@@ -14,23 +14,25 @@ import { projectOf } from '../lib/project';
 import { formatLength } from '../lib/units';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import { turnFurniture } from '../tools/furnitureTool';
+import { kindPlaced } from '../lib/services';
 
 const RECENT_KEY = 'mimar.furniture.recent';
+const RECENT_SERVICES_KEY = 'mimar.services.recent';
 const RECENT_MAX = 6;
 
 /** The items last picked, newest first (none when the browser keeps nothing). */
-function readRecent(): FurnitureKind[] {
+function readRecent(key: string): FurnitureKind[] {
   try {
-    const raw: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
+    const raw: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
     return Array.isArray(raw) ? raw.filter(isFurnitureKind).slice(0, RECENT_MAX) : [];
   } catch {
     return [];
   }
 }
 
-function saveRecent(list: FurnitureKind[]) {
+function saveRecent(key: string, list: FurnitureKind[]) {
   try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+    localStorage.setItem(key, JSON.stringify(list));
   } catch {
     // Nothing kept: the row just starts empty next time.
   }
@@ -47,7 +49,7 @@ function Thumbnail({ kind }: { kind: FurnitureKind }) {
 }
 
 function Items({ kinds, onPick }: { kinds: FurnitureKind[]; onPick: (kind: FurnitureKind) => void }) {
-  const selected = usePlanner((s) => s.furnitureKind);
+  const selected = usePlanner(kindPlaced);
   const units = usePlanner((s) => s.units);
   return (
     <div className="grid grid-cols-3 gap-1">
@@ -109,12 +111,14 @@ function TurnRow() {
  * (Home, Office…), the project's own group open first, with folding categories, a search across all of
  * them and the last few picked.
  */
-export function FurnitureLibrary() {
-  const setKind = usePlanner((s) => s.setFurnitureKind);
+export function FurnitureLibrary({ services = false }: { services?: boolean }) {
+  const setKind = usePlanner((s) => (services ? s.setServiceKind : s.setFurnitureKind));
   const project = usePlanner((s) => projectOf(s.doc));
-  const [group, setGroup] = useState<FurnitureGroup>(() => groupForProject(project.type, project.use));
+  const recentKey = services ? RECENT_SERVICES_KEY : RECENT_KEY;
+  const [chosen, setGroup] = useState<FurnitureGroup>(() => groupForProject(project.type, project.use));
+  const group: FurnitureGroup = services ? 'Services' : chosen;
   const [query, setQuery] = useState('');
-  const [recent, setRecent] = useState(readRecent);
+  const [recent, setRecent] = useState(() => readRecent(recentKey));
   /** Categories folded away (all open to start). */
   const [folded, setFolded] = useState<Set<string>>(() => new Set());
 
@@ -122,13 +126,14 @@ export function FurnitureLibrary() {
     setKind(kind);
     const next = [kind, ...recent.filter((k) => k !== kind)].slice(0, RECENT_MAX);
     setRecent(next);
-    saveRecent(next);
+    saveRecent(recentKey, next);
   };
 
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const found = words.length
     ? FURNITURE_KINDS.filter((k) => {
         const { name, category, group: g } = FURNITURE_CATALOG[k];
+        if ((g === 'Services') !== services) return false;
         const text = `${name} ${category} ${g}`.toLowerCase();
         return words.every((w) => text.includes(w));
       })
@@ -137,16 +142,16 @@ export function FurnitureLibrary() {
   return (
     <div
       className="flex flex-col gap-2 rounded-md border border-line bg-raised p-2 text-xs"
-      aria-label="Furniture library"
+      aria-label={services ? 'Services library' : 'Furniture library'}
     >
-      <div className="font-medium">Furniture library</div>
+      <div className="font-medium">{services ? 'Services: electrical, plumbing and more' : 'Furniture library'}</div>
       <TurnRow />
       <input
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search, e.g. desk, bed, urinal"
-        aria-label="Search furniture"
+        placeholder={services ? 'Search, e.g. socket, tap, manhole' : 'Search, e.g. desk, bed, urinal'}
+        aria-label={services ? 'Search services' : 'Search furniture'}
         className="rounded-sm border p-1 text-xs"
       />
       {words.length ? (
@@ -163,13 +168,15 @@ export function FurnitureLibrary() {
               <Items kinds={recent} onPick={pick} />
             </div>
           )}
-          <div className="flex flex-wrap gap-1" role="group" aria-label="Furniture groups">
-            {FURNITURE_GROUPS.map((g) => (
-              <button key={g} className="m-btn px-2 py-0.5" aria-pressed={group === g} onClick={() => setGroup(g)}>
-                {g}
-              </button>
-            ))}
-          </div>
+          {!services && (
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Furniture groups">
+              {FURNITURE_GROUPS.filter((g) => g !== 'Services').map((g) => (
+                <button key={g} className="m-btn px-2 py-0.5" aria-pressed={group === g} onClick={() => setGroup(g)}>
+                  {g}
+                </button>
+              ))}
+            </div>
+          )}
           {categoriesOf(group).map((category) => {
             const open = !folded.has(category);
             return (

@@ -19,6 +19,7 @@ import {
   groundReadout,
   groundRelease,
 } from './groundTools';
+import { RUN_TOOLS, runHint, runHover, runMeasure, runPress, runReadout } from './runTool';
 
 /** The bits of a zustand store these tools need. */
 interface Store {
@@ -37,6 +38,7 @@ export const STRUCTURE_TOOLS: Tool[] = [
   'section',
   'north',
   ...GROUND_TOOLS,
+  ...RUN_TOOLS,
 ];
 
 /** Default wall half-thickness (4½"), how far a slab reaches past a room's inner faces to the wall centres. */
@@ -87,6 +89,7 @@ const rectPoints = (a: Point, b: Point): Point[] => [a, { x: b.x, y: a.y }, b, {
 
 export function structurePress(store: Store, inf: Inference) {
   if (GROUND_TOOLS.includes(store.getState().tool)) return groundPress(store, inf);
+  if (RUN_TOOLS.includes(store.getState().tool)) return runPress(store, inf);
   const s = store.getState();
   const d = s.draft;
   const p = inf.point;
@@ -159,6 +162,7 @@ function onLeft(d: { x1: number; y1: number; x2: number; y2: number }, p: Point)
 
 export function structureHover(store: Store, inf: Inference) {
   if (GROUND_TOOLS.includes(store.getState().tool)) return groundHover(store, inf);
+  if (RUN_TOOLS.includes(store.getState().tool)) return runHover(store, inf);
   const s = store.getState();
   const d = s.draft;
   if (d?.type === 'beam' || d?.type === 'slab' || d?.type === 'plot')
@@ -359,6 +363,7 @@ export function finishRoof(store: Store): boolean {
  */
 export function structureRelease(store: Store, dragged: boolean) {
   if (GROUND_TOOLS.includes(store.getState().tool)) return groundRelease(store, dragged);
+  if (RUN_TOOLS.includes(store.getState().tool)) return;
   const s = store.getState();
   const d = s.draft;
   // Drawing corner by corner, a drag from the first corner still makes a rectangle.
@@ -404,6 +409,7 @@ export function structureRelease(store: Store, dragged: boolean) {
 
 export function structureMeasure(store: Store, m: Measure): string | null {
   if (GROUND_TOOLS.includes(store.getState().tool)) return groundMeasure(store, m);
+  if (RUN_TOOLS.includes(store.getState().tool)) return runMeasure(store, m);
   const s = store.getState();
   const d = s.draft;
   const units = (mm: number) => mm / MM_PER_UNIT;
@@ -498,6 +504,7 @@ function typedCorner(s: PlannerState, d: { points: Point[]; cursor: Point }, m: 
 
 export function structureReadout(s: PlannerState): { label: string; value: string } {
   if (GROUND_TOOLS.includes(s.tool)) return groundReadout(s);
+  if (RUN_TOOLS.includes(s.tool)) return runReadout(s);
   const d = s.draft;
   const len = (u: number) => formatLength(u * MM_PER_UNIT, s.units);
   if (s.tool === 'beam')
@@ -534,6 +541,7 @@ export function structureReadout(s: PlannerState): { label: string; value: strin
 
 export function structureHint(s: PlannerState): string {
   if (GROUND_TOOLS.includes(s.tool)) return groundHint(s);
+  if (RUN_TOOLS.includes(s.tool)) return runHint(s);
   const d = s.draft;
   switch (s.tool) {
     case 'column':

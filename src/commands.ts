@@ -4,6 +4,7 @@ import { aliasesFor } from './lib/aliases';
 import { shows } from './lib/project';
 import {
   exportCostCsv,
+  exportServicesCsv,
   exportDrawingsDxf,
   exportIfc,
   exportModel,
@@ -152,6 +153,13 @@ export function buildCommands(ctx: CommandContext): Command[] {
     { id: 'file.png', label: 'Export PNG', menu: 'file', group: 2, run: exportPlanPng },
     { id: 'file.dxf', label: 'Export DXF (AutoCAD)', menu: 'file', group: 2, run: exportPlanDxf },
     { id: 'file.cost', label: 'Export quantities and cost (CSV)', menu: 'file', group: 2, run: () => exportCostCsv() },
+    {
+      id: 'file.services',
+      label: 'Export services schedule (CSV)',
+      menu: 'file',
+      group: 2,
+      run: exportServicesCsv,
+    },
     {
       id: 'file.glb',
       label: 'Export 3D: GLB (Twinmotion)',
@@ -504,6 +512,24 @@ export function buildCommands(ctx: CommandContext): Command[] {
         requestView(name);
       },
     })),
+    {
+      id: 'view.save2d',
+      label: 'Save plan view',
+      menu: 'view',
+      group: 1.6,
+      run: () => {
+        if (st().view3d && !st().split) st().setView3d(false);
+        st().saveView('plan');
+      },
+    },
+    {
+      id: 'view.save3d',
+      label: 'Save 3D view',
+      menu: 'view',
+      group: 1.6,
+      run: () => st().saveView('3d'),
+      enabled: (s) => s.view3d || s.split,
+    },
     {
       id: 'view.parallel',
       label: 'Parallel projection',

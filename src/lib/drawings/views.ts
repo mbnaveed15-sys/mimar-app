@@ -14,7 +14,16 @@ import { sideOutward } from '../plot';
 import { groundOf, type Ground } from '../terrain/ground';
 import { profileAlong } from '../terrain/surface';
 import { formatLevel } from './levels';
-import { drawingKey, ELEVATION_NAMES, sectionLines, sectionLook, sectionTitle, VIEW3D_NAMES } from './refs';
+import {
+  cameraLook,
+  drawingKey,
+  ELEVATION_NAMES,
+  savedView,
+  sectionLines,
+  sectionLook,
+  sectionTitle,
+  VIEW3D_NAMES,
+} from './refs';
 import {
   GROUND_LEVEL,
   isSiteItem,
@@ -570,6 +579,20 @@ export function sideDrawing(doc: PlanDoc, ref: DrawingRef, opts: DrawingOptions)
   }
   const model = buildModel(doc, { wallHeightMm: opts.wallHeightMm, showFurniture: false, closedDoors: true });
   const prisms = [...modelPrisms(model, boundaryIds(doc)), ...impliedSlabs(doc, opts.wallHeightMm)];
+  if (ref.kind === 'view') {
+    // A saved 3D view: from its camera's direction, in parallel lines.
+    const v = savedView(doc, ref.id);
+    if (!v || v.kind !== '3d') return null;
+    const { look, tilt } = cameraLook(v.camera);
+    const p = project(prisms, {
+      origin: { x: v.camera.target[0], z: v.camera.target[2] },
+      look,
+      cut: false,
+      tilt: Math.max(0.02, Math.min(1.55, tilt)),
+    });
+    const b = p.bounds;
+    return { ...p, title: v.name, ground: b ? { u0: b.minU, u1: b.maxU } : { u0: -1, u1: 1 }, levels: [], iso: true };
+  }
   if (ref.kind === 'view3d') {
     // From the front-left corner, looking down 30°: the building in lines (no ground, levels or dimensions).
     const f = frontLook(doc);
@@ -625,6 +648,8 @@ export {
   drawingFromKey,
   drawingKey,
   drawingTitle,
+  cameraLook,
+  savedView,
   ELEVATION_NAMES,
   ELEVATION_SIDES,
   nextSectionLabel,

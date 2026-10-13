@@ -47,7 +47,15 @@ swings in use zones, room minimums, use zones in 3D and exports, a touch tour, t
 phone buttons (1.49); dimension strings and hatching on sections, plan hatches for every material, DIMENSION entities
 in DXF, dimension text size and ends, 3D views on sheets, any sheet scale, a pitch per roof side, skylights, dormers,
 layout lines splitting solids, Divide, Open recent, the sun by date and time with shadows on or off, a North arrow
-tool, room areas in sq ft, marla or both, and Properties on picking a tool (1.50).
+tool, room areas in sq ft, marla or both, and Properties on picking a tool (1.50); services (71 electrical, AC, water,
+drainage, gas, data and fire points with plan symbols and mounting heights), wire and pipe runs that join and follow
+them on their own layers, services in 3D, DXF, IFC, a schedule and hints, saved 2D and 3D views on sheets, and 21 paper
+sizes, portrait and custom paper (1.51).
+
+Left from 1.51 (for later): runs are flat on the plan (no rises to sockets and switches in 3D or in the schedule's
+lengths; wires aren't built in 3D); an end can't be dragged onto an item to join it (draw the run again from the item);
+no circuit numbers, cable or pipe sizing, or load calculations; no services in the cost estimate; a saved plan view
+doesn't follow later changes to the plan's extent, and a saved 3D view on a sheet in lines is parallel, not perspective.
 
 Left from 1.50 (for later): mansards, domes and vaults; roofs cutting the walls under them; eyebrow or curved dormers
 and dormers on flat roofs; stepped section lines; hovering a roof side in the panel doesn't light it up on the plan;

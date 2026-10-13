@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import type { FurnitureKind } from './catalog';
 import { SHAPES, type ShapePart } from './shapes';
+import { ServiceSymbol } from './ServiceSymbol';
+import { isService } from '../lib/services';
 
 interface Props {
   kind: FurnitureKind;
@@ -373,6 +375,7 @@ export function FurnitureSymbol({ kind, w, h, fill, stroke, sw }: Props) {
     });
   }
 
+  if (isService(kind)) return <ServiceSymbol kind={kind} w={w} h={h} stroke={stroke} sw={sw} />;
   const shaped = SHAPES[kind];
   return <g data-symbol={kind}>{shaped ? fromShape(shaped) : (parts[kind]?.() ?? r(0, 0, 1, 1))}</g>;
 }

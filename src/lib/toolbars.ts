@@ -10,6 +10,7 @@ export const TOOLBARS = [
     tools: ['column', 'beam', 'slab', 'roof', 'skylight', 'dormer', 'plot', 'stairs', 'section', 'north'],
   },
   { id: 'ground', label: 'Ground', tools: ['level', 'contour', 'pad'] },
+  { id: 'services', label: 'Services', tools: ['services', 'run'] },
   { id: 'shapes', label: 'Shape & Push/Pull', tools: ['shape', 'pushpull'] },
   { id: 'change', label: 'Move, rotate & measure', tools: ['move', 'rotate', 'tape', 'dimension'] },
   { id: 'finish', label: 'Paint & erase', tools: ['paint', 'erase'] },
@@ -55,6 +56,7 @@ export const PHONE_GROUPS = [
   },
   { id: 'annotate', label: 'Annotate', tools: ['dimension', 'tape', 'brush', 'mask'] },
   { id: 'site', label: 'Site', tools: ['plot', 'level', 'contour', 'pad'] },
+  { id: 'services', label: 'Services', tools: ['services', 'run'] },
   { id: 'view', label: 'View', tools: ['pan', 'zoom', 'orbit'] },
 ] as const satisfies readonly { id: string; label: string; tools: readonly Tool[] }[];
 

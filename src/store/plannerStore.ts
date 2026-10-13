@@ -22,6 +22,7 @@ import { MM_PER_UNIT } from '../lib/scale';
 import { DEFAULT_AREA, fitView, MAX_ZOOM, VIEW_HISTORY, VIEW_STEP_MS, zoomAt, type Size } from '../lib/view';
 import { syncDimensions } from '../lib/dimensions';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
+import { DEFAULT_SERVICE_KIND, isService, kindPlaced, syncRuns } from '../lib/services';
 import { resetElementSize, type ScaleAxis } from '../lib/resize';
 import { detectRoom, openWallEnds } from '../rooms';
 import type { Inference } from '../lib/inference';
@@ -95,6 +96,7 @@ import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from
 import { clampGap, type Hand } from '../lib/openingPlace';
 import { besideOpening, loneOpenings, nounOf, openingAt, refitOpening, tidy } from './openingAt';
 import { setActivePicker } from '../three/picker';
+import { getViewControls, requestCamera } from '../three/viewControls';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SITE_LEVEL } from '../types';
 import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
@@ -103,6 +105,7 @@ import type {
   Roof,
   Skylight,
   Dormer,
+  RunSystem,
   SunSettings,
   Block,
   ContextItem,
@@ -127,6 +130,7 @@ import type {
   MarlaSqFt,
   Material,
   PaperSize,
+  SavedView,
   PlanDoc,
   DrawingStyle,
   PlanElement,
@@ -538,6 +542,12 @@ export interface PlannerState {
   showDrawing: (key?: string) => void;
   /** Keep these drawing sheets in the plan (none: go back to the suggested set). */
   setSheets: (sheets: Sheet[] | undefined) => void;
+  /** Change the saved views (rename, delete). */
+  setViews: (views: SavedView[]) => void;
+  /** Save what the plan (the part of the floor on screen) or the 3D view (its camera) shows, by a new name. */
+  saveView: (kind: 'plan' | '3d') => SavedView | null;
+  /** Go back to a saved view: its floor and part of the plan, or its 3D camera. */
+  goToView: (id: Id) => void;
   /** Text typed into the Measurements box, not yet applied. */
   measureText: string;
   /** What the pointer snapped to, shown as a coloured marker. */
@@ -697,6 +707,14 @@ export interface PlannerState {
   /** Library item placed by the Furniture tool. */
   furnitureKind: FurnitureKind;
   setFurnitureKind: (kind: FurnitureKind) => void;
+  /** The Services tool's item (a light, socket, tap…). */
+  serviceKind: FurnitureKind;
+  setServiceKind: (kind: FurnitureKind) => void;
+  /** What the Wire or pipe tool draws. */
+  runSystem: RunSystem;
+  setRunSystem: (system: RunSystem) => void;
+  /** A wire or pipe run through `points`, its ends joined to the items given (one undo step). */
+  addRun: (points: Point[], from?: Id, to?: Id) => void;
   /** How far the Furniture tool turns the next item placed (degrees, clockwise on the plan, as Rotation). */
   furnitureAngle: number;
   setFurnitureAngle: (deg: number) => void;
@@ -941,7 +959,7 @@ export function createPlannerStore(
       set({ viewBack: [...viewBack, view].slice(-VIEW_HISTORY) });
     };
     // Every change: a plot's boundary walls follow it, then dimensions follow what they measure.
-    const settle = (prev: PlanDoc, next: PlanDoc) => syncDimensions(prev, syncPlotWalls(prev, next));
+    const settle = (prev: PlanDoc, next: PlanDoc) => syncDimensions(prev, syncRuns(syncPlotWalls(prev, next)));
     const updateElements = (fn: (els: PlanElement[]) => PlanElement[]) =>
       get().commit((doc) => {
         const elements = fn(doc.elements);
@@ -982,6 +1000,8 @@ export function createPlannerStore(
       accessibleZones: prefs.accessibleZones,
       selectionBar: prefs.selectionBar,
       furnitureKind: DEFAULT_FURNITURE_KIND,
+      serviceKind: DEFAULT_SERVICE_KIND,
+      runSystem: 'lighting',
       furnitureAngle: 0,
       furnitureGhost: null,
       scaleAxis: 'both',
@@ -1082,7 +1102,8 @@ export function createPlannerStore(
           drawing?.type === 'plotPoly' ||
           drawing?.type === 'contour' ||
           drawing?.type === 'roof' ||
-          drawing?.type === 'slabPoly'
+          drawing?.type === 'slabPoly' ||
+          drawing?.type === 'run'
         ) {
           const points = drawing.points.slice(0, -1);
           set({ draft: points.length ? { ...drawing, points } : null });
@@ -1452,7 +1473,7 @@ export function createPlannerStore(
         return true;
       },
       addFurniture: (p, rotation = get().furnitureAngle) => {
-        const kind = get().furnitureKind;
+        const kind = kindPlaced(get());
         const size = FURNITURE_CATALOG[kind];
         const el: PlanElement = {
           id: newId(),
@@ -1466,7 +1487,7 @@ export function createPlannerStore(
         };
         updateElements((els) => [...els, onActive(el)]);
         // Show the new item so it is visible even if the furniture layer was hidden.
-        if (!get().showFurniture) get().setLayer('showFurniture', true);
+        if (!get().showFurniture && !isService(kind)) get().setLayer('showFurniture', true);
       },
       applyMaterial: (id, side) => {
         const mat = activeMat();
@@ -1657,6 +1678,21 @@ export function createPlannerStore(
         persistPrefs();
       },
       setFurnitureKind: (furnitureKind) => set({ furnitureKind }),
+      setServiceKind: (serviceKind) => set({ serviceKind }),
+      setRunSystem: (runSystem) =>
+        set((st) => ({ runSystem, draft: st.draft?.type === 'run' ? { ...st.draft, system: runSystem } : st.draft })),
+      addRun: (points, from, to) => {
+        if (points.length < 2) return;
+        const el: PlanElement = {
+          id: newId(),
+          type: 'run',
+          system: get().runSystem,
+          points,
+          ...(from && { from }),
+          ...(to && { to }),
+        };
+        updateElements((els) => [...els, onActive(el)]);
+      },
       setFurnitureAngle: (deg) => set({ furnitureAngle: (((Math.round(deg * 100) / 100) % 360) + 360) % 360 }),
       setFurnitureGhost: (furnitureGhost) => set({ furnitureGhost }),
       setScaleAxis: (scaleAxis) => set({ scaleAxis }),
@@ -2745,6 +2781,53 @@ export function createPlannerStore(
         if (split === get().split && !get().drawing) return;
         abandonDraft();
         set({ split, drawing: null, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
+      },
+      setViews: (views) =>
+        get().commit((doc) => {
+          const next: PlanDoc = { ...doc, views };
+          if (!views.length) delete next.views;
+          return next;
+        }),
+      saveView: (kind) => {
+        const s = get();
+        const views = s.doc.views ?? [];
+        let n = views.length + 1;
+        while (views.some((v) => v.name === `View ${n}`)) n++;
+        const base = { id: newId(), name: `View ${n}` };
+        let view: SavedView;
+        if (kind === '3d') {
+          const controls = getViewControls();
+          if (!controls) {
+            s.setWarning('Open the 3D view and look the way you want first, then save it.');
+            return null;
+          }
+          view = { ...base, kind: '3d', camera: controls.camera() };
+        } else {
+          const { view: v, viewport } = s;
+          if (!viewport.width || !viewport.height) return null;
+          const area = {
+            minX: v.x,
+            minY: v.y,
+            maxX: v.x + viewport.width / v.zoom,
+            maxY: v.y + viewport.height / v.zoom,
+          };
+          view = { ...base, kind: 'plan', levelId: s.activeLevel, area };
+        }
+        s.setViews([...views, view]);
+        s.setWarning(`Saved as “${view.name}”. Put it on a sheet in the Drawings view (rename it there too).`);
+        return view;
+      },
+      goToView: (id) => {
+        const v = get().doc.views?.find((x) => x.id === id);
+        if (!v) return;
+        if (v.kind === '3d') {
+          if (!get().view3d || get().drawing) get().setView3d(true);
+          requestCamera(v.camera);
+          return;
+        }
+        if (get().doc.levels.some((l) => l.id === v.levelId)) get().setActiveLevel(v.levelId);
+        if ((get().view3d && !get().split) || get().drawing) get().setView3d(false);
+        get().zoomToBox(v.area);
       },
       setSheets: (sheets) =>
         get().commit((doc) => {

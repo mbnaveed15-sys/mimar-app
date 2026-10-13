@@ -1,4 +1,12 @@
 import { doorKindOf } from './openingKinds';
+import {
+  isService,
+  RUN_SYSTEMS,
+  SERVICE_IFC_MATERIALS,
+  serviceIfcClass,
+  serviceName,
+  type ServiceIfcClass,
+} from './services';
 import { openingProfileMm } from './shapes';
 import { impliedSlabList } from './drawings/views';
 import { levelWallMm } from './levels';
@@ -149,7 +157,8 @@ type IfcClass =
   | 'IFCSTAIR'
   | 'IFCDOOR'
   | 'IFCWINDOW'
-  | 'IFCBUILDINGELEMENTPROXY';
+  | 'IFCBUILDINGELEMENTPROXY'
+  | ServiceIfcClass;
 
 interface Item {
   key: string;
@@ -186,6 +195,7 @@ const DEFAULT_MATERIAL: Record<IfcClass, string> = {
   IFCDOOR: 'Timber',
   IFCWINDOW: 'Glass',
   IFCBUILDINGELEMENTPROXY: 'Concrete',
+  ...SERVICE_IFC_MATERIALS,
 };
 
 const ROOF_TYPE = { hip: 'HIP_ROOF', gable: 'GABLE_ROOF', shed: 'SHED_ROOF', flat: 'FLAT_ROOF' } as const;
@@ -356,6 +366,13 @@ export function planToIfc(doc: PlanDoc, opts: IfcOptions): string {
         break;
       case 'block':
         [cls, name] = ['IFCBUILDINGELEMENTPROXY', 'Block'];
+        break;
+      case 'furniture':
+        if (!isService(el.kind)) return null;
+        [cls, name] = [serviceIfcClass(el.kind!), serviceName(el.kind!)];
+        break;
+      case 'run':
+        [cls, name] = ['IFCPIPESEGMENT', RUN_SYSTEMS[el.system].label];
         break;
       case 'roof':
         if (part === 'skylight') {

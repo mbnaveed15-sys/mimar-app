@@ -420,7 +420,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
               k={hk}
             />
           ))}
-        {tool === 'furniture' && ghost && showFurniture && (
+        {(tool === 'services' || (tool === 'furniture' && showFurniture)) && ghost && (
           <g data-testid="furniture-ghost" opacity={0.55} pointerEvents="none">
             <FurnitureShape
               item={{ ...furnitureAt(plannerStore.getState(), ghost), rotation: ghost.rotation }}

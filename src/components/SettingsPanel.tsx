@@ -1,6 +1,7 @@
 import { MARLA_OPTIONS, UNIT_LABELS } from '../lib/units';
 import { usePlanner } from '../store/plannerStore';
 import type { AreaIn, DimEnds, DimText, MarlaSqFt, PaperSize, Units } from '../types';
+import { PAPER_GROUPS, PAPER_SIZES, PAPERS } from '../lib/paper';
 import { LengthField } from './LengthField';
 import { MIN_OPENING_GAP_MM } from '../lib/openingPlace';
 import { DIM_END_LABELS, DIM_TEXT_LABELS, dimStyleOf } from '../lib/dimStyle';
@@ -179,8 +180,15 @@ export function SettingsPanel() {
         onChange={(e) => setPaper(e.target.value as PaperSize)}
         className="rounded-sm border p-1"
       >
-        <option value="A4">A4</option>
-        <option value="A3">A3</option>
+        {PAPER_GROUPS.map((g) => (
+          <optgroup key={g} label={g}>
+            {PAPER_SIZES.filter((p) => PAPERS[p].group === g).map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </optgroup>
+        ))}
       </select>
       <label className="flex items-center gap-2">
         <input type="checkbox" checked={pdfCheck} onChange={(e) => setLayer('pdfCheck', e.target.checked)} />

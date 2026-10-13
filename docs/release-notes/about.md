@@ -34,6 +34,7 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 - **Structure:** columns, beams, slabs of any shape with voids (drawn as a rectangle, corner by corner, over the rooms you pick, or round the walls), stairs (straight, L, U, ramp, **curved** and **spiral**), plinth, **basements** with retaining walls, and **pitched roofs** (hip, gable, shed, flat) that work on L, T and any other plan shape, with a pitch for each side, **skylights** and **dormers**.
 - **Floors:** as many as you need, each with its own height, plus a basement and the mumty. Duplicate a floor to start the one above, and choose how faintly the floor below shows while you draw. The **Ground** floor and its lawn are one level, with a Floor | Lawn switch, so you can draw your own plinth, platforms and steps from the ground up. The automatic plinth is its own item, with its own height, projection and material (and its own projection and material under any wall), and it shows on the plan where it stands out. Stairs cut their own stairwell in the slab above.
 - **Furniture and garden:** a library of about 100 items at their real sizes, in groups for homes, offices, schools, clinics and hospitals, shops, mosques, restaurants, public toilets and gardens, with search and recent picks. Items can be turned before placing, snap against a room's walls, into its corners and beside other furniture, and can be resized one side or one corner at a time. Each item shows the **free space it needs** to be used, from the ADA standards or common practice.
+- **Services:** about 70 electrical, fan and AC, water, drainage, gas, data and fire-safety points with their usual plan symbols and mounting heights, and **wiring and pipe runs** that snap to them and stay joined as they move, each kind on its own layer, in 3D, DXF, IFC and a services schedule.
 - **Layout lines** for drafting, straight or curved, which can be turned into walls. A line drawn across a block or slab splits it, and walls and lines can be **divided** into equal parts or set lengths.
 - A **north arrow** on the plan, which also turns the sun in 3D.
 
@@ -69,7 +70,7 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 
 ### Drawings, quantities and cost
 - **Sections and elevations,** worked out from the model, with level marks, dimension strings and hatched cuts. **Hatches** on the plan for every common material. Dimensions in your choice of text size and ends.
-- **Sheets** on A4, A3 or A1 at 1:50, 1:100, 1:200 or any scale you type, with a title block, and isometric and coloured 3D views.
+- **Sheets** on ISO A and B, US architectural and ANSI paper, portrait or landscape, or any size you type, at 1:50, 1:100, 1:200 or any scale, with a title block, isometric and coloured 3D views, and **saved views** (a part of a plan, or a 3D camera).
 - **Quantities and cost:** brickwork, RCC, steel, plaster, paint, flooring, glazing, roofing and services, measured from your drawing in the units Pakistani estimates use. Rates can be edited, and everything exports to CSV.
 
 ### Share and export

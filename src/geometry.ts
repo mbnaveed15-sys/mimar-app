@@ -104,6 +104,13 @@ export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Poin
       return withHole(s, j, c ? withCurve({ points: s.holes![j] }, mapCurve(c, f, reverse)) : { points: s.holes![j] });
     }, moved) as T;
   }
+  // A run's ends stay joined to the same items when its points are turned round.
+  if (el.type === 'run' && reverse) {
+    const out = { ...el, points: map(el.points), from: el.to, to: el.from };
+    if (!out.from) delete out.from;
+    if (!out.to) delete out.to;
+    return out;
+  }
   // A plot's road and sides stay on the same edges as its corners turn round.
   if (el.type === 'plot' && reverse) return { ...el, points: map(el.points), ...reversedSides(el) };
   // A roof's gable ends and low side stay on the same edges too.
@@ -175,6 +182,7 @@ export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
     case 'level':
       return Math.hypot(p.x - el.x, p.y - el.y) < threshold * 1.5;
     case 'contour':
+    case 'run':
       return nearPolyline(el.points, p, threshold);
     case 'pad':
     case 'roof':
@@ -202,7 +210,14 @@ function nearPolyline(points: Point[], p: Point, reach: number): boolean {
 /** Topmost (last drawn) element near the point, or null. */
 export function findElementNear(elements: PlanElement[], p: Point, threshold: number): PlanElement | null {
   for (let i = elements.length - 1; i >= 0; i--) {
-    if (isNear(elements[i], p, threshold)) return elements[i];
+    const el = elements[i];
+    if (!isNear(el, p, threshold)) continue;
+    // A wire or pipe ends on the middle of its item: a click on the item, not right on the run, takes the item.
+    if (el.type === 'run' && !nearPolyline(el.points, p, threshold / 3)) {
+      for (let j = i - 1; j >= 0; j--)
+        if (elements[j].type === 'furniture' && isNear(elements[j], p, threshold)) return elements[j];
+    }
+    return el;
   }
   return null;
 }
@@ -362,6 +377,7 @@ function elementPoints(el: PlanElement): Point[] {
     case 'pad':
     case 'context':
     case 'roof':
+    case 'run':
       return el.points;
     case 'level':
       return [{ x: el.x, y: el.y }];

@@ -1,5 +1,6 @@
 import { DEFAULT_THEME, isThemeId, type ThemeId } from '../theme/themes';
 import type { AreaIn, MarlaSqFt, PaperSize, Units } from '../types';
+import { isPaperSize } from './paper';
 import { clampGap, DEFAULT_OPENING_GAP_MM } from './openingPlace';
 import { browserStorage } from './storage';
 import { GRID_MM } from './units';
@@ -180,7 +181,7 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       openingGapMm: clampGap(raw?.openingGapMm),
       marlaSqFt: raw?.marlaSqFt === 272.25 ? 272.25 : 225,
       areaIn: raw?.areaIn === 'marla' || raw?.areaIn === 'both' ? raw.areaIn : 'units',
-      paper: raw?.paper === 'A3' ? 'A3' : 'A4',
+      paper: isPaperSize(raw?.paper) && raw.paper !== 'custom' ? raw.paper : 'A4',
       wallHeightMm:
         Number(raw?.wallHeightMm) >= 2000 && Number(raw?.wallHeightMm) <= 6000
           ? Number(raw?.wallHeightMm)

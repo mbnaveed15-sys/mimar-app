@@ -674,6 +674,26 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         redraw();
       },
       parallel: () => rig.parallel,
+      camera: () => ({
+        target: [rig.target.x, rig.target.y, rig.target.z],
+        distance: rig.distance,
+        azimuth: rig.azimuth,
+        elevation: rig.elevation,
+        ...(rig.parallel && { parallel: true }),
+      }),
+      setCamera(c) {
+        rig.target.set(...c.target);
+        rig.distance = c.distance;
+        rig.azimuth = c.azimuth;
+        rig.elevation = c.elevation;
+        rig.parallel = !!c.parallel;
+        setParallel(rig.parallel);
+        stage.pendingView = null;
+        // Not framed again when the building is first built.
+        stage.fitted = true;
+        rig.apply();
+        redraw();
+      },
     });
 
     const resize = new ResizeObserver(([entry]) => {

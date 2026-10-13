@@ -1,4 +1,5 @@
 import type { Id, PlanDoc, PlanElement, Room } from '../types';
+import { RUN_SYSTEMS, SERVICES } from './services';
 
 /** Every item goes on the layer for its kind, automatically. */
 export const LAYERS = [
@@ -20,6 +21,13 @@ export const LAYERS = [
   { id: 'terrain', label: 'Ground levels & contours' },
   { id: 'pads', label: 'Levelled areas' },
   { id: 'context', label: 'Surroundings' },
+  { id: 'electrical', label: 'Electrical' },
+  { id: 'hvac', label: 'Fans & AC' },
+  { id: 'plumbing', label: 'Water supply' },
+  { id: 'drainage', label: 'Drainage' },
+  { id: 'gas', label: 'Gas' },
+  { id: 'data', label: 'Data & security' },
+  { id: 'fire', label: 'Fire safety' },
 ] as const;
 
 export type LayerId = (typeof LAYERS)[number]['id'];
@@ -50,9 +58,16 @@ const BY_TYPE: Record<PlanElement['type'], LayerId> = {
   context: 'context',
   roof: 'roofs',
   dimension: 'dimensions',
+  run: 'electrical',
 };
 
-export const layerOf = (item: PlanElement | Room): LayerId => ('type' in item ? BY_TYPE[item.type] : 'rooms');
+export function layerOf(item: PlanElement | Room): LayerId {
+  if (!('type' in item)) return 'rooms';
+  // Services and runs go on their trade's layer.
+  if (item.type === 'run') return RUN_SYSTEMS[item.system].trade;
+  if (item.type === 'furniture' && item.kind && SERVICES[item.kind]) return SERVICES[item.kind].trade;
+  return BY_TYPE[item.type];
+}
 
 /** What decides visibility: the plan's layer settings, and the Furniture layer switch. */
 export interface Visibility {
