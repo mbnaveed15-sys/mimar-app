@@ -1,4 +1,5 @@
 import { memo, useId } from 'react';
+import { NorthArrowShape } from './shapes/NorthArrowShape';
 import { openingBend } from '../lib/arc';
 import { projectOf } from '../lib/project';
 import { elementOutline, planBounds } from '../geometry';
@@ -242,6 +243,8 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
       {doc.elements.map((el) =>
         el.type === 'section' ? <SectionShape key={el.id} line={el} selected={selected.has(el.id)} k={k} /> : null,
       )}
+
+      {doc.northArrow && <NorthArrowShape at={doc.northArrow} deg={doc.northDeg ?? 0} k={k} />}
 
       {doc.elements.map((el) =>
         el.type === 'dimension' ? (

@@ -26,6 +26,8 @@ import { cornerNear, curveTest } from './cornerSnap';
 import { lookRuns, mergeParts, partAt, type PartRange } from './merge';
 import { buildModel, levelBaseM, M_PER_UNIT, type Model3D } from './model';
 import { buildMeshes, disposeGroup, KEPT, keep } from './meshes';
+import { shadowsOn, sunDirection } from '../lib/sun';
+import { SunPanel } from '../components/SunPanel';
 import { plinthId } from '../walls';
 
 function hasWebGL(): boolean {
@@ -768,8 +770,12 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     stage.ground.scale.set(s * 6, 1, s * 6);
     // Under the lowest ground, so it never shows through a slope.
     stage.ground.position.set(model.centre.x, model.groundY ?? 0, model.centre.z);
-    stage.sun.position.set(model.centre.x - s * 0.6, s * 1.4 + 6, model.centre.z + s * 0.9);
+    // The fixed sun, or the real one for the plan's date and time; shadows unless turned off.
+    const { dir } = sunDirection(doc);
+    const far = Math.hypot(s * 0.6, s * 1.4 + 6, s * 0.9);
+    stage.sun.position.set(model.centre.x + dir[0] * far, dir[1] * far, model.centre.z + dir[2] * far);
     stage.sun.target.position.set(model.centre.x, 0, model.centre.z);
+    stage.sun.castShadow = shadowsOn(doc);
     const cam = stage.sun.shadow.camera;
     cam.left = cam.bottom = -s;
     cam.right = cam.top = s;
@@ -1176,6 +1182,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
           />
           <span className="w-12 tabular-nums">{formatLength(wallHeightMm, units)}</span>
         </label>
+        <SunPanel />
       </div>
       <div className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-raised/85 px-2 py-1 text-xs text-muted">
         {touchInput

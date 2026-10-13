@@ -3,6 +3,7 @@
  * corner, on white paper. Rendered off screen; only loaded when a sheet with a 3D picture is shown or printed.
  */
 import * as THREE from 'three';
+import { shadowsOn, sunDirection } from '../lib/sun';
 import type { PlanDoc } from '../types';
 import { frontLook } from '../lib/drawings/views';
 import { rightOf } from '../lib/drawings/hiddenLines';
@@ -57,10 +58,12 @@ export function renderPicture(
   const centre = box.getCenter(new THREE.Vector3());
   const span = Math.max(size.x, size.z, size.y, 1);
   const sun = new THREE.DirectionalLight('#fff7ed', 1.8);
-  sun.castShadow = true;
+  sun.castShadow = shadowsOn(doc);
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.bias = -0.0005;
-  sun.position.set(centre.x - span * 0.6, span * 1.4 + 6, centre.z + span * 0.9);
+  const toSun = sunDirection(doc).dir;
+  const far = Math.hypot(span * 0.6, span * 1.4 + 6, span * 0.9);
+  sun.position.set(centre.x + toSun[0] * far, centre.y + toSun[1] * far, centre.z + toSun[2] * far);
   sun.target.position.copy(centre);
   const cam = sun.shadow.camera;
   cam.left = cam.bottom = -span;

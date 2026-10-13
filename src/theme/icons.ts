@@ -82,6 +82,8 @@ export const ICONS = {
     "<path d='M2 18 12 6l10 12'/><path d='m10.2 11.6 3.6-1.8 2.4 2.9-3.6 1.8z'/><path d='M4 4.5 6 6M9 2.5v2M2 9h2'/>",
   dormer:
     "<path d='M2 19 12 7l10 12'/><path d='M8.5 15.5V12l2.75-3 2.75 3v3.5'/><rect x='10' y='12.5' width='2.5' height='3' rx='0.3'/>",
+  north:
+    "<circle cx='12' cy='13' r='8'/><path d='M12 5.5 8.5 17 12 14.5 15.5 17z' fill='currentColor'/><path d='M10.5 1.5v3l3-3v3'/>",
   slab: "<path d='M3 9 12 4l9 5-9 5z'/><path d='M3 9v3l9 5 9-5V9'/>",
   shape: "<rect x='3' y='11' width='9' height='9' rx='0.5'/><circle cx='16' cy='8' r='5'/>",
   pushpull: "<path d='M4 15 12 11l8 4-8 4z'/><path d='M12 11V2.5M9 5.5l3-3 3 3'/>",

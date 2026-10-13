@@ -38,6 +38,7 @@ import {
   type Roof,
   type RoofKind,
   type Skylight,
+  type SunSettings,
   type DimTie,
   type PlinthSpec,
 } from '../types';
@@ -744,6 +745,10 @@ export function normaliseDoc(raw: unknown): PlanDoc {
     ...(Array.isArray(obj.sheets) ? { sheets: normaliseSheets(obj.sheets) } : {}),
     ...(normaliseGround(obj.ground) ? { ground: normaliseGround(obj.ground) } : {}),
     ...(normaliseDrawing(obj.drawing) ? { drawing: normaliseDrawing(obj.drawing) } : {}),
+    ...(isObject(obj.northArrow) && Number.isFinite(obj.northArrow.x) && Number.isFinite(obj.northArrow.y)
+      ? { northArrow: { x: obj.northArrow.x as number, y: obj.northArrow.y as number } }
+      : {}),
+    ...(normaliseSun(obj.sun) ? { sun: normaliseSun(obj.sun) } : {}),
     ...(isObject(obj.location) && inRange(obj.location.lat, -90, 90) && inRange(obj.location.lon, -180, 180)
       ? { location: { lat: obj.location.lat, lon: obj.location.lon } }
       : {}),
@@ -760,6 +765,21 @@ function normaliseGround(raw: unknown): GroundSettings | undefined {
     ...(raw.cutFill === false ? { cutFill: false } : {}),
   };
   return Object.keys(out).length ? out : undefined;
+}
+
+/** The 3D view's sun, or nothing when it isn't usable. */
+function normaliseSun(raw: unknown): SunSettings | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  if (!inRange(r.month, 1, 12) || !inRange(r.day, 1, 31) || !inRange(r.hour, 0, 24)) return undefined;
+  return {
+    ...(r.timed === true && { timed: true }),
+    month: Math.round(r.month),
+    day: Math.round(r.day),
+    hour: r.hour,
+    ...(inRange(r.latitude, -90, 90) && { latitude: r.latitude }),
+    ...(r.shadows === false && { shadows: false }),
+  };
 }
 
 /** How dimensions and drawings look, keeping only what differs from the defaults. */

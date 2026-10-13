@@ -69,6 +69,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
       below
         ? {
             ...below,
+            northArrow: undefined,
             rooms: [],
             elements: below.elements.filter((el) => el.type !== 'furniture' && el.type !== 'section'),
           }

@@ -1,4 +1,6 @@
 import { SectionShape } from './shapes/SectionShape';
+import { NorthArrowShape } from './shapes/NorthArrowShape';
+import { northTowards } from '../tools/structureTools';
 import { SNAP_LABELS, type Inference } from '../lib/inference';
 import { formatLength } from '../lib/units';
 import { pointAlong, radiusOf, wallPath } from '../lib/arc';
@@ -303,6 +305,16 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
 
       {d?.type === 'dimension' && (
         <DimensionDraft d={d} mode={dimMode ?? 'linear'} units={units} k={k} dimLook={dimLook} />
+      )}
+
+      {d?.type === 'north' && (
+        <NorthArrowShape
+          at={d.at}
+          deg={Math.hypot(d.cursor.x - d.at.x, d.cursor.y - d.at.y) > 1 ? northTowards(d.at, d.cursor) : 0}
+          k={k}
+          ghost
+          testId="north-draft"
+        />
       )}
 
       {d?.type === 'section' && (

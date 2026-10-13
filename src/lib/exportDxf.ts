@@ -43,6 +43,7 @@ const LAYERS = {
   'A-WALL-PLIN': { color: 8, ltype: 'CONTINUOUS' },
   'S-WALL-RETN': { color: 1, ltype: 'CONTINUOUS' },
   'A-ANNO-SECT': { color: 2, ltype: 'DASHED' },
+  'A-ANNO-SYMB': { color: 2, ltype: 'CONTINUOUS' },
   'A-SECT-CUT': { color: 7, ltype: 'CONTINUOUS' },
   'A-SECT-OUTL': { color: 7, ltype: 'CONTINUOUS' },
   'A-SECT-BYND': { color: 8, ltype: 'CONTINUOUS' },
@@ -749,6 +750,21 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
   }
 
   drawGround(dxf, doc, opts);
+
+  // The north arrow, 600 mm across the circle's radius on the ground.
+  if (doc.northArrow) {
+    const c = doc.northArrow;
+    const r = 600 / MM_PER_UNIT;
+    const t = ((doc.northDeg ?? 0) * Math.PI) / 180;
+    const at = (x: number, y: number) => ({
+      x: c.x + (x * Math.cos(t) - y * Math.sin(t)) * r,
+      y: c.y + (x * Math.sin(t) + y * Math.cos(t)) * r,
+    });
+    dxf.circle('A-ANNO-SYMB', c, r);
+    dxf.solid('A-ANNO-SYMB', [at(0, -1), at(-0.4, 0.6), at(0, 0.25), at(0, 0.25)]);
+    dxf.poly('A-ANNO-SYMB', [at(0, -1), at(0.4, 0.6), at(0, 0.25)], false);
+    dxf.text('A-ANNO-SYMB', at(0, -1.45), 'N', -(doc.northDeg ?? 0), 250);
+  }
 
   for (const r of doc.rooms) {
     dxf.poly('A-AREA', r.points);

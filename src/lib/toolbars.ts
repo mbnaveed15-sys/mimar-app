@@ -7,7 +7,7 @@ export const TOOLBARS = [
   {
     id: 'structure',
     label: 'Structure',
-    tools: ['column', 'beam', 'slab', 'roof', 'skylight', 'dormer', 'plot', 'stairs', 'section'],
+    tools: ['column', 'beam', 'slab', 'roof', 'skylight', 'dormer', 'plot', 'stairs', 'section', 'north'],
   },
   { id: 'ground', label: 'Ground', tools: ['level', 'contour', 'pad'] },
   { id: 'shapes', label: 'Shape & Push/Pull', tools: ['shape', 'pushpull'] },
@@ -33,7 +33,7 @@ export const PHONE_GROUPS = [
   {
     id: 'build',
     label: 'Build',
-    tools: ['column', 'beam', 'slab', 'roof', 'skylight', 'dormer', 'stairs', 'shape', 'pushpull', 'section'],
+    tools: ['column', 'beam', 'slab', 'roof', 'skylight', 'dormer', 'stairs', 'shape', 'pushpull', 'section', 'north'],
   },
   {
     id: 'edit',

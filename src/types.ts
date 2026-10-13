@@ -298,6 +298,19 @@ export interface Dormer {
   wallMm: number;
 }
 
+export interface SunSettings {
+  /** The real sun for the date and time below; the usual fixed sun when false or missing. */
+  timed?: boolean;
+  month: number;
+  day: number;
+  /** Solar time, hours (12 is noon). */
+  hour: number;
+  /** Degrees north; the site's own (from its map location) or Lahore's when missing. */
+  latitude?: number;
+  /** Shadows in the 3D view (on when missing). */
+  shadows?: boolean;
+}
+
 /** The plot: its outline, which edge faces the road, and the setbacks (in mm) from each side. */
 /** What lies beyond a side of a plot. */
 export type PlotSideKind = 'road' | 'neighbour' | 'back' | 'open';
@@ -649,6 +662,10 @@ export interface PlanDoc {
   location?: { lat: number; lon: number };
   /** How dimensions and drawings look (the defaults when missing). */
   drawing?: DrawingStyle;
+  /** Where the north arrow stands on the plan (its centre); it points the way northDeg says. None: no arrow. */
+  northArrow?: Point;
+  /** The 3D view's sun: shadows, and the real sun for a date and time (see sun.ts). */
+  sun?: SunSettings;
 }
 
 /** Dimension text sizes: about 2.5, 3.5 and 5 mm on paper. */
@@ -790,6 +807,7 @@ export type Tool =
   | 'roof'
   | 'skylight'
   | 'dormer'
+  | 'north'
   | 'dimension';
 
 /** Every tool, in tool-rail order. */
@@ -817,6 +835,7 @@ export const TOOLS: Tool[] = [
   'shape',
   'pushpull',
   'section',
+  'north',
   'level',
   'contour',
   'pad',
@@ -877,6 +896,8 @@ export type Draft =
   /** A section line: its two ends, then (once both are down) the side it looks to, from the pointer. */
   | { type: 'section'; x1: number; y1: number; x2: number; y2: number; placed: boolean; flip: boolean }
   | { type: 'slab'; x1: number; y1: number; x2: number; y2: number }
+  /** The north arrow: where it stands, then the pointer turns it (north points at the pointer). */
+  | { type: 'north'; at: Point; cursor: Point }
   | { type: 'plot'; x1: number; y1: number; x2: number; y2: number }
   /** A plot drawn corner by corner: the corners so far, and where the pointer is. */
   | { type: 'plotPoly'; points: Point[]; cursor: Point }

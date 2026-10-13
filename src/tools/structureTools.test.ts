@@ -88,3 +88,35 @@ describe('the Section tool', () => {
     expect(s().doc).not.toHaveProperty('sheets');
   });
 });
+
+describe('the North arrow tool', () => {
+  const at = (x: number, y: number): Inference => ({ point: { x, y }, kind: 'free' });
+
+  it('puts the arrow down, then turns north to the second click, as one undo step', () => {
+    const store = createPlannerStore(emptyDoc(), undefined, DEFAULT_PREFS);
+    const s = store.getState;
+    s().setTool('north');
+    structurePress(store, at(100, 100));
+    structureHover(store, at(200, 100));
+    expect(s().draft).toMatchObject({ type: 'north', at: { x: 100, y: 100 }, cursor: { x: 200, y: 100 } });
+    structurePress(store, at(200, 100));
+    expect(s().draft).toBeNull();
+    expect(s().doc.northArrow).toEqual({ x: 100, y: 100 });
+    // To the right of the arrow is east of up the page: north turned 90° clockwise.
+    expect(s().doc.northDeg).toBe(90);
+    s().undo();
+    expect(s().doc.northArrow).toBeUndefined();
+    expect(s().doc.northDeg).toBeUndefined();
+  });
+
+  it('keeps north as it was when the second click is on the arrow', () => {
+    const store = createPlannerStore({ ...emptyDoc(), northDeg: 45 }, undefined, DEFAULT_PREFS);
+    const s = store.getState;
+    s().setTool('north');
+    structurePress(store, at(0, 0));
+    structurePress(store, at(0, 0));
+    expect(s().doc).toMatchObject({ northArrow: { x: 0, y: 0 }, northDeg: 45 });
+    s().placeNorth(null);
+    expect(s().doc.northArrow).toBeUndefined();
+  });
+});

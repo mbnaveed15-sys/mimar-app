@@ -76,6 +76,7 @@ import { CURTAIN_MM, hasPlinth, isBuildingWall } from '../walls';
 import { wallPath, type WallLine } from '../lib/arc';
 import { pathOutline, roundedRect, type CurveMode } from '../lib/curves';
 import { splitSolidsByLine } from '../lib/splitSolids';
+import { DEFAULT_SUN } from '../lib/sun';
 import { divideWall } from '../lib/modify';
 import {
   DORMER_W_MM,
@@ -102,6 +103,7 @@ import type {
   Roof,
   Skylight,
   Dormer,
+  SunSettings,
   Block,
   ContextItem,
   GroundSettings,
@@ -406,6 +408,10 @@ export interface PlannerState {
   padUnderHouse: () => boolean;
   /** A roof over an outline drawn round the walls, reaching past it by the overhang, with the Roof tool's settings. */
   addRoof: (points: Point[]) => boolean;
+  /** Change the 3D view's sun (one undo step). */
+  setSun: (patch: Partial<SunSettings>) => void;
+  /** Put the north arrow at a point, turned to north (degrees clockwise from up), as one undo step; null takes it away. */
+  placeNorth: (at: Point | null, deg?: number) => void;
   /** A skylight on the roof slope under p (on this floor); false, with a warning, when it can't go there. */
   addSkylight: (p: Point) => boolean;
   /** A dormer on the roof slope under p, its front 600 mm in from the eaves. */
@@ -2190,6 +2196,25 @@ export function createPlannerStore(
         get().select(roof.id);
         return true;
       },
+      setSun: (patch) =>
+        get().commit((doc) => {
+          const sun: SunSettings = { ...DEFAULT_SUN, ...doc.sun, ...patch };
+          return JSON.stringify(sun) === JSON.stringify(doc.sun) ? doc : { ...doc, sun };
+        }),
+      placeNorth: (at, deg) =>
+        get().commit((doc) => {
+          const next: PlanDoc = { ...doc };
+          if (at) next.northArrow = { x: at.x, y: at.y };
+          else delete next.northArrow;
+          if (deg !== undefined) {
+            const north = ((Math.round(deg) % 360) + 360) % 360;
+            if (north) next.northDeg = north;
+            else delete next.northDeg;
+          }
+          return JSON.stringify(next.northArrow) === JSON.stringify(doc.northArrow) && next.northDeg === doc.northDeg
+            ? doc
+            : next;
+        }),
       addSkylight: (p) => {
         const roof = get()
           .pickableElements()
