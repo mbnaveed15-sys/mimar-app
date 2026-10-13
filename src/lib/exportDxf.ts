@@ -995,6 +995,14 @@ export function sideDrawingsToDxf(drawings: SideDrawing[], style?: DrawingStyle)
         );
     });
     for (const l of d.lines) dxf.line(l.heavy ? 'A-SECT-OUTL' : 'A-SECT-BYND', at(...l.a), at(...l.b));
+    if (d.iso) {
+      // A 3D view: just the building, and its name under it.
+      dxf.text('A-ANNO-TTLB', at((b.minU + b.maxU) / 2, b.minV - 0.9), d.title.toUpperCase(), 0, 300);
+      minV = Math.min(minV, b.minV - 0.9);
+      maxV = Math.max(maxV, b.maxV);
+      x0 += (b.maxU + 3.5 - left) * 1000 + DRAWING_GAP_MM;
+      continue;
+    }
     // The ground: the finished ground solid, and the natural ground dashed where it differs.
     if (d.profile?.finished.length)
       dxf.poly(

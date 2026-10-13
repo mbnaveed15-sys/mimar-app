@@ -754,6 +754,8 @@ function normaliseDrawingRef(raw: unknown): DrawingRef | null {
   if (raw.kind === 'section' && raw.id !== undefined) return { kind: 'section', id: String(raw.id) };
   if (raw.kind === 'elevation' && SIDES.includes(raw.side as ElevationSide))
     return { kind: 'elevation', side: raw.side as ElevationSide };
+  if (raw.kind === 'view3d' && (raw.style === 'iso' || raw.style === 'picture'))
+    return { kind: 'view3d', style: raw.style };
   return null;
 }
 

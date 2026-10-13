@@ -50,6 +50,8 @@ export type Prim =
       /** Turned anticlockwise, degrees (90 reads up the page). */
       angle?: number;
     }
+  /** A coloured 3D picture of the building (rendered when the sheet is shown or printed), filling the box. */
+  | { t: 'picture'; x: number; y: number; w: number; h: number }
   /** A floor plan, drawn by the plan renderer: `area` (plan units) fills the box. */
   | { t: 'plan'; levelId: string; x: number; y: number; w: number; h: number; area: Bounds; scale: number };
 
@@ -102,12 +104,13 @@ function drawingSize(src: SheetSource, ref: DrawingRef, scale: number): { w: num
       h: ((a.maxY - a.minY) * MM_PER_UNIT) / scale + 2 * PLAN_PAD,
     };
   }
-  const d = src.side(ref);
-  if (!d) return null;
+  // A 3D picture takes the isometric's room.
+  const d = src.side(ref.kind === 'view3d' ? { kind: 'view3d', style: 'iso' } : ref);
+  if (!d || (ref.kind === 'view3d' && !d.bounds)) return null;
   const e = sideExtent(d);
   const room = dimRoom(d, src.doc.drawing);
   return {
-    w: ((e.maxU - e.minU) * 1000) / scale + LEVEL_ROOM + room.left,
+    w: ((e.maxU - e.minU) * 1000) / scale + (d.iso ? 0 : LEVEL_ROOM) + room.left,
     h: ((e.maxV - e.minV) * 1000) / scale + room.below,
   };
 }
@@ -115,7 +118,7 @@ function drawingSize(src: SheetSource, ref: DrawingRef, scale: number): { w: num
 /** Room for the dimension strings, paper mm: two strings up the left side, two under the drawing. */
 const DIM_STEP = 7;
 function dimRoom(d: SideDrawing, style?: DrawingStyle): { left: number; below: number } {
-  if (style?.sideDims === false || !d.dims) return { left: 0, below: 0 };
+  if (style?.sideDims === false || !d.dims || d.iso) return { left: 0, below: 0 };
   const strings = (stops: number[]) => (stops.length > 2 ? 2 : stops.length === 2 ? 1 : 0);
   return { left: strings(d.dims.heights) * DIM_STEP, below: strings(d.dims.across) * DIM_STEP };
 }
@@ -164,6 +167,7 @@ const circleRing = (c: { x: number; y: number }, r: number): XY[] =>
 
 function sideExtent(d: SideDrawing) {
   const b = d.bounds ?? { minU: -1, maxU: 1, minV: 0, maxV: 1 };
+  if (d.iso) return { minU: b.minU - 0.3, maxU: b.maxU + 0.3, minV: b.minV - 0.3, maxV: b.maxV + 0.3 };
   const vs = d.levels.map((l) => l.v);
   if (d.profile) for (const p of [...d.profile.finished, ...d.profile.natural.flat()]) vs.push(p[1]);
   return {
@@ -247,11 +251,13 @@ export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count
         area: { minX: a.minX - pad, minY: a.minY - pad, maxX: a.maxX + pad, maxY: a.maxY + pad },
         scale: p.item.scale,
       });
+    } else if (ref.kind === 'view3d' && ref.style === 'picture') {
+      prims.push({ t: 'picture', x: p.x, y: p.y, w: p.w, h: p.h });
     } else {
       const d = src.side(ref);
       if (d) prims.push(...sidePrims(d, p.item.scale, p.x, p.y, src.doc.drawing));
     }
-    caption(prims, drawingTitle(src.doc, ref) ?? '', p.item.scale, p.x, p.y + p.h, p.w);
+    caption(prims, drawingTitle(src.doc, ref) ?? '', ref.kind === 'view3d' ? null : p.item.scale, p.x, p.y + p.h, p.w);
   }
   if (placed.some((p) => p.item.drawing.kind === 'plan')) {
     const area = drawingArea(sheet.paper);
@@ -262,14 +268,21 @@ export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count
 }
 
 /** A drawing's name, underlined, and its scale, centred under it. */
-function caption(prims: Prim[], title: string, scale: number, x: number, bottom: number, w: number) {
+function caption(prims: Prim[], title: string, scale: number | null, x: number, bottom: number, w: number) {
   const cx = x + w / 2;
   const y = bottom + 5.5;
   const text = title.toUpperCase();
   prims.push({ t: 'text', x: cx, y, text, size: 3.5, bold: true, align: 'center' });
   const half = Math.min(w / 2, text.length * 1.25);
   prims.push({ t: 'line', a: [cx - half, y + 1.2], b: [cx + half, y + 1.2], w: PEN.thin });
-  prims.push({ t: 'text', x: cx, y: y + 5, text: `Scale 1:${scale}`, size: 2.5, align: 'center' });
+  prims.push({
+    t: 'text',
+    x: cx,
+    y: y + 5,
+    text: scale ? `Scale 1:${scale}` : 'Not to scale',
+    size: 2.5,
+    align: 'center',
+  });
 }
 
 /** A section or elevation at 1:scale with its top-left corner at (x, y), in the plan's drawing style. */
@@ -291,6 +304,7 @@ export function sidePrims(d: SideDrawing, scale: number, x0: number, y: number, 
     else prims.push({ t: 'fill', rings });
     for (const r of rings) r.forEach((p, i) => prims.push({ t: 'line', a: p, b: r[(i + 1) % r.length], w: PEN.cut }));
   });
+  if (d.iso) return prims;
   // The ground line (or the finished ground, and the natural ground dashed where they differ), with
   // earth hatching under it (not under a basement that is cut).
   const g0 = X(d.ground.u0);
@@ -487,6 +501,12 @@ export function suggestedSheets(src: SheetSource): Sheet[] {
     'Elevations',
     sides.filter((r) => r.kind === 'elevation'),
   );
+  // The building in 3D: an isometric in lines and a coloured picture, when there is something to see.
+  if (src.side({ kind: 'view3d', style: 'iso' })?.bounds)
+    add('3D views', [
+      { kind: 'view3d', style: 'iso' },
+      { kind: 'view3d', style: 'picture' },
+    ]);
   return sheets;
 }
 

@@ -68,9 +68,12 @@ describe('section lines', () => {
       { kind: 'plan', levelId: 'ground' },
       { kind: 'section', id: 'x:y' },
       { kind: 'elevation', side: 'left' },
+      { kind: 'view3d', style: 'iso' },
+      { kind: 'view3d', style: 'picture' },
     ];
     for (const ref of refs) expect(drawingFromKey(drawingKey(ref))).toEqual(ref);
     expect(drawingFromKey('elevation:up')).toBeNull();
+    expect(drawingFromKey('view3d:sky')).toBeNull();
     expect(drawingFromKey('nonsense')).toBeNull();
   });
 });
@@ -127,6 +130,20 @@ describe('drawing a house', () => {
       return b.maxU - b.minU;
     };
     expect(width('front')).toBeLessThan(width('left'));
+  });
+
+  it('draws an isometric view from the front-left corner, with no cut or level marks', () => {
+    const { s } = house();
+    const doc = s().doc;
+    const d = sideDrawing(doc, { kind: 'view3d', style: 'iso' }, OPTS)!;
+    expect(d.iso).toBe(true);
+    expect(d.title).toBe('Isometric view');
+    expect(d.cut).toEqual([]);
+    expect(d.levels).toEqual([]);
+    expect(d.lines.length).toBeGreaterThan(6);
+    // Seen from above, the roof shows: the drawing is taller than the front elevation.
+    const front = sideDrawing(doc, { kind: 'elevation', side: 'front' }, OPTS)!.bounds!;
+    expect(d.bounds!.maxV - d.bounds!.minV).toBeGreaterThan(front.maxV - front.minV);
   });
 
   it('lists every drawing, and forgets a section once its line is deleted', () => {

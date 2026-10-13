@@ -651,7 +651,13 @@ export type ElevationSide = 'front' | 'back' | 'left' | 'right';
 
 /** A drawing that can go on a sheet: a floor plan, a section or an elevation. */
 export type DrawingRef =
-  { kind: 'plan'; levelId: Id } | { kind: 'section'; id: Id } | { kind: 'elevation'; side: ElevationSide };
+  | { kind: 'plan'; levelId: Id }
+  | { kind: 'section'; id: Id }
+  | { kind: 'elevation'; side: ElevationSide }
+  | { kind: 'view3d'; style: View3dStyle };
+
+/** A 3D view on a sheet: an isometric line drawing, or a coloured picture with the materials. */
+export type View3dStyle = 'iso' | 'picture';
 
 /** The scales a drawing can be printed at on a sheet (1:50, 1:100, 1:200). */
 export type SheetScale = 50 | 100 | 200;

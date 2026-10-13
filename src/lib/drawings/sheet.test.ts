@@ -42,16 +42,36 @@ const source = (doc: PlanDoc): SheetSource => ({
 const texts = (prims: Prim[]) => prims.flatMap((p) => (p.t === 'text' ? [p.text] : []));
 
 describe('sheets', () => {
-  it('suggests a sheet per floor plan, one for the sections and one for the elevations', () => {
+  it('suggests a sheet per floor plan, one for the sections, one for the elevations and one for 3D views', () => {
     const src = source(house());
     expect(planArea(src.doc, src.doc.levels[2].id)).toBeNull();
     const sheets = suggestedSheets(src);
-    expect(sheets.map((s) => s.name)).toEqual(['Ground floor plan', 'First floor plan', 'Sections', 'Elevations']);
-    expect(sheets.map((s) => s.id)).toEqual(['suggested-1', 'suggested-2', 'suggested-3', 'suggested-4']);
+    expect(sheets.map((s) => s.name)).toEqual([
+      'Ground floor plan',
+      'First floor plan',
+      'Sections',
+      'Elevations',
+      '3D views',
+    ]);
+    expect(sheets.map((s) => s.id)).toEqual([
+      'suggested-1',
+      'suggested-2',
+      'suggested-3',
+      'suggested-4',
+      'suggested-5',
+    ]);
     expect(sheets.every((s) => s.paper === 'A3')).toBe(true);
     // A small house fits at the most detailed scale.
     expect(sheets[0].items).toEqual([{ drawing: { kind: 'plan', levelId: src.doc.levels[0].id }, scale: 50 }]);
     expect(sheets[3].items).toHaveLength(4);
+    // An isometric line drawing and the coloured 3D picture.
+    expect(sheets[4].items.map((i) => i.drawing)).toEqual([
+      { kind: 'view3d', style: 'iso' },
+      { kind: 'view3d', style: 'picture' },
+    ]);
+    const l3d = layoutSheet(src, sheets[4], 5, 5);
+    expect(l3d.prims.filter((p) => p.t === 'picture')).toHaveLength(1);
+    expect(texts(l3d.prims)).toEqual(expect.arrayContaining(['ISOMETRIC VIEW', '3D VIEW']));
     expect(sheetsOf(src)).toEqual(sheets);
     // Once the plan has its own sheets (even none), those are used.
     expect(sheetsOf(source({ ...src.doc, sheets: [] }))).toEqual([]);

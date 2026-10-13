@@ -35,6 +35,8 @@ export interface ViewFrame {
   look: { x: number; z: number };
   /** Cut the model at the plane through the origin (a section), or see all of it (an elevation). */
   cut: boolean;
+  /** Look down by this much (radians) instead of level: an isometric (no cut). */
+  tilt?: number;
   /** Leave out everything below this height (an elevation hides what is underground). */
   minV?: number;
   /**
@@ -76,6 +78,15 @@ export function rightOf(look: { x: number; z: number }): { x: number; z: number 
 function toView(frame: ViewFrame): (p: V3) => P3 {
   const r = rightOf(frame.look);
   const { x: ox, z: oz } = frame.origin;
+  const t = frame.tilt ?? 0;
+  if (t) {
+    // Looking down: the drawing's up leans back with the view, and depth runs down and away.
+    const [c, s] = [Math.cos(t), Math.sin(t)];
+    return ([x, y, z]) => {
+      const h = (x - ox) * frame.look.x + (z - oz) * frame.look.z;
+      return [(x - ox) * r.x + (z - oz) * r.z, y * c + h * s, h * c - y * s];
+    };
+  }
   return ([x, y, z]) => [(x - ox) * r.x + (z - oz) * r.z, y, (x - ox) * frame.look.x + (z - oz) * frame.look.z];
 }
 

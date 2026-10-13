@@ -15,7 +15,10 @@ const MM_PER_PT = 25.4 / 72;
 export type SheetExtras = Pick<PdfDetails, 'check' | 'hints' | 'cost'> & { checkTitle: string };
 
 /** Draw one sheet's instructions onto the current PDF page. */
-async function drawPrims(pdf: Pdf, prims: Prim[], plan: (levelId: string) => PlanImageContent) {
+/** Draws the coloured 3D picture at a size in pixels (a PNG data URL), or null when it can't be drawn. */
+export type PictureMaker = (width: number, height: number) => Promise<string | null>;
+
+async function drawPrims(pdf: Pdf, prims: Prim[], plan: (levelId: string) => PlanImageContent, picture?: PictureMaker) {
   pdf.setDrawColor(17, 17, 17);
   pdf.setFillColor(17, 17, 17);
   pdf.setTextColor(17, 17, 17);
@@ -67,6 +70,13 @@ async function drawPrims(pdf: Pdf, prims: Prim[], plan: (levelId: string) => Pla
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', p.x, p.y, p.w, p.h, undefined, 'FAST');
         break;
       }
+      case 'picture': {
+        // 150 dots an inch is plenty for a picture.
+        const px = (mm: number) => Math.max(2, Math.round((mm / 25.4) * 150));
+        const url = await picture?.(px(p.w), px(p.h));
+        if (url) pdf.addImage(url, 'PNG', p.x, p.y, p.w, p.h, undefined, 'FAST');
+        break;
+      }
     }
   }
   pdf.setLineDashPattern([], 0);
@@ -82,6 +92,7 @@ export async function exportSheets(
   plan: (levelId: string) => PlanImageContent,
   extras: SheetExtras,
   filename: string,
+  picture?: PictureMaker,
 ): Promise<string[]> {
   const { jsPDF } = await import('jspdf');
   const overflow: string[] = [];
@@ -92,7 +103,7 @@ export async function exportSheets(
     const format = sheet.paper.toLowerCase();
     if (!pdf) pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format });
     else pdf.addPage(format, 'landscape');
-    await drawPrims(pdf, layout.prims, plan);
+    await drawPrims(pdf, layout.prims, plan, picture);
   }
   if (!pdf) throw new Error('There are no sheets to print. Add a sheet in the Drawings view first.');
   pdf.setProperties({ title: src.projectName, creator: `Mimar ${src.version}` });

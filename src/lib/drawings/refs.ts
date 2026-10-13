@@ -2,7 +2,7 @@
  * Which sections and elevations a plan has, their names and keys, and which way each section looks.
  * Light (no geometry), so the store and the plan can use it without loading the drawing code.
  */
-import type { DrawingRef, ElevationSide, PlanDoc, SectionLine } from '../../types';
+import type { DrawingRef, ElevationSide, PlanDoc, SectionLine, View3dStyle } from '../../types';
 
 export const ELEVATION_SIDES: ElevationSide[] = ['front', 'back', 'left', 'right'];
 
@@ -13,10 +13,18 @@ export const ELEVATION_NAMES: Record<ElevationSide, string> = {
   right: 'Right side elevation',
 };
 
-/** A stable key for a drawing, e.g. "section:abc", "elevation:front" or "plan:ground". */
+export const VIEW3D_STYLES: View3dStyle[] = ['iso', 'picture'];
+
+export const VIEW3D_NAMES: Record<View3dStyle, string> = {
+  iso: 'Isometric view',
+  picture: '3D view',
+};
+
+/** A stable key for a drawing, e.g. "section:abc", "elevation:front", "plan:ground" or "view3d:iso". */
 export function drawingKey(ref: DrawingRef): string {
   if (ref.kind === 'plan') return `plan:${ref.levelId}`;
   if (ref.kind === 'section') return `section:${ref.id}`;
+  if (ref.kind === 'view3d') return `view3d:${ref.style}`;
   return `elevation:${ref.side}`;
 }
 
@@ -26,6 +34,8 @@ export function drawingFromKey(key: string): DrawingRef | null {
   if (kind === 'section' && rest) return { kind: 'section', id: rest };
   if (kind === 'elevation' && ELEVATION_SIDES.includes(rest as ElevationSide))
     return { kind: 'elevation', side: rest as ElevationSide };
+  if (kind === 'view3d' && VIEW3D_STYLES.includes(rest as View3dStyle))
+    return { kind: 'view3d', style: rest as View3dStyle };
   return null;
 }
 
@@ -75,5 +85,6 @@ export function drawingTitle(doc: PlanDoc, ref: DrawingRef): string | null {
     const line = sectionLines(doc).find((s) => s.id === ref.id);
     return line ? sectionTitle(line) : null;
   }
+  if (ref.kind === 'view3d') return VIEW3D_NAMES[ref.style];
   return ELEVATION_NAMES[ref.side];
 }

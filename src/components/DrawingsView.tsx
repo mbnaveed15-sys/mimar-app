@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { exportDrawingsDxf, exportSheetsPdf } from '../lib/exportActions';
 import { newId } from '../lib/ids';
 import { levelContent, drawingSource } from '../lib/drawings/source';
@@ -12,6 +12,7 @@ import {
   sectionLines,
   sectionTitle,
 } from '../lib/drawings/views';
+import { VIEW3D_NAMES, VIEW3D_STYLES } from '../lib/drawings/refs';
 import { withoutHidden } from '../lib/layers';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import type { DrawingRef, PaperSize, Sheet, SheetScale } from '../types';
@@ -60,8 +61,15 @@ export function DrawingsView() {
       return { w: l.paper.w, h: l.paper.h, prims: l.prims, overflow: l.overflow };
     }
     if (!ref || ref.kind === 'plan') return null;
-    const d = src.side(ref);
+    const d = src.side(ref.kind === 'view3d' ? { kind: 'view3d', style: 'iso' } : ref);
     if (!d?.bounds) return null;
+    if (ref.kind === 'view3d' && ref.style === 'picture') {
+      // The picture in the isometric's box, at 1:100.
+      const k = 1000 / VIEW_SCALE;
+      const w = (d.bounds.maxU - d.bounds.minU + 0.6) * k;
+      const h = (d.bounds.maxV - d.bounds.minV + 0.6) * k;
+      return { w: w + 20, h: h + 20, prims: [{ t: 'picture', x: 10, y: 10, w, h }] };
+    }
     const prims = sidePrims(d, VIEW_SCALE, 10, 10, src.doc.drawing);
     const xs = prims.flatMap((p) => (p.t === 'line' ? [p.a[0], p.b[0]] : p.t === 'text' ? [p.x + 40] : []));
     const ys = prims.flatMap((p) => (p.t === 'line' ? [p.a[1], p.b[1]] : p.t === 'text' ? [p.y] : []));
@@ -81,7 +89,13 @@ export function DrawingsView() {
     ...doc.levels.filter((l) => planArea(shown, l.id)).map((l): DrawingRef => ({ kind: 'plan', levelId: l.id })),
     ...sections.map((s): DrawingRef => ({ kind: 'section', id: s.id })),
     ...ELEVATION_SIDES.map((side): DrawingRef => ({ kind: 'elevation', side })),
+    ...VIEW3D_STYLES.map((style): DrawingRef => ({ kind: 'view3d', style })),
   ];
+  const picture = useCallback(
+    (w: number, h: number) =>
+      import('../three/picture').then((m) => m.renderPicture(shown, { wallHeightMm, showFurniture }, w, h)),
+    [shown, wallHeightMm, showFurniture],
+  );
 
   const item = (key: string, label: string, testId?: string) => (
     <button
@@ -114,6 +128,10 @@ export function DrawingsView() {
         <div>
           <div className="m-heading px-2">Elevations</div>
           {ELEVATION_SIDES.map((side) => item(`elevation:${side}`, ELEVATION_NAMES[side], `drawing-${side}`))}
+        </div>
+        <div>
+          <div className="m-heading px-2">3D views</div>
+          {VIEW3D_STYLES.map((style) => item(`view3d:${style}`, VIEW3D_NAMES[style], `drawing-view3d-${style}`))}
         </div>
         <div>
           <div className="m-heading px-2">Sheets</div>
@@ -207,6 +225,7 @@ export function DrawingsView() {
                 >
                   <rect width={page.w} height={page.h} fill="#fff" />
                   <PrimsSvg
+                    picture={picture}
                     prims={page.prims}
                     plan={(levelId) => levelContent(plannerStore.getState(), shown, levelId)}
                   />

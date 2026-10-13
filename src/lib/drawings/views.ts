@@ -14,7 +14,7 @@ import { sideOutward } from '../plot';
 import { groundOf, type Ground } from '../terrain/ground';
 import { profileAlong } from '../terrain/surface';
 import { formatLevel } from './levels';
-import { drawingKey, ELEVATION_NAMES, sectionLines, sectionLook, sectionTitle } from './refs';
+import { drawingKey, ELEVATION_NAMES, sectionLines, sectionLook, sectionTitle, VIEW3D_NAMES } from './refs';
 import {
   GROUND_LEVEL,
   isSiteItem,
@@ -61,6 +61,8 @@ export interface SideDrawing extends Projection {
   levels: LevelMark[];
   /** The dimension strings drawn on it (when the plan's drawing style has them on). */
   dims?: SideDims;
+  /** A 3D view looking down on the building: drawn without the ground line or level marks. */
+  iso?: boolean;
 }
 
 /**
@@ -565,6 +567,26 @@ export function sideDrawing(doc: PlanDoc, ref: DrawingRef, opts: DrawingOptions)
   }
   const model = buildModel(doc, { wallHeightMm: opts.wallHeightMm, showFurniture: false, closedDoors: true });
   const prisms = [...modelPrisms(model, boundaryIds(doc)), ...impliedSlabs(doc, opts.wallHeightMm)];
+  if (ref.kind === 'view3d') {
+    // From the front-left corner, looking down 30°: the building in lines (no ground, levels or dimensions).
+    const f = frontLook(doc);
+    const r = rightOf(f);
+    const len = Math.SQRT2;
+    const p = project(prisms, {
+      origin: { x: model.centre.x, z: model.centre.z },
+      look: { x: (f.x + r.x) / len, z: (f.z + r.z) / len },
+      cut: false,
+      tilt: Math.PI / 6,
+    });
+    const b = p.bounds;
+    return {
+      ...p,
+      title: VIEW3D_NAMES[ref.style],
+      ground: b ? { u0: b.minU, u1: b.maxU } : { u0: -1, u1: 1 },
+      levels: [],
+      iso: true,
+    };
+  }
   const frame: ViewFrame = {
     origin: { x: model.centre.x, z: model.centre.z },
     look: elevationLook(doc, ref.side),

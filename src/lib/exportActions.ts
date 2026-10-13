@@ -1,4 +1,4 @@
-import { GROUND_LEVEL, levelOf } from '../types';
+import { GROUND_LEVEL, levelOf, type DrawingRef } from '../types';
 import { groundOnPlan } from './terrain/groundView';
 import { floorVoids } from './voids';
 import { planBounds } from '../geometry';
@@ -168,6 +168,10 @@ export function exportSheetsPdf() {
         (levelId) => levelContent(s, shown, levelId),
         pdfExtras(),
         `${baseName(s.fileName)} - Drawings.pdf`,
+        (w, h) =>
+          import('../three/picture').then((m) =>
+            m.renderPicture(shown, { wallHeightMm: s.wallHeightMm, showFurniture: s.showFurniture }, w, h),
+          ),
       );
     })
     .then((overflow) => {
@@ -179,14 +183,13 @@ export function exportSheetsPdf() {
     .catch((e) => s.setWarning(`The PDF could not be created. ${String(e)}`));
 }
 
-/** Download every section and elevation as one AutoCAD DXF, side by side at true size. */
+/** Download every section and elevation (and the isometric) as one AutoCAD DXF, side by side at true size. */
 export async function exportDrawingsDxf() {
   const s = plannerStore.getState();
   const { drawingSource } = await import('./drawings/source');
   const src = drawingSource(s);
-  const drawings = sideDrawingRefs(src.doc)
-    .map((ref) => src.side(ref))
-    .filter((d): d is SideDrawing => !!d?.bounds);
+  const refs: DrawingRef[] = [...sideDrawingRefs(src.doc), { kind: 'view3d', style: 'iso' }];
+  const drawings = refs.map((ref) => src.side(ref)).filter((d): d is SideDrawing => !!d?.bounds);
   if (!drawings.length) {
     s.setWarning('There is nothing to draw yet: draw some walls first.');
     return;
