@@ -885,6 +885,16 @@ export function createPlannerStore(
         return !!it && !('type' in it && it.type === 'furniture' && !showFurniture);
       };
       const ids = selectedIds.filter(visible);
+      // Undo can take away the floor being shown (a floor just added or duplicated): show the top floor left.
+      if (!doc.levels.some((l) => l.id === get().activeLevel)) {
+        const floors = doc.levels.filter((l) => !l.site);
+        set({
+          activeLevel: floors[floors.length - 1]?.id ?? GROUND_LEVEL,
+          draft: null,
+          inference: null,
+          lastCopy: null,
+        });
+      }
       const open = get().openGroupId;
       const plinth = get().selectedPlinth;
       set({

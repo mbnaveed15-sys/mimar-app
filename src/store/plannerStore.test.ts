@@ -314,3 +314,21 @@ describe('rooms on Ground', () => {
     expect(room.levelId).toBe(s().activeLevel);
   });
 });
+
+describe('undoing a new floor', () => {
+  it('goes back to a floor that is still there', () => {
+    const store = setup();
+    const s = store.getState;
+    s().addRectangle({ x: 0, y: 0 }, { x: 300, y: 300 });
+    const ground = s().activeLevel;
+    s().duplicateLevel();
+    expect(s().activeLevel).not.toBe(ground);
+    s().undo();
+    expect(s().doc.levels).toHaveLength(1);
+    expect(s().activeLevel).toBe(ground);
+    s().redo();
+    s().addLevel();
+    s().undo();
+    expect(s().doc.levels.some((l) => l.id === s().activeLevel)).toBe(true);
+  });
+});
