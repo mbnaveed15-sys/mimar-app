@@ -179,3 +179,29 @@ test('walls drawn on the building line sit inside it, touching it with their out
   // Centred on the line, the walls would reach 4½" into the setbacks and fail the check.
   await expect(page.getByTestId('plan-check-summary')).toHaveText('No problems found');
 });
+
+test('duplicate a floor above, and set how strongly the floor below shows', async ({ page }) => {
+  const click = async (x: number, y: number) => page.mouse.click(...(await at(page, ...P(x, y))));
+  await page.keyboard.press('r');
+  await click(2, 2);
+  await page.mouse.move(...(await at(page, ...P(5, 5))));
+  await page.keyboard.type(`20',16'`);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-type="wall"]')).toHaveCount(4);
+
+  await page.getByRole('button', { name: /^Floor:/ }).click();
+  await page.getByRole('menuitem', { name: 'Duplicate this floor above' }).click();
+  await expect(page.getByRole('button', { name: 'Floor: First floor' })).toBeVisible();
+  // The copies are on the first floor, over the ground floor's faint walls.
+  const below = page.getByTestId('level-below');
+  await expect(below.locator('[data-type="wall"]')).toHaveCount(4);
+  await expect(page.locator('[data-type="wall"]')).toHaveCount(8);
+  await expect(below).toHaveAttribute('opacity', '0.22');
+
+  await page.getByRole('button', { name: /^Floor:/ }).click();
+  const slider = page.getByLabel('Floor below: how strongly it shows');
+  await slider.fill('50');
+  await expect(below).toHaveAttribute('opacity', '0.5');
+  await slider.fill('0');
+  await expect(below).toHaveCount(0);
+});

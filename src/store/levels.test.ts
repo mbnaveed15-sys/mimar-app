@@ -25,6 +25,42 @@ describe('floors', () => {
     expect(s().levelElements()[0].levelId).toBeUndefined();
   });
 
+  it('duplicates a floor on top: its walls, doors and rooms, but not the plot', () => {
+    const store = setup();
+    const s = () => store.getState();
+    s().addWall({ x: 0, y: 0 }, { x: 300, y: 0 });
+    s().addWall({ x: 300, y: 0 }, { x: 300, y: 300 });
+    s().placeOpening('door', { x: 150, y: 5 });
+    s().commit((d) => ({
+      ...d,
+      elements: [
+        ...d.elements,
+        {
+          id: 'p',
+          type: 'plot',
+          points: [
+            { x: -50, y: -50 },
+            { x: 400, y: -50 },
+            { x: 400, y: 400 },
+          ],
+        } as never,
+      ],
+    }));
+    s().duplicateLevel();
+    expect(s().doc.levels.map((l) => l.name)).toEqual(['Ground floor', 'First floor']);
+    const up = s().activeLevel;
+    expect(up).not.toBe('ground');
+    const copies = s().levelElements();
+    expect(copies.map((el) => el.type).sort()).toEqual(['door', 'wall', 'wall']);
+    const door = copies.find((el) => el.type === 'door') as { wallId: string };
+    expect(copies.some((el) => el.id === door.wallId)).toBe(true);
+    expect(s().doc.elements.filter((el) => el.type === 'plot')).toHaveLength(1);
+    // One step to undo.
+    s().undo();
+    expect(s().doc.levels).toHaveLength(1);
+    expect(s().doc.elements.filter((el) => el.type === 'wall')).toHaveLength(2);
+  });
+
   it('deletes a floor with everything on it, and keeps the ground floor', () => {
     const store = setup();
     const s = () => store.getState();

@@ -44,6 +44,9 @@ autosaves to local storage on every change.
   `undo`, a three-finger tap `redo`. `Gesture.turn` is the two fingers' twist (radians, clockwise on screen), 0 until
   it passes `TWIST_START` (about 8°) in a gesture; `Plan3DView` turns the rig with it (`orbit(-turn / ORBIT_SPEED, 0)`),
   2D ignores it.
+- `src/walls.ts` `wallPolygon`: walls overlap at square corners (ends reach on by half the thickness); two straight
+  walls meeting end to end at another angle are mitred (`mitreAt`; not for T-junctions, three walls, curves or a
+  mitre longer than 4 half-thicknesses). 3D boxes use `wallReach` (to the outer mitre corner).
 - `src/components/TouchBar.tsx`: over the plan's bottom-left corner. While drawing on touch: Done, Cancel, Flip hinge
   ("Touch actions"). With a selection: the selection bar ("Selection actions": Delete, Duplicate, Rotate 90°, Mirror,
   Properties, Deselect; enabled by `canCopy` / `canTransform` from `commands.ts`), shown when the plan was touched, on

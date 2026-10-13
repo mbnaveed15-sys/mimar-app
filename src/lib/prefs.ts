@@ -60,6 +60,8 @@ export interface Prefs {
   accessibleZones: boolean;
   /** Show the selection bar (Delete, Duplicate, Rotate…) with a mouse; touch screens always show it. */
   selectionBar: boolean;
+  /** How strongly the floor below shows under the one being drawn, 0 (hidden) to 100. */
+  belowOpacity: number;
   /** Thickness for new walls, in millimetres. */
   wallThicknessMm: number;
   /** Gap kept between doors and windows and wall corners (and each other), in millimetres. */
@@ -93,6 +95,7 @@ export const DEFAULT_PREFS: Prefs = {
   pdfHints: false,
   accessibleZones: false,
   selectionBar: false,
+  belowOpacity: 22,
   wallThicknessMm: 228.6,
   openingGapMm: DEFAULT_OPENING_GAP_MM,
   marlaSqFt: 225,
@@ -162,6 +165,10 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       pdfHints: raw?.pdfHints === true,
       accessibleZones: raw?.accessibleZones === true,
       selectionBar: raw?.selectionBar === true,
+      belowOpacity:
+        Number.isFinite(Number(raw?.belowOpacity)) && raw?.belowOpacity !== null && raw?.belowOpacity !== undefined
+          ? Math.max(0, Math.min(100, Number(raw.belowOpacity)))
+          : DEFAULT_PREFS.belowOpacity,
       wallThicknessMm: thickness >= 25 && thickness <= 1000 ? thickness : DEFAULT_PREFS.wallThicknessMm,
       openingGapMm: clampGap(raw?.openingGapMm),
       marlaSqFt: raw?.marlaSqFt === 272.25 ? 272.25 : 225,
