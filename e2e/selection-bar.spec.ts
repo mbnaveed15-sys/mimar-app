@@ -64,3 +64,45 @@ test('a selected door shows Flip hinge and Flip swing on the bar', async ({ page
   await page.mouse.click(wall.x + 10, wall.y + wall.height / 2);
   await expect(bar.getByRole('button', { name: 'Flip hinge' })).toHaveCount(0);
 });
+
+test('a casement window picks its hinge side and flips its hinge and swing', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await ready(page);
+  await menu(page, 'View', 'Selection bar');
+  await page.keyboard.press('w');
+  await page.mouse.click(...(await at(page, 2 * FT, 5 * FT)));
+  await page.mouse.click(...(await at(page, 14 * FT, 5 * FT)));
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Shift+W');
+  await page.getByRole('group', { name: 'Window type' }).getByRole('button', { name: 'Casement', exact: true }).click();
+  const hand = page.getByRole('group', { name: 'Window hinge side' });
+  await hand.getByRole('button', { name: 'Right' }).click();
+  await page.mouse.click(...(await at(page, 5 * FT, 6 * FT)));
+  await hand.getByRole('button', { name: 'Left' }).click();
+  await page.mouse.click(...(await at(page, 10 * FT, 6 * FT)));
+  await page.keyboard.press('Escape');
+  const windows = page.locator('[data-type="window"]');
+  await expect(windows).toHaveCount(2);
+  const scale = async (i: number) =>
+    (await windows.nth(i).getAttribute('transform'))!
+      .match(/scale\(([^)]+)\)/)![1]
+      .split(',')
+      .map(Number);
+  // The two hinge sides are opposite.
+  expect((await scale(0))[0]).toBe(-(await scale(1))[0]);
+
+  await page.keyboard.press('Space');
+  await page.mouse.click(...(await at(page, 5 * FT, 5 * FT)));
+  const bar = page.getByRole('toolbar', { name: 'Selection actions' });
+  await expect(page.getByText('Selected: window')).toBeVisible();
+  const before = await scale(0);
+  await bar.getByRole('button', { name: 'Flip hinge' }).click();
+  expect(await scale(0)).toEqual([-before[0], before[1]]);
+  await bar.getByRole('button', { name: 'Flip swing' }).click();
+  expect(await scale(0)).toEqual([-before[0], -before[1]]);
+  // The same in Properties.
+  await page.getByRole('button', { name: 'Flip hinge' }).last().click();
+  expect(await scale(0)).toEqual([before[0], -before[1]]);
+});

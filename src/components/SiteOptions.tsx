@@ -272,6 +272,23 @@ export function SiteOptions() {
         {site.windowKind === 'vent' && (
           <div className="text-muted">Small and high (sill 6'): for baths and kitchens.</div>
         )}
+        {site.windowKind === 'casement' && (
+          <div className="flex flex-col gap-1">
+            <div className="text-muted">Hinge, seen from inside (V flips it)</div>
+            <div className="flex gap-1" role="group" aria-label="Window hinge side">
+              {(['left', 'right'] as const).map((hand) => (
+                <button
+                  key={hand}
+                  className="m-btn px-2 py-0.5"
+                  aria-pressed={site.doorHand === hand}
+                  onClick={() => setSite({ doorHand: hand })}
+                >
+                  {hand === 'left' ? 'Left' : 'Right'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-2">
           <LengthField
             id="new-window-width"

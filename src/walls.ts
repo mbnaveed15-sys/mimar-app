@@ -83,8 +83,73 @@ export function wallExtensions(wall: Wall, walls: Wall[]): { start: number; end:
 }
 
 /**
+ * Where two straight walls meet end to end at an angle that isn't square (a 45° corner, say): the
+ * mitred corners at this wall's end, [on its +normal face, on its -normal face], so both faces run
+ * cleanly into the other wall's. Null for a square corner, a straight run, a T-junction, three or
+ * more walls, or a corner so sharp the mitre would stick out far.
+ */
+function mitreAt(wall: Wall, atStart: boolean, walls: Wall[]): [Point, Point] | null {
+  const p = atStart ? { x: wall.x1, y: wall.y1 } : { x: wall.x2, y: wall.y2 };
+  const others = indexFor(walls)
+    .at(p)
+    .filter((w) => w.id !== wall.id && distanceToWall(w, p) <= JOIN_EPS);
+  if (others.length !== 1 || isArc(others[0])) return null;
+  const other = others[0];
+  const near = (q: Point) => Math.hypot(q.x - p.x, q.y - p.y) <= JOIN_EPS;
+  const otherStart = near({ x: other.x1, y: other.y1 });
+  if (!otherStart && !near({ x: other.x2, y: other.y2 })) return null;
+  // Each wall's direction going away from the corner.
+  const away = (w: Wall, fromStart: boolean) => {
+    const dx = (w.x2 - w.x1) * (fromStart ? 1 : -1);
+    const dy = (w.y2 - w.y1) * (fromStart ? 1 : -1);
+    const l = Math.hypot(dx, dy) || 1;
+    return { x: dx / l, y: dy / l };
+  };
+  const u = away(wall, atStart);
+  const v = away(other, otherStart);
+  const cross = u.x * v.y - u.y * v.x;
+  const dot = u.x * v.x + u.y * v.y;
+  // Square corners keep the plain overlap; nearly straight runs have nothing to mitre.
+  if (Math.abs(dot) < 0.02 || Math.abs(cross) < 0.05) return null;
+  const hw = thicknessOf(wall) / 2;
+  const hv = thicknessOf(other) / 2;
+  // This wall's face on side σ (of its normal going away) runs into the other wall's face on side -σ.
+  const corner = (sigma: 1 | -1): Point => {
+    const a = { x: p.x - u.y * hw * sigma, y: p.y + u.x * hw * sigma };
+    const b = { x: p.x + v.y * hv * sigma, y: p.y - v.x * hv * sigma };
+    // a + t·u = b + s·v
+    const t = ((b.x - a.x) * v.y - (b.y - a.y) * v.x) / cross;
+    return { x: a.x + u.x * t, y: a.y + u.y * t };
+  };
+  const plus = corner(1);
+  const minus = corner(-1);
+  const reach = 4 * Math.max(hw, hv);
+  if (Math.hypot(plus.x - p.x, plus.y - p.y) > reach || Math.hypot(minus.x - p.x, minus.y - p.y) > reach) return null;
+  // Going away from the start the normal is the wall's own; from the end it is reversed.
+  return atStart ? [plus, minus] : [minus, plus];
+}
+
+/**
+ * How far a box standing for the wall (in 3D) reaches past each end: as `wallExtensions`, but at a
+ * mitred corner just to its outer corner, so the two walls' boxes close the corner with no notch.
+ */
+export function wallReach(wall: Wall, walls: Wall[]): { start: number; end: number } {
+  const ext = wallExtensions(wall, walls);
+  if (isArc(wall)) return ext;
+  const len = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) || 1;
+  const along = (q: Point) => ((q.x - wall.x1) * (wall.x2 - wall.x1) + (q.y - wall.y1) * (wall.y2 - wall.y1)) / len;
+  const start = ext.start && mitreAt(wall, true, walls);
+  const end = ext.end && mitreAt(wall, false, walls);
+  return {
+    start: start ? Math.max(0, -Math.min(...start.map(along))) : ext.start,
+    end: end ? Math.max(0, Math.max(...end.map(along)) - len) : ext.end,
+  };
+}
+
+/**
  * Outline of a wall with its thickness. Ends that meet another wall are extended by half the
- * thickness so corners close; the extension is hidden inside the neighbouring wall.
+ * thickness so corners close; the extension is hidden inside the neighbouring wall. Two walls meeting
+ * end to end at an angle (not square) are mitred, so the corner has no step or notch.
  */
 export function wallPolygon(wall: Wall, walls: Wall[]): Point[] {
   if (isArc(wall)) return arcWallPolygon(wall, walls);
@@ -99,12 +164,15 @@ export function wallPolygon(wall: Wall, walls: Wall[]): Point[] {
   const b = { x: wall.x2 + ux * end, y: wall.y2 + uy * end };
   const nx = -uy * half;
   const ny = ux * half;
-  return [
+  const [a1, a2] = (start && mitreAt(wall, true, walls)) || [
     { x: a.x + nx, y: a.y + ny },
-    { x: b.x + nx, y: b.y + ny },
-    { x: b.x - nx, y: b.y - ny },
     { x: a.x - nx, y: a.y - ny },
   ];
+  const [b1, b2] = (end && mitreAt(wall, false, walls)) || [
+    { x: b.x + nx, y: b.y + ny },
+    { x: b.x - nx, y: b.y - ny },
+  ];
+  return [a1, b1, b2, a2];
 }
 
 /** A curved wall's outline: its two faces as arcs, each end reaching on along the curve's end direction. */

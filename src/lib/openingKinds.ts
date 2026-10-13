@@ -42,6 +42,20 @@ export const WINDOW_SIZE_MM: Record<WindowKind, { width: number; sillMm?: number
 /** The door's type ("single" for doors made before there were types; a gate is a double). */
 export const doorKindOf = (o: Opening): DoorKind => (o.gate ? 'double' : (o.doorKind ?? 'single'));
 
+/** A casement window: its sashes swing open, so which side they open to (and a single sash's hinge) matter. */
+export const isCasement = (o: Opening) =>
+  o.type === 'window' &&
+  !o.open &&
+  !o.flat &&
+  !o.shape &&
+  (o.windowKind === 'casement' || o.windowKind === 'casement2');
+
+/** Its swing can be flipped to the other side: a door or gate, or a casement window. */
+export const canFlipSwing = (o: Opening) => o.type === 'door' || isCasement(o);
+
+/** Its hinge can go to the other end: a door, or a single-sash casement window. */
+export const canFlipHinge = (o: Opening) => o.type === 'door' || (isCasement(o) && o.windowKind === 'casement');
+
 /** Door types whose leaves swing (flat leaves, even on a curved wall). */
 export const SWING_KINDS: ReadonlySet<DoorKind> = new Set(['single', 'double']);
 

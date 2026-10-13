@@ -25,7 +25,15 @@ import {
   type Wall,
   type WindowKind,
 } from '../types';
-import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
+import {
+  canFlipHinge,
+  canFlipSwing,
+  DOOR_KIND_NAMES,
+  DOOR_KINDS,
+  doorKindOf,
+  WINDOW_KIND_NAMES,
+  WINDOW_KINDS,
+} from '../lib/openingKinds';
 import { CURTAIN_MM, thicknessOf } from '../walls';
 import { bowForRadius, isArc, radiusOf } from '../lib/arc';
 import { curvedHoleEdges, curveOf, isCurved, straightHoles, withCurve } from '../lib/curvedEdges';
@@ -400,14 +408,16 @@ export function Inspector() {
                     Gate (double leaf, no lintel)
                   </label>
                 )}
-                {el.type === 'door' && (
+                {canFlipSwing(el) && (
                   <div className="flex gap-2">
                     <button onClick={() => flipOpening(el.id, 'side')} className={btn}>
                       Flip swing
                     </button>
-                    <button onClick={() => flipOpening(el.id, 'hinge')} className={btn}>
-                      Flip hinge
-                    </button>
+                    {canFlipHinge(el) && (
+                      <button onClick={() => flipOpening(el.id, 'hinge')} className={btn}>
+                        Flip hinge
+                      </button>
+                    )}
                   </div>
                 )}
                 {el.type === 'window' && (

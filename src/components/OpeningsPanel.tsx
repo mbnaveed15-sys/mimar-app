@@ -1,4 +1,12 @@
-import { DOOR_KIND_NAMES, DOOR_KINDS, doorKindOf, WINDOW_KIND_NAMES, WINDOW_KINDS } from '../lib/openingKinds';
+import {
+  canFlipHinge,
+  DOOR_KIND_NAMES,
+  DOOR_KINDS,
+  doorKindOf,
+  isCasement,
+  WINDOW_KIND_NAMES,
+  WINDOW_KINDS,
+} from '../lib/openingKinds';
 import { WINDOW_HEIGHT_MM } from '../lib/shapes';
 import { MM_PER_UNIT } from '../lib/scale';
 import { usePlanner } from '../store/plannerStore';
@@ -13,7 +21,7 @@ function shared<T>(list: Opening[], get: (o: Opening) => T): T | null {
 }
 
 /**
- * Several doors and windows selected: change their type, width, hinge, swing, sill and height
+ * Several doors and windows selected: change their type, width, hinge, swing (doors and casements), sill and height
  * together (each change one undo step). Widths are fitted in their walls, clear of the corners.
  */
 export function OpeningsPanel() {
@@ -29,6 +37,7 @@ export function OpeningsPanel() {
   if (openings.length < 2) return null;
   const ids = (list: Opening[]) => list.map((o) => o.id);
   const plainWindows = windows.filter((w) => !w.shape && !w.open);
+  const casements = windows.filter(isCasement);
   const doorKind = shared(
     doors.filter((d) => !d.gate),
     (d) => doorKindOf(d),
@@ -140,6 +149,26 @@ export function OpeningsPanel() {
                 ))}
               </select>
             </label>
+          )}
+          {casements.length > 0 && (
+            <div className="flex gap-1.5">
+              <button
+                className="m-btn"
+                onClick={() => editOpenings(ids(casements), (w) => ({ flipSide: !w.flipSide || undefined }))}
+              >
+                Flip swing
+              </button>
+              {casements.some(canFlipHinge) && (
+                <button
+                  className="m-btn"
+                  onClick={() =>
+                    editOpenings(ids(casements.filter(canFlipHinge)), (w) => ({ flipHinge: !w.flipHinge || undefined }))
+                  }
+                >
+                  Flip hinge
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

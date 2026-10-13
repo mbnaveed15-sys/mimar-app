@@ -4,6 +4,7 @@ import { plannerStore, usePlanner } from '../store/plannerStore';
 import { pasteToPlace } from '../tools/controller';
 import { Icon } from './Icon';
 import { BUILDING_USES, PROJECT_TYPES } from '../lib/project';
+import { canFlipHinge, canFlipSwing } from '../lib/openingKinds';
 import type { BuildingUse, ProjectType } from '../types';
 import { useFocusTrap, useMenuKeys } from './useFocus';
 
@@ -272,9 +273,9 @@ export function ContextMenu({
   const items: { label: string; run: () => void; danger?: boolean }[] = [];
   const many = s.selectedIds.length > 1;
   const group = s.selectedGroup();
-  if (el?.type === 'door' && !many) {
-    items.push({ label: 'Flip swing', run: () => s.flipOpening(el.id, 'side') });
-    items.push({ label: 'Flip hinge', run: () => s.flipOpening(el.id, 'hinge') });
+  if ((el?.type === 'door' || el?.type === 'window') && !many) {
+    if (canFlipSwing(el)) items.push({ label: 'Flip swing', run: () => s.flipOpening(el.id, 'side') });
+    if (canFlipHinge(el)) items.push({ label: 'Flip hinge', run: () => s.flipOpening(el.id, 'hinge') });
   }
   if (s.selectedIds.some((id) => s.doc.elements.some((x) => x.id === id && x.type === 'line')))
     items.push({ label: 'Turn into walls', run: () => s.linesToWalls() });

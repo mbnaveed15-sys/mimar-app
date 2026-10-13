@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { canCopy, canTransform } from '../commands';
-import { plannerStore, usePlanner } from '../store/plannerStore';
+import { plannerStore, usePlanner, type PlannerState } from '../store/plannerStore';
 import { cancel } from '../tools/controller';
 import { finishStep } from '../tools/finish';
 import { flipOpeningHand, OPENING_TOOLS } from '../tools/openingTool';
 import type { IconName } from '../theme/icons';
+import type { Opening } from '../types';
+import { canFlipHinge, canFlipSwing } from '../lib/openingKinds';
 import { Icon } from './Icon';
 import { usePhone } from './useCompact';
 
@@ -26,6 +28,14 @@ function useCoarsePointer(): boolean {
   return coarse;
 }
 
+/** The doors and windows selected, when that is all that is selected. */
+function pickedOpenings(s: PlannerState): Opening[] {
+  const picked = s.doc.elements.filter(
+    (el): el is Opening => (el.type === 'door' || el.type === 'window') && s.selectedIds.includes(el.id),
+  );
+  return picked.length === s.selectedIds.length ? picked : [];
+}
+
 const BAR =
   'absolute bottom-3 left-3 z-20 flex max-w-[calc(100%-1.5rem)] divide-x divide-line overflow-x-auto rounded-md border border-line bg-raised text-ink shadow-popover';
 const BTN =
@@ -34,7 +44,7 @@ const BTN =
 /**
  * Buttons over the bottom-left corner of the plan. While something is drawn on a touch screen: the
  * keys a step needs (Enter to finish, Esc to cancel, V to flip a door). While something is selected:
- * the selection bar (Delete, Duplicate, Rotate 90°, Mirror, and for doors Flip hinge and Flip swing, Properties), always on a tablet or a
+ * the selection bar (Delete, Duplicate, Rotate 90°, Mirror, and for doors and casement windows Flip hinge and Flip swing, Properties), always on a tablet or a
  * phone, and with a mouse when View > Selection bar is on.
  */
 export function TouchBar({ onProperties }: { onProperties: () => void }) {
@@ -45,13 +55,14 @@ export function TouchBar({ onProperties }: { onProperties: () => void }) {
   const copyable = usePlanner(canCopy);
   const turnable = usePlanner(canTransform);
   const wanted = usePlanner((s) => s.selectionBar);
-  // Doors only (not gates): their hinge and swing can be flipped from the bar.
-  const doorIds = usePlanner(
+  // Doors and casement windows: their swing (and, but for double sashes, hinge) can be flipped from the bar.
+  const swingIds = usePlanner(
     useShallow((s) => {
-      const doors = s.doc.elements.filter((el) => el.type === 'door' && !el.gate && s.selectedIds.includes(el.id));
-      return doors.length === s.selectedIds.length ? doors.map((d) => d.id) : [];
+      const picked = pickedOpenings(s);
+      return picked.every(canFlipSwing) ? picked.map((o) => o.id) : [];
     }),
   );
+  const hingeToo = usePlanner((s) => pickedOpenings(s).every(canFlipHinge));
   const phone = usePhone();
   const coarse = useCoarsePointer();
 
@@ -90,13 +101,14 @@ export function TouchBar({ onProperties }: { onProperties: () => void }) {
       {action('Duplicate', 'duplicate', () => st().duplicateSelected(), copyable)}
       {action('Rotate 90°', 'rotate', () => st().rotateSelected(90), turnable)}
       {action('Mirror', 'mirror', () => st().setTool('mirror'), turnable)}
-      {doorIds.length > 0 &&
+      {hingeToo &&
+        swingIds.length > 0 &&
         action('Flip hinge', 'hinge', () =>
-          st().editOpenings(doorIds, (d) => ({ flipHinge: !d.flipHinge || undefined })),
+          st().editOpenings(swingIds, (o) => ({ flipHinge: !o.flipHinge || undefined })),
         )}
-      {doorIds.length > 0 &&
+      {swingIds.length > 0 &&
         action('Flip swing', 'swing', () =>
-          st().editOpenings(doorIds, (d) => ({ flipSide: !d.flipSide || undefined })),
+          st().editOpenings(swingIds, (o) => ({ flipSide: !o.flipSide || undefined })),
         )}
       {action('Properties', 'settings', onProperties)}
       {action('Deselect', 'close', () => st().select(null))}
