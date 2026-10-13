@@ -1,4 +1,4 @@
-import { MM_PER_UNIT, usePlanner } from '../store/plannerStore';
+import { MM_PER_UNIT, usePlanner, type SlabMode } from '../store/plannerStore';
 import { LengthField } from './LengthField';
 
 const INCH = 25.4;
@@ -11,11 +11,20 @@ const COLUMN_PRESETS = [
   { label: '⌀ 18"', shape: 'round', w: 18, h: 18 },
 ] as const;
 
+/** The ways the Slab tool draws. */
+const SLAB_MODES: { id: SlabMode; label: string; title: string }[] = [
+  { id: 'rect', label: 'Rectangle', title: 'Drag a rectangle, or click inside walls to cover that room' },
+  { id: 'corners', label: 'Corner by corner', title: 'Click the corners of any shape' },
+  { id: 'rooms', label: 'Rooms', title: 'Click the rooms to cover, then press Enter: one slab over them all' },
+  { id: 'walls', label: 'Follow the walls', title: 'One click covers the walls round it, whatever their shape' },
+];
+
 /** Size of new columns, beams or slabs, shown while their tool is active. */
 export function StructureOptions() {
   const tool = usePlanner((s) => s.tool);
   const spec = usePlanner((s) => s.structure);
   const setSpec = usePlanner((s) => s.setStructure);
+  const setDraft = usePlanner((s) => s.setDraft);
   const units = usePlanner((s) => s.units);
   const mm = (u: number) => u * MM_PER_UNIT;
   const u = (mmValue: number) => mmValue / MM_PER_UNIT;
@@ -93,6 +102,22 @@ export function StructureOptions() {
     return (
       <div className={box}>
         <div className="font-medium">New slab</div>
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Slab shape">
+          {SLAB_MODES.map((m) => (
+            <button
+              key={m.id}
+              className="m-btn px-2 py-0.5"
+              aria-pressed={spec.slabMode === m.id}
+              title={m.title}
+              onClick={() => {
+                setSpec({ slabMode: m.id });
+                setDraft(null);
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
         <LengthField
           id="slab-thickness"
           label="Thickness"

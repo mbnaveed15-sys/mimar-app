@@ -789,6 +789,10 @@ export type Draft =
   | { type: 'contour'; points: Point[]; cursor: Point }
   /** A roof drawn corner by corner round the walls: the corners so far, and where the pointer is. */
   | { type: 'roof'; points: Point[]; cursor: Point }
+  /** A slab drawn corner by corner: the corners so far, and where the pointer is. */
+  | { type: 'slabPoly'; points: Point[]; cursor: Point }
+  /** Rooms picked one by one for a slab over them all (their centre-line outlines). */
+  | { type: 'slabRooms'; rooms: Point[][] }
   /** A levelled area (pad) dragged or clicked out as a rectangle. */
   | { type: 'pad'; x1: number; y1: number; x2: number; y2: number }
   | {

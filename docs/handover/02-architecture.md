@@ -106,6 +106,20 @@ autosaves to local storage on every change.
 - Basements (1.32): `Level.basement` / `heightMm` (at most one, first in `doc.levels`, before the ground floor;
   `normaliseLevels` keeps that order). `src/lib/levels.ts`: `groundIndex`, `basementOf`, `isBasement`,
   `levelWallMm` (a floor's default wall height). Never treat `levels[0]` as the ground floor: use `GROUND_LEVEL`.
+- Ground (site) level (1.47): `Level.site`, id `SITE_LEVEL` ('site'), after the basement and before the ground floor
+  (`normaliseLevels`, `withSiteLevel`). Added when first picked (`showSiteLevel`; the floor list always lists it). Its
+  floor is the lawn (`lawnMm`: `ground.levelMm`, 0 when natural); its walls default to `siteWallMm` (plinth less lawn,
+  at least 6") and its stairs climb that (`stairRiseMm`). It isn't a storey: use `buildingLevels(doc)` (every level but
+  it) for stacking (`levelBaseM`), voids (`levelAbove`/`levelBelow`), implied slabs, level marks, plan hints and storeys;
+  `builtAreaSqFt` is 0 for it. In 3D, its walls stand on the terrain like boundary walls (on the lawn when flat), blocks on
+  the ground at their middle. `PlanDoc.ownPlinth` (Plinth: Draw my own) drops the automatic plinth band under ground-floor
+  walls in 3D and quantities (foundations then come from the walls on Ground (site)). The canvas shows the ground floor
+  faintly over it (offset +1) and `tracePoints` in the controller snaps to the ground floor's wall corners. Format 17.
+- Freeform slabs (1.47): `structure.slabMode` (`rect`, `corners`, `rooms`, `walls`; StructureOptions "Slab shape").
+  Drafts `slabPoly` (corner by corner, like the roof) and `slabRooms` (rooms picked, Enter finishes; `finishSlab`).
+  `src/lib/slabOutline.ts`: `joinOutlines` (rooms meeting along shared centre-line sides joined, courtyards as holes),
+  `toOuterFaces` (out to the walls' far faces, but only halfway over a wall with a room beyond), `roomsSlab`,
+  `wallsOutlineAt` (the outside of the joined walls clicked). `addSlab(points, holes)`.
   `levelBaseM` puts floors below the ground floor at the plinth less a slab and their height. Wall kind
   `'retaining'` (`WallKind` in `types.ts`; `KIND_HEIGHT_MM`, `RETAINING_MM` in the store); `addRetainingWalls`
   builds them from `outsideOutline` (`src/lib/outline.ts`: the walls' outside faces from `wallFaces(walls, true)`,

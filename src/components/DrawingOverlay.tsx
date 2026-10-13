@@ -368,10 +368,23 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
         </>
       )}
 
-      {(d?.type === 'plotPoly' || d?.type === 'roof') && (
+      {d?.type === 'slabRooms' &&
+        d.rooms.map((r, i) => (
+          <polygon
+            key={i}
+            data-testid="slab-room-picked"
+            points={r.map((p) => `${p.x},${p.y}`).join(' ')}
+            style={{ fill: PLAN.draft, stroke: PLAN.draft }}
+            fillOpacity={0.15}
+            strokeWidth={2 * k}
+            strokeDasharray={dash}
+          />
+        ))}
+
+      {(d?.type === 'plotPoly' || d?.type === 'roof' || d?.type === 'slabPoly') && (
         <>
           <polyline
-            data-testid={d.type === 'roof' ? 'roof-draft' : 'plot-draft'}
+            data-testid={d.type === 'roof' ? 'roof-draft' : d.type === 'slabPoly' ? 'slab-draft' : 'plot-draft'}
             points={[...d.points, d.cursor].map((p) => `${p.x},${p.y}`).join(' ')}
             fill="none"
             style={{ stroke: PLAN.draft }}

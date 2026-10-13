@@ -69,6 +69,16 @@ export function draftElements(s: PlannerState): PlanElement[] {
         ...at,
       },
     ];
+  if (d?.type === 'slabPoly' && d.points.length >= 2)
+    return [
+      {
+        id: `${DRAFT}-slab`,
+        type: 'slab',
+        points: [...d.points, d.cursor],
+        thickness: s.structure.slabThickness,
+        ...at,
+      },
+    ];
   if (d?.type === 'plotPoly' && d.points.length >= 2 && !outlineProblem([...d.points, d.cursor]))
     return [
       {

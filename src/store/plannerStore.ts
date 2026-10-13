@@ -119,7 +119,14 @@ export interface StructureSpec {
   beamWidth: number;
   beamDepth: number;
   slabThickness: number;
+  /**
+   * How the Slab tool draws: a rectangle (or the room clicked), corner by corner, over rooms picked
+   * one by one, or round the outside of the walls clicked.
+   */
+  slabMode: SlabMode;
 }
+
+export type SlabMode = 'rect' | 'corners' | 'rooms' | 'walls';
 
 export interface SiteSpec {
   /** Setbacks for new plots: `sides` is the left side and `side2` the right (as `sides` when missing), seen from the road. */
@@ -269,6 +276,7 @@ export const DEFAULT_STRUCTURE: StructureSpec = {
   beamWidth: inch(9),
   beamDepth: inch(18),
   slabThickness: inch(6),
+  slabMode: 'rect',
 };
 export { MM_PER_UNIT };
 
@@ -343,7 +351,8 @@ export interface PlannerState {
   addSection: (a: Point, b: Point, flip: boolean) => void;
   /** Make walls (current thickness) along the selected layout lines, and remove the lines. */
   linesToWalls: () => void;
-  addSlab: (points: Point[]) => void;
+  /** A slab over the outline (with voids in it, if given). */
+  addSlab: (points: Point[], holes?: Point[][]) => void;
   /** A spot level of the natural ground (on the ground floor), mm above the datum. */
   addSpotLevel: (p: Point, zMm: number) => void;
   /** A contour line of the natural ground (on the ground floor). */
@@ -963,9 +972,20 @@ export function createPlannerStore(
         get().endBatch();
         // Drawing a plot corner by corner, undo takes back the last corner.
         const drawing = get().draft;
-        if (drawing?.type === 'plotPoly' || drawing?.type === 'contour' || drawing?.type === 'roof') {
+        if (
+          drawing?.type === 'plotPoly' ||
+          drawing?.type === 'contour' ||
+          drawing?.type === 'roof' ||
+          drawing?.type === 'slabPoly'
+        ) {
           const points = drawing.points.slice(0, -1);
           set({ draft: points.length ? { ...drawing, points } : null });
+          return;
+        }
+        // Picking rooms for a slab, undo puts back the last room picked.
+        if (drawing?.type === 'slabRooms') {
+          const rooms = drawing.rooms.slice(0, -1);
+          set({ draft: rooms.length ? { ...drawing, rooms } : null });
           return;
         }
         const { past, doc, future } = get();
@@ -1886,9 +1906,15 @@ export function createPlannerStore(
         };
         updateElements((els) => [...els, onActive(beam)]);
       },
-      addSlab: (points) => {
+      addSlab: (points, holes) => {
         if (points.length < 3) return;
-        const slab: PlanElement = { id: newId(), type: 'slab', points, thickness: get().structure.slabThickness };
+        const slab: PlanElement = {
+          id: newId(),
+          type: 'slab',
+          points,
+          ...(holes?.length ? { holes } : {}),
+          thickness: get().structure.slabThickness,
+        };
         updateElements((els) => [...els, onActive(slab)]);
       },
       addSpotLevel: (p, zMm) => updateElements((els) => [...els, { id: newId(), type: 'level', x: p.x, y: p.y, zMm }]),

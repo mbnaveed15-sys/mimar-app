@@ -38,7 +38,9 @@ checks for every building type and locality, more building uses, left and right 
 corner with more grips (1.43, one release); dimensions that follow the plan, zoom window and zoom previous, curved doors,
 curved slab voids, a cut corner on a curved plot side, a phone layout, and first floors from a room list (1.44, one release);
 CDA, DHA Islamabad and LDA rules for commercial and other buildings, and LDA houses made official (1.45); phone tools
-always at hand (Select, Move, Eraser, Fit view), a selection bar, two/three-finger tap for Undo/Redo and a 3D twist (1.46).
+always at hand (Select, Move, Eraser, Fit view), a selection bar, two/three-finger tap for Undo/Redo and a 3D twist (1.46);
+a Ground (site) level with the lawn and plinth heights and your own plinth, and slabs drawn corner by corner, over rooms
+picked or round the walls (1.47).
 
 Planned next (plan each with the owner first): DHA Lahore and Bahria building figures (their buildings still say
 "check with the authority" until the owner sends the schedules). Left from 1.45: Mimar can't tell a veranda, an
@@ -64,6 +66,11 @@ hover hints still mention keys.
 Left from 1.46: on a 375 px phone about four of a group's tools show beside the pinned ones (the rest scroll); the
 twist turns the 3D model round the middle of the view, not the point between the fingers; the welcome tour doesn't
 teach the gestures yet.
+Left from 1.47: the plot, spot levels, contours and levelled areas stay on the Ground floor (the ground tools go there);
+on a sloping natural site, blocks and steps on Ground (site) stand at the ground's height at their middle, and walls step
+with the ground; the Ground (site) level can't be deleted while it has items, and its walls snap to the ground floor's wall
+corners only (not its doors or faces). A Rooms slab stops halfway over a wall to a space left out, including a
+courtyard. The Slab tool's Rooms and Follow the walls have no 3D preview.
 Floating side panels were assessed with 1.39 and left out; revisit only if the owner still wants them.
 
 Left from sections and elevations for later: dimension strings on sections (only level marks now); each section and

@@ -250,3 +250,61 @@ test('Ground (site): draw your own plinth under the ground floor, at the lawn', 
   await expect.poll(async () => (await saved())?.ownPlinth).toBe(true);
   expect((await saved()).levels.map((l: { id: string }) => l.id)).toEqual(['site', 'ground']);
 });
+
+test('freeform slabs: corner by corner, over rooms picked, and following the walls', async ({ page }) => {
+  const click = async (x: number, y: number) => page.mouse.click(...(await at(page, ...P(x, y))));
+  const room = async (x: number, y: number, size: string) => {
+    await page.keyboard.press('r');
+    await click(x, y);
+    await page.mouse.move(...(await at(page, ...P(x + 3, y + 3))));
+    await page.keyboard.type(size);
+    await page.keyboard.press('Enter');
+  };
+  // An L-shaped house: a 20' × 16' room with a 10' × 10' one beside it.
+  await room(2, 2, `20',16'`);
+  await room(22, 2, `10',10'`);
+  const slabs = page.locator('[data-type="slab"]');
+  const corners = () =>
+    page.evaluate(() =>
+      JSON.parse(localStorage.getItem('mimar.plan') ?? '{}')
+        .doc.elements.filter((el: { type: string }) => el.type === 'slab')
+        .map((el: { points: unknown[] }) => el.points.length),
+    );
+
+  await page.keyboard.press('Shift+A');
+  const shape = page.getByRole('group', { name: 'Slab shape' });
+  await shape.getByRole('button', { name: 'Follow the walls' }).click();
+  await click(10, 10);
+  await expect(slabs).toHaveCount(1);
+  await expect.poll(corners).toEqual([6]);
+  await page.keyboard.press('Control+z');
+  await expect(slabs).toHaveCount(0);
+
+  await shape.getByRole('button', { name: 'Rooms' }).click();
+  await click(10, 10);
+  await click(26, 6);
+  await expect(page.getByTestId('slab-room-picked')).toHaveCount(2);
+  // Clicked again, a room is dropped; and picked again.
+  await click(26, 6);
+  await expect(page.getByTestId('slab-room-picked')).toHaveCount(1);
+  await click(26, 6);
+  await page.keyboard.press('Enter');
+  await expect(slabs).toHaveCount(1);
+  await expect.poll(corners).toEqual([6]);
+  await page.keyboard.press('Control+z');
+  await expect(slabs).toHaveCount(0);
+
+  await shape.getByRole('button', { name: 'Corner by corner' }).click();
+  for (const [x, y] of [
+    [2, 2],
+    [32, 2],
+    [32, 12],
+    [22, 18],
+    [2, 18],
+  ])
+    await click(x, y);
+  await expect(page.getByTestId('slab-draft')).toBeVisible();
+  await click(2, 2);
+  await expect(slabs).toHaveCount(1);
+  await expect.poll(corners).toEqual([5]);
+});

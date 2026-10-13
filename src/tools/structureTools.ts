@@ -3,6 +3,9 @@ import type { Measure } from '../lib/measure';
 import { formatLength, MM_PER_FOOT } from '../lib/units';
 import { plotRect, stairLayout, stairSpec } from '../lib/site';
 import { detectRoom } from '../rooms';
+import { pointInPolygon } from '../geometry';
+import { isBuildingWall, wallsOf } from '../walls';
+import { roomsSlab, wallsOutlineAt } from '../lib/slabOutline';
 import { stairRiseMm } from '../lib/levels';
 import { riseIn12 } from '../lib/roof/roof';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
@@ -85,6 +88,9 @@ export function structurePress(store: Store, inf: Inference) {
       // Beams chain like walls, until Esc.
       return s.setDraft({ type: 'beam', x1: p.x, y1: p.y, x2: p.x, y2: p.y });
     case 'slab':
+      if (s.structure.slabMode === 'corners' || d?.type === 'slabPoly') return slabCorner(store, p, true);
+      if (s.structure.slabMode === 'rooms') return pickSlabRoom(store, p);
+      if (s.structure.slabMode === 'walls') return slabRoundWalls(store, p);
       if (d?.type !== 'slab') return s.setDraft({ type: 'slab', x1: p.x, y1: p.y, x2: p.x, y2: p.y });
       if (Math.abs(p.x - d.x1) > 1 && Math.abs(p.y - d.y1) > 1) s.addSlab(rectPoints({ x: d.x1, y: d.y1 }, p));
       return s.setDraft(null);
@@ -130,7 +136,7 @@ export function structureHover(store: Store, inf: Inference) {
   const d = s.draft;
   if (d?.type === 'beam' || d?.type === 'slab' || d?.type === 'plot')
     s.setDraft({ ...d, x2: inf.point.x, y2: inf.point.y });
-  if (d?.type === 'plotPoly' || d?.type === 'roof') s.setDraft({ ...d, cursor: inf.point });
+  if (d?.type === 'plotPoly' || d?.type === 'roof' || d?.type === 'slabPoly') s.setDraft({ ...d, cursor: inf.point });
   if (d?.type === 'section') {
     if (!d.placed) s.setDraft({ ...d, x2: inf.point.x, y2: inf.point.y });
     else if (onLeft(d, inf.point) !== d.flip) s.setDraft({ ...d, flip: !d.flip });
@@ -195,6 +201,86 @@ export function finishPlotPoly(store: Store): boolean {
   }
   // The side drawn first is along the road.
   if (s.addPlot(d.points, 0)) s.setDraft(null);
+  return true;
+}
+
+/** The building walls shown on the floor being drawn. */
+const buildingWallsOf = (s: PlannerState) => wallsOf(s.visibleElements()).filter(isBuildingWall);
+
+/**
+ * A corner of a slab drawn corner by corner. Clicking the first corner again (with three or more
+ * placed) finishes it; `snapClose` lets a click near the first corner count.
+ */
+function slabCorner(store: Store, p: Point, snapClose: boolean) {
+  const s = store.getState();
+  const d = s.draft;
+  if (d?.type !== 'slabPoly') {
+    s.setWarning(null);
+    return s.setDraft({ type: 'slabPoly', points: [p], cursor: p });
+  }
+  const tol = snapClose ? 10 * s.reach() * s.pxUnits() : 1;
+  if (d.points.length >= 3 && dist(p, d.points[0]) <= tol) {
+    finishSlab(store);
+    return;
+  }
+  if (dist(p, d.points[d.points.length - 1]) < 1) return;
+  if (sideCrosses(d.points, p)) {
+    s.setWarning('That side would cross another side of the slab: put the corner somewhere else.');
+    return;
+  }
+  s.setWarning(null);
+  s.setDraft({ ...d, points: [...d.points, p], cursor: p });
+}
+
+/** Pick (or, clicked again, drop) the room at p for a slab over the rooms picked. */
+function pickSlabRoom(store: Store, p: Point) {
+  const s = store.getState();
+  const d = s.draft;
+  const picked = d?.type === 'slabRooms' ? d.rooms : [];
+  const again = picked.findIndex((r) => pointInPolygon(p, r));
+  if (again >= 0) {
+    const rooms = picked.filter((_, i) => i !== again);
+    return s.setDraft(rooms.length ? { type: 'slabRooms', rooms } : null);
+  }
+  const area = detectRoom(s.visibleElements(), p);
+  if (!area) {
+    s.setWarning('Click inside a room (with walls all round) to put it under the slab.');
+    return;
+  }
+  s.setWarning(null);
+  s.setDraft({ type: 'slabRooms', rooms: [...picked, area] });
+}
+
+/** A slab round the outside of the walls clicked (inside them, or near them). */
+function slabRoundWalls(store: Store, p: Point) {
+  const s = store.getState();
+  const outline = wallsOutlineAt(buildingWallsOf(s), p);
+  if (!outline) {
+    s.setWarning('Draw walls closed all round first: the slab follows their outside.');
+    return;
+  }
+  s.setWarning(null);
+  s.addSlab(outline);
+}
+
+/** Enter (or clicking the first corner): put in the slab drawn corner by corner, or over the rooms picked. */
+export function finishSlab(store: Store): boolean {
+  const s = store.getState();
+  const d = s.draft;
+  if (d?.type === 'slabRooms') {
+    s.beginBatch();
+    for (const { outline, holes } of roomsSlab(d.rooms, buildingWallsOf(s))) s.addSlab(outline, holes);
+    s.endBatch();
+    s.setDraft(null);
+    return true;
+  }
+  if (d?.type !== 'slabPoly') return false;
+  if (d.points.length < 3) {
+    s.setWarning('A slab needs at least three corners.');
+    return true;
+  }
+  s.addSlab(d.points);
+  s.setDraft(null);
   return true;
 }
 
@@ -267,6 +353,12 @@ export function structureRelease(store: Store, dragged: boolean) {
       s.addPlot(plotRect({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 }));
     return s.setDraft(null);
   }
+  // A slab dragged out from its first corner is a rectangle.
+  if (s.tool === 'slab' && d?.type === 'slabPoly' && dragged && d.points.length === 1) {
+    const [a] = d.points;
+    if (Math.abs(d.cursor.x - a.x) > 1 && Math.abs(d.cursor.y - a.y) > 1) s.addSlab(rectPoints(a, d.cursor));
+    return s.setDraft(null);
+  }
   if (s.tool !== 'slab' || d?.type !== 'slab' || (d.x1 !== d.x2 && !dragged)) return;
   if (dragged) {
     s.addSlab(rectPoints({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 }));
@@ -295,6 +387,17 @@ export function structureMeasure(store: Store, m: Measure): string | null {
     s.setDraft({ type: 'beam', x1: end.x, y1: end.y, x2: end.x, y2: end.y });
     return null;
   }
+  if (s.tool === 'slab' && (d?.type === 'slabPoly' || s.structure.slabMode === 'corners')) {
+    if (d?.type !== 'slabPoly') return 'Click the first corner of the slab, then type the length of each side.';
+    const next = typedCorner(s, d, m);
+    if (typeof next === 'string') return next;
+    const before = s.draft;
+    slabCorner(store, next, false);
+    if (store.getState().draft === before) return store.getState().warnings[0] ?? 'That corner can’t be used.';
+    return null;
+  }
+  if (s.tool === 'slab' && (s.structure.slabMode === 'rooms' || s.structure.slabMode === 'walls'))
+    return s.structure.slabMode === 'rooms' ? 'Click the rooms to cover.' : 'Click inside the walls to cover.';
   if (s.tool === 'slab') {
     if (d?.type !== 'slab') return 'Click the first corner, then type width and depth.';
     const [a, b] = m.kind === 'pair' ? [m.a, m.b] : m.kind === 'length' ? [m.mm, m.mm] : [0, 0];
@@ -385,7 +488,7 @@ export function structureReadout(s: PlannerState): { label: string; value: strin
         s.site.roofShape === 'flat' ? 'Flat' : `${Math.round(pitch * 10) / 10}° (${riseIn12(pitch).toFixed(1)} in 12)`,
     };
   }
-  if (d?.type === 'plotPoly' || d?.type === 'roof') {
+  if (d?.type === 'plotPoly' || d?.type === 'roof' || d?.type === 'slabPoly') {
     const last = d.points[d.points.length - 1];
     return { label: 'Length', value: len(Math.hypot(d.cursor.x - last.x, d.cursor.y - last.y)) };
   }
@@ -409,9 +512,24 @@ export function structureHint(s: PlannerState): string {
         ? 'Click the other end (or type a length). Beams chain until Esc.'
         : 'Click where the beam starts, e.g. on a column. Beams show dashed: they are above the floor plan cut.';
     case 'slab':
-      return d?.type === 'slab'
-        ? `Click the opposite corner, or type width, depth (e.g. 20',30').`
-        : 'Click inside walls to cover that area with a slab, or drag a rectangle.';
+      if (d?.type === 'slabPoly')
+        return d.points.length < 3
+          ? 'Click the next corner, or type the side’s length.'
+          : 'Click the next corner, or click the first corner (or press Enter) to put the slab in. Ctrl+Z takes back a corner.';
+      if (d?.type === 'slabRooms')
+        return `${d.rooms.length} room${d.rooms.length === 1 ? '' : 's'} picked. Click more rooms (again to drop one), then press Enter for one slab over them.`;
+      switch (s.structure.slabMode) {
+        case 'corners':
+          return 'Click the slab’s corners one by one, any shape (a drag makes a rectangle).';
+        case 'rooms':
+          return 'Click the rooms to cover, then press Enter: one slab over them all, out to the outside walls.';
+        case 'walls':
+          return 'Click inside the walls: the slab covers them, whatever their shape, out to their outside faces.';
+        default:
+          return d?.type === 'slab'
+            ? `Click the opposite corner, or type width, depth (e.g. 20',30').`
+            : 'Click inside walls to cover that area with a slab, or drag a rectangle. Pick another way on the right.';
+      }
     case 'plot':
       if (d?.type === 'plotPoly')
         return d.points.length < 3
