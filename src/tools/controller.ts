@@ -1115,7 +1115,7 @@ export function toolHint(s: PlannerState): string {
     case 'line':
       return d?.type === 'line'
         ? 'Click the next point (or type a length). Lines chain until Esc; select them and use "Turn into walls" to build.'
-        : 'Draw layout lines to plan with: click to chain, drag for one line. They snap like walls.';
+        : 'Draw layout lines to plan with: click to chain, drag for one line. They snap like walls, and a line right across a block or slab splits it for Push/Pull.';
     case 'wall':
       if (d?.type === 'wall' && d.bend)
         return 'Move the pointer to bend the wall and click, or type its radius and press Enter.';

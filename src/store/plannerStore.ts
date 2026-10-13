@@ -75,6 +75,8 @@ import { outsideOutline } from '../lib/outline';
 import { CURTAIN_MM, hasPlinth, isBuildingWall } from '../walls';
 import { wallPath, type WallLine } from '../lib/arc';
 import { pathOutline, roundedRect, type CurveMode } from '../lib/curves';
+import { splitSolidsByLine } from '../lib/splitSolids';
+import { divideWall } from '../lib/modify';
 import { groundOf, roundLevel } from '../lib/terrain/ground';
 import type { Built } from '../lib/layoutBuild';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
@@ -364,7 +366,10 @@ export interface PlannerState {
   addColumn: (p: Point) => void;
   addBeam: (a: Point, b: Point) => void;
   /** A layout (drafting) line on the floor being drawn. */
+  /** A layout line; a straight one drawn right across blocks and slabs splits them (see splitSolids.ts). */
   addLine: (a: Point, b: Point, bow?: number) => void;
+  /** Cut a wall or layout line into equal parts, or into pieces of a length (mm). */
+  divideItem: (id: Id, how: { parts: number } | { everyMm: number }) => void;
   /** A dimension on the floor being drawn (its id is made here); returns the id. */
   addDimension: (dim: Omit<Dimension, 'id'>) => Id;
   /**
@@ -1987,7 +1992,20 @@ export function createPlannerStore(
           y2: b.y,
           ...(bow && Math.abs(bow) > 0.05 && { bow }),
         };
-        updateElements((els) => [...els, onActive(line)]);
+        const placed = onActive(line) as SketchLine;
+        updateElements((els) => splitSolidsByLine([...els, placed], placed));
+      },
+      divideItem: (id, how) => {
+        const openings = (doc: PlanDoc) =>
+          doc.elements.filter((el) => el.type === 'door' || el.type === 'window').length;
+        const before = openings(get().doc);
+        get().commit((doc) => divideWall(doc, id, 'parts' in how ? how : { every: how.everyMm / MM_PER_UNIT }));
+        const lost = before - openings(get().doc);
+        get().setWarning(
+          lost > 0
+            ? `A division went through ${lost === 1 ? 'a door or window' : `${lost} doors or windows`}, so ${lost === 1 ? 'it was' : 'they were'} removed. Undo (Ctrl+Z) to bring ${lost === 1 ? 'it' : 'them'} back.`
+            : null,
+        );
       },
       addDimension: (dim) => {
         const id = newId();
