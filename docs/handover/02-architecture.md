@@ -485,6 +485,33 @@ autosaves to local storage on every change.
     `site.roofShape`/`roofPitchDeg`/`roofOverhangMm`, store `addRoof`/`roofOverHouse`, UI `RoofOptions.tsx`
     (tool options and Inspector fields), plan `RoofShape` in `shapes/StructureShapes.tsx`, DXF `A-ROOF`/`A-ROOF-OTLN`.
     Quantities: `roofSqft` (rate `roof`), the roof as RCC slab, gable walls as brickwork.
+- **Services (1.51)** (`src/lib/services.ts`, pure): service points are `Furniture` whose `kind` is in the catalog's
+  `Services` group; `SERVICES[kind]` gives the trade (electrical, hvac, plumbing, drainage, gas, data, fire), the mount
+  (ceiling items hang under the ceiling; wall items' `heightMm` is their middle; floor items' is their base), the 3D size
+  and the runs (`RunSystem`) each takes. `FIXTURE_RUNS` lets ordinary fixtures (WC, basin, sink, shower, washing
+  machine, stove…) take runs too. A `Furniture.elevMm` on a service is its own mounting height. Placing: the Services
+  tool shares the Furniture tool's code (`PLACING_TOOLS`, `kindPlaced` picks `serviceKind` or `furnitureKind`;
+  ceiling items don't snap to walls). Runs: `ServiceRun` (`type: 'run'`, a `PointsElement`) with `from`/`to` item ids;
+  `tools/runTool.ts` (`joinAt` prefers items taking the picked system; clicking an item after the first point ends
+  the run; Enter or right-click ends it anywhere; typed lengths); the store's `settle` runs `syncRuns` so joined ends
+  follow their items and let go of deleted ones; copies remap joins (`remapJoins` in `modify.ts`/`selection.ts`).
+  `findElementNear` prefers an item over a run that merely ends on it. Plan: `ServiceSymbol.tsx` (from
+  `FurnitureSymbol`), strokes in `TRADE_COLORS`; `RunShape.tsx` (`runPath`: wires as quadratic bows unless
+  `straight`; pipe size label; fall arrows on drains). Layers: `layerOf` maps runs and services to their trade's layer.
+  3D: `three/services3d.ts` (`serviceSolid`, `runSolids`, `PIPE_HEIGHT_MM`, role `service`), built whatever
+  `showFurniture` says. DXF: `TRADE_LAYER`/`RUN_LAYER` in `exportDxf.ts` (curved wires as `curvedRunPoints`).
+  IFC: `serviceIfcClass` (IfcLightFixture, IfcSwitchingDevice, IfcOutlet, IfcSanitaryTerminal, IfcValve, IfcTank,
+  IfcPipeSegment, IfcWasteTerminal, IfcDistributionChamberElement…, all with a PredefinedType). Schedule:
+  `servicesSchedule.ts` (counts and plan lengths per floor, CSV). Hints: `servicesHints.ts` (kind `services`, only on
+  floors that have services).
+- **Saved views and paper (1.51):** `doc.views` (`SavedView`): `plan` (level + area in plan units) or `3d`
+  (`SavedCamera`: the `CameraRig`'s target, distance, azimuth, elevation, parallel). Saved by the store's `saveView`
+  (the 2D view's visible area, or `getViewControls().camera()`), restored by `goToView` (`zoomToBox`, or
+  `requestCamera` → `setCamera`). On sheets as `DrawingRef` `{ kind: 'view', id, style? }`: `planOf` gives a plan
+  view's level and area (no pad), `linesOf`/`isPicture` route 3D ones to `sideDrawing` (parallel projection from
+  `cameraLook`) or to a `picture` prim carrying the camera (`renderPicture(..., camera)`). Paper: `lib/paper.ts`
+  (`PAPERS` in mm, landscape; `paperMm` turns them for `Sheet.portrait`, `custom` uses `Sheet.customMm`; `pdfPage`
+  gives jsPDF a `[w, h]` format).
 
 
 ## Exports
