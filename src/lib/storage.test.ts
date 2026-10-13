@@ -164,13 +164,36 @@ describe('storage', () => {
     const doc = normaliseDoc({
       ...emptyDoc(),
       elements: [
-        { ...base, id: 'a', authority: 'cda', setbacks: { front: 1, rear: 2, sides: 3, side2: 4 } },
-        { ...base, id: 'b', authority: 'mars', setbacks: { front: 1, rear: 2, sides: 3 } },
+        {
+          ...base,
+          id: 'a',
+          authority: 'cda',
+          bylawArea: 'cda-markaz',
+          roadWidthMm: 18288,
+          setbacks: { front: 1, rear: 2, sides: 3, side2: 4 },
+        },
+        {
+          ...base,
+          id: 'b',
+          authority: 'mars',
+          roadWidthMm: -5,
+          bylawArea: 7,
+          setbacks: { front: 1, rear: 2, sides: 3 },
+        },
+        { ...base, id: 'c', authority: 'lda-builtup', setbacks: { front: 1, rear: 2, sides: 3 } },
       ],
     });
-    expect(doc.elements[0]).toMatchObject({ authority: 'cda', setbacks: { side2: 4 } });
+    expect(doc.elements[0]).toMatchObject({
+      authority: 'cda',
+      bylawArea: 'cda-markaz',
+      roadWidthMm: 18288,
+      setbacks: { side2: 4 },
+    });
     expect(doc.elements[1]).not.toHaveProperty('authority');
     expect(doc.elements[1]).not.toHaveProperty('setbacks.side2');
+    expect(doc.elements[1]).not.toHaveProperty('roadWidthMm');
+    expect(doc.elements[1]).not.toHaveProperty('bylawArea');
+    expect(doc.elements[2]).toMatchObject({ authority: 'lda-builtup' });
   });
 
   it("keeps a plot's sides and cut corner when sound, and a road as its main road", () => {
@@ -324,6 +347,6 @@ describe('storage', () => {
     // A plan with no sheets of its own gets the suggested ones; an emptied list stays empty.
     expect(normaliseDoc(emptyDoc()).sheets).toBeUndefined();
     expect(normaliseDoc({ ...emptyDoc(), sheets: [] }).sheets).toEqual([]);
-    expect(CURRENT_VERSION).toBe(15);
+    expect(CURRENT_VERSION).toBe(16);
   });
 });

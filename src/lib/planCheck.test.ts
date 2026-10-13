@@ -87,16 +87,17 @@ describe('plan check', () => {
   });
 
   it('shows the figures a locality’s table lacks as rows to check', () => {
-    const check = planCheck(docOf([plotOf(30, 60, 'lda'), wall('a', 10, 20, 20, 20)]), ctx)!;
+    // DHA Lahore's summary has no storeys limit.
+    const check = planCheck(docOf([plotOf(30, 60, 'dha-lhr'), wall('a', 10, 20, 20, 20)]), ctx)!;
     expect(check.rows.find((r) => r.id === 'storeys')).toMatchObject({ status: 'check' });
-    expect(check.rows.find((r) => r.id === 'height')).toMatchObject({ status: 'check' });
   });
 
   it('checks a building’s plot by its own setbacks, not the house table, with a row for its bylaws', () => {
     const doc: PlanDoc = {
-      ...docOf([plotOf(50, 90, 'cda'), wall('a', 10, 20, 20, 20)]),
+      ...docOf([plotOf(50, 90, 'dha-lhr'), wall('a', 10, 20, 20, 20)]),
       project: { type: 'building', use: 'office' },
     };
+    // DHA Lahore has no building bylaws in Mimar yet.
     const check = planCheck(doc, ctx)!;
     expect(check.rule).toBeNull();
     expect(check.rows.find((r) => r.id === 'setbacks')?.clause).toBe('Plot’s own');
@@ -243,7 +244,7 @@ describe('plan check', () => {
     expect(check.rows.find((r) => r.id === 'rooms')?.status).toBe('ok'); // 40 sq ft: fine for a bathroom
     // A 40×80 plot with the road on its long side is still type A by its size (356 sq yd), not type D.
     expect(ruleFor(cda, 40 * 80, 80)?.label).toMatch(/Type A, 300–450/);
-    // LDA: a 1 kanal plot is in the 1–2 kanal band.
-    expect(ruleFor(authorityById('lda')!, 50 * 90, 50)?.label).toBe('1–2 kanal');
+    // LDA: a 1 kanal plot is in the 1 kanal to 30 marla band.
+    expect(ruleFor(authorityById('lda')!, 50 * 90, 50)?.label).toBe('1 kanal to 30 marla');
   });
 });

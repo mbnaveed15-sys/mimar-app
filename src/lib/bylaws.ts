@@ -9,9 +9,11 @@ import { MM_PER_UNIT } from './scale';
 import { frontage, plotArea } from './plot';
 import type { Plot } from '../types';
 
-const ft = (feet: number, inches = 0) => feet * MM_PER_FOOT + inches * MM_PER_INCH;
+/** Feet and inches in mm. */
+export const ft = (feet: number, inches = 0) => feet * MM_PER_FOOT + inches * MM_PER_INCH;
 
-export type AuthorityId = 'cda' | 'cda-private' | 'dha-isb' | 'dha-lhr' | 'bahria-lhr' | 'lda';
+export type AuthorityId =
+  'cda' | 'cda-private' | 'dha-isb' | 'dha-lhr' | 'bahria-lhr' | 'lda' | 'lda-builtup' | 'lda-open';
 /** No local authority: the plot's own setbacks and the national codes (see GENERAL). */
 export type CheckAuthorityId = AuthorityId | 'general';
 
@@ -40,6 +42,17 @@ export interface PlotRule {
   coveragePct?: number;
   /** Largest first floor, as a share of the ground floor. */
   firstFloorPct?: number;
+  /** Largest floor area ratio (all floors' covered area over the plot), as 1:far. */
+  far?: number;
+  /** Tallest from the road, when it goes by plot size (else the authority's height). */
+  heightMm?: number;
+  /** The front setback is the one typed for the plot (the authority fixes it case by case). */
+  frontAsTyped?: string;
+  /** Another pair of side setbacks (mm) that passes too. */
+  altSides?: [number, number];
+  /** The rear, or the sides, are the plot's own as typed (the authority fixes only the others). */
+  rearAsTyped?: boolean;
+  sidesAsTyped?: boolean;
   /** Cells that couldn't be read for certain, to check with the authority. */
   check?: string;
 }
@@ -63,6 +76,13 @@ export interface Authority {
   setbackClause: string;
   rules: PlotRule[];
   storeys?: { max: number; clause: string };
+  /** Where the FAR comes from, and whether a basement counts in it. */
+  far?: { clause: string; withBasement: boolean };
+  /**
+   * The table row as it applies to this plot, where more than its size decides (the road's width,
+   * the plot's frontage): see LDA's built-up and open areas.
+   */
+  adjust?: (rule: PlotRule, m: { areaSqFt: number; frontageFt: number; roadFt?: number }) => PlotRule;
   /** Tallest the house may be from the road, and the clause. */
   height?: {
     maxMm: number;
@@ -132,7 +152,8 @@ export const CDA_ROOMS: RoomRule[] = [
   { names: /\bw\.?c\b|powder/i, label: 'WC', minSqFt: 12, minWidthMm: ft(3) },
 ];
 
-const sb = (front: number, side1: number, side2: number, rear: number): Setbacks => ({
+/** Setbacks in feet: front, side 1, side 2, rear. */
+export const sb = (front: number, side1: number, side2: number, rear: number): Setbacks => ({
   front: ft(front),
   side1: ft(side1),
   side2: ft(side2),
@@ -156,6 +177,97 @@ const LAHORE_PRESETS = [
 
 const A = ft(3, 6);
 const CD = ft(5);
+
+const LDA_SOURCE =
+  'LDA Building and Zoning Regulations 2019 (amendments to 28 Jan 2020 and the office order of 28 Oct 2022)';
+
+/** LDA 2.2.3: plots in marla [from, to), coverage %, FAR 1:x, height in feet (all 3 storeys). */
+const LDA_LIMITS: [number, number, number, number, number][] = [
+  [0, 5, 80, 2.4, 38],
+  [5, 10, 75, 2.3, 38],
+  [10, 20, 70, 2.8, 45],
+  [20, 30.01, 65, 2.6, 45],
+  [30.01, 40, 60, 2.4, 45],
+  [40, Infinity, 55, 2.2, 45],
+];
+/** LDA 2.1.3, built-up areas on roads up to 25' wide: marla [from, to), coverage %, FAR 1:x. */
+const LDA_NARROW: [number, number, number, number][] = [
+  [0, 5, 85, 2],
+  [5, 10, 80, 1.6],
+  [10, 20, 70, 1.5],
+  [20, 40, 65, 1.4],
+  [40, Infinity, 60, 1.3],
+];
+const marlaLabel = (m: number) => (m >= 20 && m % 20 === 0 ? `${m / 20} kanal` : `${m} marla`);
+
+/** LDA house rows: setbacks [front, side 1, side 2, rear] by marla, split where 2.2.3's limits change too. */
+function ldaRules(setbacks: [number, number, [number, number, number, number]][]): PlotRule[] {
+  const cuts = [...new Set([...setbacks.flatMap(([a, b]) => [a, b]), ...LDA_LIMITS.flatMap(([a, b]) => [a, b])])]
+    .filter((m) => Number.isFinite(m))
+    .sort((a, b) => a - b);
+  const rules: PlotRule[] = [];
+  for (let i = 0; i < cuts.length; i++) {
+    const lo = cuts[i];
+    const hi = cuts[i + 1] ?? Infinity;
+    const row = setbacks.find(([a, b]) => lo >= a && lo < b);
+    const lim = LDA_LIMITS.find(([a, b]) => lo >= a && lo < b);
+    if (!row || !lim) continue;
+    const [f, s1, s2, r] = row[2];
+    const name = (m: number) => marlaLabel(Math.round(m));
+    // A bound just over a whole number (30.01) keeps that number in the row below it.
+    const over = (m: number) => !Number.isInteger(m);
+    const from = over(lo) ? `Over ${name(lo)}` : !lo ? '' : name(lo);
+    const to = hi === Infinity ? '' : over(hi) ? `to ${name(hi)}` : `to under ${name(hi)}`;
+    rules.push({
+      label: !lo ? `Under ${name(hi)}` : hi === Infinity ? `${from} and above` : `${from} ${to}`,
+      marla: hi === Infinity ? [lo] : [lo, hi],
+      setbacks: sb(f, s1, s2, r),
+      coveragePct: lim[2],
+      far: lim[3],
+      heightMm: ft(lim[4]),
+    });
+  }
+  return rules;
+}
+
+/** LDA 2.2.1, approved schemes (also the building line in open areas, 2.3.1). */
+const LDA_SCHEME_RULES = ldaRules([
+  [0, 10, [5, 0, 0, 5]],
+  [10, 30.01, [10, 5, 0, 7]],
+  [30.01, 40, [10, 5, 5, 7]],
+  [40, 80, [20, 10, 10, 10]],
+  [80, Infinity, [20, 13, 13, 13]],
+]);
+/** LDA 2.1.1(b), established built-up areas on roads wider than 25'. */
+const LDA_BUILTUP_RULES = ldaRules([
+  [0, 5, [5, 0, 0, 0]],
+  [5, 10, [5, 0, 0, 5]],
+  [10, 30.01, [10, 5, 0, 7]],
+  [30.01, 40, [10, 5, 5, 7]],
+  [40, Infinity, [20, 10, 10, 10]],
+]);
+
+/** What all LDA houses share (2.2.2–2.7, 5.2.1, 5.2.2). */
+const LDA_HOUSE = {
+  storeys: { max: 3, clause: '2.7.1(a)' },
+  height: {
+    maxMm: ft(45),
+    clause: '2.2.3',
+    note: 'From the road to the top of the parapet, without the mumty.',
+    withMumty: false,
+  },
+  far: { clause: '2.2.3', withBasement: true },
+  rooms: {
+    rules: [
+      { names: HABITABLE, label: 'Habitable room', minSqFt: 100, minWidthMm: ft(8) },
+      { names: /kitchen/i, label: 'Kitchen', minSqFt: 50, minWidthMm: ft(6) },
+    ],
+    clause: '5.2.2(a)',
+  },
+  basement: { extent: 'building' as const, clause: '5.2.1(e)' },
+  mumty: { height: { maxMm: ft(9, 6), clause: '1.1 (Building Height)' } },
+  presets: LAHORE_PRESETS,
+};
 
 export const AUTHORITIES: Authority[] = [
   {
@@ -469,19 +581,58 @@ export const AUTHORITIES: Authority[] = [
   },
   {
     id: 'lda',
-    name: 'LDA Lahore (setbacks only)',
-    status: 'provisional',
-    source: 'Compiled summary; heights and FAR left out until the official LDA 2019 regulations are checked',
-    setbackClause: 'summary',
-    rules: [
-      { label: 'Under 5 marla', marla: [0, 5], setbacks: sb(5, 0, 0, 0) },
-      { label: '5–10 marla', marla: [5, 10], setbacks: sb(5, 0, 0, 5) },
-      { label: '10 marla – 1 kanal', marla: [10, 20], setbacks: sb(10, 5, 0, 7) },
-      { label: '1–2 kanal', marla: [20, 40], setbacks: sb(10, 5, 5, 7) },
-      { label: '2 kanal and above', marla: [40], setbacks: sb(20, 10, 10, 10) },
-    ],
-    presets: LAHORE_PRESETS,
-    notes: [],
+    name: 'LDA Lahore (approved schemes)',
+    status: 'official',
+    source: LDA_SOURCE,
+    setbackClause: '2.2.1',
+    rules: LDA_SCHEME_RULES,
+    ...LDA_HOUSE,
+    notes: ["The 5' side setback of 10 to 30 marla goes on one side only; Swap left and right moves it."],
+  },
+  {
+    id: 'lda-builtup',
+    name: 'LDA Lahore (built-up areas)',
+    status: 'official',
+    source: LDA_SOURCE,
+    setbackClause: '2.1.1',
+    rules: LDA_BUILTUP_RULES,
+    ...LDA_HOUSE,
+    adjust: (rule, { roadFt }) => {
+      // On a road up to 25' wide, the older table (2.1.3) and 38' high; the building line follows
+      // the houses already there.
+      if (roadFt === undefined || roadFt > 25) return rule;
+      const narrow = LDA_NARROW.find(([lo, hi]) => (rule.marla?.[0] ?? 0) >= lo && (rule.marla?.[0] ?? 0) < hi);
+      return {
+        ...rule,
+        label: `${rule.label}, road up to 25'`,
+        coveragePct: narrow?.[2] ?? rule.coveragePct,
+        far: narrow?.[3] ?? rule.far,
+        heightMm: ft(38),
+        frontAsTyped:
+          "On a road up to 25' wide the building line is the one the houses along it already keep (2.1.1a).",
+      };
+    },
+    notes: ["Type the road width under the plot: on roads up to 25' wide other limits apply (2.1.1–2.1.3)."],
+  },
+  {
+    id: 'lda-open',
+    name: 'LDA Lahore (predominantly open areas)',
+    status: 'official',
+    source: LDA_SOURCE,
+    setbackClause: '2.3.1',
+    rules: LDA_SCHEME_RULES,
+    ...LDA_HOUSE,
+    adjust: (rule, { frontageFt }) => {
+      // The building line as in schemes; the rear and sides by the plot's frontage.
+      const f = Math.round(frontageFt);
+      const [rear, side] = f < 30 ? [5, 0] : f <= 50 ? [5, 5] : f <= 70 ? [10, 5] : [10, 10];
+      return {
+        ...rule,
+        label: `${rule.label}, ${f}' frontage`,
+        setbacks: { front: rule.setbacks.front, rear: ft(rear), side1: ft(side), side2: ft(side) },
+      };
+    },
+    notes: ['The rear and side setbacks go by the plot’s frontage along the road (2.3.1).'],
   },
 ];
 
@@ -503,7 +654,7 @@ export const GENERAL: Authority = {
   notes: [],
 };
 
-const SQ_FT_PER_SQ_YD = 9;
+export const SQ_FT_PER_SQ_YD = 9;
 const within = (v: number, [lo, hi]: [number, number?]) => v >= lo && (hi === undefined || v <= hi);
 const withinOpen = (v: number, [lo, hi]: [number, number?]) => v >= lo && (hi === undefined || v < hi);
 
@@ -542,7 +693,27 @@ export function plotRule(plot: Plot): { authority: Authority; rule: PlotRule | n
   const authority = authorityById(plot.authority);
   if (!authority) return null;
   const { areaSqFt, frontageFt } = plotMeasures(plot);
-  return { authority, rule: ruleFor(authority, areaSqFt, frontageFt) };
+  const rule = ruleFor(authority, areaSqFt, frontageFt);
+  const roadFt = roadWidthFt(plot);
+  return {
+    authority,
+    rule: rule && authority.adjust ? authority.adjust(rule, { areaSqFt, frontageFt, roadFt }) : rule,
+  };
+}
+
+/** The main road's width (its right of way), in feet, if typed. */
+export const roadWidthFt = (plot: Plot): number | undefined =>
+  plot.roadWidthMm ? plot.roadWidthMm / MM_PER_FOOT : undefined;
+
+/** A rule's setbacks with the sides it leaves to the plot (front, rear or sides as typed) taken from the plot. */
+export function withTyped(s: Plot['setbacks'], rule: PlotRule, plot: Plot): Plot['setbacks'] {
+  const own = plot.setbacks;
+  return {
+    ...s,
+    ...(rule.frontAsTyped ? { front: own.front } : {}),
+    ...(rule.rearAsTyped ? { rear: own.rear } : {}),
+    ...(rule.sidesAsTyped ? { sides: own.sides, side2: own.side2 } : {}),
+  };
 }
 
 /** A rule's setbacks as a plot's (side 1 and side 2), swapped when the smaller side is to go on the other side. */

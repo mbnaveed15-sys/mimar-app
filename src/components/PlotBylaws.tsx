@@ -1,4 +1,5 @@
-import { AUTHORITIES, plotMeasures, plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
+import { AUTHORITIES, plotMeasures, plotRule, type AuthorityId } from '../lib/bylaws';
+import { appliedRule, appliedSetbacks, buildingRuleOf } from '../lib/buildingCheck';
 import { shows } from '../lib/project';
 import { leftRightOf, setbacksFromLeftRight } from '../lib/plot';
 import { usePlanner } from '../store/plannerStore';
@@ -71,19 +72,39 @@ export function PlotBylawsPanel({ plot }: { plot: Plot }) {
   const units = usePlanner((s) => s.units);
   const updateElement = usePlanner((s) => s.updateElement);
   const setPlotAuthority = usePlanner((s) => s.setPlotAuthority);
-  const bylaws = usePlanner((s) => shows(s.doc, 'bylaws'));
+  const setPlotBylawArea = usePlanner((s) => s.setPlotBylawArea);
+  const doc = usePlanner((s) => s.doc);
+  const bylaws = shows(doc, 'bylaws');
   const found = plotRule(plot);
-  const rule = found?.rule;
+  // A building under CDA, DHA Islamabad or LDA: its area's limits, not the house table.
+  const building = buildingRuleOf(doc, plot);
+  const rule = appliedRule(doc, plot);
   const { areaSqFt, frontageFt } = plotMeasures(plot);
   const sb = plot.setbacks;
   const lr = leftRightOf(plot);
-  const fromRule = rule ? plotSetbacks(rule) : null;
-  const swapped = rule ? plotSetbacks(rule, true) : null;
+  const fromRule = rule ? appliedSetbacks(rule, plot) : null;
+  const options = rule
+    ? [
+        appliedSetbacks(rule, plot),
+        appliedSetbacks(rule, plot, true),
+        ...(rule.altSides
+          ? [false, true].map((swap) =>
+              appliedSetbacks(
+                { ...rule, setbacks: { ...rule.setbacks, side1: rule.altSides![0], side2: rule.altSides![1] } },
+                plot,
+                swap,
+              ),
+            )
+          : []),
+      ]
+    : [];
   const same = (a: Plot['setbacks'] | null) =>
     !!a &&
     (['front', 'rear', 'sides'] as const).every((k) => Math.abs(a[k] - sb[k]) < 1) &&
     Math.abs((a.side2 ?? a.sides) - (sb.side2 ?? sb.sides)) < 1;
-  const followsRule = same(fromRule) || same(swapped);
+  const followsRule = options.some(same);
+  // The road's width decides LDA's zones and CDA's major avenues, and LDA houses on narrow roads.
+  const askRoad = building ? building.bylaws.usesRoadWidth : found?.authority.id === 'lda-builtup';
 
   return (
     <div className="flex flex-col gap-2" data-testid="plot-bylaws">
@@ -103,10 +124,53 @@ export function PlotBylawsPanel({ plot }: { plot: Plot }) {
           </>
         )}
       </div>
-      {bylaws && found && (
+      {bylaws && building && (
+        <div className="flex flex-col gap-0.5">
+          <label htmlFor="plot-bylaw-area" className="text-muted">
+            Area ({building.bylaws.name})
+          </label>
+          <select
+            id="plot-bylaw-area"
+            value={building.area.id}
+            onChange={(e) => setPlotBylawArea(plot.id, e.target.value)}
+            className="rounded-sm border p-1"
+          >
+            {building.bylaws.areas.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {bylaws && askRoad && (
+        <LengthField
+          id="plot-road-width"
+          label={plot.roadWidthMm ? 'Road width' : 'Road width (not typed)'}
+          mm={plot.roadWidthMm ?? 0}
+          units={units}
+          min={0}
+          onCommit={(mm) => {
+            const next: Plot = { ...plot, roadWidthMm: mm };
+            if (!mm) delete next.roadWidthMm;
+            updateElement(next);
+          }}
+        />
+      )}
+      {bylaws && building && (
         <div className="rounded-sm border border-line p-1.5">
           <div className="font-medium" data-testid="plot-rule">
-            {rule ? rule.label : 'No row in the table fits this plot'}
+            {building.limits.label}
+          </div>
+          <div className="text-muted">
+            {building.area.clause} · {building.bylaws.source}
+          </div>
+        </div>
+      )}
+      {bylaws && found && !building && (
+        <div className="rounded-sm border border-line p-1.5">
+          <div className="font-medium" data-testid="plot-rule">
+            {rule ? rule.label : found.rule ? found.rule.label : 'No row in the table fits this plot'}
             {found.authority.status === 'provisional' && (
               <span className="ml-1 rounded-sm bg-sunken px-1 text-[10px] text-muted">provisional</span>
             )}
@@ -167,11 +231,16 @@ export function PlotBylawsPanel({ plot }: { plot: Plot }) {
       {found && fromRule && !followsRule && (
         <div className="text-danger">These setbacks differ from the bylaws; the plan check uses the bylaws.</div>
       )}
-      {found?.authority.notes.map((n) => (
-        <div key={n} className="text-muted">
-          {n}
-        </div>
-      ))}
+      {found && building && !rule && (
+        <div className="text-muted">This area’s setbacks are set plot by plot: type the plot’s own.</div>
+      )}
+      {rule?.frontAsTyped && <div className="text-muted">{rule.frontAsTyped}</div>}
+      {!building &&
+        found?.authority.notes.map((n) => (
+          <div key={n} className="text-muted">
+            {n}
+          </div>
+        ))}
     </div>
   );
 }

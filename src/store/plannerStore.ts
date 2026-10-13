@@ -43,7 +43,8 @@ import {
   ungroup,
 } from '../lib/selection';
 import { boundaryWallLines, buildableArea, stairLayout, stairSpec } from '../lib/site';
-import { plotRule, plotSetbacks, type AuthorityId } from '../lib/bylaws';
+import { type AuthorityId } from '../lib/bylaws';
+import { appliedRule, appliedSetbacks } from '../lib/buildingCheck';
 import {
   guessSideKinds,
   insetPolygon,
@@ -410,6 +411,8 @@ export interface PlannerState {
   placeUpperLayout: (built: Built, levelId: Id, stairRoomId?: Id) => void;
   /** Put a plot under an authority's bylaws (or none), taking its setbacks from their table. */
   setPlotAuthority: (plotId: Id, authority: AuthorityId | undefined) => void;
+  /** Put a building's plot in an area under its authority (a Markaz, main commercial…), taking its setbacks. */
+  setPlotBylawArea: (plotId: Id, area: string | undefined) => void;
   addStair: (p: Point) => void;
   /** Parapet walls round a roof slab, on the floor above it (a Roof floor is added if needed). */
   addParapetAround: (slabId: Id) => void;
@@ -2002,8 +2005,8 @@ export function createPlannerStore(
         let plot: Plot = { id: newId(), type: 'plot', points, front, sideList, setbacks };
         if (site.authority) {
           plot = { ...plot, authority: site.authority };
-          const rule = plotRule(plot)?.rule;
-          if (rule) plot = { ...plot, setbacks: plotSetbacks(rule) };
+          const rule = appliedRule(get().doc, plot);
+          if (rule) plot = { ...plot, setbacks: appliedSetbacks(rule, plot) };
         }
         const added = plot;
         get().commit((doc) => buildPlotWalls({ ...doc, elements: [...doc.elements, added] }, added.id, newId));
@@ -2184,8 +2187,18 @@ export function createPlannerStore(
         if (!plot) return;
         const next: Plot = { ...plot, authority };
         if (!authority) delete next.authority;
-        const rule = authority ? plotRule(next)?.rule : null;
-        get().updateElement(rule ? { ...next, setbacks: plotSetbacks(rule) } : next);
+        // Areas belong to an authority: another one starts on its usual area for the use.
+        if (authority !== plot.authority) delete next.bylawArea;
+        const rule = authority ? appliedRule(get().doc, next) : null;
+        get().updateElement(rule ? { ...next, setbacks: appliedSetbacks(rule, next) } : next);
+      },
+      setPlotBylawArea: (plotId, area) => {
+        const plot = get().doc.elements.find((el): el is Plot => el.type === 'plot' && el.id === plotId);
+        if (!plot) return;
+        const next: Plot = { ...plot, bylawArea: area };
+        if (!area) delete next.bylawArea;
+        const rule = appliedRule(get().doc, next);
+        get().updateElement(rule ? { ...next, setbacks: appliedSetbacks(rule, next) } : next);
       },
       addStair: (p) => {
         const { site, doc, wallHeightMm, activeLevel } = get();
