@@ -1,5 +1,5 @@
 import { findElementNear, translateElement } from '../geometry';
-import { snapAllowed } from '../lib/checks';
+import { snapAllowed, snapsOn } from '../lib/checks';
 import { copyOpeningTo, loneOpenings, slideOpening } from '../store/openingAt';
 import { newId } from '../lib/ids';
 import { axisDirection, infer, type Inference, type Segment, type SnapPoint } from '../lib/inference';
@@ -64,6 +64,8 @@ import {
   curveReadout,
   curveRelease,
 } from './curveTool';
+import { setSideSize, sideSize } from '../lib/resize';
+import { FURNITURE_HINT, furnitureHover, furnitureMeasure, furniturePress, furnitureReadout } from './furnitureTool';
 import { DIM_TOOLS, dimAnchor, dimHint, dimHover, dimMeasure, dimPress, dimReadout, dimRelease } from './dimensionTool';
 
 /** The bits of a zustand store the controller needs. */
@@ -81,6 +83,7 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   dimension: 'length',
   move: 'move',
   rotate: 'angle',
+  furniture: 'angle',
   offset: 'length',
   mirror: 'none',
   trim: 'none',
@@ -202,16 +205,16 @@ export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreI
   const previewing = !!s.batchBase && ['stretch', 'scale', 'rotate', 'mirror'].includes(s.draft?.type ?? '');
   const ids = previewing ? new Set(shown.map((el) => el.id)) : null;
   const elements = previewing && ids ? s.batchBase!.elements.filter((el) => ids.has(el.id)) : shown;
-  const allow = snapAllowed(s.snaps, s.checks);
+  const allow = snapAllowed({ ...s.snaps, on: snapsOn(s) }, s.checks);
   // Snapping off: the point stays where the pointer is (an axis lock still holds it to its line).
-  if (!s.snaps.on && !(from && lock)) return { point: raw, kind: 'free' };
+  if (!snapsOn(s) && !(from && lock)) return { point: raw, kind: 'free' };
   return infer(raw, {
     walls: wallsOf(elements),
     lines: elements.filter((el): el is SketchLine => el.type === 'line'),
     guides: allow('building-line') ? buildingGuides(s) : [],
     tolerance: 10 * s.reach() * s.pxUnits(),
     from,
-    grid: s.grid.snap && s.snaps.on ? s.gridPx : null,
+    grid: s.grid.snap && snapsOn(s) ? s.gridPx : null,
     lock,
     ignoreIds,
     allow,
@@ -309,8 +312,16 @@ export function currentDirection(s: PlannerState): Point | null {
   return null;
 }
 
+/** The item whose side grip was just dragged (still selected, with Select): a length typed sets that size. */
+function resizedItem(s: PlannerState): PlanElement | null {
+  const r = s.lastResize;
+  if (!r || s.tool !== 'select' || s.selectedIds.length !== 1 || s.selectedIds[0] !== r.id) return null;
+  return s.doc.elements.find((el) => el.id === r.id) ?? null;
+}
+
 /** What the active tool takes typed: a plot drawn corner by corner takes lengths, as walls do. */
 export function measureKindOf(s: PlannerState): MeasureKind | undefined {
+  if (resizedItem(s)) return 'length';
   if (s.tool === 'plot' && s.site.plotShape === 'any' && !s.site.plotSize) return 'length';
   if (s.tool === 'curve') return curveMeasureKind(s);
   return MEASURE_TOOLS[s.tool];
@@ -351,6 +362,7 @@ export function hover(store: Store, raw: Point, shift = false, screenY?: number)
   const s = store.getState();
   const d = s.draft;
   if (!(s.tool in MEASURE_TOOLS)) return;
+  if (s.tool === 'furniture') return furnitureHover(store, raw);
   if (s.tool === 'pushpull') {
     s.setInference(null);
     return shapeHover(store, null);
@@ -590,6 +602,10 @@ export function press(
     openingPress(store, raw, opts);
     return true;
   }
+  if (s.tool === 'furniture') {
+    furniturePress(store, raw);
+    return true;
+  }
   const d = s.draft;
   const from = anchorOf(s);
   const inf = inferAt(s, raw, from, movingIds(s));
@@ -822,6 +838,21 @@ export function applyMeasure(store: Store, text: string): boolean {
           : CURVE_TOOLS.includes(s.tool)
             ? curveMeasure
             : null;
+  const resized = resizedItem(s);
+  if (resized && s.lastResize) {
+    if (m.kind !== 'length' || m.mm <= 0) return fail("Type the new size, e.g. 6'6 or 2m.");
+    const next = setSideSize(resized, s.lastResize.grip, m.mm / MM_PER_UNIT);
+    if (!next) return fail('It can’t be made that size from this side.');
+    s.updateElement(next);
+    s.setWarning(null);
+    return true;
+  }
+  if (s.tool === 'furniture') {
+    const error = furnitureMeasure(store, m);
+    if (error) return fail(error);
+    s.setWarning(null);
+    return true;
+  }
   if (DIM_TOOLS.includes(s.tool)) {
     const lockDir = s.axisLock === 'x' || s.axisLock === 'y' ? axisDirection(s.axisLock) : s.shiftLock;
     const error = dimMeasure(store, m, lockDir ?? currentDirection(s));
@@ -1021,6 +1052,11 @@ export function tapeText(s: PlannerState, d: TapeDraft): string {
 export function measureReadout(s: PlannerState): { label: string; value: string } {
   const d = s.draft;
   const len = (v: Point) => formatLength(Math.hypot(v.x, v.y) * MM_PER_UNIT, s.units);
+  const resized = resizedItem(s);
+  if (resized && s.lastResize) {
+    const size = sideSize(resized, s.lastResize.grip);
+    return { label: 'Size', value: size ? formatLength(size * MM_PER_UNIT, s.units) : '' };
+  }
   switch (s.tool) {
     case 'line':
       return { label: 'Length', value: d?.type === 'line' ? len(sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 })) : '' };
@@ -1044,6 +1080,8 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
     case 'move':
       if (d?.type === 'move' && s.axisLock === 'z') return { label: 'Height', value: formatLength(d.dz ?? 0, s.units) };
       return { label: 'Distance', value: d?.type === 'move' ? len(sub(d.to, d.base)) : '' };
+    case 'furniture':
+      return furnitureReadout(s);
     case 'rotate':
       // Counter-clockwise positive, as typed.
       return { label: 'Angle', value: d?.type === 'rotate' ? `${Math.round(-d.angle) || 0}°` : '' };
@@ -1061,7 +1099,9 @@ export function toolHint(s: PlannerState): string {
   const d = s.draft;
   switch (s.tool) {
     case 'select':
-      return 'Click to select, drag to move. Right-click for more. Space selects from any tool.';
+      if (resizedItem(s))
+        return 'Type the size and press Enter to set it exactly; the opposite side stays where it is.';
+      return 'Click to select, drag to move. Square grips move one side. Right-click for more. Space selects from any tool.';
     case 'pan':
       return 'Drag to move around. Middle-drag pans with any tool.';
     case 'zoom':
@@ -1100,7 +1140,7 @@ export function toolHint(s: PlannerState): string {
     case 'window':
       return openingHint(s);
     case 'furniture':
-      return 'Choose an item on the right, then click on the plan to place it at its real size.';
+      return FURNITURE_HINT;
     case 'move':
       if (d?.type === 'move' && s.axisLock === 'z')
         return 'Move the pointer up or down to raise or lower, or type a height. Arrow up/down again to move across.';

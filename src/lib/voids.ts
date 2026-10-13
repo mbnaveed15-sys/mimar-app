@@ -2,10 +2,12 @@
  * Double-height spaces: a room marked open to above leaves the floor over it open. The slab over it
  * has a void, the floor above shows the void crossed through, and quantities leave it out. Pure.
  */
-import { pointInPolygon } from '../geometry';
+import { elementOutline, pointInPolygon } from '../geometry';
 import { buildingLevels } from './levels';
+import { visibleShapes } from './itemShape';
+import { joinOutlines } from './slabOutline';
 import { polygonArea } from '../rooms';
-import { levelOf, type Id, type PlanDoc, type Point, type Room } from '../types';
+import { levelOf, type Id, type PlanDoc, type Point, type Room, type Stair } from '../types';
 
 /** The floor above this one, if there is one (the Ground (site) level isn't a floor of the building). */
 export function levelAbove(doc: Pick<PlanDoc, 'levels'>, levelId: Id): Id | null {
@@ -31,6 +33,48 @@ export function openRooms(doc: Pick<PlanDoc, 'levels' | 'rooms'>, levelId: Id): 
 export function voidsOver(doc: Pick<PlanDoc, 'levels' | 'rooms'>, levelId: Id): Room[] {
   const below = levelBelow(doc, levelId);
   return below ? openRooms(doc, below) : [];
+}
+
+/** A stair climbing at least this far (mm) goes up a whole floor: one up to the plinth doesn't. */
+const FLOOR_CLIMB_MM = 1500;
+
+/** The opening a stair needs in the floor above: its own outline (an L, a circle), or its footprint. */
+function stairHole(st: Stair): Point[] {
+  if (st.shape === 'straight' || st.shape === 'U' || st.shape === 'ramp') return elementOutline(st);
+  const joined = joinOutlines(visibleShapes(st, []));
+  const biggest = joined.reduce<Point[] | null>(
+    (best, j) => (!best || polygonArea(j.outline) > polygonArea(best) ? j.outline : best),
+    null,
+  );
+  return biggest ?? elementOutline(st);
+}
+
+/**
+ * Stairwells: each stair on this floor that climbs to the floor above cuts its own opening in the
+ * slab over it. Worked out from the stairs as they are, so an opening follows its stair's shape and
+ * closes again when the stair goes. As rooms (open to above), with ids `stair-<id>`.
+ */
+export function stairOpenings(doc: Pick<PlanDoc, 'levels' | 'elements'>, levelId: Id): Room[] {
+  if (!levelAbove(doc, levelId)) return [];
+  return doc.elements
+    .filter(
+      (el): el is Stair => el.type === 'stair' && !el.hidden && levelOf(el) === levelId && el.riseMm >= FLOOR_CLIMB_MM,
+    )
+    .map((st) => ({ id: `stair-${st.id}`, name: 'Stair opening', points: stairHole(st), levelId }));
+}
+
+/** Everything left open in the slab over this floor: double-height rooms and stairwells. */
+export function slabVoids(doc: Pick<PlanDoc, 'levels' | 'rooms' | 'elements'>, levelId: Id): Room[] {
+  const open = openRooms(doc, levelId);
+  // A stair in a room already open to the floor above (a stairwell drawn as a room) needs no hole of its own.
+  const stairs = stairOpenings(doc, levelId).filter((h) => !open.some((r) => within(h.points, r.points)));
+  return [...open, ...stairs];
+}
+
+/** Everything open in this floor's own floor: double-height rooms and stairwells from the floor below. */
+export function floorVoids(doc: Pick<PlanDoc, 'levels' | 'rooms' | 'elements'>, levelId: Id): Room[] {
+  const below = levelBelow(doc, levelId);
+  return below ? slabVoids(doc, below) : [];
 }
 
 /** Whether the outline lies wholly inside the other (its corners inside or on it). */

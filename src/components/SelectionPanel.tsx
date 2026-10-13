@@ -1,5 +1,7 @@
 import { itemById } from '../lib/selection';
 import { plannerStore, usePlanner } from '../store/plannerStore';
+import { canResetSize } from '../lib/resize';
+import { GroundPlace } from './GroundPlace';
 import type { PlanElement } from '../types';
 import { OpeningsPanel } from './OpeningsPanel';
 
@@ -32,6 +34,8 @@ export function SelectionPanel() {
   const selectedIds = usePlanner((s) => s.selectedIds);
   const group = usePlanner((s) => s.selectedGroup());
   const s = plannerStore.getState();
+  const picked = new Set(selectedIds);
+  const resettable = doc.elements.some((el) => picked.has(el.id) && !el.locked && canResetSize(el));
   const component = group?.componentId ? doc.components.find((c) => c.id === group.componentId) : undefined;
   const copies = component ? doc.groups.filter((g) => g.componentId === component.id).length : 0;
 
@@ -83,6 +87,7 @@ export function SelectionPanel() {
         <div className="font-medium">{selectedIds.length} selected</div>
       )}
       <div className="text-muted">{summary}</div>
+      <GroundPlace ids={selectedIds} />
       <OpeningsPanel />
       <div className="flex flex-wrap gap-1.5">
         {group ? (
@@ -115,6 +120,15 @@ export function SelectionPanel() {
         <button className="m-btn" onClick={() => s.rotateSelected(90)}>
           Rotate 90°
         </button>
+        {resettable && (
+          <button
+            className="m-btn"
+            title="Furniture back to its library size, columns to the Structure size"
+            onClick={() => s.resetSize()}
+          >
+            Reset size
+          </button>
+        )}
         <button className="m-btn m-btn-danger" onClick={() => s.deleteSelected()}>
           Delete
         </button>

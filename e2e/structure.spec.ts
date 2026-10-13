@@ -206,7 +206,7 @@ test('duplicate a floor above, and set how strongly the floor below shows', asyn
   await expect(below).toHaveCount(0);
 });
 
-test('Ground (site): draw your own plinth under the ground floor, at the lawn', async ({ page }) => {
+test('Ground: draw your own plinth on its lawn, shown with the ground floor', async ({ page }) => {
   const click = async (x: number, y: number) => page.mouse.click(...(await at(page, ...P(x, y))));
   const room = async () => {
     await page.keyboard.press('r');
@@ -218,21 +218,18 @@ test('Ground (site): draw your own plinth under the ground floor, at the lawn', 
   await room();
   await expect(page.locator('[data-type="wall"]')).toHaveCount(4);
 
-  // It is listed under the ground floor, and added when picked.
+  // Ground is one entry; its Draw on switch puts new items on the lawn (added when first picked).
   await page.getByRole('button', { name: /^Floor:/ }).click();
-  const floors = page.getByRole('menuitemradio');
-  await expect(floors).toHaveText([/Ground floor/, /Ground \(site\)/]);
-  await page.getByRole('menuitemradio', { name: 'Ground (site)' }).click();
-  await expect(page.getByRole('button', { name: 'Floor: Ground (site)' })).toBeVisible();
-  // The ground floor shows faintly over it, to draw the plinth under its walls.
-  const faint = page.getByTestId('level-below');
-  await expect(faint.locator('[data-type="wall"]')).toHaveCount(4);
+  await expect(page.getByRole('menuitemradio')).toHaveText([/Ground floor/]);
+  const drawOn = page.getByRole('group', { name: 'Draw on the ground floor or the lawn' });
+  await drawOn.getByRole('button', { name: 'Lawn' }).click();
+  await expect(page.getByRole('button', { name: 'Floor: Ground floor · lawn' })).toBeVisible();
+  // The ground floor's walls still show, to draw the plinth under them.
+  await expect(page.locator('[data-type="wall"]')).toHaveCount(4);
 
-  await page.getByRole('button', { name: /^Floor:/ }).click();
   await expect(page.getByTestId('site-heights')).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Duplicate this floor above' })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: 'Delete this floor' })).toHaveCount(0);
-  await expect(page.getByLabel('Ground floor: how strongly it shows')).toBeVisible();
   const own = page.getByRole('group', { name: 'Plinth' }).getByRole('button', { name: 'Draw my own' });
   await own.click();
   await expect(own).toHaveAttribute('aria-pressed', 'true');
@@ -242,13 +239,16 @@ test('Ground (site): draw your own plinth under the ground floor, at the lawn', 
   await room();
   await expect(page.locator('[data-type="wall"]')).toHaveCount(8);
 
-  // Back on the ground floor, the plinth shows faintly under it.
+  // Back on the floor, both still show together.
   await page.getByRole('button', { name: /^Floor:/ }).click();
-  await page.getByRole('menuitemradio', { name: 'Ground floor' }).click();
-  await expect(faint.locator('[data-type="wall"]')).toHaveCount(4);
+  await drawOn.getByRole('button', { name: 'Floor' }).click();
+  await expect(page.getByRole('button', { name: 'Floor: Ground floor' })).toBeVisible();
+  await expect(page.locator('[data-type="wall"]')).toHaveCount(8);
   const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('mimar.plan') ?? '{}').doc);
   await expect.poll(async () => (await saved())?.ownPlinth).toBe(true);
   expect((await saved()).levels.map((l: { id: string }) => l.id)).toEqual(['site', 'ground']);
+  const lawn = (await saved()).elements.filter((el: { levelId?: string }) => el.levelId === 'site');
+  expect(lawn).toHaveLength(4);
 });
 
 test('freeform slabs: corner by corner, over rooms picked, and following the walls', async ({ page }) => {

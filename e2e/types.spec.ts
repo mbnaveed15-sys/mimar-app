@@ -43,9 +43,11 @@ test('plants and garden items are in the furniture library and draw green', asyn
   await page.getByRole('button', { name: 'Garden & plants', exact: true }).click();
   await page.getByRole('button', { name: 'Tree (large)' }).click();
   await page.mouse.click(...(await at(page, ...P(10, 10))));
-  const tree = page.getByTestId('plan-canvas').locator('[data-symbol="tree-large"]');
+  const tree = page.getByTestId('plan-canvas').locator('[data-type="furniture"] [data-symbol="tree-large"]');
   await expect(tree).toHaveCount(1);
   await page.getByRole('button', { name: 'Jhoola (garden swing)' }).click();
   await page.mouse.click(...(await at(page, ...P(30, 10))));
-  await expect(page.getByTestId('plan-canvas').locator('[data-symbol="jhoola"]')).toHaveCount(1);
+  await expect(page.getByTestId('plan-canvas').locator('[data-type="furniture"] [data-symbol="jhoola"]')).toHaveCount(
+    1,
+  );
 });

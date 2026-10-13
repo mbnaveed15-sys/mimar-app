@@ -9,7 +9,7 @@ import { roomsSlab, wallsOutlineAt } from '../lib/slabOutline';
 import { stairRiseMm } from '../lib/levels';
 import { riseIn12 } from '../lib/roof/roof';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
-import type { Point, Tool } from '../types';
+import { levelOf, type Point, type Tool } from '../types';
 import {
   GROUND_TOOLS,
   groundHint,
@@ -204,8 +204,11 @@ export function finishPlotPoly(store: Store): boolean {
   return true;
 }
 
+/** Items shown on the floor being drawn itself (on Ground, not those on its lawn, or its floor). */
+const ownShown = (s: PlannerState) => s.visibleElements().filter((el) => levelOf(el) === s.activeLevel);
+
 /** The building walls shown on the floor being drawn. */
-const buildingWallsOf = (s: PlannerState) => wallsOf(s.visibleElements()).filter(isBuildingWall);
+const buildingWallsOf = (s: PlannerState) => wallsOf(ownShown(s)).filter(isBuildingWall);
 
 /**
  * A corner of a slab drawn corner by corner. Clicking the first corner again (with three or more
@@ -242,7 +245,7 @@ function pickSlabRoom(store: Store, p: Point) {
     const rooms = picked.filter((_, i) => i !== again);
     return s.setDraft(rooms.length ? { type: 'slabRooms', rooms } : null);
   }
-  const area = detectRoom(s.visibleElements(), p);
+  const area = detectRoom(ownShown(s), p);
   if (!area) {
     s.setWarning('Click inside a room (with walls all round) to put it under the slab.');
     return;

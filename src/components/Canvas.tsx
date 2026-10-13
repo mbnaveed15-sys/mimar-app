@@ -13,8 +13,11 @@ import { wallPolygon, wallsOf } from '../walls';
 import { pointAlong } from '../lib/arc';
 import { edgeMiddles, holeEdgeMiddles } from '../lib/curvedEdges';
 import { sideMiddle } from '../lib/plot';
-import { voidsOver } from '../lib/voids';
+import { floorVoids } from '../lib/voids';
 import { DrawingOverlay } from './DrawingOverlay';
+import { FurnitureShape } from './shapes/FurnitureShape';
+import { furnitureAt } from '../tools/furnitureTool';
+import { sideGrips } from '../lib/resize';
 import { CheckMarks } from './CheckMarks';
 import { faceAt2D } from '../lib/faces2d';
 import { clearPicker, setPicker, type Picker3D } from '../three/picker';
@@ -24,6 +27,7 @@ import { PlanDrawing } from './PlanDrawing';
 import { groundOnPlan } from '../lib/terrain/groundView';
 import { PlanGrid } from './PlanGrid';
 import { usePlanInput, type ContextTarget } from './usePlanInput';
+import { inferAt } from '../tools/controller';
 import { useTouch } from './useTouch';
 
 function toPlanPoint(svg: SVGSVGElement, e: { clientX: number; clientY: number }): Point {
@@ -46,10 +50,10 @@ const MAX_BEND_GRIPS = 48;
 
 export function Canvas({ svgRef, onContextMenu }: Props) {
   const doc = useLevelDoc()!;
-  // The floor below, drawn faintly so the walls above can be traced over it (on Ground (site), the
-  // ground floor over it, so the plinth can be drawn under its walls).
+  // The floor below, drawn faintly so the walls above can be traced over it (Ground's floor and
+  // lawn show together, at full strength).
   const onSite = usePlanner((s) => !!s.doc.levels.find((l) => l.id === s.activeLevel)?.site);
-  const below = useLevelDoc(onSite ? 1 : -1);
+  const below = useLevelDoc(-1);
   const belowOpacity = usePlanner((s) => s.belowOpacity);
   const belowWalls = useMemo(
     () =>
@@ -82,8 +86,8 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
     () => (activeLevel === GROUND_LEVEL || onSite ? groundOnPlan(fullDoc, metric) : null),
     [fullDoc, activeLevel, onSite, metric],
   );
-  // Double-height rooms on the floor below leave this floor open over them.
-  const voids = useMemo(() => voidsOver(fullDoc, activeLevel), [fullDoc, activeLevel]);
+  // Double-height rooms and stairs on the floor below leave this floor open over them.
+  const voids = useMemo(() => floorVoids(fullDoc, activeLevel), [fullDoc, activeLevel]);
   const draft = usePlanner((s) => s.draft);
   const inference = usePlanner((s) => s.inference);
   const axisLock = usePlanner((s) => s.axisLock);
@@ -105,6 +109,9 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const showRoomFills = usePlanner((s) => s.showRoomFills);
   const accessibleZones = usePlanner((s) => s.accessibleZones);
   const tool = usePlanner((s) => s.tool);
+  const ghost = usePlanner((s) => s.furnitureGhost);
+  // The ghost's item follows the library pick and the turn.
+  usePlanner((s) => s.furnitureKind);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
   const touchInput = usePlanner((s) => s.touchInput);
   const input = usePlanInput((e) => (svgRef.current ? toPlanPoint(svgRef.current, e) : { x: 0, y: 0 }), onContextMenu);
@@ -129,6 +136,14 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         };
       },
       onPlane: () => null,
+      cornerAt(clientX, clientY, exceptId) {
+        const p = at(clientX, clientY);
+        if (!p) return null;
+        // A wall end, corner or middle (as drawing snaps), not just the grid.
+        const inf = inferAt(plannerStore.getState(), p, null, new Set([exceptId]));
+        if (inf.kind === 'free' || inf.kind === 'grid') return null;
+        return [inf.point.x * M_PER_UNIT, 0, inf.point.y * M_PER_UNIT];
+      },
       alongLine(clientX, clientY, origin, dir) {
         const p = at(clientX, clientY);
         const len = Math.hypot(dir[0], dir[2]);
@@ -362,6 +377,32 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         {tool === 'select' && selected?.type === 'furniture' && showFurniture && (
           <FurnitureHandles item={selected} k={hk} />
         )}
+        {tool === 'select' &&
+          selected &&
+          (selected.type !== 'furniture' || showFurniture) &&
+          sideGrips(selected).map((g) => (
+            <SideHandle
+              key={g.name}
+              name={g.name}
+              // Outline sides already have a bend grip at their middle: these sit just outside.
+              p={
+                g.name.startsWith('side-edge-')
+                  ? { x: g.at.x + g.out.x * 16 * hk, y: g.at.y + g.out.y * 16 * hk }
+                  : g.at
+              }
+              k={hk}
+            />
+          ))}
+        {tool === 'furniture' && ghost && showFurniture && (
+          <g data-testid="furniture-ghost" opacity={0.55} pointerEvents="none">
+            <FurnitureShape
+              item={{ ...furnitureAt(plannerStore.getState(), ghost), rotation: ghost.rotation }}
+              selected={false}
+              k={k}
+              ghost
+            />
+          </g>
+        )}
         {draft?.type === 'mask' && (
           <polyline
             points={[...draft.points, ...(draft.cursor ? [draft.cursor] : [])].map((p) => `${p.x},${p.y}`).join(' ')}
@@ -410,6 +451,23 @@ function Handle({ name, p, k }: { name: string; p: Point; k: number }) {
       style={{ fill: PLAN.paper, stroke: PLAN.selection }}
       strokeWidth={2 * k}
       className={name === 'rotate' ? 'cursor-grab' : 'cursor-move'}
+    />
+  );
+}
+
+/** A square grip on the middle of a side: dragging it moves that side only. */
+function SideHandle({ name, p, k }: { name: string; p: Point; k: number }) {
+  const r = 5 * k;
+  return (
+    <rect
+      data-handle={name}
+      x={p.x - r}
+      y={p.y - r}
+      width={2 * r}
+      height={2 * r}
+      style={{ fill: PLAN.selection, stroke: PLAN.paper }}
+      strokeWidth={1.5 * k}
+      className="cursor-move"
     />
   );
 }

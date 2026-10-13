@@ -156,8 +156,12 @@ test('the Checks button pauses every check, or one kind from its menu', async ({
   await expect(hints.locator('[data-hint]')).toHaveCount(2);
   await expect(page.getByTestId('checks-count')).toHaveText('2');
 
-  // Resting the pointer on it opens the menu: pausing daylight leaves the other hint.
+  // Resting the pointer on it opens nothing; the arrow beside it opens the menu: pausing daylight
+  // leaves the other hint.
   await chip.hover();
+  await page.waitForTimeout(500);
+  await expect(page.getByRole('menu', { name: 'Checks' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Checks options' }).click();
   const checksMenu = page.getByRole('menu', { name: 'Checks' });
   await expect(checksMenu).toBeVisible();
   await checksMenu.getByRole('menuitemcheckbox', { name: 'Daylight and air' }).click();

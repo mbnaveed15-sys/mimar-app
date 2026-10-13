@@ -1,3 +1,4 @@
+import { canResetSize } from '../lib/resize';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MENUS, showKeys, type Command } from '../commands';
 import { plannerStore, usePlanner } from '../store/plannerStore';
@@ -293,6 +294,8 @@ export function ContextMenu({
     items.push({ label: 'Duplicate', run: () => s.duplicateSelected() });
     items.push({ label: 'Move', run: () => s.setTool('move') });
   }
+  if (s.doc.elements.some((x) => s.selectedIds.includes(x.id) && !x.locked && canResetSize(x)))
+    items.push({ label: 'Reset size', run: () => s.resetSize() });
   if (el || room || many || group) {
     items.push({ label: 'Hide', run: () => s.hideSelected() });
     items.push({ label: 'Lock', run: () => s.lockSelected(true) });

@@ -8,7 +8,7 @@ import { buildableArea, stairLayout } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
 import { basementOf, buildingLevels, groundIndex, isSiteLevel, lawnMm, levelWallMm, slabMm } from '../lib/levels';
 import { outsideOutline } from '../lib/outline';
-import { openRooms, voidsOver, within } from '../lib/voids';
+import { floorVoids, slabVoids, within } from '../lib/voids';
 import {
   GROUND_LEVEL,
   levelOf,
@@ -24,7 +24,7 @@ import {
   type Stair,
   type Wall,
 } from '../types';
-import { isBuildingWall, thicknessOf, wallReach, wallsOf } from '../walls';
+import { isBuildingWall, plinthId, thicknessOf, wallReach, wallsOf } from '../walls';
 import { bendPath, openingBend, paramAlong, pointAlong, straightPieces, type Bend } from '../lib/arc';
 import { FRAME_MM, isCurtain, metricProject, mullionStops, transomMm } from '../lib/curtain';
 import { eaveMm, gableWalls, GABLE_WALL_MM, slopedFaces, thicknessUpMm, triangulate } from '../lib/roof/roof';
@@ -926,6 +926,27 @@ function circleOutline(x: number, z: number, r: number): [number, number][] {
   });
 }
 
+/** Building walls made `project` (plan units) wider each side: the plinth's outline under them. */
+function plinthWalls(walls: Wall[], project: number): Map<string, Wall> {
+  return new Map(
+    walls.filter(isBuildingWall).map((w) => [w.id, { ...w, thickness: thicknessOf(w) + 2 * project }] as const),
+  );
+}
+
+/** How tall a furniture item is in the library, mm (its tallest part): what its Height box starts at. */
+export function furnitureLibraryHeightMm(f: Furniture): number {
+  const plain = { ...f, heightMm: undefined };
+  const tops = [...furnitureSolids(plain), ...furnitureRounds(plain)].map((p) => p.y0 + p.h);
+  return Math.round(Math.max(0, ...tops) * 1000);
+}
+
+/** Its parts made taller or shorter to the height set for it (the library's own when none is). */
+function furnitureStretch(f: Furniture): <T extends { y0: number; h: number }>(p: T) => T {
+  const own = f.heightMm ? furnitureLibraryHeightMm(f) : 0;
+  const k = own > 0 && f.heightMm ? f.heightMm / own : 1;
+  return (p) => (k === 1 ? p : { ...p, y0: p.y0 * k, h: p.h * k });
+}
+
 /** A library item's round parts (basins, bins, WC pans…) as upright cylinders. */
 function furnitureRounds(f: Furniture, color?: string): Slab3D[] {
   const shaped = f.kind && SHAPES[f.kind];
@@ -1038,6 +1059,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const panels: Panel[] = [];
   const roofs: Roof3D[] = [];
   const plinth = mmToM(doc.plinthMm);
+  const plinthProject = (doc.plinth?.projectMm ?? 0) / MM_PER_UNIT;
   const levels = doc.levels.length ? doc.levels : [{ id: 'ground', name: 'Ground floor' }];
   // The lawn opens over the basement, round the outside of its walls.
   const basement = basementOf(doc);
@@ -1081,6 +1103,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       <T extends Part>(s: T): T => ({ ...s, id: s.id ?? id, level: level.id });
     const els = doc.elements.filter((el) => levelOf(el) === level.id);
     const walls = wallsOf(els);
+    // The plinth standing out past the walls' faces: the walls as wide as it, for its joins.
+    const wider = ground && plinthProject ? plinthWalls(walls, plinthProject) : null;
     const openings = els.filter((el): el is Opening => el.type === 'door' || el.type === 'window');
 
     for (const wall of walls) {
@@ -1129,14 +1153,19 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       // lowest finished ground along them.
       const footMm =
         ground && terrain ? lowestAlong(terrain, { x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 }) : 0;
-      // Drawing your own plinth (on the Ground (site) level), they start at the floor.
-      if (ground && !doc.ownPlinth && doc.plinthMm - footMm > 0.5 && !wall.elevMm)
+      // Drawing your own plinth (on the Ground (site) level), they start at the floor. The plinth is
+      // its own item (picked as `plinth:<wall id>`): it can stand out past the wall's faces, have its
+      // own material, and be left off under a wall.
+      if (ground && !doc.ownPlinth && doc.plinthMm - footMm > 0.5 && !wall.elevMm && !wall.noPlinth) {
+        const own = wider?.get(wall.id) ?? wall;
+        const plinthLook = colorOf(doc.plinth?.material);
         solids.push(
-          ...curvedWallParts(wall, walls, [], doc.plinthMm - footMm)
+          ...curvedWallParts(own, wider ? [...wider.values()] : walls, [], doc.plinthMm - footMm)
             .solids.map((s) => (footMm ? { ...s, y0: s.y0 + mmToM(footMm) } : s))
-            .map(paint)
-            .map(from(wall.id)),
+            .map((s) => (plinthLook ? { ...s, color: plinthLook, finish: finishOf(doc.plinth?.material) } : paint(s)))
+            .map(from(plinthId(wall.id))),
         );
+      }
     }
     for (const door of openings) {
       const host = walls.find((w) => w.id === door.wallId);
@@ -1157,8 +1186,10 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
     }
     for (const el of els) {
       if (el.type === 'furniture' && options.showFurniture) {
+        const tall = furnitureStretch(el);
         solids.push(
           ...furnitureSolids(el, colorOf(el.material))
+            .map(tall)
             .map(withFinish(el.material))
             .map(lift)
             .map(raise(el))
@@ -1166,6 +1197,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         );
         blocks.push(
           ...furnitureRounds(el, colorOf(el.material))
+            .map(tall)
             .map(withFinish(el.material))
             .map(lift)
             .map(raise(el))
@@ -1247,8 +1279,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           level: level.id,
         });
       if (el.type === 'slab') {
-        // Double-height rooms under it leave it open over them.
-        const open = openRooms(doc, level.id)
+        // Double-height rooms and stairwells under it leave it open over them.
+        const open = slabVoids(doc, level.id)
           .map((r) => r.points)
           .filter((pts) => within(pts, el.points));
         const holes = [...(el.holes ?? []), ...open];
@@ -1293,7 +1325,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         });
       }
     }
-    const voids = voidsOver(doc, level.id).map((v) => v.points);
+    const voids = floorVoids(doc, level.id).map((v) => v.points);
     for (const r of doc.rooms.filter((room) => levelOf(room) === level.id)) {
       // No floor over a double-height room below.
       if (voids.some((v) => within(r.points, v))) continue;

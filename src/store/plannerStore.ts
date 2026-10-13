@@ -22,6 +22,7 @@ import { MM_PER_UNIT } from '../lib/scale';
 import { DEFAULT_AREA, fitView, MAX_ZOOM, VIEW_HISTORY, VIEW_STEP_MS, zoomAt, type Size } from '../lib/view';
 import { syncDimensions } from '../lib/dimensions';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
+import { resetElementSize, type ScaleAxis } from '../lib/resize';
 import { detectRoom, openWallEnds } from '../rooms';
 import type { Inference } from '../lib/inference';
 import {
@@ -58,10 +59,20 @@ import {
 } from '../lib/plot';
 import { boundaryWallsAlong, buildPlotWalls, syncPlotWalls } from '../lib/plotWalls';
 import { formatLength } from '../lib/units';
-import { basementOf, groundIndex, isSiteLevel, levelWallMm, slabMm, stairRiseMm, withSiteLevel } from '../lib/levels';
+import {
+  basementOf,
+  groundIndex,
+  isSiteLevel,
+  levelWallMm,
+  onSharedLevel,
+  sharedLevelIds,
+  slabMm,
+  stairRiseMm,
+  withSiteLevel,
+} from '../lib/levels';
 import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
-import { CURTAIN_MM, isBuildingWall } from '../walls';
+import { CURTAIN_MM, hasPlinth, isBuildingWall } from '../walls';
 import { wallPath, type WallLine } from '../lib/arc';
 import { pathOutline, roundedRect, type CurveMode } from '../lib/curves';
 import { groundOf, roundLevel } from '../lib/terrain/ground';
@@ -108,6 +119,7 @@ import type {
   WindowKind,
   Bounds,
   Dimension,
+  PlinthSpec,
 } from '../types';
 
 export const HISTORY_LIMIT = 100;
@@ -295,6 +307,8 @@ export interface PlannerState {
   selectedId: Id | null;
   /** Everything selected (includes selectedId). A group is selected as all of its items. */
   selectedIds: Id[];
+  /** The wall whose automatic plinth is selected (as its own item), or null. */
+  selectedPlinth: Id | null;
   /** The group or component copy open for editing (its items can be picked one by one). */
   openGroupId: Id | null;
   /** The floor being drawn on; only its items are shown and editable in 2D. */
@@ -316,6 +330,12 @@ export interface PlannerState {
   showSiteLevel: () => void;
   /** Draw the plinth yourself on the Ground (site) level (ground-floor walls start at the floor), or not. */
   setOwnPlinth: (own: boolean) => void;
+  /** Select the automatic plinth under a wall (null: none). */
+  selectPlinth: (wallId: Id | null) => void;
+  /** Change the automatic plinth's projection past the walls or its material (undefined: back to the usual). */
+  setPlinth: (patch: Partial<PlinthSpec>) => void;
+  /** Build the automatic plinth under a wall, or leave it off. */
+  setWallPlinth: (wallId: Id, on: boolean) => void;
   /** The basement's clear height, floor to ceiling, in millimetres. */
   setBasementHeight: (mm: number) => void;
   /**
@@ -585,7 +605,8 @@ export interface PlannerState {
   openingStamp: Opening[];
   stampQueue: boolean;
   setOpeningStamp: (stamp: Opening[], queue?: boolean) => void;
-  addFurniture: (p: Point) => void;
+  /** Place the chosen library item centred at `p`, turned `rotation` (the Furniture tool's angle when missing). */
+  addFurniture: (p: Point, rotation?: number) => void;
   /**
    * Give an item the chosen material. For a wall, `side` paints just one side (1 is side A, -1
    * side B) or, with 0, just the top and ends; without it the whole wall, both sides included.
@@ -636,6 +657,25 @@ export interface PlannerState {
   /** Library item placed by the Furniture tool. */
   furnitureKind: FurnitureKind;
   setFurnitureKind: (kind: FurnitureKind) => void;
+  /** How far the Furniture tool turns the next item placed (degrees, clockwise on the plan, as Rotation). */
+  furnitureAngle: number;
+  setFurnitureAngle: (deg: number) => void;
+  /** Where the Furniture tool would put the item at the pointer (its centre), shown see-through. */
+  furnitureGhost: (Point & { rotation: number }) | null;
+  setFurnitureGhost: (at: (Point & { rotation: number }) | null) => void;
+  /** Which way the Scale tool stretches: both ways, or only across (x) or only up and down (y). */
+  scaleAxis: ScaleAxis;
+  setScaleAxis: (axis: ScaleAxis) => void;
+  /** Alt is held: snapping works the other way round (off while it is on, on while it is off). */
+  snapFlip: boolean;
+  setSnapFlip: (flip: boolean) => void;
+  /** The side grip last dragged, so a length typed next sets that size exactly. */
+  lastResize: { id: Id; grip: string } | null;
+  setLastResize: (r: { id: Id; grip: string } | null) => void;
+  /** Move items to another level: on Ground, between its floor and its lawn (doors and windows go with their walls). */
+  setItemsLevel: (ids: Id[], levelId: Id) => void;
+  /** Put the selected furniture back to its library size, and columns to the Structure size. */
+  resetSize: (ids?: Id[]) => number;
   /** Elements that can be clicked: hidden furniture is left out. */
   /** Items on the floor being drawn that are shown (not hidden, nor on a hidden layer). */
   visibleElements: () => PlanElement[];
@@ -778,6 +818,7 @@ export function createPlannerStore(
       draft: null,
       selectedId: null,
       selectedIds: [],
+      selectedPlinth: null,
       openGroupId: null,
       warnings: [],
       gapEnds: [],
@@ -812,8 +853,10 @@ export function createPlannerStore(
       };
       const ids = selectedIds.filter(visible);
       const open = get().openGroupId;
+      const plinth = get().selectedPlinth;
       set({
         selectedIds: ids,
+        selectedPlinth: plinth && hasPlinth(doc, plinth) ? plinth : null,
         selectedId: selectedId && ids.includes(selectedId) ? selectedId : (ids[0] ?? null),
         openGroupId: open && doc.groups.some((g) => g.id === open) ? open : null,
       });
@@ -860,6 +903,7 @@ export function createPlannerStore(
       selectedMat: initial.materials[0]?.id ?? '',
       selectedId: null,
       selectedIds: [],
+      selectedPlinth: null,
       openGroupId: null,
       activeLevel: GROUND_LEVEL,
       brushSize: 24,
@@ -882,6 +926,11 @@ export function createPlannerStore(
       accessibleZones: prefs.accessibleZones,
       selectionBar: prefs.selectionBar,
       furnitureKind: DEFAULT_FURNITURE_KIND,
+      furnitureAngle: 0,
+      furnitureGhost: null,
+      scaleAxis: 'both',
+      lastResize: null,
+      snapFlip: false,
       wallThicknessMm: prefs.wallThicknessMm,
       openingGapMm: prefs.openingGapMm,
       openingStamp: [],
@@ -1039,11 +1088,14 @@ export function createPlannerStore(
           warnings: [],
           selectedId: keep ? s.selectedId : null,
           selectedIds: keep ? s.selectedIds : [],
+          selectedPlinth: tool === 'select' ? s.selectedPlinth : null,
           measureText: '',
           inference: null,
           axisLock: null,
           shiftLock: null,
           lastCopy: null,
+          lastResize: null,
+          furnitureGhost: null,
           hoverEdge: null,
           // Picking a tool goes back to the plan from the Drawings view (Select, Pan and Zoom work there).
           ...(!['select', 'pan', 'zoom'].includes(tool) && { drawing: null }),
@@ -1058,10 +1110,14 @@ export function createPlannerStore(
         // Picking something outside the open group closes it.
         if (openGroupId && (!item || item.groupId !== openGroupId)) get().closeGroup();
         if (!item) {
-          set({ selectedId: null, selectedIds: [] });
+          set({ selectedId: null, selectedIds: [], selectedPlinth: null });
           return;
         }
-        set({ selectedId: item.id, selectedIds: expandToGroups(get().doc, [item.id], get().openGroupId) });
+        set({
+          selectedId: item.id,
+          selectedIds: expandToGroups(get().doc, [item.id], get().openGroupId),
+          selectedPlinth: null,
+        });
       },
       toggleSelect: (id) => {
         const { doc, selectedIds, openGroupId } = get();
@@ -1069,7 +1125,7 @@ export function createPlannerStore(
         const ids = expandToGroups(doc, [id], openGroupId);
         const has = selectedIds.includes(id);
         const next = has ? selectedIds.filter((x) => !ids.includes(x)) : [...new Set([...selectedIds, ...ids])];
-        set({ selectedIds: next, selectedId: has ? (next[0] ?? null) : id });
+        set({ selectedIds: next, selectedId: has ? (next[0] ?? null) : id, selectedPlinth: null });
       },
       setSelection: (ids, additive = false) => {
         // Items all on another floor (picked from the plan check, say): go to that floor, so the
@@ -1084,7 +1140,7 @@ export function createPlannerStore(
         const { doc, openGroupId, selectedIds } = get();
         const picked = expandToGroups(doc, ids, openGroupId);
         const next = additive ? [...new Set([...selectedIds, ...picked])] : picked;
-        set({ selectedIds: next, selectedId: next[next.length - 1] ?? null });
+        set({ selectedIds: next, selectedId: next[next.length - 1] ?? null, selectedPlinth: null });
       },
       selectAll: () => {
         const { doc, openGroupId } = get();
@@ -1095,6 +1151,13 @@ export function createPlannerStore(
       },
       deleteSelected: () => {
         const ids = get().selectedIds;
+        // Deleting the automatic plinth leaves it off under that wall.
+        const plinth = get().selectedPlinth;
+        if (!ids.length && plinth) {
+          get().setWallPlinth(plinth, false);
+          set({ selectedPlinth: null });
+          return;
+        }
         if (!ids.length) return;
         get().commit((doc) => deleteItems(doc, ids));
         set({ selectedId: null, selectedIds: [] });
@@ -1331,7 +1394,7 @@ export function createPlannerStore(
         }
         return true;
       },
-      addFurniture: (p) => {
+      addFurniture: (p, rotation = get().furnitureAngle) => {
         const kind = get().furnitureKind;
         const size = FURNITURE_CATALOG[kind];
         const el: PlanElement = {
@@ -1342,6 +1405,7 @@ export function createPlannerStore(
           y: p.y,
           w: mmToPx(size.w),
           h: mmToPx(size.d),
+          ...(rotation ? { rotation } : {}),
         };
         updateElements((els) => [...els, onActive(el)]);
         // Show the new item so it is visible even if the furniture layer was hidden.
@@ -1536,10 +1600,32 @@ export function createPlannerStore(
         persistPrefs();
       },
       setFurnitureKind: (furnitureKind) => set({ furnitureKind }),
+      setFurnitureAngle: (deg) => set({ furnitureAngle: (((Math.round(deg * 100) / 100) % 360) + 360) % 360 }),
+      setFurnitureGhost: (furnitureGhost) => set({ furnitureGhost }),
+      setScaleAxis: (scaleAxis) => set({ scaleAxis }),
+      setLastResize: (lastResize) => set({ lastResize }),
+      setSnapFlip: (snapFlip) => {
+        if (get().snapFlip !== snapFlip) set({ snapFlip });
+      },
+      resetSize: (ids) => {
+        const picked = new Set(ids ?? get().selectedIds);
+        const c = get().structure;
+        let count = 0;
+        updateElements((els) =>
+          els.map((el) => {
+            if (!picked.has(el.id) || el.locked) return el;
+            const next = resetElementSize(el, c);
+            if (next !== el) count++;
+            return next;
+          }),
+        );
+        return count;
+      },
       visibleElements: () => {
-        const { doc, showFurniture } = get();
+        const { doc, showFurniture, activeLevel } = get();
         const v = { layers: doc.layers, showFurniture };
-        const els = get().levelElements();
+        // On Ground, its floor and its lawn show (and can be picked) together.
+        const els = doc.elements.filter(onSharedLevel(doc, activeLevel));
         const hiddenWalls = new Set(els.filter((el) => el.type === 'wall' && isHidden(el, v)).map((el) => el.id));
         return els.filter((el) => !isHidden(el, v) && !('wallId' in el && hiddenWalls.has(el.wallId)));
       },
@@ -1551,9 +1637,8 @@ export function createPlannerStore(
       },
       pickableRooms: () => {
         const v = { layers: get().doc.layers, showFurniture: get().showFurniture };
-        return get()
-          .levelRooms()
-          .filter((r) => !isHidden(r, v) && !isLocked(r, v));
+        const { doc, activeLevel } = get();
+        return doc.rooms.filter(onSharedLevel(doc, activeLevel)).filter((r) => !isHidden(r, v) && !isLocked(r, v));
       },
       shownDoc: () => withoutHidden(get().doc, { layers: get().doc.layers, showFurniture: get().showFurniture }),
       setLayerFlags: (layer, flags) => {
@@ -1644,8 +1729,41 @@ export function createPlannerStore(
       setActiveLevel: (id) => {
         if (!get().doc.levels.some((l) => l.id === id) || id === get().activeLevel) return;
         abandonDraft();
-        if (get().openGroupId) get().closeGroup();
-        set({ activeLevel: id, selectedId: null, selectedIds: [], draft: null, inference: null, lastCopy: null });
+        // Ground's Floor | Lawn switch keeps what is selected: both show together.
+        const same = sharedLevelIds(get().doc, get().activeLevel).includes(id);
+        if (get().openGroupId && !same) get().closeGroup();
+        set({
+          activeLevel: id,
+          ...(same ? {} : { selectedId: null, selectedIds: [], selectedPlinth: null }),
+          draft: null,
+          inference: null,
+          lastCopy: null,
+        });
+      },
+      setItemsLevel: (ids, levelId) => {
+        const picked = new Set(ids);
+        get().commit((doc) => {
+          const levels = isSiteLevel(doc, levelId) ? withSiteLevel(doc.levels) : doc.levels;
+          if (!levels.some((l) => l.id === levelId)) return doc;
+          // Doors and windows go with their walls.
+          const walls = new Set(
+            doc.elements.filter((el) => picked.has(el.id) && el.type === 'wall').map((el) => el.id),
+          );
+          const moved = <T extends { levelId?: Id }>(it: T): T => {
+            if (levelOf(it) === levelId) return it;
+            const next: T = { ...it, levelId };
+            if (levelId === GROUND_LEVEL) delete next.levelId;
+            return next;
+          };
+          return {
+            ...doc,
+            levels,
+            elements: doc.elements.map((el) =>
+              picked.has(el.id) || ('wallId' in el && walls.has(el.wallId)) ? moved(el) : el,
+            ),
+            rooms: doc.rooms.map((r) => (picked.has(r.id) ? moved(r) : r)),
+          };
+        });
       },
       addLevel: () => {
         const id = newId();
@@ -1707,6 +1825,30 @@ export function createPlannerStore(
           const next: PlanDoc = { ...doc, ownPlinth: true };
           if (!own) delete next.ownPlinth;
           return next;
+        }),
+      selectPlinth: (wallId) => {
+        if (wallId && !hasPlinth(get().doc, wallId)) return;
+        if (get().openGroupId) get().closeGroup();
+        set({ selectedPlinth: wallId, selectedId: null, selectedIds: [] });
+      },
+      setPlinth: (patch) =>
+        get().commit((doc) => {
+          const merged: PlinthSpec = { ...doc.plinth, ...patch };
+          const plinth: PlinthSpec = {};
+          if (merged.projectMm && merged.projectMm > 0) plinth.projectMm = Math.min(Math.round(merged.projectMm), 1000);
+          if (merged.material) plinth.material = merged.material;
+          if (plinth.projectMm === doc.plinth?.projectMm && plinth.material === doc.plinth?.material) return doc;
+          const next: PlanDoc = { ...doc, plinth };
+          if (!Object.keys(plinth).length) delete next.plinth;
+          return next;
+        }),
+      setWallPlinth: (wallId, on) =>
+        updateElements((els) => {
+          const wall = els.find((el) => el.id === wallId);
+          if (!wall || wall.type !== 'wall' || !wall.noPlinth === on) return els;
+          const next: Wall = { ...wall, noPlinth: true };
+          if (on) delete next.noPlinth;
+          return els.map((el) => (el === wall ? next : el));
         }),
       addRetainingWalls: (mode) => {
         const { doc } = get();

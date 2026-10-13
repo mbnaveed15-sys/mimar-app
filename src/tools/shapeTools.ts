@@ -2,6 +2,7 @@
  * The Shape tool (flat rectangles, circles, arches and polygons on floors and walls) and Push/Pull
  * (take hold of a face and push it in or pull it out; push a shape through a wall or slab to cut it).
  */
+import { snapsOn } from '../lib/checks';
 import { wallLength } from '../geometry';
 import type { Inference } from '../lib/inference';
 import type { Measure } from '../lib/measure';
@@ -89,7 +90,7 @@ function pointerOnWall(s: PlannerState, wallId: Id, face: 1 | -1): Point | null 
   if (!hit) return null;
   const p = onWall(s, wall, hit);
   const step = s.gridPx;
-  return s.grid.snap && s.snaps.on ? { x: snapTo(p.x, step), y: snapTo(p.y, step) } : p;
+  return s.grid.snap && snapsOn(s) ? { x: snapTo(p.x, step), y: snapTo(p.y, step) } : p;
 }
 
 /** The surface a shape starts on: a wall's face, a slab's or block's top, or the floor. */
@@ -107,7 +108,7 @@ function surfaceAt(s: PlannerState): { surface: ShapeSurface; wallPoint?: Point 
     const step = s.gridPx;
     return {
       surface: { on: 'wall', wallId: el.id, face: face.sign },
-      wallPoint: s.grid.snap && s.snaps.on ? { x: snapTo(p.x, step), y: snapTo(p.y, step) } : p,
+      wallPoint: s.grid.snap && snapsOn(s) ? { x: snapTo(p.x, step), y: snapTo(p.y, step) } : p,
     };
   }
   if (el.type === 'slab' && face?.part === 'top') return { surface: { ...floor, slabId: el.id } };
@@ -180,10 +181,20 @@ function pushDistance(s: PlannerState, d: PushDraft): number | null {
   const { x, y } = getPointer();
   const t = picker.alongLine(x, y, d.origin, d.normal);
   if (t === null) return null;
-  const snapped = snapPush(picker, d, t, x, y);
+  // Snapping off (or Alt held while it is on): just the pointer, in steps.
+  const snapped = snapsOn(s) ? (snapToCorner(picker, d, x, y) ?? snapPush(picker, d, t, x, y)) : null;
   if (snapped !== null) return Math.round(snapped * 1000);
   const step = s.units === 'imperial' ? 25.4 : 10;
   return Math.round((t * 1000) / step) * step;
+}
+
+/** The push (metres) that brings the face level with another item's corner under the pointer, if one is. */
+function snapToCorner(picker: Picker3D, d: PushDraft, x: number, y: number): number | null {
+  const c = picker.cornerAt?.(x, y, d.id);
+  if (!c) return null;
+  const at =
+    (c[0] - d.origin[0]) * d.normal[0] + (c[1] - d.origin[1]) * d.normal[1] + (c[2] - d.origin[2]) * d.normal[2];
+  return Math.abs(at) < 1e-3 ? null : at;
 }
 
 /** The push (metres) that lines the face up with another item, if the pointer is near one; else null. */

@@ -58,6 +58,14 @@ export interface Grouped {
 /** Walls other than ordinary ones. */
 export type WallKind = 'boundary' | 'parapet' | 'retaining' | 'curtain';
 
+/** The automatic plinth under the ground floor's walls, as its own item. */
+export interface PlinthSpec {
+  /** How far it stands out past each face of the walls above, mm (flush when missing). */
+  projectMm?: number;
+  /** Its material; the wall's own when missing. */
+  material?: Id;
+}
+
 export interface Wall extends Grouped {
   id: Id;
   type: 'wall';
@@ -78,6 +86,8 @@ export interface Wall extends Grouped {
    * curtain wall is glass in a frame of mullions and transoms.
    */
   kind?: WallKind;
+  /** No automatic plinth under this ground-floor wall (one is built when missing). */
+  noPlinth?: boolean;
   /** Height in millimetres, when it differs from the usual wall height (e.g. a boundary wall). */
   heightMm?: number;
   /** A glass curtain wall: the spacing of its mullions (upright frames), mm; 4' (1.2 m metric) when missing. */
@@ -154,6 +164,8 @@ export interface Furniture extends Grouped {
   rotation?: number;
   /** Library item this is (bed, sofa, ...); plain boxes from older plans have none. */
   kind?: FurnitureKind;
+  /** How tall it is, mm, when changed from the library's own height (3D). */
+  heightMm?: number;
   label?: string;
   material?: Id;
 }
@@ -573,6 +585,8 @@ export interface PlanDoc {
    * running down to the ground (automatic, as before 1.47, when missing).
    */
   ownPlinth?: boolean;
+  /** The automatic plinth's own look: how far it stands out past the walls' faces (mm), and its material. */
+  plinth?: PlinthSpec;
   /** Which way north points on the plan, in degrees clockwise from straight up (up when missing). */
   northDeg?: number;
   /** Layers that are hidden or locked (every item is on the layer for its kind). */

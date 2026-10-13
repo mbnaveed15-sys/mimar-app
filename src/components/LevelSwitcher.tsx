@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { lawnMm, withSiteLevel } from '../lib/levels';
+import { buildingLevels, lawnMm } from '../lib/levels';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import { BASEMENT_HEIGHT_MM, GROUND_LEVEL } from '../types';
 import { LengthField } from './LengthField';
@@ -8,9 +8,9 @@ import { Icon } from './Icon';
 const MAX_GROUND_MM = 1_000_000;
 
 /**
- * Pick the floor to draw on, add floors, and rename or delete them. Ground (site), the lawn under the
- * ground floor, is always listed (it is added to the plan when first picked) and holds the lawn and
- * plinth heights.
+ * Pick the floor to draw on, add floors, and rename or delete them. The ground floor and its lawn
+ * (Ground (site), added to the plan when first picked) are one entry: its Floor | Lawn switch picks
+ * which new items go on, and it holds the lawn and plinth heights.
  */
 export function LevelSwitcher() {
   const levels = usePlanner((s) => s.doc.levels);
@@ -26,6 +26,10 @@ export function LevelSwitcher() {
   const [renaming, setRenaming] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const current = levels.find((l) => l.id === active) ?? levels[0];
+  const groundFloor = levels.find((l) => l.id === GROUND_LEVEL) ?? current;
+  // Ground: its floor or its lawn is being drawn on.
+  const onGround = current.id === GROUND_LEVEL || !!current.site;
+  const shownName = current.site ? `${groundFloor.name} · lawn` : current.name;
   const s = plannerStore.getState();
 
   useEffect(() => {
@@ -42,7 +46,7 @@ export function LevelSwitcher() {
         className="m-btn h-7 max-w-40 text-xs whitespace-nowrap phone:max-w-24 phone:px-2"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Floor: ${current.name}`}
+        aria-label={`Floor: ${shownName}`}
         title="Floor being drawn (Page Up / Page Down)"
         onClick={() => {
           setOpen(!open);
@@ -50,7 +54,7 @@ export function LevelSwitcher() {
         }}
       >
         <Icon name="levels" size={16} />
-        <span className="truncate">{current.name}</span>
+        <span className="truncate">{shownName}</span>
       </button>
       {open && (
         <div
@@ -59,25 +63,48 @@ export function LevelSwitcher() {
           className="absolute top-full right-0 z-40 mt-1 w-56 rounded-md border border-line bg-raised p-1 text-sm shadow-popover"
           onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
         >
-          {[...withSiteLevel(levels)].reverse().map((l) => (
-            <button
-              key={l.id}
-              role="menuitemradio"
-              aria-checked={l.id === active}
-              className={item}
-              title={
-                l.site ? 'The lawn under the ground floor: draw plinth walls, platforms and steps on it' : undefined
-              }
-              onClick={() => {
-                if (l.site) s.showSiteLevel();
-                else s.setActiveLevel(l.id);
-                setOpen(false);
-              }}
-            >
-              <span className="w-3 text-accent-ink">{l.id === active ? '•' : ''}</span>
-              {l.name}
-            </button>
-          ))}
+          {[...buildingLevels({ levels })].reverse().map((l) => {
+            const here = l.id === active || (l.id === GROUND_LEVEL && onGround);
+            return (
+              <button
+                key={l.id}
+                role="menuitemradio"
+                aria-checked={here}
+                className={item}
+                onClick={() => {
+                  // Ground opens on its floor, unless its lawn is already being drawn on.
+                  if (!(l.id === GROUND_LEVEL && onGround)) s.setActiveLevel(l.id);
+                  setOpen(false);
+                }}
+              >
+                <span className="w-3 text-accent-ink">{here ? '•' : ''}</span>
+                {l.name}
+              </button>
+            );
+          })}
+          {onGround && (
+            <div className="flex items-center gap-2 px-2 py-1 text-xs">
+              <span className="text-muted">Draw on</span>
+              <div className="flex gap-1" role="group" aria-label="Draw on the ground floor or the lawn">
+                <button
+                  className="m-btn px-2 py-0.5 text-xs"
+                  aria-pressed={!current.site}
+                  title="New items go on the ground floor, at the plinth's top"
+                  onClick={() => s.setActiveLevel(GROUND_LEVEL)}
+                >
+                  Floor
+                </button>
+                <button
+                  className="m-btn px-2 py-0.5 text-xs"
+                  aria-pressed={!!current.site}
+                  title="New items go on the lawn under the floor: plinth walls, platforms, steps and the garden"
+                  onClick={() => s.showSiteLevel()}
+                >
+                  Lawn
+                </button>
+              </div>
+            </div>
+          )}
           <div role="separator" className="my-1 h-px bg-line" />
           <button role="menuitem" className={item} onClick={() => (s.addLevel(), setOpen(false))}>
             <span className="w-3" />
@@ -100,7 +127,7 @@ export function LevelSwitcher() {
               Add basement below
             </button>
           )}
-          {current.site && (
+          {onGround && (
             <div className="flex flex-col gap-1.5 px-2 py-1" data-testid="site-heights">
               {natural ? (
                 <div className="text-xs text-muted">Lawn: the natural ground (Ground and site panel)</div>
@@ -135,7 +162,7 @@ export function LevelSwitcher() {
                 <button
                   className="m-btn px-2 py-0.5 text-xs"
                   aria-pressed={ownPlinth}
-                  title="Ground-floor walls start at the floor: draw the plinth here, on Ground (site)"
+                  title="Ground-floor walls start at the floor: draw the plinth on the lawn"
                   onClick={() => s.setOwnPlinth(true)}
                 >
                   Draw my own
@@ -143,8 +170,8 @@ export function LevelSwitcher() {
               </div>
               <div className="text-xs text-muted">
                 {ownPlinth
-                  ? 'Ground-floor walls start at the floor. Walls drawn here rise from the lawn to the floor.'
-                  : 'Ground-floor walls run down to the ground. Pick Draw my own to build the plinth here.'}
+                  ? 'Ground-floor walls start at the floor. Walls drawn on the lawn rise from it to the floor.'
+                  : 'Ground-floor walls run down to the ground. Pick Draw my own to build the plinth on the lawn.'}
               </div>
             </div>
           )}
@@ -197,16 +224,15 @@ export function LevelSwitcher() {
               </div>
             </div>
           )}
-          {(levels.indexOf(current) > 0 || current.site) && (
+          {buildingLevels({ levels }).findIndex((l) => l.id === (current.site ? GROUND_LEVEL : current.id)) > 0 && (
             <label className="flex items-center gap-2 px-2 py-1 text-xs">
-              {/* Ground (site) shows the ground floor over it, to trace the plinth under its walls. */}
-              <span className="text-muted">{current.site ? 'Ground floor' : 'Floor below'}</span>
+              <span className="text-muted">Floor below</span>
               <input
                 type="range"
                 min={0}
                 max={100}
                 step={5}
-                aria-label={current.site ? 'Ground floor: how strongly it shows' : 'Floor below: how strongly it shows'}
+                aria-label="Floor below: how strongly it shows"
                 value={belowOpacity}
                 onChange={(e) => s.setBelowOpacity(Number(e.target.value))}
                 className="min-w-0 flex-1"
@@ -228,7 +254,7 @@ export function LevelSwitcher() {
               }}
               onBlur={(e) => s.renameLevel(current.id, e.currentTarget.value)}
             />
-          ) : (
+          ) : current.site ? null : (
             <button role="menuitem" className={item} onClick={() => setRenaming(true)}>
               <span className="w-3" />
               Rename this floor…

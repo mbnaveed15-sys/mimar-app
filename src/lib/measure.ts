@@ -9,7 +9,9 @@ export type Measure =
   | { kind: 'pair'; a: number; b: number }
   | { kind: 'angle'; deg: number }
   | { kind: 'copies'; n: number; spread: boolean }
-  | { kind: 'factor'; factor: number };
+  | { kind: 'factor'; factor: number }
+  /** Scale factors across (x) and up and down (y), typed as `2,1`. */
+  | { kind: 'factors'; x: number; y: number };
 
 /** What the active tool expects to be typed. */
 export type MeasureKind = 'length' | 'pair' | 'angle' | 'move' | 'scale' | 'none';
@@ -56,6 +58,12 @@ export function parseMeasure(text: string, units: Units, expect: MeasureKind): M
     // A bare number (optionally with x) is a factor; a length with units sets the reference length.
     const f = /^(\d+(?:\.\d+)?|\.\d+)\s*x?$/i.exec(t);
     if (f) return Number(f[1]) > 0 ? { kind: 'factor', factor: Number(f[1]) } : null;
+    // Two factors: width then depth.
+    const two = /^(\d+(?:\.\d+)?|\.\d+)\s*[,;]\s*(\d+(?:\.\d+)?|\.\d+)$/.exec(t);
+    if (two)
+      return Number(two[1]) > 0 && Number(two[2]) > 0
+        ? { kind: 'factors', x: Number(two[1]), y: Number(two[2]) }
+        : null;
   }
   if (expect === 'angle') {
     const m = ANGLE_RE.exec(t);

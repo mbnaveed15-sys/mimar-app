@@ -2,7 +2,7 @@
  * The plan check: the plan measured against the plot's bylaws, as rows of ✓ / ✗ / "check". Pure:
  * plan in, rows out. It is indicative only; the authority's own check is what counts.
  */
-import { elementOutline, pointInPolygon, pointToSegmentDistance } from '../geometry';
+import { pointInPolygon, pointToSegmentDistance } from '../geometry';
 import { roofTopMm } from './roof/roof';
 import {
   CDA_ROOMS,
@@ -40,7 +40,9 @@ import {
   type Units,
   type Wall,
 } from '../types';
-import { isBuildingWall, thicknessOf } from '../walls';
+import { isBuildingWall, thicknessOf, wallsOf } from '../walls';
+import { visibleShapes } from './itemShape';
+import { isHidden } from './layers';
 import { directionAlong, pointAlong, runLength } from './arc';
 import { voidsOver } from './voids';
 
@@ -301,9 +303,10 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
     const outside = (pts: Point[]) => pts.some((p) => !inside(p, line));
     const hard: Id[] = [];
     const soft: Id[] = [];
+    const walls = wallsOf(doc.elements);
     for (const el of doc.elements) {
-      if (el.hidden) continue;
-      const pts = itemOutline(el);
+      if (isHidden(el, { layers: doc.layers, showFurniture: true })) continue;
+      const pts = itemOutline(el, walls);
       if (!pts || !outside(pts)) continue;
       if (el.type === 'wall' || (el.type === 'block' && el.heightMm > 0)) hard.push(el.id);
       else soft.push(el.id);
@@ -724,16 +727,20 @@ export function mumtyRows(
   return rows;
 }
 
-/** The outline an item takes up on the plan, for the setback check (null for things that don't count). */
-function itemOutline(el: PlanElement): Point[] | null {
+/**
+ * The corners of what an item shows on the plan, for the setback check (null for things that don't
+ * count): a curved wall round its curve, a round column round its circle, a stair's own steps, not
+ * the box round them.
+ */
+function itemOutline(el: PlanElement, walls: Wall[]): Point[] | null {
   switch (el.type) {
     case 'wall':
-      return el.kind === 'boundary' ? null : wallCorners(el);
+      return el.kind === 'boundary' ? null : visibleShapes(el, walls).flat();
     case 'column':
     case 'beam':
     case 'slab':
     case 'stair':
-      return elementOutline(el);
+      return visibleShapes(el, walls).flat();
     case 'block':
       return el.heightMm > 0 && !el.path ? el.points : null;
     default:
@@ -755,13 +762,14 @@ function sideRows(doc: PlanDoc, plot: Plot, len: (mm: number) => string, clause:
   const n = plot.points.length;
   const outline = outlinePoints(plot);
   const items: { id: Id; pts: Point[] }[] = [];
+  const walls = wallsOf(doc.elements);
   for (const el of doc.elements) {
     if (
-      el.hidden ||
+      isHidden(el, { layers: doc.layers, showFurniture: true }) ||
       !((el.type === 'wall' && el.kind !== 'boundary') || (el.type === 'block' && el.heightMm > 0 && !el.path))
     )
       continue;
-    const pts = itemOutline(el);
+    const pts = itemOutline(el, walls);
     if (pts && pts.some((p) => pointInPolygon(p, outline))) items.push({ id: el.id, pts });
   }
   const rows: CheckRow[] = [];

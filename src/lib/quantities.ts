@@ -5,7 +5,7 @@
  */
 import { pointInPolygon, wallLength } from '../geometry';
 import { directionAlong, pointAlong } from './arc';
-import { openRooms, within } from './voids';
+import { openRooms, slabVoids, within } from './voids';
 import { isCurtain } from './curtain';
 import { gableArea, GABLE_WALL_MM, slopedArea } from './roof/roof';
 import { polygonArea } from '../rooms';
@@ -177,7 +177,9 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
     const wallById = new Map(walls.map((w) => [w.id, w]));
     // Double-height rooms: no slab over them, and the walls beside them rise through the slab's depth.
     const open = openRooms(doc, level.id);
-    const openSqft = open.reduce((s, r) => s + areaSqft(r.points), 0);
+    // Stairwells take slab out too (the walls beside them don't rise through it).
+    const holesOver = slabVoids(doc, level.id);
+    const openSqft = holesOver.reduce((s, r) => s + areaSqft(r.points), 0);
     const slabFt = mmFt(slabMm(doc));
 
     for (const wall of walls) {
@@ -194,7 +196,10 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       // The plinth rises from the finished ground under the wall (±0 on flat ground).
       const centre = pointAlong(wall, 0.5);
       const under = ground ? site.finishedAt(centre.x, centre.y) : 0;
-      const plinth = autoPlinth && !wall.kind && !wall.elevMm ? Math.max(0, mmFt(doc.plinthMm - under)) : 0;
+      const plinth =
+        autoPlinth && !wall.kind && !wall.elevMm && !wall.noPlinth ? Math.max(0, mmFt(doc.plinthMm - under)) : 0;
+      // It stands out past both faces of the wall by the plinth's projection.
+      const plinthCft = L * (t + 2 * mmFt(doc.plinth?.projectMm ?? 0)) * plinth;
       // Walls on the ground carry foundations: the ground floor's, unless they stand on your own
       // plinth (boundary walls still do), and the Ground (site) level's.
       const footed = !wall.elevMm && (siteLevel || (ground && (!doc.ownPlinth || !!wall.kind)));
@@ -202,7 +207,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       if (isCurtain(wall)) {
         const doorsSqft = own.filter((o) => o.type === 'door' && !o.flat).reduce((s, o) => s + openingSqft(o, H), 0);
         q.glazingSqft += Math.max(0, L * H - doorsSqft);
-        q.brickworkCft += L * t * plinth;
+        q.brickworkCft += plinthCft;
         if (footed) q.foundationRft += L;
         continue;
       }
@@ -214,10 +219,10 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       });
       const byVoid = open.some((r) => pointInPolygon(probe(1), r.points) || pointInPolygon(probe(-1), r.points));
       const up = byVoid && !wall.kind ? slabFt : 0;
-      const volume = Math.max(0, L * t * (H + plinth + up) - holes * t + shaped);
+      const volume = Math.max(0, L * t * (H + up) - holes * t + shaped);
       if (wall.kind === 'retaining') q.retainingCft += volume;
       else if (wall.kind) q.boundaryCft += volume;
-      else q.brickworkCft += volume;
+      else q.brickworkCft += volume + plinthCft;
       if (footed) q.foundationRft += L;
 
       // Each face: towards a room is inside; otherwise (and boundary walls) outside.
@@ -248,7 +253,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       switch (el.type) {
         case 'slab': {
           // Less the double-height rooms under it.
-          const voids = open.map((r) => r.points).filter((v) => within(v, el.points));
+          const voids = holesOver.map((r) => r.points).filter((v) => within(v, el.points));
           q.slabCft += areaSqft(el.points, [...(el.holes ?? []), ...voids]) * el.thickness * FT;
           break;
         }

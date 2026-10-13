@@ -150,6 +150,9 @@ export function readSnaps(raw: unknown): SnapsPrefs {
 
 const GROUP_OF = new Map(SNAP_GROUPS.flatMap((g) => g.kinds.map((k) => [k, g.id] as const)));
 
+/** Whether snapping is working now: the Snap setting, the other way round while Alt is held. */
+export const snapsOn = (s: { snaps: SnapsPrefs; snapFlip?: boolean }) => s.snaps.on !== !!s.snapFlip;
+
 /**
  * Which snap kinds may be used: none with snapping off; the building line also needs the plot
  * checks on, and the gap from a corner the door and window gap checks.

@@ -15,6 +15,7 @@ import {
   toggleHeightLock,
 } from '../tools/controller';
 import { flipOpeningHand } from '../tools/openingTool';
+import { turnFurniture } from '../tools/furnitureTool';
 import { aliasStep, ALIAS_GAP_MS, type Alias } from '../lib/aliases';
 import { finishStep } from '../tools/finish';
 import { armCopyNext } from '../tools/controller';
@@ -94,6 +95,8 @@ const ARROWS: Record<string, [number, number]> = {
 export function useKeyboardShortcuts(commands: Command[]) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Alt held: snapping works the other way round until it is let go.
+      if (e.key === 'Alt') plannerStore.getState().setSnapFlip(true);
       if (isTyping(e.target, e.key)) {
         // In a dialog (the search box, say) only saving reaches the app.
         const inDialog = e.target instanceof HTMLElement && !!e.target.closest('[role="dialog"], [role="alertdialog"]');
@@ -133,7 +136,7 @@ export function useKeyboardShortcuts(commands: Command[]) {
       if (e.key === 'Escape') {
         // Cancel the current step, then close an open group, then drop the selection.
         if (cancel(plannerStore)) return;
-        if (s.selectedIds.length) s.select(null);
+        if (s.selectedIds.length || s.selectedPlinth) s.select(null);
         else if (s.openGroupId) s.closeGroup();
         return;
       }
@@ -187,8 +190,13 @@ export function useKeyboardShortcuts(commands: Command[]) {
         return;
       }
 
-      // V flips the hinge of the door or window being placed.
-      if (!mod && !e.shiftKey && e.key.toLowerCase() === 'v' && flipOpeningHand(plannerStore)) {
+      // V flips the hinge of the door or window being placed, and turns the furniture being placed.
+      if (
+        !mod &&
+        !e.shiftKey &&
+        e.key.toLowerCase() === 'v' &&
+        (flipOpeningHand(plannerStore) || turnFurniture(plannerStore))
+      ) {
         e.preventDefault();
         return;
       }
@@ -230,6 +238,15 @@ export function useKeyboardShortcuts(commands: Command[]) {
     }
     function onKeyUp(e: KeyboardEvent) {
       if (e.key === 'Shift') plannerStore.getState().setShiftLock(null);
+      if (e.key === 'Alt') {
+        // Not the browser's menu bar.
+        e.preventDefault();
+        plannerStore.getState().setSnapFlip(false);
+      }
+    }
+    /** Alt let go in another window: snapping back to normal. */
+    function onBlur() {
+      plannerStore.getState().setSnapFlip(false);
     }
     /** A drop-down keeps every key while it has focus (letters pick options): let go once a choice is made. */
     function onChange(e: Event) {
@@ -239,7 +256,9 @@ export function useKeyboardShortcuts(commands: Command[]) {
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('change', onChange);
+    window.addEventListener('blur', onBlur);
     return () => {
+      window.removeEventListener('blur', onBlur);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('change', onChange);

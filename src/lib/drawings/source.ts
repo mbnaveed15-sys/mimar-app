@@ -4,7 +4,7 @@ import type { PlanImageContent } from '../planImage';
 import type { PlannerState } from '../../store/plannerStore';
 import { groundOf } from '../terrain/ground';
 import { groundOnPlan } from '../terrain/groundView';
-import { voidsOver } from '../voids';
+import { floorVoids } from '../voids';
 import { GROUND_LEVEL, levelOf, type PlanDoc } from '../../types';
 import type { SheetSource } from './sheet';
 import { sideCache } from './views';
@@ -45,6 +45,6 @@ export function levelContent(
   const { units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills } = s;
   // The ground is worked out from the whole plan (hidden levels still shape it), on the ground floor.
   const ground = levelId === GROUND_LEVEL ? groundOnPlan({ ...s.doc, layers: shown.layers }, units === 'metric') : null;
-  const voids = voidsOver(shown, levelId);
+  const voids = floorVoids(shown, levelId);
   return { doc, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, ground, voids };
 }

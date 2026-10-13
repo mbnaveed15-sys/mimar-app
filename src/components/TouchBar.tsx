@@ -5,6 +5,7 @@ import { plannerStore, usePlanner, type PlannerState } from '../store/plannerSto
 import { cancel } from '../tools/controller';
 import { finishStep } from '../tools/finish';
 import { flipOpeningHand, OPENING_TOOLS } from '../tools/openingTool';
+import { turnFurniture } from '../tools/furnitureTool';
 import type { IconName } from '../theme/icons';
 import type { Opening } from '../types';
 import { canFlipHinge, canFlipSwing } from '../lib/openingKinds';
@@ -51,6 +52,8 @@ export function TouchBar({ onProperties }: { onProperties: () => void }) {
   const touchInput = usePlanner((s) => s.touchInput);
   const drawing = usePlanner((s) => !!s.draft && s.draft.type !== 'opening');
   const opening = usePlanner((s) => OPENING_TOOLS.includes(s.tool));
+  // Placing furniture: turn it before it goes down.
+  const placing = usePlanner((s) => s.tool === 'furniture');
   const selected = usePlanner((s) => s.selectedIds.length > 0);
   const copyable = usePlanner(canCopy);
   const turnable = usePlanner(canTransform);
@@ -66,9 +69,14 @@ export function TouchBar({ onProperties }: { onProperties: () => void }) {
   const phone = usePhone();
   const coarse = useCoarsePointer();
 
-  if (touchInput && (drawing || opening))
+  if (touchInput && (drawing || opening || placing))
     return (
       <div role="toolbar" aria-label="Touch actions" className={BAR}>
+        {placing && (
+          <button className={BTN} onClick={() => turnFurniture(plannerStore)}>
+            <Icon name="rotate" size={18} /> Turn 90°
+          </button>
+        )}
         {drawing && (
           <button className={BTN} onClick={() => finishStep(plannerStore) || cancel(plannerStore)}>
             <Icon name="check" size={18} /> Done

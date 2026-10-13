@@ -35,6 +35,7 @@ import {
   type GroundSettings,
   type RoofKind,
   type DimTie,
+  type PlinthSpec,
 } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
 import { authorityById, type AuthorityId } from './bylaws';
@@ -52,9 +53,20 @@ export const STORAGE_KEY = 'mimar.plan';
  * 13 curved and spiral stairs, and curved edges on slabs, levelled areas and plots; 14 furniture for
  * every kind of building, and more building uses; 15 dimensions and curved slab voids; 16 a plot's
  * bylaw area and road width, and LDA's built-up and open areas; 17 the Ground (site) level and your own
- * plinth.
+ * plinth; 18 furniture heights, items on the lawn of the one Ground level, and the plinth's own settings.
  */
-export const CURRENT_VERSION = 17;
+export const CURRENT_VERSION = 18;
+
+/** The automatic plinth's projection (0 to 1 m) and material; nothing when neither is set. */
+function normalisePlinth(raw: unknown): PlinthSpec | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const out: PlinthSpec = {};
+  if (typeof r.projectMm === 'number' && Number.isFinite(r.projectMm) && r.projectMm > 0)
+    out.projectMm = Math.min(r.projectMm, 1000);
+  if (typeof r.material === 'string' && r.material) out.material = r.material;
+  return Object.keys(out).length ? out : undefined;
+}
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -193,6 +205,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
           ? (raw.kind as WallKind)
           : undefined,
         heightMm: num('heightMm') > 0 ? num('heightMm') : undefined,
+        ...(raw.noPlinth === true && { noPlinth: true }),
         ...(num('mullionMm') >= 100 && { mullionMm: num('mullionMm') }),
         ...(num('transomMm') >= 0 && { transomMm: num('transomMm') }),
         materialA: idOf(raw.materialA),
@@ -239,6 +252,10 @@ function normaliseElement(raw: unknown): PlanElement | null {
         h: num('h'),
         rotation: typeof raw.rotation === 'number' && Number.isFinite(raw.rotation) ? raw.rotation : undefined,
         kind: isFurnitureKind(raw.kind) ? raw.kind : undefined,
+        heightMm:
+          typeof raw.heightMm === 'number' && Number.isFinite(raw.heightMm) && raw.heightMm > 0
+            ? Math.min(raw.heightMm, 20000)
+            : undefined,
         label: typeof raw.label === 'string' ? cleanText(raw.label) : undefined,
       };
       return [el.x, el.y, el.w, el.h].every(Number.isFinite) && el.w > 0 && el.h > 0 ? el : null;
@@ -680,6 +697,7 @@ export function normaliseDoc(raw: unknown): PlanDoc {
     plinthMm:
       typeof obj.plinthMm === 'number' && obj.plinthMm >= 0 && obj.plinthMm <= 3000 ? obj.plinthMm : DEFAULT_PLINTH_MM,
     ...(obj.ownPlinth === true ? { ownPlinth: true } : {}),
+    ...(normalisePlinth(obj.plinth) ? { plinth: normalisePlinth(obj.plinth) } : {}),
     ...(normaliseLayers(obj.layers) ? { layers: normaliseLayers(obj.layers) } : {}),
     ...(typeof obj.northDeg === 'number' && Number.isFinite(obj.northDeg) && obj.northDeg % 360 !== 0
       ? { northDeg: ((obj.northDeg % 360) + 360) % 360 }

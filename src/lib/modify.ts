@@ -2,6 +2,7 @@
  * AutoCAD-style editing of walls: trim, extend, break, join, fillet, chamfer and offset, plus
  * mirror, scale and stretch for any selection. Everything here is pure: plan in, plan out.
  */
+import { scaledSize, stretchPlaced } from './resize';
 import { mapOutline, placeOnWall, wallParam } from '../geometry';
 import {
   arcOf,
@@ -650,39 +651,56 @@ function mirrorLone(
   return fit ? fit(next, doc) : next;
 }
 
-/** Scale items about `base` by `factor`. Wall thickness and door and window widths stay the same. */
-export function scaleItems(doc: PlanDoc, ids: Id[], base: Point, factor: number): PlanDoc {
-  if (!(factor > 0) || factor === 1) return doc;
+/**
+ * Scale items about `base` by `factor`, or by its own factor across (x) and up and down (y). Wall
+ * thickness and door and window widths stay the same; columns and stairs keep their size too.
+ */
+export function scaleItems(doc: PlanDoc, ids: Id[], base: Point, factor: number | { x: number; y: number }): PlanDoc {
+  const fx = typeof factor === 'number' ? factor : factor.x;
+  const fy = typeof factor === 'number' ? factor : factor.y;
+  if (!(fx > 0) || !(fy > 0) || (fx === 1 && fy === 1)) return doc;
   const set = withOpenings(doc, ids);
-  const sc = (p: Point) => add(base, mul(sub(p, base), factor));
+  const sc = (p: Point) => ({ x: base.x + (p.x - base.x) * fx, y: base.y + (p.y - base.y) * fy });
+  /** How much a bow (square to the line a–b) grows: the factor along the line's normal. */
+  const bowFactor = (a: Point, b: Point) => {
+    const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const n = { x: -(b.y - a.y) / l, y: (b.x - a.x) / l };
+    return Math.hypot(n.x * fx, n.y * fy);
+  };
   const walls = new Map<Id, Wall>();
   const elements = doc.elements.map((el) => {
     if (!set.has(el.id) || isOpening(el)) return el;
     if (el.type === 'wall') {
       const w = withEnds(el, sc(start(el)), sc(end(el))) as WallItem;
-      if (el.bow) w.bow = el.bow * factor;
+      if (el.bow) w.bow = el.bow * bowFactor(start(el), end(el));
       walls.set(w.id, w);
       return w;
     }
     if (el.type === 'beam' || el.type === 'line' || el.type === 'section') {
       const p1 = sc({ x: el.x1, y: el.y1 });
       const p2 = sc({ x: el.x2, y: el.y2 });
-      const bow = el.type === 'line' && el.bow ? { bow: el.bow * factor } : {};
+      const bow =
+        el.type === 'line' && el.bow ? { bow: el.bow * bowFactor({ x: el.x1, y: el.y1 }, { x: el.x2, y: el.y2 }) } : {};
       return { ...el, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, ...bow };
     }
-    if (el.type === 'plot' && el.sideList?.some((side) => side.bow))
+    if (el.type === 'plot' && el.sideList?.some((side) => side.bow)) {
       // Curved sides bow out in proportion.
+      const n = el.points.length;
       return mapOutline(
-        { ...el, sideList: el.sideList.map((side) => (side.bow ? { ...side, bow: side.bow * factor } : side)) },
+        {
+          ...el,
+          sideList: el.sideList.map((side, i) =>
+            side.bow ? { ...side, bow: side.bow * bowFactor(el.points[i], el.points[(i + 1) % n]) } : side,
+          ),
+        },
         sc,
       );
+    }
     if (hasPoints(el)) return mapOutline(el, sc);
     if (el.type === 'dimension') return mapDimension(el, sc);
     const p = sc(el);
     // Furniture scales; columns and stairs keep their (structural) size.
-    return el.type === 'furniture'
-      ? { ...el, x: p.x, y: p.y, w: el.w * factor, h: el.h * factor }
-      : { ...el, x: p.x, y: p.y };
+    return el.type === 'furniture' ? { ...el, x: p.x, y: p.y, ...scaledSize(el, fx, fy) } : { ...el, x: p.x, y: p.y };
   });
   return {
     ...doc,
@@ -723,8 +741,10 @@ export function stretchItems(
       walls.set(w.id, w);
       return w;
     }
-    if (el.type === 'furniture' || el.type === 'column' || el.type === 'stair' || el.type === 'level')
-      return inBox(el, box) ? { ...el, x: el.x + dx, y: el.y + dy } : el;
+    // Furniture, columns and stairs with only some corners in the box get bigger or smaller that way.
+    if (el.type === 'furniture' || el.type === 'column' || el.type === 'stair')
+      return stretchPlaced(el, (p) => inBox(p, box), dx, dy) ?? el;
+    if (el.type === 'level') return inBox(el, box) ? { ...el, x: el.x + dx, y: el.y + dy } : el;
     if (el.type === 'beam' || el.type === 'line' || el.type === 'section') {
       const p1 = move({ x: el.x1, y: el.y1 });
       const p2 = move({ x: el.x2, y: el.y2 });

@@ -1,3 +1,4 @@
+import { snapsOn } from '../lib/checks';
 import { wallParam } from '../geometry';
 import { distanceToWall, projectOnWall } from '../lib/arc';
 import type { Inference } from '../lib/inference';
@@ -15,6 +16,7 @@ import {
   stretchItems,
   trimAt,
 } from '../lib/modify';
+import { axisFactors, type ScaleAxis } from '../lib/resize';
 import { fitterFor } from '../store/openingAt';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
@@ -73,7 +75,7 @@ export function modifyAnchor(s: PlannerState): Point | null {
 /** Offset preview: the parallel wall at the pointer's distance (snapped to the grid). */
 function offsetDraft(s: PlannerState, wall: Wall, side: Point, d?: number) {
   let distance = d ?? distanceToLine(wall, side);
-  if (d === undefined && s.grid.snap && s.snaps.on)
+  if (d === undefined && s.grid.snap && snapsOn(s))
     distance = Math.max(s.gridPx, Math.round(distance / s.gridPx) * s.gridPx);
   const w = offsetWall(wall, distance, side);
   const bow = 'bow' in w ? w.bow : undefined;
@@ -265,12 +267,22 @@ export function modifyHover(store: Store, raw: Point, inf: Inference, shift: boo
       s.commitFromBase((b) => stretchItems(b, box, p.x - base.x, p.y - base.y, stretchable(s)));
     }
   } else if (d?.type === 'scale' && d.ref) {
-    let factor = dist(p, d.base) / dist(d.ref, d.base);
+    let factor = scaleRatio(s.scaleAxis, d.base, d.ref, p);
     if (!shift) factor = Math.max(0.05, Math.round(factor * 20) / 20);
     const { ids, base } = d;
-    s.commitFromBase((b) => scaleItems(b, ids, base, factor));
+    s.commitFromBase((b) => scaleItems(b, ids, base, axisFactors(factor, s.scaleAxis)));
     s.setDraft({ ...d, factor });
   }
+}
+
+/**
+ * How much the pointer at `p` scales by, from the reference point: the distances from the base, or
+ * (scaling only one way) how far across or up and down they are, where the reference is that way.
+ */
+function scaleRatio(axis: ScaleAxis, base: Point, ref: Point, p: Point): number {
+  const k = axis === 'x' ? 'x' : axis === 'y' ? 'y' : null;
+  if (k && Math.abs(ref[k] - base[k]) > 1e-6) return Math.abs(p[k] - base[k]) / Math.abs(ref[k] - base[k]);
+  return dist(p, base) / dist(ref, base);
 }
 
 const boxOf = (d: { x1: number; y1: number; x2: number; y2: number }) => ({
@@ -353,10 +365,16 @@ export function modifyMeasure(store: Store, m: Measure): string | null {
       if (d?.type !== 'scale') return 'Select what to scale and click the point it grows from, then type a factor.';
       let factor: number | null = null;
       if (m.kind === 'factor') factor = m.factor;
-      else if (m.kind === 'length' && d.ref) factor = units(Math.abs(m.mm)) / dist(d.ref, d.base);
-      if (!factor) return 'Type a factor such as 2 or 0.5 (or click a reference point first, then type a length).';
+      else if (m.kind === 'length' && d.ref) {
+        // A length: the reference's distance (only across, or up and down, scaling that way) becomes it.
+        const k = s.scaleAxis === 'x' ? 'x' : s.scaleAxis === 'y' ? 'y' : null;
+        const was = k && Math.abs(d.ref[k] - d.base[k]) > 1e-6 ? Math.abs(d.ref[k] - d.base[k]) : dist(d.ref, d.base);
+        factor = units(Math.abs(m.mm)) / was;
+      }
+      const f = m.kind === 'factors' ? { x: m.x, y: m.y } : factor ? axisFactors(factor, s.scaleAxis) : null;
+      if (!f)
+        return 'Type a factor such as 2 or 0.5, two factors (width, depth) such as 2,1, or click a reference point first and type a length.';
       const { ids, base } = d;
-      const f = factor;
       if (!s.batchBase) s.beginBatch();
       s.commitFromBase((b) => scaleItems(b, ids, base, f));
       s.endBatch();
@@ -383,8 +401,10 @@ export function modifyReadout(s: PlannerState): { label: string; value: string }
       return { label: 'Gap', value: '' };
     case 'stretch':
       return { label: 'Distance', value: d?.type === 'stretch' && d.base && d.to ? len(dist(d.to, d.base)) : '' };
-    case 'scale':
-      return { label: 'Scale', value: d?.type === 'scale' ? `${d.factor.toFixed(2)}×` : '' };
+    case 'scale': {
+      const way = s.scaleAxis === 'x' ? ' wide' : s.scaleAxis === 'y' ? ' deep' : '';
+      return { label: 'Scale', value: d?.type === 'scale' ? `${d.factor.toFixed(2)}×${way}` : '' };
+    }
     default:
       return { label: '', value: '' };
   }
@@ -429,8 +449,8 @@ export function modifyHint(s: PlannerState): string {
     case 'scale':
       if (d?.type !== 'scale') return 'Select what to scale, then click the point it grows from.';
       return d.ref
-        ? 'Click to set the new size (0.05 steps; Shift for any), or type a factor or length.'
-        : 'Click a reference point (its distance is the size to change), or type a factor such as 2.';
+        ? 'Click to set the new size (0.05 steps; Shift for any), or type a factor, two factors (2,1) or a length.'
+        : 'Click a reference point (its distance is the size to change), or type a factor such as 2, or 2,1 for twice as wide only.';
     default:
       return '';
   }

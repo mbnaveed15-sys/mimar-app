@@ -1,3 +1,4 @@
+import type { ScaleAxis } from '../lib/resize';
 import {
   useEffect,
   useRef,
@@ -151,6 +152,36 @@ function CurveToolOptions() {
   );
 }
 
+/** Which way the Scale tool stretches: both ways, or only across or only up and down the plan. */
+function ScaleOptions() {
+  const axis = usePlanner((s) => s.scaleAxis);
+  const setAxis = usePlanner((s) => s.setScaleAxis);
+  const options: [ScaleAxis, string, string][] = [
+    ['both', 'Both', 'Bigger or smaller every way'],
+    ['x', 'Width only', 'Wider or narrower, across the plan (left to right)'],
+    ['y', 'Depth only', 'Deeper or shallower, up and down the plan'],
+  ];
+  return (
+    <div className="flex flex-col gap-1 text-xs" data-testid="scale-options">
+      <div className="m-heading">Scale</div>
+      <div className="flex flex-wrap gap-1" role="group" aria-label="Scale which way">
+        {options.map(([id, label, title]) => (
+          <button
+            key={id}
+            className="m-btn px-2 py-0.5"
+            aria-pressed={axis === id}
+            title={title}
+            onClick={() => setAxis(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="text-muted">Or type two factors, width then depth, such as 2,1.</div>
+    </div>
+  );
+}
+
 /** Options for the active tool, shown when nothing is selected. */
 function ToolOptions() {
   const tool = usePlanner((s) => s.tool);
@@ -171,6 +202,7 @@ function ToolOptions() {
   if (tool === 'furniture') return <FurnitureLibrary />;
   if (tool === 'column' || tool === 'beam' || tool === 'slab') return <StructureOptions />;
   if (tool === 'roof') return <RoofToolOptions />;
+  if (tool === 'scale') return <ScaleOptions />;
   if (tool === 'shape') return <ShapeOptions />;
   if (tool === 'level' || tool === 'contour' || tool === 'pad') return <GroundToolOptions />;
   if (tool === 'brush')
@@ -199,7 +231,7 @@ function ToolOptions() {
  */
 export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSections> }) {
   const tool = usePlanner((s) => s.tool);
-  const hasSelection = usePlanner((s) => s.selectedIds.length > 0);
+  const hasSelection = usePlanner((s) => s.selectedIds.length > 0 || !!s.selectedPlinth);
   const panels = usePlanner((s) => s.panels);
   const setPanels = usePlanner((s) => s.setPanels);
   const { open, set } = sections;
@@ -276,7 +308,7 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
     <div className="flex flex-col gap-2 p-3">
       <h2 className="m-heading">{hasSelection ? 'Properties' : TOOL_INFO[tool].label}</h2>
       {/* The Shape tool's choice stays in view, as each new shape is selected once drawn. */}
-      {(!hasSelection || tool === 'shape') && <ToolOptions />}
+      {(!hasSelection || tool === 'shape' || tool === 'scale') && <ToolOptions />}
       <Inspector />
     </div>
   );
