@@ -32,6 +32,19 @@ describe('3D camera', () => {
     expect(r.distance).toBeGreaterThan(0.4);
   });
 
+  it('turns round the point between the fingers, which stays where it was on screen', () => {
+    const r = rig();
+    const point = new Vector3(1, 0, -2);
+    const onScreen = () => point.clone().project(r.camera);
+    const before = onScreen();
+    const height = r.camera.position.y;
+    r.turnAbout(point, 0.4);
+    const after = onScreen();
+    expect(after.x).toBeCloseTo(before.x);
+    expect(after.y).toBeCloseTo(before.y);
+    expect(r.camera.position.y).toBeCloseTo(height);
+  });
+
   it('zooms to extents looking the same way, and gives the standard views', () => {
     const r = rig();
     r.orbit(120, 40);

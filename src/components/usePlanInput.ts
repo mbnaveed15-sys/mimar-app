@@ -18,8 +18,10 @@ import { outlineProblem, outlinePoints, sideLine, withSideBow } from '../lib/plo
 import { faceOf } from '../lib/pushPull';
 import { itemsInBox, moveItems } from '../lib/selection';
 import { dragDimension } from '../lib/dimensions';
-import { dragSide, isSideGrip } from '../lib/resize';
-import { againstWall } from '../tools/furnitureTool';
+import { dragCorner, dragSide, isCornerGrip, isSideGrip } from '../lib/resize';
+import { dragRoomCorner, wallEndsAt } from '../lib/roomGrips';
+import { hasOwnPlinth, plinthAt } from '../lib/plinth';
+import { snapFurniture } from '../tools/furnitureTool';
 import { plinthWallOf } from '../walls';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, type PlannerState } from '../store/plannerStore';
@@ -60,15 +62,21 @@ type Drag =
   | { kind: 'wall-start' | 'wall-end'; orig: Wall | SketchLine }
   /** Dragging a wall's (or layout line's) middle sideways to bend it into an arc (or back to straight). */
   | { kind: 'wall-bend'; orig: Wall | SketchLine }
-  | { kind: 'resize' | 'rotate'; orig: Furniture }
+  | { kind: 'rotate'; orig: Furniture }
+  /** Dragging a furniture item's or stair's corner: the opposite corner stays (Shift: about the middle). */
+  | { kind: 'corner'; orig: PlanElement; grip: string }
   /** Dragging a side grip: that side moves, the opposite one stays. */
   | { kind: 'side'; orig: PlanElement; grip: string }
   /** Dragging a column's corner to resize it about its centre. */
   | { kind: 'column-size'; orig: Column }
+  /** Dragging a beam's side grip: its width, kept centred on its line. */
+  | { kind: 'beam-width'; orig: Beam }
   /** Dragging one end of a beam. */
   | { kind: 'beam-start' | 'beam-end'; orig: Beam }
   /** Dragging a corner of a slab, levelled area, block or roof outline. */
   | { kind: 'shape-corner'; orig: Slab | Pad | Block | Roof; index: number }
+  /** Dragging a room's corner: the walls meeting there follow. */
+  | { kind: 'room-corner'; roomId: string; index: number; skip: Set<string> }
   /** Dragging a corner of a plot to reshape it. */
   | { kind: 'plot-corner'; plotId: string; index: number }
   | { kind: 'edge-bend'; orig: Slab | Pad; index: number }
@@ -98,9 +106,9 @@ function gridSnap(raw: Point): Point {
  * Snap a grip being dragged as drawing does: to any wall or item corner, end, middle or line nearby
  * (the item itself left out), else the grid. Shows the snap marker while it drags.
  */
-function snapGrip(raw: Point, id: string, from: Point | null = null): Point {
+function snapGrip(raw: Point, id: string | Set<string>, from: Point | null = null): Point {
   const s = plannerStore.getState();
-  const inf = inferAt(s, raw, from, new Set([id]));
+  const inf = inferAt(s, raw, from, typeof id === 'string' ? new Set([id]) : id);
   s.setInference(inf.kind === 'free' || inf.kind === 'grid' ? null : inf);
   return inf.point;
 }
@@ -259,19 +267,32 @@ export function usePlanInput(
     }
 
     const handle = (e.target as Element).closest('[data-handle]')?.getAttribute('data-handle');
+    if (handle?.startsWith('room-corner-') && s.tool === 'select' && s.selectedId) {
+      const roomId = s.selectedId;
+      const index = Number(handle.slice('room-corner-'.length));
+      const room = s.doc.rooms.find((r) => r.id === roomId);
+      // The corner doesn't snap to the walls it is moving.
+      const skip = new Set([roomId, ...(room ? wallEndsAt(s.doc, room, room.points[index]).map((w) => w.id) : [])]);
+      startDrag(e, { kind: 'room-corner', roomId, index, skip });
+      return;
+    }
     const selected = s.selectedIds.length === 1 ? s.doc.elements.find((el) => el.id === s.selectedId) : undefined;
     if (handle && selected && s.tool === 'select') {
       if (isSideGrip(handle)) {
         startDrag(e, { kind: 'side', orig: selected, grip: handle });
+      } else if (isCornerGrip(handle)) {
+        startDrag(e, { kind: 'corner', orig: selected, grip: handle });
       } else if (
         (selected.type === 'wall' || selected.type === 'line') &&
         (handle === 'wall-start' || handle === 'wall-end' || handle === 'wall-bend')
       ) {
         startDrag(e, { kind: handle, orig: selected });
-      } else if (selected.type === 'furniture' && (handle === 'resize' || handle === 'rotate')) {
+      } else if (selected.type === 'furniture' && handle === 'rotate') {
         startDrag(e, { kind: handle, orig: selected });
       } else if (selected.type === 'column' && handle === 'column-size') {
         startDrag(e, { kind: 'column-size', orig: selected });
+      } else if (selected.type === 'beam' && handle.startsWith('beam-width-')) {
+        startDrag(e, { kind: 'beam-width', orig: selected });
       } else if (selected.type === 'beam' && (handle === 'beam-start' || handle === 'beam-end')) {
         startDrag(e, { kind: handle, orig: selected });
       } else if (
@@ -311,6 +332,13 @@ export function usePlanInput(
           return;
         }
         const hit = hitAt(e, raw);
+        // On the plan, the plinth standing out round the ground floor's walls is its own item too.
+        const plinthHere =
+          !hit && !screenBox && !e.shiftKey ? plinthAt({ ...s.doc, elements: s.pickableElements() }, raw) : null;
+        if (plinthHere) {
+          s.selectPlinth(plinthHere);
+          return;
+        }
         if (!hit) {
           // Empty space (or inside a room): a click picks the room, a drag draws a selection box.
           startDrag(e, { kind: 'box', start: raw, additive: e.shiftKey, client: { x: e.clientX, y: e.clientY } });
@@ -344,13 +372,19 @@ export function usePlanInput(
       case 'room':
         s.addRoomAt(raw);
         break;
-      case 'paint':
-        if (plinthWallOf(pickId?.(e))) s.setPlinth({ material: s.selectedMat });
+      case 'paint': {
+        const painted = plinthWallOf(pickId?.(e));
+        const ownWall = painted ? s.doc.elements.find((el) => el.id === painted) : undefined;
+        // A wall with its own plinth settings takes the paint under it only.
+        if (ownWall?.type === 'wall' && hasOwnPlinth(ownWall))
+          s.setWallPlinthOwn(ownWall.id, { material: s.selectedMat });
+        else if (painted) s.setPlinth({ material: s.selectedMat });
         else if (pickId) {
           const id = idAt(e, raw);
           if (id) s.applyMaterial(id, wallFaceAt(s, e, id));
         } else s.paintAt(raw);
         break;
+      }
       case 'brush':
         capture(e);
         s.beginBatch();
@@ -365,8 +399,15 @@ export function usePlanInput(
         const wall = e.shiftKey ? nearestWall(s.pickableElements(), raw, s.hitTolerance() * 1.5) : null;
         // The item under the pointer, as Select would pick it: a door or window before its wall.
         const picked = wall ? null : pickId ? idAt(e, raw) : (hitAt(e, raw)?.id ?? null);
-        // In 3D, erasing the automatic plinth leaves it off under its wall (the wall stays).
-        const plinth = wall ? null : plinthWallOf(pickId?.(e));
+        // Erasing the automatic plinth (in 3D, or where it stands out on the plan) leaves it off under
+        // its wall (the wall stays).
+        const plinth = wall
+          ? null
+          : pickId
+            ? plinthWallOf(pickId(e))
+            : picked
+              ? null
+              : plinthAt({ ...s.doc, elements: s.pickableElements() }, raw);
         const click = () => {
           if (plinth) s.setWallPlinth(plinth, false);
           else if (wall) s.commit((doc) => trimAt(doc, wall.id, raw, 10 * s.pxUnits()));
@@ -474,7 +515,7 @@ export function usePlanInput(
                   : { x: orig.x, y: orig.y };
             const moved = { x: anchor.x + raw.x - drag.start.x, y: anchor.y + raw.y - drag.start.y };
             // Furniture backs onto a wall it comes near (Alt places it freely).
-            const walled = orig.type === 'furniture' && snapsOn(s) ? againstWall(s, orig, moved) : null;
+            const walled = orig.type === 'furniture' && snapsOn(s) ? snapFurniture(s, orig, moved) : null;
             if (walled) {
               s.setInference(null);
               s.updateElement(walled);
@@ -529,6 +570,12 @@ export function usePlanInput(
           }
           break;
         }
+        case 'room-corner': {
+          const { roomId, index } = drag;
+          const p = snapGrip(raw, drag.skip);
+          s.commitFromBase((base) => dragRoomCorner(base, roomId, index, p));
+          break;
+        }
         case 'plot-corner': {
           // To the grid only: its own walls' ends sit half a wall inside the corner.
           const ok = s.movePlotCorner(drag.plotId, drag.index, gridSnap(raw));
@@ -540,6 +587,14 @@ export function usePlanInput(
           const local = toFurnitureLocal(drag.orig, snapGrip(raw, drag.orig.id));
           const size = (v: number) => Math.max(SIZE_STEP, Math.round((2 * Math.abs(v)) / SIZE_STEP) * SIZE_STEP);
           s.updateElement({ ...drag.orig, w: size(local.x), h: size(local.y) });
+          break;
+        }
+        case 'beam-width': {
+          const o = drag.orig;
+          const len = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1;
+          const off = Math.abs(((raw.x - o.x1) * (o.y2 - o.y1) - (raw.y - o.y1) * (o.x2 - o.x1)) / len);
+          const width = Math.max(SIZE_STEP, Math.round((2 * off) / SIZE_STEP) * SIZE_STEP);
+          if (width !== o.width) s.updateElement({ ...o, width });
           break;
         }
         case 'beam-start':
@@ -576,10 +631,21 @@ export function usePlanInput(
           if (next) s.updateElement(next);
           break;
         }
-        case 'resize': {
-          const local = toFurnitureLocal(drag.orig, raw);
-          const size = (v: number) => Math.max(SIZE_STEP, Math.round((2 * Math.abs(v)) / SIZE_STEP) * SIZE_STEP);
-          s.updateElement({ ...drag.orig, w: size(local.x), h: size(local.y) });
+        case 'corner': {
+          const o = drag.orig;
+          if (e.shiftKey && o.type === 'furniture') {
+            // Shift: about the middle, as the one corner grip did before 1.49.
+            const local = toFurnitureLocal(o, raw);
+            const size = (v: number) => Math.max(SIZE_STEP, Math.round((2 * Math.abs(v)) / SIZE_STEP) * SIZE_STEP);
+            s.updateElement({ ...o, w: size(local.x), h: size(local.y) });
+            break;
+          }
+          // To what is near; else in 50 mm steps.
+          const p = snapGrip(raw, o.id);
+          const snapped = !!plannerStore.getState().inference;
+          const round = (v: number) => Math.max(SIZE_STEP, Math.round(v / SIZE_STEP) * SIZE_STEP);
+          const next = dragCorner(o, drag.grip, snapped ? p : raw, snapped ? undefined : round);
+          if (next) s.updateElement(next);
           break;
         }
         case 'rotate': {

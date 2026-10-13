@@ -8,7 +8,15 @@ import { plannerStore, usePlanner } from '../store/plannerStore';
 import { useLevelDoc } from '../store/useLevelDoc';
 import { PLAN } from '../theme/plan';
 import { selectionBounds } from '../lib/selection';
-import { GROUND_LEVEL, levelOf, type Furniture, type PlanElement, type Point, type SectionLine } from '../types';
+import {
+  GROUND_LEVEL,
+  levelOf,
+  type Beam,
+  type Furniture,
+  type PlanElement,
+  type Point,
+  type SectionLine,
+} from '../types';
 import { wallPolygon, wallsOf } from '../walls';
 import { pointAlong } from '../lib/arc';
 import { edgeMiddles, holeEdgeMiddles } from '../lib/curvedEdges';
@@ -17,7 +25,7 @@ import { floorVoids } from '../lib/voids';
 import { DrawingOverlay } from './DrawingOverlay';
 import { FurnitureShape } from './shapes/FurnitureShape';
 import { furnitureAt } from '../tools/furnitureTool';
-import { sideGrips } from '../lib/resize';
+import { cornerGrips as placedCorners, sideGrips } from '../lib/resize';
 import { CheckMarks } from './CheckMarks';
 import { faceAt2D } from '../lib/faces2d';
 import { clearPicker, setPicker, type Picker3D } from '../three/picker';
@@ -96,6 +104,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const hoverEdge = usePlanner((s) => s.hoverEdge);
   const dimMode = usePlanner((s) => s.site.dimMode);
   const selectedIds = usePlanner((s) => s.selectedIds);
+  const selectedPlinth = usePlanner((s) => s.selectedPlinth);
   const openGroupId = usePlanner((s) => s.openGroupId);
   const gridPx = usePlanner((s) => s.gridPx);
   const grid = usePlanner((s) => s.grid);
@@ -199,6 +208,8 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const hk = touchInput ? k * 1.8 : k;
 
   const selected = selectedIds.length === 1 ? doc.elements.find((el) => el.id === selectedIds[0]) : undefined;
+  const selectedRoom =
+    selectedIds.length === 1 && !selected ? doc.rooms.find((r) => r.id === selectedIds[0] && !r.locked) : undefined;
   // Dashed boxes around selected groups and the group open for editing.
   const groupBoxes = doc.groups
     .map((g) => {
@@ -273,6 +284,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         accessibleZones={accessibleZones}
         ground={ground}
         voids={voids}
+        selectedPlinth={selectedPlinth}
       />
 
       {otherSections.map((line) => (
@@ -361,10 +373,17 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
           selected &&
           !selected.locked &&
           cornerGrips(selected).map((p, i) => <Handle key={`c${i}`} name={`shape-corner-${i}`} p={p} k={hk} />)}
+        {tool === 'select' &&
+          selectedRoom &&
+          selectedRoom.points.length <= MAX_CORNER_GRIPS &&
+          selectedRoom.points.map((p, i) => <Handle key={`r${i}`} name={`room-corner-${i}`} p={p} k={hk} />)}
         {tool === 'select' && selected?.type === 'beam' && !selected.locked && (
           <>
             <Handle name="beam-start" p={{ x: selected.x1, y: selected.y1 }} k={hk} />
             <Handle name="beam-end" p={{ x: selected.x2, y: selected.y2 }} k={hk} />
+            {beamWidthGrips(selected).map((g) => (
+              <SideHandle key={g.name} name={g.name} p={g.at} k={hk} />
+            ))}
           </>
         )}
         {tool === 'select' && selected?.type === 'column' && !selected.locked && (
@@ -377,6 +396,10 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         {tool === 'select' && selected?.type === 'furniture' && showFurniture && (
           <FurnitureHandles item={selected} k={hk} />
         )}
+        {tool === 'select' &&
+          selected &&
+          (selected.type !== 'furniture' || showFurniture) &&
+          placedCorners(selected).map((g) => <Handle key={g.name} name={g.name} p={g.at} k={hk} />)}
         {tool === 'select' &&
           selected &&
           (selected.type !== 'furniture' || showFurniture) &&
@@ -400,6 +423,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
               selected={false}
               k={k}
               ghost
+              accessible={accessibleZones}
             />
           </g>
         )}
@@ -436,6 +460,17 @@ function cornerGrips(el: PlanElement): Point[] {
   if ('curve' in el && el.curve) return [];
   if (el.type === 'block' && el.path) return [];
   return el.points.length <= MAX_CORNER_GRIPS ? el.points : [];
+}
+
+/** Square grips on a beam's two long sides, at its middle: dragging one sets its width (it stays on its line). */
+function beamWidthGrips(b: Beam): { name: string; at: Point }[] {
+  const len = Math.hypot(b.x2 - b.x1, b.y2 - b.y1) || 1;
+  const n = { x: -(b.y2 - b.y1) / len, y: (b.x2 - b.x1) / len };
+  const mid = { x: (b.x1 + b.x2) / 2, y: (b.y1 + b.y2) / 2 };
+  return [1, -1].map((sign, i) => ({
+    name: `beam-width-${i}`,
+    at: { x: mid.x + (sign * n.x * b.width) / 2, y: mid.y + (sign * n.y * b.width) / 2 },
+  }));
 }
 
 /** Outlines with more corners than this are round: no corner grips. */
@@ -486,7 +521,6 @@ function FurnitureHandles({ item, k }: { item: Furniture; k: number }) {
         strokeWidth={1.5 * k}
       />
       <Handle name="rotate" p={rotate} k={k} />
-      <Handle name="resize" p={fromFurnitureLocal(item, { x: item.w / 2, y: item.h / 2 })} k={k} />
     </>
   );
 }

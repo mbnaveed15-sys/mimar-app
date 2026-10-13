@@ -288,3 +288,29 @@ describe('door and window types when placing', () => {
     expect(createPlannerStore(emptyDoc()).getState().site.windowKind).toBe('sliding');
   });
 });
+
+describe('rooms on Ground', () => {
+  it('finds a courtyard between the house (floor) and the boundary walls (lawn)', () => {
+    const store = setup();
+    const s = () => store.getState();
+    const square = (x0: number, y0: number, size: number) => {
+      const c = [
+        { x: x0, y: y0 },
+        { x: x0 + size, y: y0 },
+        { x: x0 + size, y: y0 + size },
+        { x: x0, y: y0 + size },
+      ];
+      c.forEach((p, i) => s().addWall(p, c[(i + 1) % 4]));
+    };
+    // A house wall on the ground floor, running across the plot from one boundary wall to the other.
+    s().addWall({ x: 500, y: 0 }, { x: 500, y: 1000 });
+    // The boundary walls on the lawn.
+    s().showSiteLevel();
+    square(0, 0, 1000);
+    s().addRoomAt({ x: 250, y: 500 });
+    const room = s().doc.rooms[0];
+    // The courtyard stops at the house wall: about half the plot.
+    expect(Math.max(...room.points.map((p) => p.x))).toBeLessThanOrEqual(500);
+    expect(room.levelId).toBe(s().activeLevel);
+  });
+});

@@ -104,3 +104,80 @@ export function snapToWalls(
   if (corner) centre = { x: centre.x - corner.face.n.x * corner.gap, y: centre.y - corner.face.n.y * corner.gap };
   return { x: centre.x, y: centre.y, rotation: Math.round(rotation * 100) / 100 };
 }
+
+/** How near (plan units) an item's side has to come to another item's side to line up with it: 1'. */
+export const FURNITURE_SNAP = 305 / MM_PER_UNIT;
+
+/** Turned the same way, or a quarter, half or three-quarter turn apart (within a degree): 0 or 90, else null. */
+function squareTo(a: number, b: number): 0 | 90 | null {
+  const d = (((a - b) % 180) + 180) % 180;
+  if (d < 1 || d > 179) return 0;
+  if (Math.abs(d - 90) < 1) return 90;
+  return null;
+}
+
+/**
+ * Snap a furniture item centred at `p` beside other furniture: when one of its sides comes within
+ * reach of another item's side (turned square to it), it sits flush against that side and lines up
+ * with the other item's front, back or middle when near them (a bedside table beside a bed, chairs
+ * in a row). Null when no item is near.
+ */
+export function snapToFurniture(
+  item: Pick<Furniture, 'w' | 'h' | 'rotation'>,
+  p: Point,
+  others: Furniture[],
+  near = FURNITURE_SNAP,
+): Point | null {
+  const deg = item.rotation ?? 0;
+  let best: { at: Point; score: number } | null = null;
+  for (const o of others) {
+    const turn = squareTo(deg, o.rotation ?? 0);
+    if (turn === null) continue;
+    const a = ((o.rotation ?? 0) * Math.PI) / 180;
+    const ax = { x: Math.cos(a), y: Math.sin(a) };
+    const ay = { x: -Math.sin(a), y: Math.cos(a) };
+    const v = { x: p.x - o.x, y: p.y - o.y };
+    const local = { x: dot(v, ax), y: dot(v, ay) };
+    // The item's half size along the other item's own sides.
+    const ex = (turn === 0 ? item.w : item.h) / 2;
+    const ey = (turn === 0 ? item.h : item.w) / 2;
+    const ox = o.w / 2;
+    const oy = o.h / 2;
+    /** Line up along one side: with the other's near end, far end or middle, when within reach. */
+    const lineUp = (at: number, half: number, otherHalf: number) => {
+      const options = [otherHalf - half, -otherHalf + half, 0];
+      let pick = at;
+      let gap = near;
+      for (const c of options) {
+        if (Math.abs(at - c) <= gap) {
+          gap = Math.abs(at - c);
+          pick = c;
+        }
+      }
+      return pick;
+    };
+    // Beside its left or right side.
+    if (Math.abs(local.y) < oy + ey) {
+      const gap = Math.abs(local.x) - ox - ex;
+      if (gap > -ex && gap <= near) {
+        const at = { x: Math.sign(local.x || 1) * (ox + ex), y: lineUp(local.y, ey, oy) };
+        const score = Math.abs(gap);
+        if (!best || score < best.score) best = { at: toWorld(o, ax, ay, at), score };
+      }
+    }
+    // In front of it or behind it.
+    if (Math.abs(local.x) < ox + ex) {
+      const gap = Math.abs(local.y) - oy - ey;
+      if (gap > -ey && gap <= near) {
+        const at = { x: lineUp(local.x, ex, ox), y: Math.sign(local.y || 1) * (oy + ey) };
+        const score = Math.abs(gap);
+        if (!best || score < best.score) best = { at: toWorld(o, ax, ay, at), score };
+      }
+    }
+  }
+  return best?.at ?? null;
+}
+
+function toWorld(o: Point, ax: Point, ay: Point, l: Point): Point {
+  return { x: o.x + ax.x * l.x + ay.x * l.y, y: o.y + ax.y * l.x + ay.y * l.y };
+}

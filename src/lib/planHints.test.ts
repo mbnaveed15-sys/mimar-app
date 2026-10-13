@@ -206,3 +206,21 @@ describe('plan hints by kind of project', () => {
     expect(hints({ ...docOf(HOUSE, ROOMS), project: { type: 'house', panels: { hints: false } } })).toEqual([]);
   });
 });
+
+describe('room minimums', () => {
+  it('flags a narrow corridor and a narrow door in a house', () => {
+    const doc = docOf(
+      [
+        wall('a', 0, 0, 20, 0),
+        wall('b', 20, 0, 20, 2.5),
+        wall('c', 20, 2.5, 0, 2.5),
+        wall('d', 0, 2.5, 0, 0),
+        opening('dn', 'door', 'b', 20, 1.25, 2),
+      ],
+      [room('r', 'Corridor', 0, 0, 20, 2.5)],
+    );
+    const t = texts(doc);
+    expect(t.some((x) => x.startsWith('Corridor is 2'))).toBe(true);
+    expect(t.some((x) => x.includes('narrower than'))).toBe(true);
+  });
+});

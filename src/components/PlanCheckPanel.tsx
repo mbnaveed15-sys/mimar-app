@@ -1,3 +1,5 @@
+import { ROOM_MINIMUMS } from '../lib/roomMinimums';
+import { formatLength } from '../lib/units';
 import { type CheckStatus } from '../lib/planCheck';
 import { usePlanner } from '../store/plannerStore';
 import { useFullCheck, usePlanCheck, usePlanHints } from '../store/usePlanCheck';
@@ -88,7 +90,32 @@ function PlanHints() {
           ))}
         </ul>
       )}
+      <MinimumsTable />
     </div>
+  );
+}
+
+/** The least sizes the hints check corridors, doors and stairs against, with their sources. */
+function MinimumsTable() {
+  const units = usePlanner((s) => s.units);
+  const accessible = usePlanner((s) => s.accessibleZones);
+  return (
+    <details className="text-muted" data-testid="room-minimums">
+      <summary className="cursor-pointer">Least sizes and where they come from</summary>
+      <table className="mt-1 w-full">
+        <tbody>
+          {ROOM_MINIMUMS.map((r) => (
+            <tr key={r.id} className="align-top">
+              <td className="py-0.5 pr-2">{r.what}</td>
+              <td className="py-0.5 pr-2 tabular-nums">
+                {formatLength((accessible && r.accessibleMm) || r.mm, units)}
+              </td>
+              <td className="py-0.5">{r.source}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
   );
 }
 

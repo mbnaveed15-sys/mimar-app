@@ -20,6 +20,7 @@ export function SettingsPanel() {
   const pdfCheck = usePlanner((s) => s.pdfCheck);
   const showHints = usePlanner((s) => s.showHints);
   const pdfHints = usePlanner((s) => s.pdfHints);
+  const pdfZones = usePlanner((s) => s.pdfZones);
   const accessibleZones = usePlanner((s) => s.accessibleZones);
   const northDeg = usePlanner((s) => s.doc.northDeg ?? 0);
   const setNorthDeg = usePlanner((s) => s.setNorthDeg);
@@ -128,6 +129,15 @@ export function SettingsPanel() {
           onChange={(e) => setLayer('pdfHints', e.target.checked)}
         />
         Add the plan hints to PDFs
+      </label>
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={pdfZones}
+          data-testid="pdf-zones"
+          onChange={(e) => setLayer('pdfZones', e.target.checked)}
+        />
+        Print furniture use zones in PDF and PNG exports
       </label>
       <label className="flex items-center gap-2">
         <input

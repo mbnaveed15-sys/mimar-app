@@ -7,6 +7,7 @@ import { PLAN } from '../theme/plan';
 import type { MarlaSqFt, PlanDoc, Room, Units } from '../types';
 import { labelPoint, wallFaces } from '../rooms';
 import { metricProject } from '../lib/curtain';
+import { plinthOutlines } from '../lib/plinth';
 import { DEFAULT_WALL_THICKNESS, openingCover, placeWallDimension, thicknessOf, wallsOf } from '../walls';
 import { FurnitureShape } from './shapes/FurnitureShape';
 import { MaskShape } from './shapes/MaskShape';
@@ -40,6 +41,10 @@ export interface PlanDrawingProps {
   ground?: GroundOnPlan | null;
   /** Double-height rooms on the floor below: the floor is open over them. */
   voids?: Room[];
+  /** Show every furniture item's use zone (exports), not only the selected ones'. */
+  showZones?: boolean;
+  /** The wall whose automatic plinth is selected (it shows highlighted where it stands out). */
+  selectedPlinth?: string | null;
 }
 
 /**
@@ -98,6 +103,18 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
         el.type === 'line' ? <SketchLineShape key={el.id} line={el} selected={selected.has(el.id)} k={k} /> : null,
       )}
 
+      {plinthOutlines(doc).map(({ wallId, points }) => (
+        <polygon
+          key={`plinth-${wallId}`}
+          data-type="plinth"
+          data-id={wallId}
+          points={points.map((p) => `${p.x},${p.y}`).join(' ')}
+          style={{ fill: 'none', stroke: props.selectedPlinth === wallId ? PLAN.selection : PLAN.wallEdge }}
+          strokeWidth={(props.selectedPlinth === wallId ? 3 : 1) * k}
+          strokeLinejoin="miter"
+        />
+      ))}
+
       <WallsLayer walls={walls} colorOf={colorOf} selected={selected} k={k} metric={metricProject(doc)} />
 
       {doc.elements.map((el) => {
@@ -134,6 +151,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
                 selected={isSelected}
                 k={k}
                 accessible={props.accessibleZones}
+                showZone={props.showZones}
               />
             );
           case 'column':

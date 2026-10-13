@@ -334,6 +334,8 @@ export interface PlannerState {
   selectPlinth: (wallId: Id | null) => void;
   /** Change the automatic plinth's projection past the walls or its material (undefined: back to the usual). */
   setPlinth: (patch: Partial<PlinthSpec>) => void;
+  /** The plinth's own projection (mm) and material under one wall; null goes back to the plinth's own setting. */
+  setWallPlinthOwn: (wallId: Id, patch: { projectMm?: number | null; material?: Id | null }) => void;
   /** Build the automatic plinth under a wall, or leave it off. */
   setWallPlinth: (wallId: Id, on: boolean) => void;
   /** The basement's clear height, floor to ceiling, in millimetres. */
@@ -640,6 +642,7 @@ export interface PlannerState {
       | 'pdfCheck'
       | 'showHints'
       | 'pdfHints'
+      | 'pdfZones'
       | 'accessibleZones'
       | 'selectionBar',
     show: boolean,
@@ -650,6 +653,8 @@ export interface PlannerState {
   showHints: boolean;
   /** Add the plan hints to the PDF's plan check page. */
   pdfHints: boolean;
+  /** Show every furniture item's use zone in PDF and PNG exports of the plan. */
+  pdfZones: boolean;
   /** Furniture use zones sized for a wheelchair user (ADA), where they differ. */
   accessibleZones: boolean;
   /** Show the selection bar with a mouse (touch screens always show it). */
@@ -739,6 +744,8 @@ export interface PlannerState {
 
   /** Replace an element; doors and windows follow their wall if it changed. */
   updateElement: (next: PlanElement) => void;
+  /** Change several items together, as one undo step (shared settings of a selection). */
+  editElements: (ids: Id[], fn: (el: PlanElement) => PlanElement) => void;
   flipOpening: (id: Id, which: 'side' | 'hinge') => void;
   /**
    * Change doors and windows together, as one undo step: `patch` gives each its new fields. A new
@@ -783,7 +790,7 @@ export function createPlannerStore(
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
-      const { showHints, pdfHints, accessibleZones, selectionBar, belowOpacity, checks, snaps } = get();
+      const { showHints, pdfHints, pdfZones, accessibleZones, selectionBar, belowOpacity, checks, snaps } = get();
       const { wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } = get();
       savePrefs({
         units,
@@ -795,6 +802,7 @@ export function createPlannerStore(
         pdfCheck,
         showHints,
         pdfHints,
+        pdfZones,
         accessibleZones,
         selectionBar,
         belowOpacity,
@@ -923,6 +931,7 @@ export function createPlannerStore(
       pdfCheck: prefs.pdfCheck,
       showHints: prefs.showHints,
       pdfHints: prefs.pdfHints,
+      pdfZones: prefs.pdfZones,
       accessibleZones: prefs.accessibleZones,
       selectionBar: prefs.selectionBar,
       furnitureKind: DEFAULT_FURNITURE_KIND,
@@ -1842,6 +1851,19 @@ export function createPlannerStore(
           if (!Object.keys(plinth).length) delete next.plinth;
           return next;
         }),
+      setWallPlinthOwn: (wallId, patch) =>
+        updateElements((els) => {
+          const wall = els.find((el) => el.id === wallId);
+          if (!wall || wall.type !== 'wall') return els;
+          const next: Wall = { ...wall };
+          if (patch.projectMm === null) delete next.plinthProjectMm;
+          else if (patch.projectMm !== undefined)
+            next.plinthProjectMm = Math.max(0, Math.min(Math.round(patch.projectMm), 1000));
+          if (patch.material === null) delete next.plinthMaterial;
+          else if (patch.material !== undefined) next.plinthMaterial = patch.material;
+          if (next.plinthProjectMm === wall.plinthProjectMm && next.plinthMaterial === wall.plinthMaterial) return els;
+          return els.map((el) => (el === wall ? next : el));
+        }),
       setWallPlinth: (wallId, on) =>
         updateElements((els) => {
           const wall = els.find((el) => el.id === wallId);
@@ -2617,9 +2639,11 @@ export function createPlannerStore(
 
       addRoomAt: (p) => {
         // Any room already there (even a hidden or locked one) counts.
+        // On Ground, a room on its floor or its lawn counts (they show together).
+        const { doc: d0, activeLevel } = get();
         const existing =
-          get()
-            .levelRooms()
+          d0.rooms
+            .filter(onSharedLevel(d0, activeLevel))
             .filter((r) => pointInPolygon(p, r.points))
             .at(-1) ?? null;
         if (existing) {
@@ -2627,7 +2651,11 @@ export function createPlannerStore(
           set({ warnings: [] });
           return;
         }
-        const points = detectRoom(get().levelElements(), p);
+        // On Ground, closed in by the floor's and the lawn's walls together (a courtyard between the
+        // house and the boundary walls), else by this one's alone.
+        const shared = d0.elements.filter(onSharedLevel(d0, activeLevel));
+        const own = get().levelElements();
+        const points = (shared.length > own.length ? detectRoom(shared, p) : null) ?? detectRoom(own, p);
         if (!points) {
           const gapEnds = openWallEnds(get().levelElements());
           if (gapEnds.length)
@@ -2726,6 +2754,27 @@ export function createPlannerStore(
         const el = get().doc.elements.find((e) => e.id === id);
         if (!el || (el.type !== 'door' && el.type !== 'window')) return;
         get().updateElement(which === 'side' ? { ...el, flipSide: !el.flipSide } : { ...el, flipHinge: !el.flipHinge });
+      },
+      editElements: (ids, fn) => {
+        const picked = new Set(ids);
+        get().commit((doc) => {
+          const changed = new Map<Id, { prev: PlanElement; next: PlanElement }>();
+          for (const el of doc.elements) {
+            if (!picked.has(el.id) || el.locked) continue;
+            const next = fn(el);
+            if (next !== el) changed.set(el.id, { prev: el, next });
+          }
+          if (!changed.size) return doc;
+          const elements = doc.elements.map((el) => {
+            const hit = changed.get(el.id);
+            if (hit) return hit.next;
+            const host = 'wallId' in el && el.wallId ? changed.get(el.wallId) : undefined;
+            if (host && host.prev.type === 'wall' && host.next.type === 'wall')
+              return reattachOpening(el as Opening, host.prev, host.next);
+            return el;
+          });
+          return { ...doc, elements };
+        });
       },
       editOpenings: (ids, patch) => {
         let misfits: Opening[] = [];

@@ -107,3 +107,32 @@ describe('blocked use zones', () => {
     expect(blocked(docOf([...small, wc]), true)).toEqual([['wc', 'front left right']]);
   });
 });
+
+describe('door swings', () => {
+  // A wardrobe in the room's top-left corner, its front facing down into the room.
+  const wardrobe = item('w', 'wardrobe', FACE + 75, FACE + 30);
+  // A 1 m door in the left wall, opening into the room, hinged towards the bottom.
+  const door: PlanElement = {
+    id: 'd',
+    type: 'door',
+    wallId: 'l',
+    x: 0,
+    y: 115,
+    angle: -90,
+    width: 100,
+    flipSide: true,
+  };
+
+  it('count as taking the free space in front of furniture', () => {
+    expect(blocked(docOf([...ROOM, wardrobe]))).toEqual([]);
+    const doc = docOf([...ROOM, door, wardrobe]);
+    expect(blocked(doc)).toEqual([['w', 'front']]);
+    expect(blockedZones(doc)[0].door).toBe(true);
+    const hint = planHints(doc, { units: 'imperial' }).find((h) => h.id === 'zone-w');
+    expect(hint?.text).toContain('a door swings there');
+  });
+
+  it('opening the other way (out of the room) leave it free', () => {
+    expect(blocked(docOf([...ROOM, { ...door, flipSide: false } as PlanElement, wardrobe]))).toEqual([]);
+  });
+});

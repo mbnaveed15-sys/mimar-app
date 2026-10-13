@@ -56,6 +56,8 @@ export interface Prefs {
   showHints: boolean;
   /** Add the plan hints to the PDF's plan check page. */
   pdfHints: boolean;
+  /** Show every furniture item's use zone in PDF and PNG exports of the plan. */
+  pdfZones: boolean;
   /** Furniture use zones sized for a wheelchair user (ADA), where they differ. */
   accessibleZones: boolean;
   /** Show the selection bar (Delete, Duplicate, Rotate…) with a mouse; touch screens always show it. */
@@ -93,6 +95,7 @@ export const DEFAULT_PREFS: Prefs = {
   pdfCheck: true,
   showHints: true,
   pdfHints: false,
+  pdfZones: false,
   accessibleZones: false,
   selectionBar: false,
   belowOpacity: 22,
@@ -163,6 +166,7 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       pdfCheck: raw?.pdfCheck !== false,
       showHints: raw?.showHints !== false,
       pdfHints: raw?.pdfHints === true,
+      pdfZones: raw?.pdfZones === true,
       accessibleZones: raw?.accessibleZones === true,
       selectionBar: raw?.selectionBar === true,
       belowOpacity:

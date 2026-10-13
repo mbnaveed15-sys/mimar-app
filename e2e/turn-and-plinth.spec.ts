@@ -51,7 +51,7 @@ test('the plinth under a wall has its own settings, and can be left off', async 
   await tool(page, 'select');
   await page.mouse.click(...(await at(page, ...P(10, 2))));
   const row = page.getByTestId('wall-plinth');
-  await expect(row.getByLabel('Plinth under this wall')).toBeChecked();
+  await expect(row.getByLabel('Plinth')).toHaveValue('rest');
   await row.getByRole('button', { name: 'Plinth settings' }).click();
 
   const panel = page.getByTestId('plinth-panel');
@@ -65,5 +65,5 @@ test('the plinth under a wall has its own settings, and can be left off', async 
   await expect(panel).toHaveCount(0);
   await expect.poll(async () => (await saved(page))?.elements?.[0]?.noPlinth).toBe(true);
   await page.mouse.click(...(await at(page, ...P(10, 2))));
-  await expect(page.getByTestId('wall-plinth').getByLabel('Plinth under this wall')).not.toBeChecked();
+  await expect(page.getByTestId('wall-plinth').getByLabel('Plinth')).toHaveValue('none');
 });

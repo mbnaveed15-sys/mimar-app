@@ -4,6 +4,7 @@ import { canResetSize } from '../lib/resize';
 import { GroundPlace } from './GroundPlace';
 import type { PlanElement } from '../types';
 import { OpeningsPanel } from './OpeningsPanel';
+import { SharedPanel } from './SharedPanel';
 
 /** Singular and plural names for every kind of item (the type makes sure none is left out). */
 const NAMES: Record<PlanElement['type'] | 'room', [string, string]> = {
@@ -89,6 +90,7 @@ export function SelectionPanel() {
       <div className="text-muted">{summary}</div>
       <GroundPlace ids={selectedIds} />
       <OpeningsPanel />
+      <SharedPanel />
       <div className="flex flex-wrap gap-1.5">
         {group ? (
           <>

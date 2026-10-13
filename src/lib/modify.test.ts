@@ -281,3 +281,50 @@ describe('curved walls in Extend, Join, Fillet and Chamfer', () => {
     expect((byId(cut, 'b') as Wall).x2).toBeCloseTo(Math.sqrt(7500) - 10, 6);
   });
 });
+
+describe('mirror keeps groups', () => {
+  const grouped = (): PlanDoc => ({
+    ...plan({ ...wall('a', 0, 0, 100, 0), groupId: 'g' }, { ...wall('b', 100, 0, 100, 50), groupId: 'g' }),
+    rooms: [
+      {
+        id: 'r',
+        name: 'Hall',
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+          { x: 10, y: 10 },
+        ],
+        groupId: 'g',
+      },
+    ],
+    groups: [{ id: 'g', name: 'Wing', x: 50, y: 25, rotation: 0 }],
+  });
+
+  it('makes the mirrored copy of a whole group a new group', () => {
+    const d = grouped();
+    const out = mirrorItems(d, ['a', 'b', 'r'], { x: 200, y: 0 }, { x: 200, y: 10 }, false);
+    expect(out.doc.groups).toHaveLength(2);
+    const g2 = out.doc.groups[1];
+    expect(g2.name).toBe('Wing');
+    expect(g2.x).toBeCloseTo(350);
+    const copies = [...out.doc.elements, ...out.doc.rooms].filter((it) => out.ids.includes(it.id));
+    expect(copies).toHaveLength(3);
+    expect(copies.every((it) => it.groupId === g2.id)).toBe(true);
+    // The originals stay in theirs.
+    expect(out.doc.elements.filter((el) => el.groupId === 'g')).toHaveLength(2);
+  });
+
+  it('leaves copies of part of a group loose', () => {
+    const out = mirrorItems(grouped(), ['a'], { x: 200, y: 0 }, { x: 200, y: 10 }, false);
+    expect(out.doc.groups).toHaveLength(1);
+    expect(out.doc.elements.find((el) => el.id === out.ids[0])!.groupId).toBeUndefined();
+  });
+
+  it('turns a flipped component copy into a plain group', () => {
+    const d = grouped();
+    d.groups = [{ ...d.groups[0], componentId: 'c' }];
+    const out = mirrorItems(d, ['a', 'b', 'r'], { x: 200, y: 0 }, { x: 200, y: 10 }, true);
+    expect(out.doc.groups[0]).toMatchObject({ id: 'g', name: 'Wing (mirrored)' });
+    expect(out.doc.groups[0].componentId).toBeUndefined();
+  });
+});

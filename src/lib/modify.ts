@@ -24,6 +24,7 @@ import {
   hasPoints,
   levelOf,
   type Bounds,
+  type Group,
   type Id,
   type Opening,
   type PlanDoc,
@@ -583,9 +584,38 @@ export function mirrorItems(
       ...(flip ? {} : { groupId: undefined, defKey: undefined }),
     });
   }
+  // Groups mirrored whole stay groups: copies make a new group, placed the mirror way. A component
+  // copy can't follow its component flipped, so it becomes a plain group of its own ("… (mirrored)").
+  const whole = doc.groups.filter((g) => {
+    const members = [...doc.elements, ...doc.rooms].filter((it) => it.groupId === g.id);
+    return members.length > 0 && members.every((it) => set.has(it.id));
+  });
+  const regroup = new Map<Id, Group>();
+  for (const g of whole) {
+    if (flip && !g.componentId) continue;
+    const at = reflect(g, a, b);
+    regroup.set(g.id, {
+      id: flip ? g.id : newId(),
+      name: g.componentId ? `${g.name} (mirrored)` : g.name,
+      x: at.x,
+      y: at.y,
+      rotation: (((2 * lineDeg - g.rotation) % 360) + 360) % 360,
+    });
+  }
+  const grouped = <T extends PlanElement | Room>(src: T, out: T): T => {
+    const g = src.groupId ? regroup.get(src.groupId) : undefined;
+    if (g) return { ...out, groupId: g.id, defKey: undefined };
+    return flip ? out : { ...out, groupId: undefined, defKey: undefined };
+  };
+  for (const el of doc.elements) {
+    const out = mirrored.get(el.id);
+    if (out) mirrored.set(el.id, grouped(el, out));
+  }
   const rooms = doc.rooms
     .filter((r) => set.has(r.id))
-    .map((r): Room => ({ ...r, id: idMap.get(r.id)!, points: r.points.map((p) => reflect(p, a, b)).reverse() }));
+    .map((r): Room =>
+      grouped(r, { ...r, id: idMap.get(r.id)!, points: r.points.map((p) => reflect(p, a, b)).reverse() }),
+    );
   const outIds = [...mirrored.values(), ...rooms].map((it) => it.id);
   if (flip) {
     return {
@@ -593,12 +623,18 @@ export function mirrorItems(
         ...doc,
         elements: doc.elements.map((el) => mirrored.get(el.id) ?? el),
         rooms: doc.rooms.map((r) => rooms.find((x) => x.id === r.id) ?? r),
+        groups: doc.groups.map((g) => regroup.get(g.id) ?? g),
       },
       ids: outIds,
     };
   }
   return {
-    doc: { ...doc, elements: [...doc.elements, ...mirrored.values()], rooms: [...doc.rooms, ...rooms] },
+    doc: {
+      ...doc,
+      elements: [...doc.elements, ...mirrored.values()],
+      rooms: [...doc.rooms, ...rooms],
+      groups: [...doc.groups, ...regroup.values()],
+    },
     ids: outIds,
   };
 }

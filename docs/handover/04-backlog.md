@@ -7,11 +7,9 @@ In the order agreed with the owner. Confirm the plan with the owner before start
 From the 1.23 QA pass (six testers; full reports in the git-ignored `.qa/<tester>/REPORT.md`, combined in
 `.qa/SUMMARY.md`). 1.23.1 fixed the blockers and wrong results; plan each of these with the owner first.
 
-1. **Still open from the 2D review (after 1.24):** grips for
-   beams, rooms and columns (lines have them since 1.41; slab, levelled-area and plot edges have bend grips since 1.42; a
-   cursor X,Y readout came in 1.42); shared
-   properties for a multi-selection (done for doors and windows in 1.29.1); Mirror of a group keeping it a group; Paste then place. 2D pan on very large
-   plans (~5,000 walls) is limited by SVG layout.
+1. **Still open from the 2D review (after 1.24):** 2D pan on very large plans (~5,000 walls) is limited by SVG layout.
+   (Grips for beams, rooms, stairs and furniture, shared properties for a multi-selection and Mirror keeping groups came
+   in 1.49; Paste then place was already in.)
 2. **Custom plots (1.30, planned with the owner):** any shape clicked corner by corner, each side its own type
    (road, neighbour, back, open), setback and boundary wall (linked to the plot, gates kept), corner plots with two
    road sides and an optional splay; old plots open as before with a "Rebuild walls from sides" button.
@@ -42,7 +40,14 @@ always at hand (Select, Move, Eraser, Fit view), a selection bar, two/three-fing
 a Ground (site) level with the lawn and plinth heights and your own plinth, and slabs drawn corner by corner, over rooms
 picked or round the walls (1.47); furniture turned before placing and snapped to room walls, Alt to flip snapping, side
 grips, one-way Scale, Reset size, one Ground level with a Floor | Lawn switch, the plinth as its own item, automatic
-stairwells, Push/Pull snapping, setback marks by the visible shape, and Snap/Checks menus from their arrows only (1.48).
+stairwells, Push/Pull snapping, setback marks by the visible shape, and Snap/Checks menus from their arrows only (1.48);
+room, stair and furniture corner grips, beam width grips, furniture lining up with furniture, shared settings for a
+selection, Mirror keeping groups, the plinth on the plan and per wall, rooms on Ground's floor and lawn together, door
+swings in use zones, room minimums, use zones in 3D and exports, a touch tour, the twist round the fingers and narrower
+phone buttons (1.49).
+
+Planned next: 1.50 = drawings (dimension strings and material hatching on sections, DIMENSION entities in DXF, text size
+and arrow style for dimensions) and roofs (skylights, dormers, a pitch per side), as agreed with the owner on 13 Oct 2026.
 
 Planned next (plan each with the owner first): DHA Lahore and Bahria building figures (their buildings still say
 "check with the authority" until the owner sends the schedules). Left from 1.45: Mimar can't tell a veranda, an
@@ -65,20 +70,22 @@ floor only (no second floor, no basement from the list), the ground stair room i
 doesn't carry on to the roof), no Mirror for first-floor plans, and the ground floor needs a stair first. On phones,
 the tool bars can't be docked (one strip at the bottom) and the panel's sections are tabs only; the welcome tour's
 hover hints still mention keys.
-Left from 1.46: on a 375 px phone about four of a group's tools show beside the pinned ones (the rest scroll); the
-twist turns the 3D model round the middle of the view, not the point between the fingers; the welcome tour doesn't
-teach the gestures yet.
+Left from 1.46: on a 375 px phone about five of a group's tools show beside the pinned ones (the rest scroll).
 Left from 1.47: the plot, spot levels, contours and levelled areas stay on the Ground floor (the ground tools go there);
 on a sloping natural site, blocks and steps on Ground (site) stand at the ground's height at their middle, and walls step
 with the ground; the Ground (site) level can't be deleted while it has items, and its walls snap to the ground floor's wall
 corners only (not its doors or faces). A Rooms slab stops halfway over a wall to a space left out, including a
 courtyard. The Slab tool's Rooms and Follow the walls have no 3D preview.
-Left from 1.48: the plinth is picked in 3D (in 2D through a wall's Plinth settings) and its projection shows in 3D,
-sections, elevations and quantities, not on the 2D plan; its height, projection and material are one setting for the
-whole plinth (only on or off per wall). Stairwells are cut for stairs rising at least 1.5 m with a floor above, shaped
+Left from 1.48: Stairwells are cut for stairs rising at least 1.5 m with a floor above, shaped
 from the stair's footprint (straight, U, ramp) or its parts (L, curved, spiral), with no headroom margin. Furniture
-snaps to walls within 2' and to their faces only (not to other furniture). Rooms are still found on the floor or the
-lawn being drawn, not both.
+snaps to walls within 2' and to their faces only.
+Left from 1.49: a room corner grip moves only wall ends that meet at the corner (a wall running on past it, a T, stays
+put); rooms don't follow walls moved any other way (as before). A mirrored component copy is a plain group, not a
+flipped copy of the component. The plinth's height is one figure for the whole house; the flush plinth (no projection)
+shows nothing on the plan. A courtyard round a house that touches no boundary wall is found as the whole space inside the
+boundary (Mimar rooms have no holes). Use zones show in 3D only for selected furniture and the one being placed. Room
+minimums are checked for houses (buildings have their own corridor, door and stair rules); the U-kitchen aisle and the
+turning space are listed for reference only. The welcome tour changes with the pointer (touch or mouse), not the screen size.
 Floating side panels were assessed with 1.39 and left out; revisit only if the owner still wants them.
 
 Left from sections and elevations for later: dimension strings on sections (only level marks now); each section and
@@ -107,9 +114,8 @@ out in height, so only a rough guide for big sites; neighbouring buildings are p
 Left from projects for later: room types turning into sizes or a room list for buildings; more uses; per-project
 material and cost rates for buildings; a floor-to-floor height field (today the wall height plus the slab).
 
-Left from use zones for later: door swings aren't counted as blocking a zone; zones in the PDF, the 3D view or while
-placing with the Furniture tool; room minimums (corridors, door widths) as their own table for the layout generator;
-check the "General practice" figures against local homes.
+Left from use zones for later: the room minimums table (1.49) isn't used by the layout generator yet; check the
+"General practice" figures against local homes.
 
 Left from basements for later: more than one basement; sloping sites; footings and columns drawn for the
 basement; ramps down for cars; air shafts or light wells drawn for you; basement figures for CDA private schemes

@@ -8,6 +8,7 @@
 import type { Id, Opening, Point, Wall } from '../types';
 import { thicknessOf } from '../walls';
 import { isArc, paramAlong, placeOnArc, pointAlong, projectOnWall, runLength, wallSegments } from './arc';
+import { doorKindOf, SWING_KINDS } from './openingKinds';
 
 /** The gap kept between a door or window and a corner, when not set: 6". */
 export const DEFAULT_OPENING_GAP_MM = 152.4;
@@ -507,4 +508,33 @@ export function flipsTowards(
   const right = { x: side.y, y: -side.x };
   const hinge = hand === 'right' ? right : { x: -right.x, y: -right.y };
   return flipsFor(o.angle, side, hinge);
+}
+
+/**
+ * The floor a swing door's leaf sweeps as it opens, as a polygon (a quarter circle from the hinge;
+ * two for a double door, one from each jamb). Empty for doors that slide, fold or roll, and gates.
+ */
+export function doorSwingAreas(o: Opening): Point[][] {
+  if (o.type !== 'door' || o.flat || o.gate || !SWING_KINDS.has(doorKindOf(o))) return [];
+  const { swing, hinge } = doorSides(o);
+  const double = doorKindOf(o) === 'double';
+  const leaf = double ? o.width / 2 : o.width;
+  const sweep = (at: Point, closed: Point): Point[] => {
+    const pts: Point[] = [at];
+    for (let i = 0; i <= 8; i++) {
+      const t = (i / 8) * (Math.PI / 2);
+      const d = {
+        x: closed.x * Math.cos(t) + swing.x * Math.sin(t),
+        y: closed.y * Math.cos(t) + swing.y * Math.sin(t),
+      };
+      pts.push({ x: at.x + d.x * leaf, y: at.y + d.y * leaf });
+    }
+    return pts;
+  };
+  const half = o.width / 2;
+  const jamb = { x: o.x + hinge.x * half, y: o.y + hinge.y * half };
+  const first = sweep(jamb, { x: -hinge.x, y: -hinge.y });
+  if (!double) return [first];
+  const other = { x: o.x - hinge.x * half, y: o.y - hinge.y * half };
+  return [first, sweep(other, hinge)];
 }

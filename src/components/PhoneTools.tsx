@@ -19,7 +19,8 @@ function fitView() {
 /**
  * The tools on a phone: a strip along the bottom, a group at a time, with the groups to switch
  * between above it. Select, Move, Erase and Fit view stay pinned at its start while the group's
- * tools scroll. Hold a tool to see its name.
+ * tools scroll. Hold a tool to see its name. On small phones (400 px or less) the buttons are
+ * narrower, so more of a group's tools show beside the pinned ones.
  */
 export function PhoneTools() {
   const tool = usePlanner((s) => s.tool);
@@ -64,7 +65,7 @@ export function PhoneTools() {
         aria-pressed={active}
         aria-label={info.label}
         title={info.label}
-        className={`grid h-11 w-11 flex-none place-items-center rounded-md select-none ${active ? 'bg-accent text-on-accent' : 'text-ink active:bg-sunken'}`}
+        className={`grid h-11 w-11 flex-none place-items-center rounded-md select-none max-[400px]:w-9 ${active ? 'bg-accent text-on-accent' : 'text-ink active:bg-sunken'}`}
       >
         <Icon name={info.icon} size={22} />
       </button>
@@ -102,12 +103,12 @@ export function PhoneTools() {
             onContextMenu={(e) => e.preventDefault()}
             aria-label="Fit view"
             title="Fit view"
-            className="grid h-11 w-11 flex-none place-items-center rounded-md text-ink select-none active:bg-sunken"
+            className="grid h-11 w-11 flex-none place-items-center rounded-md text-ink select-none active:bg-sunken max-[400px]:w-9"
           >
             <Icon name="fit" size={22} />
           </button>
         </div>
-        <span aria-hidden className="mx-1 h-7 w-px flex-none bg-line" />
+        <span aria-hidden className="mx-1 h-7 w-px flex-none bg-line max-[400px]:mx-0.5" />
         <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
           {/* A phone on its side has no room for the row of groups: a list of them starts the strip. */}
           <select

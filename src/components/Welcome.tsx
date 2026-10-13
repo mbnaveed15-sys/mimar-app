@@ -4,6 +4,7 @@ import { markSeen } from '../lib/welcome';
 import { plannerStore } from '../store/plannerStore';
 import { Mark } from './Mark';
 import { useFocusTrap } from './useFocus';
+import { useCoarsePointer } from './useCompact';
 
 interface Step {
   /** What to point at (a CSS selector); the step is centred when it isn't on screen. */
@@ -12,7 +13,7 @@ interface Step {
   body: string;
 }
 
-const STEPS: Step[] = [
+const DESK_STEPS: Step[] = [
   {
     target: 'nav[aria-label="Tools"]',
     title: 'Your tools',
@@ -37,6 +38,40 @@ const STEPS: Step[] = [
     target: '[role="radiogroup"][aria-label="View"]',
     title: 'Build in 3D',
     body: 'Switch to 3D at any time; every tool works there too. Middle-drag to turn the view, Shift+middle-drag to move it, scroll to zoom.',
+  },
+  {
+    target: '[role="menubar"]',
+    title: 'Save, print and share',
+    body: 'File has Save, a PDF to scale, DXF for AutoCAD, 3D models for SketchUp and Twinmotion, and IFC for Revit and ArchiCAD. Help › Getting started brings this tour back.',
+  },
+];
+
+/** The tour on a touch screen: the same parts, in finger words, and the gestures. */
+const TOUCH_STEPS: Step[] = [
+  {
+    target: 'nav[aria-label="Tools"]',
+    title: 'Your tools',
+    body: 'Walls, rooms, doors, windows, furniture, columns, slabs, stairs and more. Select, Move, Eraser and Fit view stay at hand; tap a group to see its tools.',
+  },
+  {
+    target: '[data-testid="plan-canvas"], [data-testid="plan-3d"]',
+    title: 'Draw walls',
+    body: 'Pick Wall, tap where it starts, then tap each corner. Walls snap to ends, midpoints and the grid. Press and hold for more choices.',
+  },
+  {
+    target: '[data-testid="plan-canvas"], [data-testid="plan-3d"]',
+    title: 'Gestures',
+    body: 'Two fingers drag to move the view and pinch to zoom. Tap with two fingers to undo, with three to redo. In 3D, three fingers turn the view and a two-finger twist turns the model round your fingers.',
+  },
+  {
+    target: 'aside[aria-label="Properties"]',
+    title: 'Rooms, sizes and materials',
+    body: 'Tap inside walls with Room to see the area in sq ft and marla. Select anything to change its size here, and pick materials from the library.',
+  },
+  {
+    target: 'button[aria-label^="Floor:"]',
+    title: 'Floors and structure',
+    body: 'Add floors above, and place columns, beams, slabs and stairs. Floors stack on the plinth in 3D.',
   },
   {
     target: '[role="menubar"]',
@@ -81,6 +116,7 @@ export function Welcome({
   onNewProject?: () => void;
 }) {
   const [step, setStep] = useState<number | null>(null);
+  const STEPS = useCoarsePointer() ? TOUCH_STEPS : DESK_STEPS;
   const hasPlan = plannerStore.getState().doc.elements.length > 0;
   const rect = useTargetRect(step === null ? null : STEPS[step].target);
   const ref = useRef<HTMLDivElement>(null);

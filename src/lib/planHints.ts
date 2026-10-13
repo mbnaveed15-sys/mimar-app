@@ -28,7 +28,8 @@ import { overlaps, voidsOver } from './voids';
 import { buildingLevels } from './levels';
 import { directionAlong, pointAlong, projectOnWall, runLength } from './arc';
 import { isCurtain, TRANSOM_MM } from './curtain';
-import { DEFAULT_OPENING_GAP_MM, openingFits } from './openingPlace';
+import { DEFAULT_OPENING_GAP_MM, doorSwingAreas, openingFits } from './openingPlace';
+import { minimumOf, narrowWidth, PASSAGE } from './roomMinimums';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { sideName, toPlan, zoneOf, zoneRects, zoneSamples, type ZoneSide } from '../furniture/useZones';
 import { daylightRooms, projectOf, shows } from './project';
@@ -144,10 +145,14 @@ export function tightOpenings(doc: PlanDoc, gap: number): Id[] {
 /** Hints for the whole plan. Rooms in `skipSizes` (already too small for the bylaws) get no size hint. */
 /**
  * Library items whose use zone (the free space in front, behind or beside them) is mostly taken by a
- * wall or another item, with the sides that are blocked. `accessible` uses the ADA wheelchair spaces.
+ * wall, another item or a door's swing, with the sides that are blocked (and whether a door swings
+ * into one of them). `accessible` uses the ADA wheelchair spaces.
  */
-export function blockedZones(doc: PlanDoc, accessible = false): { item: Furniture; sides: ZoneSide[] }[] {
-  const out: { item: Furniture; sides: ZoneSide[] }[] = [];
+export function blockedZones(
+  doc: PlanDoc,
+  accessible = false,
+): { item: Furniture; sides: ZoneSide[]; door?: boolean }[] {
+  const out: { item: Furniture; sides: ZoneSide[]; door?: boolean }[] = [];
   const levels = doc.levels.length ? doc.levels.map((l) => l.id) : [GROUND_LEVEL];
   for (const level of levels) {
     const onLevel = doc.elements.filter((el) => !el.hidden && levelOf(el) === level);
@@ -164,19 +169,27 @@ export function blockedZones(doc: PlanDoc, accessible = false): { item: Furnitur
         { x: -f.w / 2, y: f.h / 2 },
       ].map((p) => toPlan(f, p)),
     }));
-    const shapes = [...faces.map((pts) => ({ id: '', pts })), ...bodies];
+    // A door's leaf sweeping open needs its floor clear too.
+    const swings = onLevel
+      .filter((el): el is Opening => el.type === 'door')
+      .flatMap((d) => doorSwingAreas(d).map((pts) => ({ id: `door:${d.id}`, pts })));
+    const shapes = [...faces.map((pts) => ({ id: '', pts })), ...bodies, ...swings];
     const boxes = shapes.map((s) => boxOf(s.pts));
     const index = new GridIndex<{ id: string; pts: Point[] }>(cellFor(boxes));
     shapes.forEach((s, i) => index.add(s, boxes[i]));
-    const taken = (self: Id, p: Point) => index.at(p).some((s) => s.id !== self && pointInPolygon(p, s.pts));
+    const takenBy = (self: Id, p: Point) => index.at(p).find((s) => s.id !== self && pointInPolygon(p, s.pts));
     for (const item of items) {
       const zone = zoneOf(item.kind, accessible);
       if (!zone) continue;
-      // Blocked when a wall or another item stands in at least half of the zone's width.
+      let door = false;
+      // Blocked when a wall, another item or a door's swing stands in at least half of the zone's width.
       const blocked = zoneRects(zone, item.w, item.h)
         .filter((r) => {
           const lines = zoneSamples(item, r);
-          return lines.filter((line) => line.some((p) => taken(item.id, p))).length * 2 >= lines.length;
+          const hits = lines.map((line) => line.map((p) => takenBy(item.id, p)).find(Boolean));
+          const full = hits.filter(Boolean).length * 2 >= lines.length;
+          if (full && hits.some((h) => h?.id.startsWith('door:'))) door = true;
+          return full;
         })
         .map((r) => r.side);
       const sides = zone.oneSide
@@ -184,7 +197,7 @@ export function blockedZones(doc: PlanDoc, accessible = false): { item: Furnitur
             (s) => (s !== 'left' && s !== 'right') || (blocked.includes('left') && blocked.includes('right')),
           )
         : blocked;
-      if (sides.length) out.push({ item, sides });
+      if (sides.length) out.push(door ? { item, sides, door } : { item, sides });
     }
   }
   return out;
@@ -207,7 +220,7 @@ export function planHints(
     ...buildingLevels(doc).map((l, i) => [l.id, i > 0 ? `${l.name}: ` : ''] as const),
     ...doc.levels.filter((l) => l.site).map((l) => [l.id, `${l.name}: `] as const),
   ]);
-  for (const { item, sides } of blockedZones(doc, ctx.accessible)) {
+  for (const { item, sides, door } of blockedZones(doc, ctx.accessible)) {
     const zone = zoneOf(item.kind, ctx.accessible)!;
     const mmOf = (s: ZoneSide) => (s === 'front' ? zone.front : s === 'back' ? zone.back : zone.sides) ?? 0;
     const both = sides.includes('left') && sides.includes('right');
@@ -222,7 +235,7 @@ export function planHints(
     hints.push({
       id: `zone-${item.id}`,
       kind: 'layout',
-      text: `${levelNames.get(levelOf(item)) ?? ''}${name} needs more free space ${named.join(' and ')}.`,
+      text: `${levelNames.get(levelOf(item)) ?? ''}${name} needs more free space ${named.join(' and ')}${door ? ': a door swings there' : ''}.`,
       ids: [item.id],
     });
   }
@@ -507,6 +520,60 @@ export function planHints(
         text: on(`${r.name} is small for ${g.label} (${want}): about ${area(floor)}, ${len(short)} wide.`),
         ids: [r.id],
       });
+    }
+
+    // Room minimums (see roomMinimums.ts): corridors, doors and stairs in a house.
+    if (house) {
+      const acc = !!ctx.accessible;
+      const corridorMm = minimumOf('corridor', acc);
+      for (const r of rooms) {
+        if (!PASSAGE.test(r.name)) continue;
+        const wide = narrowWidth(r.points) * MM_PER_UNIT;
+        if (wide + 5 < corridorMm)
+          hints.push({
+            id: `min-corridor-${r.id}`,
+            kind: 'size',
+            text: on(`${r.name} is ${len(wide)} wide: a corridor wants at least ${len(corridorMm)}.`),
+            ids: [r.id],
+          });
+      }
+      const entrances = new Set(links.filter((l) => l.a === 'out' || l.b === 'out').map((l) => l.door));
+      const doorMm = minimumOf('door', acc);
+      const entranceMm = minimumOf('entrance', acc);
+      const narrowDoors = openings.filter(
+        (o) => o.type === 'door' && !entrances.has(o.id) && o.width * MM_PER_UNIT + 5 < doorMm,
+      );
+      if (narrowDoors.length)
+        hints.push({
+          id: `min-door-${level.id}`,
+          kind: 'size',
+          text: on(
+            narrowDoors.length === 1
+              ? `A door is narrower than ${len(doorMm)}${acc ? ' (for a wheelchair)' : ''}.`
+              : `${narrowDoors.length} doors are narrower than ${len(doorMm)}${acc ? ' (for a wheelchair)' : ''}.`,
+          ),
+          ids: narrowDoors.map((o) => o.id),
+        });
+      const narrowEntrances = openings.filter((o) => entrances.has(o.id) && o.width * MM_PER_UNIT + 5 < entranceMm);
+      if (narrowEntrances.length)
+        hints.push({
+          id: `min-entrance-${level.id}`,
+          kind: 'size',
+          text: on(`The way in from outside is narrower than ${len(entranceMm)}.`),
+          ids: narrowEntrances.map((o) => o.id),
+        });
+      const stairMm = minimumOf('stair', acc);
+      const narrowStairs = doc.elements.filter(
+        (el): el is Stair =>
+          el.type === 'stair' && !el.hidden && levelOf(el) === level.id && el.width * MM_PER_UNIT + 5 < stairMm,
+      );
+      if (narrowStairs.length)
+        hints.push({
+          id: `min-stair-${level.id}`,
+          kind: 'size',
+          text: on(`A stair is narrower than ${len(stairMm)}.`),
+          ids: narrowStairs.map((st) => st.id),
+        });
     }
   });
   // Offices, schools, clinics, shops and mosques: exits, stairs, corridors, doors, toilets and access.
