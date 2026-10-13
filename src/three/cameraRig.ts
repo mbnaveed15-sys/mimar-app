@@ -77,6 +77,21 @@ export class CameraRig {
   }
 
   /**
+   * Turn the view `angle` radians round the upright line through `point` (a two-finger twist turns
+   * the model round the point between the fingers), the camera keeping its height and tilt.
+   */
+  turnAbout(point: Vector3, angle: number) {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    const x = this.target.x - point.x;
+    const z = this.target.z - point.z;
+    this.target.x = point.x + x * c + z * s;
+    this.target.z = point.z - x * s + z * c;
+    this.azimuth += angle;
+    this.apply();
+  }
+
+  /**
    * Turn round this point from now on (the point under the pointer when an orbit starts), keeping
    * the camera where it is.
    */

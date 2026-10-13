@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { canCopy, canTransform } from '../commands';
 import { plannerStore, usePlanner, type PlannerState } from '../store/plannerStore';
@@ -10,24 +9,7 @@ import type { IconName } from '../theme/icons';
 import type { Opening } from '../types';
 import { canFlipHinge, canFlipSwing } from '../lib/openingKinds';
 import { Icon } from './Icon';
-import { usePhone } from './useCompact';
-
-const COARSE_QUERY = '(pointer: coarse)';
-const coarseNow = () => typeof window !== 'undefined' && !!window.matchMedia?.(COARSE_QUERY).matches;
-
-/** Whether the screen is mainly worked with a finger (a tablet or a phone). */
-function useCoarsePointer(): boolean {
-  const [coarse, setCoarse] = useState(coarseNow);
-  useEffect(() => {
-    const query = window.matchMedia?.(COARSE_QUERY);
-    if (!query) return;
-    const onChange = () => setCoarse(query.matches);
-    onChange();
-    query.addEventListener('change', onChange);
-    return () => query.removeEventListener('change', onChange);
-  }, []);
-  return coarse;
-}
+import { useCoarsePointer, usePhone } from './useCompact';
 
 /** The doors and windows selected, when that is all that is selected. */
 function pickedOpenings(s: PlannerState): Opening[] {

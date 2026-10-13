@@ -37,3 +37,20 @@ export function usePhone(): boolean {
   }, []);
   return phone;
 }
+
+const COARSE_QUERY = '(pointer: coarse)';
+const coarseNow = () => typeof window !== 'undefined' && !!window.matchMedia?.(COARSE_QUERY).matches;
+
+/** Whether the screen is mainly worked with a finger (a tablet or a phone). */
+export function useCoarsePointer(): boolean {
+  const [coarse, setCoarse] = useState(coarseNow);
+  useEffect(() => {
+    const query = window.matchMedia?.(COARSE_QUERY);
+    if (!query) return;
+    const onChange = () => setCoarse(query.matches);
+    onChange();
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+  return coarse;
+}

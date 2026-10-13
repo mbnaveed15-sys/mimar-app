@@ -1292,11 +1292,16 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       if (!stage || !host) return;
       if (fingers === 3) stage.rig.orbit(dx, dy);
       else {
-        // A twist turns the model with the fingers (round the middle of the view).
-        if (turn) stage.rig.orbit(-turn / ORBIT_SPEED, 0);
-        stage.rig.pan(dx, dy, host.clientHeight);
+        // A twist turns the model with the fingers, round the point between them (the middle of the
+        // view when nothing is under them).
         const r = host.getBoundingClientRect();
-        stage.rig.dolly(1 / scale, pickAt(r.left + x, r.top + y)?.world);
+        const under = pickAt(r.left + x, r.top + y)?.world;
+        if (turn) {
+          if (under) stage.rig.turnAbout(under, turn);
+          else stage.rig.orbit(-turn / ORBIT_SPEED, 0);
+        }
+        stage.rig.pan(dx, dy, host.clientHeight);
+        stage.rig.dolly(1 / scale, under);
       }
       pickRef.current = null;
       stage.render();
