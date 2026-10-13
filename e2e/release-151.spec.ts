@@ -96,11 +96,11 @@ test('a plan view and its paper go on a sheet', async ({ page }) => {
   await page.getByRole('button', { name: 'Add sheet' }).click();
   const editor = page.getByTestId('sheet-editor');
   await editor.getByLabel('Add a drawing').selectOption({ label: 'Living area' });
-  await editor.getByLabel('Paper').selectOption('A2');
+  await editor.getByLabel('Paper', { exact: true }).selectOption('A2');
   await editor.getByLabel('Portrait').check();
   await expect(page.getByTestId('sheet-plan')).toBeVisible();
   await expect(page.getByTestId('drawing-svg')).toHaveAttribute('viewBox', '0 0 420 594');
-  await editor.getByLabel('Paper').selectOption('custom');
+  await editor.getByLabel('Paper', { exact: true }).selectOption('custom');
   await editor.getByLabel('Paper width (mm)').fill('900');
   await editor.getByLabel('Paper width (mm)').press('Enter');
   await expect(page.getByTestId('drawing-svg')).toHaveAttribute('viewBox', '0 0 900 297');

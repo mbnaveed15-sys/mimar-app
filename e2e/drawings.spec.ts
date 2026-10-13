@@ -68,7 +68,7 @@ test('draws a section, shows it with the elevations and sheets, and exports them
   const editor = view.getByTestId('sheet-editor');
   await editor.getByLabel('Sheet name').fill('Elevations and section');
   await editor.getByLabel('Sheet name').press('Enter');
-  await editor.getByRole('radio', { name: 'A1' }).click();
+  await editor.getByLabel('Paper', { exact: true }).selectOption('A1');
   await editor.getByLabel('Add a drawing').selectOption({ label: 'Section A–A' });
   await editor.getByLabel('Scale of Section A–A').selectOption('50');
   // Any scale can be typed.
