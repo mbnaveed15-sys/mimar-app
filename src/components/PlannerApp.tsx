@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RecentDialog } from './RecentFiles';
 import { buildCommands } from '../commands';
 import { baseName } from '../lib/files';
 import { plannerStore, usePlanner } from '../store/plannerStore';
@@ -33,7 +34,7 @@ import { Welcome } from './Welcome';
 const Plan3DView = lazy(() => import('../three/Plan3DView'));
 const DrawingsView = lazy(() => import('./DrawingsView').then((m) => ({ default: m.DrawingsView })));
 
-type Dialog = 'search' | 'shortcuts' | 'welcome' | 'newProject' | null;
+type Dialog = 'search' | 'shortcuts' | 'welcome' | 'newProject' | 'recent' | null;
 
 /** The editor: menu bar, tool rail, plan, side panel and status bar, like a classic desktop CAD app. */
 export default function PlannerApp() {
@@ -45,7 +46,7 @@ export default function PlannerApp() {
   const setWarning = usePlanner((s) => s.setWarning);
   const fileName = usePlanner((s) => s.fileName);
   const dirty = usePlanner((s) => s.doc !== s.savedDoc);
-  const { save, open, newPlan: clearPlan } = useFileActions();
+  const { save, open, openRecentFile, newPlan: clearPlan } = useFileActions();
   const [pending, setPending] = useState<'new' | 'open' | null>(null);
   const [dialog, setDialog] = useState<Dialog>(() => (shouldWelcome() ? 'welcome' : null));
   // A new plan starts blank, then asks what kind of project it is.
@@ -86,6 +87,7 @@ export default function PlannerApp() {
       buildCommands({
         requestNew,
         requestOpen,
+        openRecent: () => setDialog('recent'),
         save: (saveAs) => void save(saveAs),
         openSearch: () => setDialog('search'),
         openShortcuts: () => setDialog('shortcuts'),
@@ -179,11 +181,23 @@ export default function PlannerApp() {
       {dialog === 'search' && <CommandPalette commands={commands} onClose={() => setDialog(null)} />}
       {dialog === 'shortcuts' && <ShortcutsDialog commands={commands} onClose={() => setDialog(null)} />}
       {dialog === 'newProject' && <NewProjectDialog onClose={() => setDialog(null)} />}
+      {dialog === 'recent' && (
+        <RecentDialog
+          onClose={() => setDialog(null)}
+          onOpen={(r) => {
+            setDialog(null);
+            const go = () => void openRecentFile(r);
+            if (isDirty()) setPendingReplace(() => go);
+            else go();
+          }}
+        />
+      )}
       {dialog === 'welcome' && (
         <Welcome
           onClose={() => setDialog(null)}
           confirmReplace={(then) => (isDirty() ? setPendingReplace(() => then) : then())}
           onNewProject={() => (isDirty() ? setPending('new') : newPlan())}
+          onRecent={() => setDialog('recent')}
         />
       )}
       {pendingReplace && (

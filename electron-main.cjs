@@ -16,6 +16,58 @@ const MAX_PLAN_BYTES = 20 * 1024 * 1024;
 // The page may only save back to files the user picked in an Open or Save dialog.
 const userChosenPaths = new Set();
 
+// Plans opened or saved lately, newest first: [{ name, path, at }], kept in the app's own data folder.
+const MAX_RECENT = 8;
+const recentFile = () => path.join(app.getPath('userData'), 'recent.json');
+async function readRecent() {
+  try {
+    const list = JSON.parse(await fs.readFile(recentFile(), 'utf8'));
+    return Array.isArray(list)
+      ? list.filter((r) => r && typeof r.path === 'string' && typeof r.name === 'string' && Number.isFinite(r.at))
+      : [];
+  } catch {
+    return [];
+  }
+}
+async function noteRecent(filePath) {
+  const list = [{ name: path.basename(filePath), path: filePath, at: Date.now() }, ...(await readRecent())];
+  const kept = list.filter((r, i) => list.findIndex((q) => q.path === r.path) === i).slice(0, MAX_RECENT);
+  try {
+    await fs.writeFile(recentFile(), JSON.stringify(kept), 'utf8');
+    app.addRecentDocument(filePath);
+  } catch {
+    // The list is a convenience: a failed write never stops the open or save.
+  }
+}
+async function readPlan(filePath) {
+  const { size } = await fs.stat(filePath);
+  if (size > MAX_PLAN_BYTES) throw new Error('This file is too large to be a Mimar plan.');
+  userChosenPaths.add(filePath);
+  await noteRecent(filePath);
+  return { name: path.basename(filePath), path: filePath, contents: await fs.readFile(filePath, 'utf8') };
+}
+
+ipcMain.handle('mimar:recent-list', async () =>
+  (await readRecent()).map((r) => ({ key: r.path, name: r.name, path: r.path, at: r.at })),
+);
+// Only a path already on the list can be opened this way (the page can't ask for any other file).
+ipcMain.handle('mimar:recent-open', async (_event, filePath) => {
+  if (typeof filePath !== 'string' || !(await readRecent()).some((r) => r.path === filePath)) return null;
+  try {
+    return await readPlan(filePath);
+  } catch {
+    return null;
+  }
+});
+ipcMain.handle('mimar:recent-clear', async () => {
+  try {
+    await fs.writeFile(recentFile(), '[]', 'utf8');
+    app.clearRecentDocuments();
+  } catch {
+    // Nothing to clear.
+  }
+});
+
 ipcMain.handle('mimar:open', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const { canceled, filePaths } = await dialog.showOpenDialog(win, {
@@ -24,11 +76,7 @@ ipcMain.handle('mimar:open', async (event) => {
     properties: ['openFile'],
   });
   if (canceled || !filePaths[0]) return null;
-  const filePath = filePaths[0];
-  const { size } = await fs.stat(filePath);
-  if (size > MAX_PLAN_BYTES) throw new Error('This file is too large to be a Mimar plan.');
-  userChosenPaths.add(filePath);
-  return { name: path.basename(filePath), path: filePath, contents: await fs.readFile(filePath, 'utf8') };
+  return readPlan(filePaths[0]);
 });
 
 ipcMain.handle('mimar:save', async (event, request) => {
@@ -48,6 +96,7 @@ ipcMain.handle('mimar:save', async (event, request) => {
   }
   await fs.writeFile(target, request.contents, 'utf8');
   userChosenPaths.add(target);
+  await noteRecent(target);
   return { name: path.basename(target), path: target };
 });
 

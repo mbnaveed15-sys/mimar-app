@@ -54,6 +54,8 @@ export interface Command {
 export interface CommandContext {
   requestNew: () => void;
   requestOpen: () => void;
+  /** The list of plans opened or saved lately. */
+  openRecent?: () => void;
   save: (saveAs?: boolean) => void;
   openSearch: () => void;
   openShortcuts: () => void;
@@ -120,6 +122,15 @@ export function buildCommands(ctx: CommandContext): Command[] {
     // File
     { id: 'file.new', label: 'New', menu: 'file', group: 0, keys: ['Ctrl+N'], run: ctx.requestNew },
     { id: 'file.open', label: 'Open…', menu: 'file', group: 0, keys: ['Ctrl+O'], run: ctx.requestOpen },
+    {
+      id: 'file.recent',
+      label: 'Open recent…',
+      menu: 'file',
+      group: 0,
+      keys: ['Ctrl+Shift+O'],
+      run: () => ctx.openRecent?.(),
+      hidden: () => !ctx.openRecent,
+    },
     { id: 'file.save', label: 'Save', menu: 'file', group: 1, keys: ['Ctrl+S'], run: () => ctx.save() },
     { id: 'file.saveAs', label: 'Save as…', menu: 'file', group: 1, keys: ['Ctrl+Shift+S'], run: () => ctx.save(true) },
     { id: 'file.pdf', label: 'Export PDF', menu: 'file', group: 2, keys: ['Ctrl+P'], run: exportPlanPdf },
