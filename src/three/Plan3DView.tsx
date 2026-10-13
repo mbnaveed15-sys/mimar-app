@@ -1,3 +1,4 @@
+import { sharedLevelIds } from '../lib/levels';
 import { snapsOn } from '../lib/checks';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import * as THREE from 'three';
@@ -24,6 +25,7 @@ import { isParallel, requestView, setViewControls, toggleParallel } from './view
 import { cornerNear, curveTest } from './cornerSnap';
 import { lookRuns, mergeParts, partAt, type PartRange } from './merge';
 import { buildModel, levelBaseM, M_PER_UNIT, roofMesh, type Finish, type Model3D, type Sides } from './model';
+import { plinthId } from '../walls';
 
 function hasWebGL(): boolean {
   try {
@@ -416,8 +418,9 @@ const levelIndex = (s: PlannerState, id: string | undefined) =>
  * selected items.
  */
 function styleMeshes(stage: Stage, s: PlannerState) {
-  const active = levelIndex(s, s.activeLevel);
-  const selected = new Set(s.selectedIds);
+  // On Ground, its lawn and its floor are both the floor shown.
+  const active = Math.max(...sharedLevelIds(s.doc, s.activeLevel).map((id) => levelIndex(s, id)));
+  const selected = new Set(s.selectedPlinth ? [...s.selectedIds, plinthId(s.selectedPlinth)] : s.selectedIds);
   const erasing = new Set(s.draft?.type === 'erase' ? s.draft.ids : []);
   const cache = (look: string) => {
     let m = stage.extras.get(look);
@@ -953,7 +956,12 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         stage.render();
       }
       const erasing = (x: PlannerState) => (x.draft?.type === 'erase' ? x.draft : null);
-      if (s.selectedIds !== prev.selectedIds || s.activeLevel !== prev.activeLevel || erasing(s) !== erasing(prev)) {
+      if (
+        s.selectedIds !== prev.selectedIds ||
+        s.selectedPlinth !== prev.selectedPlinth ||
+        s.activeLevel !== prev.activeLevel ||
+        erasing(s) !== erasing(prev)
+      ) {
         styleMeshes(stage, s);
         stage.render();
       }
@@ -1089,7 +1097,8 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         const s = plannerStore.getState();
         const hit = stage.raycaster.intersectObjects(stage.model.children, false).find(pickable);
         const id = hit && idOf(hit);
-        if (!hit?.face || !id || (hit.object.userData.level ?? 'ground') !== s.activeLevel) return null;
+        if (!hit?.face || !id || !sharedLevelIds(s.doc, s.activeLevel).includes(hit.object.userData.level ?? 'ground'))
+          return null;
         const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
         const face: FaceHit = {
           id,
@@ -1179,7 +1188,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     let id: string | null = null;
     // A hit on the floor being drawn gives the point on it (a wall face, a floor, a table top);
     // anything else (open space, a floor below) lands on the floor's level.
-    if (hit && (hit.object.userData.level ?? 'ground') === s.activeLevel) {
+    if (hit && sharedLevelIds(s.doc, s.activeLevel).includes(hit.object.userData.level ?? 'ground')) {
       // Close to a corner of what is under the pointer (on screen), take the corner itself, at its height.
       const corner =
         snapsOn(s) && !LOOK_TOOLS.has(s.tool)

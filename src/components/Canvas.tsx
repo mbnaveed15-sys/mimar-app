@@ -50,10 +50,10 @@ const MAX_BEND_GRIPS = 48;
 
 export function Canvas({ svgRef, onContextMenu }: Props) {
   const doc = useLevelDoc()!;
-  // The floor below, drawn faintly so the walls above can be traced over it (on Ground (site), the
-  // ground floor over it, so the plinth can be drawn under its walls).
+  // The floor below, drawn faintly so the walls above can be traced over it (Ground's floor and
+  // lawn show together, at full strength).
   const onSite = usePlanner((s) => !!s.doc.levels.find((l) => l.id === s.activeLevel)?.site);
-  const below = useLevelDoc(onSite ? 1 : -1);
+  const below = useLevelDoc(-1);
   const belowOpacity = usePlanner((s) => s.belowOpacity);
   const belowWalls = useMemo(
     () =>
@@ -399,6 +399,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
               item={{ ...furnitureAt(plannerStore.getState(), ghost), rotation: ghost.rotation }}
               selected={false}
               k={k}
+              ghost
             />
           </g>
         )}

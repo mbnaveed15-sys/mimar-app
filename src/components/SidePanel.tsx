@@ -231,7 +231,7 @@ function ToolOptions() {
  */
 export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSections> }) {
   const tool = usePlanner((s) => s.tool);
-  const hasSelection = usePlanner((s) => s.selectedIds.length > 0);
+  const hasSelection = usePlanner((s) => s.selectedIds.length > 0 || !!s.selectedPlinth);
   const panels = usePlanner((s) => s.panels);
   const setPanels = usePlanner((s) => s.setPanels);
   const { open, set } = sections;

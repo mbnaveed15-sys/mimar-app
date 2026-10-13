@@ -157,4 +157,41 @@ describe('the Ground (site) level', () => {
     ]);
     expect(normaliseDoc(emptyDoc()).ownPlinth).toBeUndefined();
   });
+
+  it('shows with the ground floor as one Ground: items on both are seen and picked, and move between them', () => {
+    const { s } = setup();
+    s().addWall({ x: 0, y: 0 }, { x: 500, y: 0 });
+    const floorWall = s().doc.elements[0];
+    s().showSiteLevel();
+    s().addWall({ x: 0, y: 100 }, { x: 500, y: 100 });
+    const lawnWall = s().doc.elements.find((el) => el.id !== floorWall.id)!;
+    // From the lawn the floor's wall shows and can be picked, and the other way round.
+    expect(
+      s()
+        .pickableElements()
+        .map((el) => el.id),
+    ).toEqual([floorWall.id, lawnWall.id]);
+    s().select(floorWall.id);
+    s().setActiveLevel(GROUND_LEVEL);
+    expect(s().selectedIds).toEqual([floorWall.id]);
+    expect(
+      s()
+        .pickableElements()
+        .map((el) => el.id),
+    ).toEqual([floorWall.id, lawnWall.id]);
+    // Floors above don't share them.
+    s().addLevel();
+    expect(s().pickableElements()).toEqual([]);
+    s().setActiveLevel(GROUND_LEVEL);
+    // Moving a wall to the lawn takes its door with it, in one undo step.
+    s().placeOpening('door', { x: 250, y: 0 });
+    const door = s().doc.elements.find((el) => el.type === 'door')!;
+    const steps = s().past.length;
+    s().setItemsLevel([floorWall.id], SITE_LEVEL);
+    expect(s().doc.elements.find((el) => el.id === floorWall.id)?.levelId).toBe(SITE_LEVEL);
+    expect(s().doc.elements.find((el) => el.id === door.id)?.levelId).toBe(SITE_LEVEL);
+    expect(s().past.length).toBe(steps + 1);
+    s().setItemsLevel([floorWall.id], GROUND_LEVEL);
+    expect(s().doc.elements.find((el) => el.id === floorWall.id)?.levelId).toBeUndefined();
+  });
 });

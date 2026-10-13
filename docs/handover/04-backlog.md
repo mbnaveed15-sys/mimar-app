@@ -40,7 +40,9 @@ curved slab voids, a cut corner on a curved plot side, a phone layout, and first
 CDA, DHA Islamabad and LDA rules for commercial and other buildings, and LDA houses made official (1.45); phone tools
 always at hand (Select, Move, Eraser, Fit view), a selection bar, two/three-finger tap for Undo/Redo and a 3D twist (1.46);
 a Ground (site) level with the lawn and plinth heights and your own plinth, and slabs drawn corner by corner, over rooms
-picked or round the walls (1.47).
+picked or round the walls (1.47); furniture turned before placing and snapped to room walls, Alt to flip snapping, side
+grips, one-way Scale, Reset size, one Ground level with a Floor | Lawn switch, the plinth as its own item, automatic
+stairwells, Push/Pull snapping, setback marks by the visible shape, and Snap/Checks menus from their arrows only (1.48).
 
 Planned next (plan each with the owner first): DHA Lahore and Bahria building figures (their buildings still say
 "check with the authority" until the owner sends the schedules). Left from 1.45: Mimar can't tell a veranda, an
@@ -71,6 +73,12 @@ on a sloping natural site, blocks and steps on Ground (site) stand at the ground
 with the ground; the Ground (site) level can't be deleted while it has items, and its walls snap to the ground floor's wall
 corners only (not its doors or faces). A Rooms slab stops halfway over a wall to a space left out, including a
 courtyard. The Slab tool's Rooms and Follow the walls have no 3D preview.
+Left from 1.48: the plinth is picked in 3D (in 2D through a wall's Plinth settings) and its projection shows in 3D,
+sections, elevations and quantities, not on the 2D plan; its height, projection and material are one setting for the
+whole plinth (only on or off per wall). Stairwells are cut for stairs rising at least 1.5 m with a floor above, shaped
+from the stair's footprint (straight, U, ramp) or its parts (L, curved, spiral), with no headroom margin. Furniture
+snaps to walls within 2' and to their faces only (not to other furniture). Rooms are still found on the floor or the
+lawn being drawn, not both.
 Floating side panels were assessed with 1.39 and left out; revisit only if the owner still wants them.
 
 Left from sections and elevations for later: dimension strings on sections (only level marks now); each section and

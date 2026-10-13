@@ -32,16 +32,17 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 - **Rooms** show their area in sq ft or m² and in **marla** (225 or 272.25 sq ft), measured to the centre of the walls.
 - **Doors:** single, double, sliding, folding, rolling shutter, a plain opening, and gates. **Windows:** sliding, casement, double casement, fixed and ventilator. Placing one shows the clear distance to each corner and never puts it flush against a corner. Doors and windows in a curved wall follow the curve.
 - **Structure:** columns, beams, slabs of any shape with voids (drawn as a rectangle, corner by corner, over the rooms you pick, or round the walls), stairs (straight, L, U, ramp, **curved** and **spiral**), plinth, **basements** with retaining walls, and **pitched roofs** (hip, gable, shed, flat) that work on L, T and any other plan shape.
-- **Floors:** as many as you need, each with its own height, plus a basement and the mumty. Duplicate a floor to start the one above, and choose how faintly the floor below shows while you draw. A **Ground (site)** level under the ground floor holds the lawn and the plinth, so you can draw your own plinth, platforms and steps from the ground up.
-- **Furniture and garden:** a library of about 100 items at their real sizes, in groups for homes, offices, schools, clinics and hospitals, shops, mosques, restaurants, public toilets and gardens, with search and recent picks. Each item shows the **free space it needs** to be used, from the ADA standards or common practice.
+- **Floors:** as many as you need, each with its own height, plus a basement and the mumty. Duplicate a floor to start the one above, and choose how faintly the floor below shows while you draw. The **Ground** floor and its lawn are one level, with a Floor | Lawn switch, so you can draw your own plinth, platforms and steps from the ground up. The automatic plinth is its own item, with its own height, projection and material. Stairs cut their own stairwell in the slab above.
+- **Furniture and garden:** a library of about 100 items at their real sizes, in groups for homes, offices, schools, clinics and hospitals, shops, mosques, restaurants, public toilets and gardens, with search and recent picks. Items can be turned before placing, snap against a room's walls and into its corners, and can be resized one side at a time. Each item shows the **free space it needs** to be used, from the ADA standards or common practice.
 - **Layout lines** for drafting, straight or curved, which can be turned into walls.
 
 ### Draw quickly and precisely (AutoCAD and SketchUp habits work)
-- **Snapping** to ends, midpoints, wall faces and corners, the corners of every item (in 2D and 3D), crossings, perpendiculars, the building line and the grid, with red and green axis guides. The **Snap** button at the bottom turns snapping off, or each kind of snap on or off. The pointer's X and Y show beside it.
+- **Snapping** to ends, midpoints, wall faces and corners, the corners of every item (in 2D and 3D), crossings, perpendiculars, the building line and the grid, with red and green axis guides. The **Snap** button at the bottom turns snapping off (its ▴ arrow turns each kind on or off), and holding **Alt** flips it for a moment. The pointer's X and Y show beside it.
 - **Dimensions** that keep measuring as the plan changes: horizontal or vertical, aligned, chains and radius, on their own layer, in the drawings and in DXF.
 - **Zoom window and Zoom previous** (ZP), as in AutoCAD.
 - **Typed input:** `12' 6"`, `3.5 m`, `@x,y`, `length<angle`, and AutoCAD aliases (CO, RO, TR, EX, MI, SC, FIL…).
-- **Modify tools:** move, copy, rotate, mirror, scale, stretch, offset, trim, extend, break, join, fillet, chamfer, on straight and curved walls alike.
+- **Side grips** resize furniture, columns, stairs, slabs and roofs one side at a time, to a typed size.
+- **Modify tools:** move, copy, rotate, mirror, scale (by width, depth or both), stretch, offset, trim, extend, break, join, fillet, chamfer, on straight and curved walls alike.
 - **Push/Pull and Shape** as in SketchUp: pull shapes into blocks, and push them into walls to make niches, projections (chajjas) and arched or round openings.
 - **Groups, components, layers** that you can hide and lock, and full undo and redo.
 

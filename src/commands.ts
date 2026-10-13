@@ -1,3 +1,4 @@
+import { buildingLevels, isSiteLevel } from './lib/levels';
 import { getViewControls, isParallel, requestView, toggleParallel } from './three/viewControls';
 import { aliasesFor } from './lib/aliases';
 import { shows } from './lib/project';
@@ -15,7 +16,7 @@ import { plannerStore, type PlannerState } from './store/plannerStore';
 import { THEMES } from './theme/themes';
 import { pasteToPlace } from './tools/controller';
 import { DRAW_TOOLS, TOOL_INFO } from './tools/toolInfo';
-import { MODIFY_TOOLS, TOOLS, type Tool } from './types';
+import { GROUND_LEVEL, MODIFY_TOOLS, TOOLS, type Tool } from './types';
 
 export type MenuId = 'file' | 'edit' | 'view' | 'draw' | 'tools' | 'modify' | 'help';
 
@@ -80,10 +81,14 @@ export const canCopy = (s: PlannerState) => {
 /** Switch to the floor above (1) or below (-1). */
 function stepLevel(step: number) {
   const s = st();
-  const i = s.doc.levels.findIndex((l) => l.id === s.activeLevel);
-  const next = s.doc.levels[i + step];
+  const next = floorList(s)[floorAt(s) + step];
   if (next) s.setActiveLevel(next.id);
 }
+
+/** The floors Page Up and Page Down step through: Ground's lawn is part of Ground. */
+const floorList = (s: PlannerState) => buildingLevels(s.doc);
+const floorAt = (s: PlannerState) =>
+  floorList(s).findIndex((l) => l.id === (isSiteLevel(s.doc, s.activeLevel) ? GROUND_LEVEL : s.activeLevel));
 
 function toolCommand(tool: Tool, menu: MenuId, group: number): Command {
   const info = TOOL_INFO[tool];
@@ -206,7 +211,8 @@ export function buildCommands(ctx: CommandContext): Command[] {
       group: 1,
       keys: ['Delete', 'Backspace'],
       run: () => st().deleteSelected(),
-      enabled: hasSelection,
+      // The automatic plinth, picked in 3D, is left off under its wall.
+      enabled: (s) => hasSelection(s) || !!s.selectedPlinth,
     },
     {
       id: 'edit.rotate90',
@@ -412,7 +418,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       group: 0,
       keys: ['PageUp'],
       run: () => stepLevel(1),
-      enabled: (s) => s.doc.levels.findIndex((l) => l.id === s.activeLevel) < s.doc.levels.length - 1,
+      enabled: (s) => floorAt(s) < floorList(s).length - 1,
     },
     {
       id: 'view.levelDown',
@@ -421,7 +427,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
       group: 0,
       keys: ['PageDown'],
       run: () => stepLevel(-1),
-      enabled: (s) => s.doc.levels.findIndex((l) => l.id === s.activeLevel) > 0,
+      enabled: (s) => floorAt(s) > 0,
     },
     { id: 'view.addLevel', label: 'Add floor above', menu: 'view', group: 0, run: () => st().addLevel() },
     {

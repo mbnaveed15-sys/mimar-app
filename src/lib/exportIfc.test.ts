@@ -18,6 +18,14 @@ function checkReferences(ifc: string) {
 }
 
 describe('IFC export', () => {
+  it('keeps the automatic plinth with its wall', () => {
+    const doc = buildSamplePlan();
+    const withPlinth = planToIfc(doc, opts);
+    const without = planToIfc({ ...doc, ownPlinth: true }, opts);
+    expect(count(withPlinth, 'IFCWALL')).toBe(count(without, 'IFCWALL'));
+    expect(count(withPlinth, 'IFCEXTRUDEDAREASOLID')).toBeGreaterThan(count(without, 'IFCEXTRUDEDAREASOLID'));
+  });
+
   it('writes the sample house as IFC4: storey, walls, doors and windows in openings, and rooms as spaces', () => {
     const doc = buildSamplePlan();
     const ifc = planToIfc(doc, opts);

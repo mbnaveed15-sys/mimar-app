@@ -16,7 +16,7 @@ import {
   type Slab3D,
   type Solid,
 } from '../three/model';
-import { thicknessOf } from '../walls';
+import { plinthWallOf, thicknessOf } from '../walls';
 import { levelOf, type Id, type Opening, type PlanDoc, type PlanElement, type Point, type Wall } from '../types';
 
 /*
@@ -311,7 +311,8 @@ export function planToIfc(doc: PlanDoc, opts: IfcOptions): string {
     level: Id | undefined,
     part: 'solid' | 'panel' | 'slab' | 'roof',
   ): Item | null => {
-    const el = id ? byId.get(id) : undefined;
+    // The automatic plinth goes with the wall over it.
+    const el = id ? byId.get(plinthWallOf(id) ?? id) : undefined;
     if (!el) return null;
     let host: PlanElement = el;
     let cls: IfcClass;

@@ -2,7 +2,7 @@
  * Floors: the basement (if any) comes first, then the Ground (site) level (if any), then the ground
  * floor, then the floors above it. Pure helpers for telling them apart and for their heights.
  */
-import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, SITE_LEVEL, type Level, type PlanDoc } from '../types';
+import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SITE_LEVEL, type Level, type PlanDoc } from '../types';
 
 /** Where the ground floor is in the list of floors. */
 export const groundIndex = (doc: Pick<PlanDoc, 'levels'>) =>
@@ -25,6 +25,23 @@ export const buildingLevels = (doc: Pick<PlanDoc, 'levels'>): Level[] => doc.lev
 
 /** The Ground (site) level as it is (or will be) added: under the ground floor, after any basement. */
 export const SITE_LEVEL_DEF: Level = { id: SITE_LEVEL, name: 'Ground (site)', site: true };
+
+/**
+ * The floors shown and picked together: the ground floor and the Ground (site) level are one
+ * "Ground", whose Floor | Lawn switch picks which of them new items go on. Any other floor is alone.
+ */
+export function sharedLevelIds(doc: Pick<PlanDoc, 'levels'>, id: string): string[] {
+  if (id !== GROUND_LEVEL && !isSiteLevel(doc, id)) return [id];
+  const site = doc.levels.find((l) => l.site)?.id;
+  return site ? [site, GROUND_LEVEL] : [GROUND_LEVEL];
+}
+
+/** Whether an item is on the floor shown (with Ground, on its floor or its lawn). */
+export function onSharedLevel(doc: Pick<PlanDoc, 'levels'>, id: string): (it: { levelId?: string }) => boolean {
+  const ids = sharedLevelIds(doc, id);
+  if (ids.length === 1) return (it) => levelOf(it) === id;
+  return (it) => ids.includes(levelOf(it));
+}
 
 /** The levels with the Ground (site) level in its place (unchanged when it is there already). */
 export function withSiteLevel(levels: Level[]): Level[] {

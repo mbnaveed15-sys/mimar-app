@@ -41,6 +41,22 @@ describe('stairwells', () => {
     expect(slabVoids(twoFloors([]), GROUND_LEVEL)).toEqual([]);
   });
 
+  it('cut no second hole for a stair in a room already open to the floor above', () => {
+    const well = {
+      id: 'r',
+      name: 'Stair',
+      openAbove: true,
+      points: [
+        { x: -500, y: -500 },
+        { x: 1100, y: -500 },
+        { x: 1100, y: 1100 },
+        { x: -500, y: 1100 },
+      ],
+    };
+    const doc = { ...twoFloors([stair('straight')]), rooms: [well] };
+    expect(slabVoids(doc, GROUND_LEVEL).map((r) => r.id)).toEqual(['r']);
+  });
+
   it('leave a hole in a drawn slab over the stair', () => {
     const slab = {
       id: 'sl',

@@ -120,6 +120,27 @@ autosaves to local storage on every change.
   `src/lib/slabOutline.ts`: `joinOutlines` (rooms meeting along shared centre-line sides joined, courtyards as holes),
   `toOuterFaces` (out to the walls' far faces, but only halfway over a wall with a room beyond), `roomsSlab`,
   `wallsOutlineAt` (the outside of the joined walls clicked). `addSlab(points, holes)`.
+- One Ground level (1.48): the ground floor and its lawn (`SITE_LEVEL`) show and pick together. `sharedLevelIds` /
+  `onSharedLevel` in `levels.ts` are used by `visibleElements`, `pickableRooms`, `useLevelDoc` (offsets count past
+  the pair), the 3D view (`faceAt`, `pickAt`, `styleMeshes`) and `setActiveLevel` (keeps the selection within the
+  pair). The floor list shows `buildingLevels` only, with a Draw on: Floor | Lawn switch; `GroundPlace.tsx` (Properties,
+  multi-select) calls store `setItemsLevel` (doors and windows follow their walls). Room detection and the wall graph
+  stay on the active level only (`ownShown` in `structureTools.ts`). `stepLevel` (Page Up/Down) uses `buildingLevels`.
+- The plinth as an item (1.48): `PlanDoc.plinth` (`PlinthSpec`: `projectMm`, `material`), `Wall.noPlinth`. In 3D the
+  band under each wall has id `plinthId(wallId)` (`'plinth:' + id`, `plinthWallOf` in `walls.ts`; `takesPlinth`,
+  `hasPlinth`), built from the walls widened by the projection. Store `selectedPlinth` (kept apart from
+  `selectedIds`), `selectPlinth`, `setPlinth`, `setWallPlinth`; `deleteSelected` on it sets `noPlinth`; 3D Select and
+  Paint pick it in `usePlanInput.ts`. UI `PlinthPanel.tsx` (`PlinthPanel`, and `WallPlinth` in a wall's Properties).
+  Quantities add `L × (t + 2 × projection) × plinth height`.
+- Furniture and resizing (1.48): `src/tools/furnitureTool.ts` (ghost `furnitureGhost`, `furnitureAngle`, V =
+  `turnFurniture`, `placeFurniture` / `againstWall` with `snapToWalls` in `src/lib/furnitureSnap.ts`). `snapsOn(s)` in
+  `checks.ts` (`snaps.on` flipped while Alt is held, `snapFlip`) replaces direct `snaps.on` reads. `src/lib/resize.ts`:
+  side grips (`sideGrips`, `dragSide`, `setSideSize` for the typed size after a drag via `lastResize`), `scaledSize`,
+  `axisFactors` (`scaleAxis`: both, width, depth; typed `2,1` is the Measure kind `factors`), `stretchPlaced`,
+  `resetElementSize` (store `resetSize`). `Furniture.heightMm` (`furnitureLibraryHeightMm`, `furnitureStretch` in
+  `model.ts`). `src/lib/itemShape.ts` `visibleShapes` (what the setback check and its marks use). Push/Pull snaps to
+  corners through `Picker3D.cornerAt`. Stairwells: `stairOpenings`, `slabVoids`, `floorVoids` in `voids.ts`, computed
+  live (not stored) and used by the model, drawings, exports and quantities. Format 18.
   `levelBaseM` puts floors below the ground floor at the plinth less a slab and their height. Wall kind
   `'retaining'` (`WallKind` in `types.ts`; `KIND_HEIGHT_MM`, `RETAINING_MM` in the store); `addRetainingWalls`
   builds them from `outsideOutline` (`src/lib/outline.ts`: the walls' outside faces from `wallFaces(walls, true)`,

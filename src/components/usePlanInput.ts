@@ -20,6 +20,7 @@ import { itemsInBox, moveItems } from '../lib/selection';
 import { dragDimension } from '../lib/dimensions';
 import { dragSide, isSideGrip } from '../lib/resize';
 import { againstWall } from '../tools/furnitureTool';
+import { plinthWallOf } from '../walls';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, type PlannerState } from '../store/plannerStore';
 import { cornerSnap, DRAG_PX, hover, inferAt, MEASURE_TOOLS, press, release } from '../tools/controller';
@@ -303,6 +304,12 @@ export function usePlanInput(
 
     switch (s.tool) {
       case 'select': {
+        // In 3D the automatic plinth under a ground-floor wall is its own item.
+        const plinth = screenBox ? plinthWallOf(pickId?.(e)) : null;
+        if (plinth && !e.shiftKey) {
+          s.selectPlinth(plinth);
+          return;
+        }
         const hit = hitAt(e, raw);
         if (!hit) {
           // Empty space (or inside a room): a click picks the room, a drag draws a selection box.
@@ -338,7 +345,8 @@ export function usePlanInput(
         s.addRoomAt(raw);
         break;
       case 'paint':
-        if (pickId) {
+        if (plinthWallOf(pickId?.(e))) s.setPlinth({ material: s.selectedMat });
+        else if (pickId) {
           const id = idAt(e, raw);
           if (id) s.applyMaterial(id, wallFaceAt(s, e, id));
         } else s.paintAt(raw);
@@ -357,8 +365,11 @@ export function usePlanInput(
         const wall = e.shiftKey ? nearestWall(s.pickableElements(), raw, s.hitTolerance() * 1.5) : null;
         // The item under the pointer, as Select would pick it: a door or window before its wall.
         const picked = wall ? null : pickId ? idAt(e, raw) : (hitAt(e, raw)?.id ?? null);
+        // In 3D, erasing the automatic plinth leaves it off under its wall (the wall stays).
+        const plinth = wall ? null : plinthWallOf(pickId?.(e));
         const click = () => {
-          if (wall) s.commit((doc) => trimAt(doc, wall.id, raw, 10 * s.pxUnits()));
+          if (plinth) s.setWallPlinth(plinth, false);
+          else if (wall) s.commit((doc) => trimAt(doc, wall.id, raw, 10 * s.pxUnits()));
           else if (picked) s.deleteElement(picked);
           else s.eraseAt(raw);
         };

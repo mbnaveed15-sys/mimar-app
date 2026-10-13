@@ -46,6 +46,8 @@ import { LengthField } from './LengthField';
 import { PlotBylawsPanel } from './PlotBylaws';
 import { PlotSidesPanel } from './PlotSides';
 import { SelectionPanel } from './SelectionPanel';
+import { GroundPlace } from './GroundPlace';
+import { PlinthPanel, WallPlinth } from './PlinthPanel';
 
 /** Common room names in Pakistani homes, offered as suggestions. */
 const ROOM_NAMES = [
@@ -214,6 +216,7 @@ export function Inspector() {
   const showDrawing = usePlanner((s) => s.showDrawing);
 
   const multi = usePlanner((s) => s.selectedIds.length > 1 || s.selectedGroup() !== null);
+  const plinth = usePlanner((s) => (s.selectedIds.length ? null : s.selectedPlinth));
   const el = doc.elements.find((e) => e.id === selectedId);
   const room = doc.rooms.find((r) => r.id === selectedId);
   // A room can be left open to the floor above only when there is one.
@@ -238,9 +241,12 @@ export function Inspector() {
           <div className="mb-3">
             <SelectionPanel />
           </div>
+        ) : plinth ? (
+          <PlinthPanel wallId={plinth} />
         ) : el ? (
           <div className="mb-3 flex flex-col gap-2 rounded-md border border-line bg-raised p-2 text-xs">
             <div className="font-medium">Selected: {itemName(el)}</div>
+            {el.type !== 'door' && el.type !== 'window' && <GroundPlace ids={[el.id]} />}
             {el.type === 'wall' && el.plotId && (
               <div className="text-muted" data-testid="plot-wall-note">
                 Part of the plot’s boundary: it follows the plot when the plot is reshaped. Its side of the plot sets
@@ -841,6 +847,7 @@ export function Inspector() {
               )}
             {!isAnnotation(el) && !isSiteItem(el) && <div>Material: {materialName(el.material) ?? '—'}</div>}
             {el.type === 'wall' && <WallSides wall={el} materialName={materialName} />}
+            {el.type === 'wall' && <WallPlinth wall={el} />}
             <div className="flex flex-wrap gap-2">
               {!isAnnotation(el) && !isSiteItem(el) && (
                 <button onClick={() => applyMaterial(el.id)} className={btn}>

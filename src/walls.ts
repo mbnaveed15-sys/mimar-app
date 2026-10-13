@@ -2,11 +2,29 @@ import { boxOf, cellFor, GridIndex } from './lib/spatial';
 import { pointInPolygon } from './geometry';
 import { directionAlong, distanceToWall, isArc, offsetPath, pointAlong, radiusOf, wallPath } from './lib/arc';
 import { MM_PER_UNIT } from './lib/scale';
-import type { PlanElement, Point, Units, Wall } from './types';
+import { GROUND_LEVEL, levelOf, type PlanDoc, type PlanElement, type Point, type Units, type Wall } from './types';
 
 /** Standard brick wall: 9 inches. */
 export const DEFAULT_WALL_THICKNESS_MM = 228.6;
 export const DEFAULT_WALL_THICKNESS = DEFAULT_WALL_THICKNESS_MM / MM_PER_UNIT;
+
+/**
+ * Whether a wall stands on the automatic plinth when it is on: a building wall of the ground floor,
+ * not raised, while the plinth is not drawn by hand.
+ */
+export const takesPlinth = (doc: Pick<PlanDoc, 'ownPlinth'>, w: PlanElement): w is Wall =>
+  w.type === 'wall' && !doc.ownPlinth && isBuildingWall(w) && levelOf(w) === GROUND_LEVEL && !w.elevMm;
+
+/** The automatic plinth is built under wall `id`. */
+export const hasPlinth = (doc: Pick<PlanDoc, 'ownPlinth' | 'elements'>, id: string) =>
+  doc.elements.some((el) => el.id === id && takesPlinth(doc, el) && !el.noPlinth);
+
+const PLINTH_PREFIX = 'plinth:';
+/** The id the automatic plinth under a wall is picked by in 3D (it is its own item, not the wall). */
+export const plinthId = (wallId: string) => `${PLINTH_PREFIX}${wallId}`;
+/** The wall a plinth id is under, or null for any other id. */
+export const plinthWallOf = (id: string | null | undefined) =>
+  id?.startsWith(PLINTH_PREFIX) ? id.slice(PLINTH_PREFIX.length) : null;
 
 /** Common wall thicknesses: half brick (partition), one brick, one and a half bricks. */
 export const WALL_PRESETS_MM: Record<Units, { label: string; mm: number }[]> = {

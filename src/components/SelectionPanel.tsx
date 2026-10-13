@@ -1,6 +1,7 @@
 import { itemById } from '../lib/selection';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import { canResetSize } from '../lib/resize';
+import { GroundPlace } from './GroundPlace';
 import type { PlanElement } from '../types';
 import { OpeningsPanel } from './OpeningsPanel';
 
@@ -86,6 +87,7 @@ export function SelectionPanel() {
         <div className="font-medium">{selectedIds.length} selected</div>
       )}
       <div className="text-muted">{summary}</div>
+      <GroundPlace ids={selectedIds} />
       <OpeningsPanel />
       <div className="flex flex-wrap gap-1.5">
         {group ? (

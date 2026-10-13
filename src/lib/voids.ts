@@ -65,7 +65,10 @@ export function stairOpenings(doc: Pick<PlanDoc, 'levels' | 'elements'>, levelId
 
 /** Everything left open in the slab over this floor: double-height rooms and stairwells. */
 export function slabVoids(doc: Pick<PlanDoc, 'levels' | 'rooms' | 'elements'>, levelId: Id): Room[] {
-  return [...openRooms(doc, levelId), ...stairOpenings(doc, levelId)];
+  const open = openRooms(doc, levelId);
+  // A stair in a room already open to the floor above (a stairwell drawn as a room) needs no hole of its own.
+  const stairs = stairOpenings(doc, levelId).filter((h) => !open.some((r) => within(h.points, r.points)));
+  return [...open, ...stairs];
 }
 
 /** Everything open in this floor's own floor: double-height rooms and stairwells from the floor below. */

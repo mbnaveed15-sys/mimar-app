@@ -196,7 +196,10 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       // The plinth rises from the finished ground under the wall (±0 on flat ground).
       const centre = pointAlong(wall, 0.5);
       const under = ground ? site.finishedAt(centre.x, centre.y) : 0;
-      const plinth = autoPlinth && !wall.kind && !wall.elevMm ? Math.max(0, mmFt(doc.plinthMm - under)) : 0;
+      const plinth =
+        autoPlinth && !wall.kind && !wall.elevMm && !wall.noPlinth ? Math.max(0, mmFt(doc.plinthMm - under)) : 0;
+      // It stands out past both faces of the wall by the plinth's projection.
+      const plinthCft = L * (t + 2 * mmFt(doc.plinth?.projectMm ?? 0)) * plinth;
       // Walls on the ground carry foundations: the ground floor's, unless they stand on your own
       // plinth (boundary walls still do), and the Ground (site) level's.
       const footed = !wall.elevMm && (siteLevel || (ground && (!doc.ownPlinth || !!wall.kind)));
@@ -204,7 +207,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       if (isCurtain(wall)) {
         const doorsSqft = own.filter((o) => o.type === 'door' && !o.flat).reduce((s, o) => s + openingSqft(o, H), 0);
         q.glazingSqft += Math.max(0, L * H - doorsSqft);
-        q.brickworkCft += L * t * plinth;
+        q.brickworkCft += plinthCft;
         if (footed) q.foundationRft += L;
         continue;
       }
@@ -216,10 +219,10 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       });
       const byVoid = open.some((r) => pointInPolygon(probe(1), r.points) || pointInPolygon(probe(-1), r.points));
       const up = byVoid && !wall.kind ? slabFt : 0;
-      const volume = Math.max(0, L * t * (H + plinth + up) - holes * t + shaped);
+      const volume = Math.max(0, L * t * (H + up) - holes * t + shaped);
       if (wall.kind === 'retaining') q.retainingCft += volume;
       else if (wall.kind) q.boundaryCft += volume;
-      else q.brickworkCft += volume;
+      else q.brickworkCft += volume + plinthCft;
       if (footed) q.foundationRft += L;
 
       // Each face: towards a room is inside; otherwise (and boundary walls) outside.

@@ -24,7 +24,7 @@ import {
   type Stair,
   type Wall,
 } from '../types';
-import { isBuildingWall, thicknessOf, wallReach, wallsOf } from '../walls';
+import { isBuildingWall, plinthId, thicknessOf, wallReach, wallsOf } from '../walls';
 import { bendPath, openingBend, paramAlong, pointAlong, straightPieces, type Bend } from '../lib/arc';
 import { FRAME_MM, isCurtain, metricProject, mullionStops, transomMm } from '../lib/curtain';
 import { eaveMm, gableWalls, GABLE_WALL_MM, slopedFaces, thicknessUpMm, triangulate } from '../lib/roof/roof';
@@ -926,6 +926,13 @@ function circleOutline(x: number, z: number, r: number): [number, number][] {
   });
 }
 
+/** Building walls made `project` (plan units) wider each side: the plinth's outline under them. */
+function plinthWalls(walls: Wall[], project: number): Map<string, Wall> {
+  return new Map(
+    walls.filter(isBuildingWall).map((w) => [w.id, { ...w, thickness: thicknessOf(w) + 2 * project }] as const),
+  );
+}
+
 /** How tall a furniture item is in the library, mm (its tallest part): what its Height box starts at. */
 export function furnitureLibraryHeightMm(f: Furniture): number {
   const plain = { ...f, heightMm: undefined };
@@ -1052,6 +1059,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const panels: Panel[] = [];
   const roofs: Roof3D[] = [];
   const plinth = mmToM(doc.plinthMm);
+  const plinthProject = (doc.plinth?.projectMm ?? 0) / MM_PER_UNIT;
   const levels = doc.levels.length ? doc.levels : [{ id: 'ground', name: 'Ground floor' }];
   // The lawn opens over the basement, round the outside of its walls.
   const basement = basementOf(doc);
@@ -1095,6 +1103,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       <T extends Part>(s: T): T => ({ ...s, id: s.id ?? id, level: level.id });
     const els = doc.elements.filter((el) => levelOf(el) === level.id);
     const walls = wallsOf(els);
+    // The plinth standing out past the walls' faces: the walls as wide as it, for its joins.
+    const wider = ground && plinthProject ? plinthWalls(walls, plinthProject) : null;
     const openings = els.filter((el): el is Opening => el.type === 'door' || el.type === 'window');
 
     for (const wall of walls) {
@@ -1143,14 +1153,19 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       // lowest finished ground along them.
       const footMm =
         ground && terrain ? lowestAlong(terrain, { x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 }) : 0;
-      // Drawing your own plinth (on the Ground (site) level), they start at the floor.
-      if (ground && !doc.ownPlinth && doc.plinthMm - footMm > 0.5 && !wall.elevMm)
+      // Drawing your own plinth (on the Ground (site) level), they start at the floor. The plinth is
+      // its own item (picked as `plinth:<wall id>`): it can stand out past the wall's faces, have its
+      // own material, and be left off under a wall.
+      if (ground && !doc.ownPlinth && doc.plinthMm - footMm > 0.5 && !wall.elevMm && !wall.noPlinth) {
+        const own = wider?.get(wall.id) ?? wall;
+        const plinthLook = colorOf(doc.plinth?.material);
         solids.push(
-          ...curvedWallParts(wall, walls, [], doc.plinthMm - footMm)
+          ...curvedWallParts(own, wider ? [...wider.values()] : walls, [], doc.plinthMm - footMm)
             .solids.map((s) => (footMm ? { ...s, y0: s.y0 + mmToM(footMm) } : s))
-            .map(paint)
-            .map(from(wall.id)),
+            .map((s) => (plinthLook ? { ...s, color: plinthLook, finish: finishOf(doc.plinth?.material) } : paint(s)))
+            .map(from(plinthId(wall.id))),
         );
+      }
     }
     for (const door of openings) {
       const host = walls.find((w) => w.id === door.wallId);

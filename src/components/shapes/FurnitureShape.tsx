@@ -15,16 +15,18 @@ interface Props {
   k: number;
   /** Show the wheelchair (ADA) use zone where the item has one. */
   accessible?: boolean;
+  /** The see-through copy that follows the pointer before placing (not a plan item). */
+  ghost?: boolean;
 }
 
-export function FurnitureShape({ item, color, selected, k, accessible }: Props) {
+export function FurnitureShape({ item, color, selected, k, accessible, ghost }: Props) {
   const { w, h } = item;
   const showLabel = item.label !== undefined || !item.kind;
   // The free space it needs to be used, shown while it is selected.
   const zone = selected ? zoneOf(item.kind, accessible) : null;
   return (
     <g
-      data-type="furniture"
+      data-type={ghost ? 'furniture-ghost' : 'furniture'}
       data-id={item.id}
       transform={`translate(${item.x},${item.y}) rotate(${item.rotation ?? 0})`}
     >
