@@ -9,7 +9,7 @@ let splash;
 const indexHtml = path.join(__dirname, 'dist', 'index.html');
 
 const PLAN_FILTERS = [
-  { name: 'Mimar plan', extensions: ['mimar'] },
+  { name: 'MIMAR plan', extensions: ['mimar'] },
   { name: 'All files', extensions: ['*'] },
 ];
 const MAX_PLAN_BYTES = 20 * 1024 * 1024;
@@ -41,7 +41,7 @@ async function noteRecent(filePath) {
 }
 async function readPlan(filePath) {
   const { size } = await fs.stat(filePath);
-  if (size > MAX_PLAN_BYTES) throw new Error('This file is too large to be a Mimar plan.');
+  if (size > MAX_PLAN_BYTES) throw new Error('This file is too large to be a MIMAR plan.');
   userChosenPaths.add(filePath);
   await noteRecent(filePath);
   return { name: path.basename(filePath), path: filePath, contents: await fs.readFile(filePath, 'utf8') };

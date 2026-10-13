@@ -8,7 +8,7 @@ test('the web version installs as an app and opens offline', async ({ page, cont
     const href = document.querySelector('link[rel="manifest"]')!.getAttribute('href')!;
     return (await fetch(href)).json();
   });
-  expect(manifest.short_name).toBe('Mimar');
+  expect(manifest.short_name).toBe('MIMAR');
   expect(manifest.icons.map((i: { sizes: string }) => i.sizes)).toEqual(['192x192', '512x512', '512x512']);
 
   // The service worker keeps a copy of every file.

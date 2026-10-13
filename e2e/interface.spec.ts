@@ -105,7 +105,7 @@ test('keyboard: menus keep focus, the right-click menu takes arrow keys, grips o
 
 test('the welcome keeps Tab inside it, and the tour takes the arrow keys', async ({ page }) => {
   await page.goto('/?welcome');
-  const welcome = page.getByRole('dialog', { name: 'Welcome to Mimar' });
+  const welcome = page.getByRole('dialog', { name: 'Welcome to MIMAR' });
   await expect(welcome).toBeVisible();
   for (let i = 0; i < 5; i++) {
     await page.keyboard.press('Tab');
@@ -134,7 +134,7 @@ test('a dialog over the welcome takes the keys: Esc closes it, not the welcome',
   }
   await page.keyboard.press('Escape');
   await expect(discard).toHaveCount(0);
-  await expect(page.getByRole('dialog', { name: 'Welcome to Mimar' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Welcome to MIMAR' })).toBeVisible();
 });
 
 test('a length that is too long or too short says so', async ({ page }) => {

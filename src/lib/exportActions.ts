@@ -306,7 +306,7 @@ export function exportIfc() {
   }
   const name = baseName(s.fileName);
   try {
-    const ifc = planToIfc(doc, { wallHeightMm: s.wallHeightMm, name, app: `Mimar ${__APP_VERSION__}` });
+    const ifc = planToIfc(doc, { wallHeightMm: s.wallHeightMm, name, app: `MIMAR ${__APP_VERSION__}` });
     saveBlob(ifc, 'application/x-step', `${name}.ifc`);
   } catch (e) {
     s.setWarning(`The IFC model could not be created. ${String(e)}`);

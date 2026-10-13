@@ -131,7 +131,7 @@ export function MenuBar({ commands, onSearch }: { commands: Command[]; onSearch:
       <div className="flex flex-none items-center gap-2 pr-1 phone:hidden">
         <Mark size={24} />
         <span className="hidden text-[17px] font-[650] tracking-[-0.2px] lg:inline" style={{ fontStretch: '88%' }}>
-          Mimar
+          MIMAR
         </span>
       </div>
       <div ref={barRef} role="menubar" aria-label="Main menu" className="flex flex-none">

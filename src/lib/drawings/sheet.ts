@@ -485,7 +485,7 @@ function frame(src: SheetSource, sheet: Sheet, index: number, count: number): Pr
     t: 'text',
     x: x1 - 2,
     y: bottom - 1.5,
-    text: `Drawn with Mimar ${src.version}`,
+    text: `Drawn with MIMAR ${src.version}`,
     size: 1.8,
     align: 'right',
   });

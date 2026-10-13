@@ -32,7 +32,7 @@ test('draw a wall, add a door, undo and redo', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('opens a plan saved by Mimar 1.x', async ({ page }) => {
+test('opens a plan saved by MIMAR 1.x', async ({ page }) => {
   await page.addInitScript(() => {
     if (localStorage.getItem('mimar.plan')) return;
     localStorage.setItem(

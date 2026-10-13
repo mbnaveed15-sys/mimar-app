@@ -113,7 +113,7 @@ describe('sheets', () => {
         'GROUND FLOOR PLAN',
         'SECTION A–A',
         'Scale 1:100',
-        'Drawn with Mimar 1.35.0',
+        'Drawn with MIMAR 1.35.0',
       ]),
     );
     // The section is hatched where it is cut (brick walls, concrete slabs: thin lines), or filled solid.

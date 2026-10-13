@@ -1,4 +1,4 @@
-// Puts the Mimar mark (an extruded M) into every logo file, then redraws the PNG icons.
+// Puts the MIMAR mark (an extruded M) into every logo file, then redraws the PNG icons.
 //   node scripts/logo.mjs
 // The same shape is drawn in the app by src/components/Mark.tsx; keep the two in step.
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -59,5 +59,5 @@ async function render(file, out, width, height) {
 }
 await render('public/favicon.svg', 'build/icon.png', 512, 512);
 await render('public/favicon.svg', 'branding/logo/mimar-icon.png', 256, 256);
-await render('branding/logo/mimar-logo.svg', 'branding/logo/mimar-logo.png', 870, 288);
+await render('branding/logo/mimar-logo.svg', 'branding/logo/mimar-logo.png', 1020, 288);
 await browser.close();

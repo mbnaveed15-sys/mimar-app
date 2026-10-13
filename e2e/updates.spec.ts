@@ -31,7 +31,7 @@ const calls = (page: import('@playwright/test').Page) =>
 test('in the browser there are no updates, just the version', async ({ page }) => {
   await page.goto('/');
   const panel = page.getByTestId('update-panel');
-  await expect(panel).toContainText(/Mimar \d+\.\d+\.\d+/);
+  await expect(panel).toContainText(/MIMAR \d+\.\d+\.\d+/);
   await expect(panel.getByRole('button')).toHaveCount(0);
 });
 
@@ -47,7 +47,7 @@ test('installed app: shows download progress, then Restart to update', async ({ 
       percent: 42,
     }),
   );
-  await expect(panel).toContainText('Downloading Mimar 1.8.0 (42%)');
+  await expect(panel).toContainText('Downloading MIMAR 1.8.0 (42%)');
   await page.evaluate(() =>
     (window as unknown as { __pushStatus: (s: object) => void }).__pushStatus({
       state: 'ready',
@@ -63,8 +63,8 @@ test('portable app: offers the download page', async ({ page }) => {
   await fakeDesktop(page, { state: 'available-portable', version: '1.7.0', latest: '1.8.0' });
   await page.goto('/');
   const panel = page.getByTestId('update-panel');
-  await expect(panel).toContainText('Mimar 1.8.0 is available.');
-  await panel.getByRole('button', { name: 'Download Mimar 1.8.0' }).click();
+  await expect(panel).toContainText('MIMAR 1.8.0 is available.');
+  await panel.getByRole('button', { name: 'Download MIMAR 1.8.0' }).click();
   await panel.getByRole('button', { name: 'Check for updates' }).click();
   await expect(panel).toContainText('You have the latest version.');
   expect(await calls(page)).toEqual(['download', 'check']);

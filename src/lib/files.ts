@@ -43,14 +43,14 @@ export function parsePlanFile(text: string): PlanDoc {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new PlanFileError('This file is not a Mimar plan, or it is damaged.');
+    throw new PlanFileError('This file is not a MIMAR plan, or it is damaged.');
   }
   if (typeof data !== 'object' || data === null || (data as { format?: unknown }).format !== 'mimar-plan') {
-    throw new PlanFileError('This file is not a Mimar plan.');
+    throw new PlanFileError('This file is not a MIMAR plan.');
   }
   const { version, doc } = data as { version?: unknown; doc?: unknown };
   if (typeof version === 'number' && version > CURRENT_VERSION) {
-    throw new PlanFileError('This plan was made with a newer version of Mimar. Please update the app.');
+    throw new PlanFileError('This plan was made with a newer version of MIMAR. Please update the app.');
   }
   return normaliseDoc(doc);
 }
@@ -87,7 +87,7 @@ export async function savePlanFile(contents: string, suggestedName: string, path
     try {
       const handle = await picker({
         suggestedName: name,
-        types: [{ description: 'Mimar plan', accept: { 'application/json': [FILE_EXTENSION] } }],
+        types: [{ description: 'MIMAR plan', accept: { 'application/json': [FILE_EXTENSION] } }],
       });
       const writable = await handle.createWritable();
       await writable.write(contents);

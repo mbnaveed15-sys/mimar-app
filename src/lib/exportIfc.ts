@@ -584,7 +584,7 @@ export function planToIfc(doc: PlanDoc, opts: IfcOptions): string {
   }
 
   const time = (opts.time ?? new Date().toISOString()).slice(0, 19);
-  const app = stepString(opts.app ?? 'Mimar');
+  const app = stepString(opts.app ?? 'MIMAR');
   return [
     'ISO-10303-21;',
     'HEADER;',

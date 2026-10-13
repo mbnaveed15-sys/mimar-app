@@ -439,7 +439,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       required:
         authority.id === 'general'
           ? 'Set by the local authority for this kind of building'
-          : `${authority.name}’s figures for ${useName} buildings aren’t in Mimar yet`,
+          : `${authority.name}’s figures for ${useName} buildings aren’t in MIMAR yet`,
       actual: 'Check with the authority',
       status: 'check',
       clause: authority.id === 'general' ? 'General' : clause(authority.setbackClause),
@@ -452,7 +452,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
     rows.push({
       id,
       label,
-      required: 'Not in Mimar’s tables for this authority yet',
+      required: 'Not in MIMAR’s tables for this authority yet',
       actual,
       status: 'check',
       clause: clause(authority.setbackClause),
@@ -484,7 +484,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       rows.push({
         id: 'basement',
         label: 'Basement',
-        required: 'Not in Mimar’s tables for this authority yet',
+        required: 'Not in MIMAR’s tables for this authority yet',
         actual: 'Drawn',
         status: 'check',
         clause: clause(authority.setbackClause),

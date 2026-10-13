@@ -1,4 +1,5 @@
 import { SectionShape } from './shapes/SectionShape';
+import { SCREEN_HATCH_K } from './shapes/Hatching';
 import { useEffect, useMemo, type RefObject } from 'react';
 import { useStore } from 'zustand';
 import { elementOutline, fromFurnitureLocal } from '../geometry';
@@ -270,6 +271,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
             showRoomLabels={false}
             showRoomFills={false}
             k={k}
+            hatchK={SCREEN_HATCH_K}
           />
         </g>
       )}
@@ -285,6 +287,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         showRoomLabels={showRoomLabels}
         showRoomFills={showRoomFills}
         k={k}
+        hatchK={SCREEN_HATCH_K}
         accessibleZones={accessibleZones}
         ground={ground}
         voids={voids}

@@ -4,14 +4,32 @@ import { PLAN } from '../../theme/plan';
 /** Plan units per paper millimetre of hatch, for `k` plan units per screen (or output) pixel: 1 mm is 5 pixels. */
 const PER_MM = 5;
 
+/**
+ * On screen the hatches belong to the drawing, not the screen: they are laid as on a 1:100 print (a pixel is
+ * 0.2 mm of paper, 20 mm or 2 plan units of building), so zooming makes them bigger or smaller with the walls.
+ */
+export const SCREEN_HATCH_K = 2;
+
 const patternId = (uid: string, hatch: Hatch, i: number) => `${uid}-hatch-${hatch}-${i}`;
 
 /**
- * The hatches' patterns, one per family of lines, sized for the screen (or the export's paper). They are laid
+ * The hatches' patterns, one per family of lines, spaced for `size` (the export's paper, or a fixed scale on
+ * screen), their lines a fixed thin width. They are laid
  * from the plan's origin, so hatches on pieces side by side line up.
  */
-export function HatchDefs({ uid, k, hatches }: { uid: string; k: number; hatches: Iterable<Hatch> }) {
-  const s = PER_MM * k;
+export function HatchDefs({
+  uid,
+  k,
+  size = k,
+  hatches,
+}: {
+  uid: string;
+  k: number;
+  /** Plan units per pixel the patterns are spaced for, when not the drawing's own `k` (the screen's fixed scale). */
+  size?: number;
+  hatches: Iterable<Hatch>;
+}) {
+  const s = PER_MM * size;
   return (
     <defs>
       {[...new Set(hatches)].flatMap((hatch) =>

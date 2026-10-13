@@ -175,5 +175,5 @@ test('opening a file that is not a plan shows a clear message', async ({ page })
   const chooser = page.waitForEvent('filechooser');
   await menu(page, 'File', 'Open…');
   await (await chooser).setFiles({ name: 'notes.mimar', mimeType: 'application/json', buffer: Buffer.from('hello') });
-  await expect(page.getByRole('alert')).toContainText('not a Mimar plan');
+  await expect(page.getByRole('alert')).toContainText('not a MIMAR plan');
 });

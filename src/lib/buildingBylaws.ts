@@ -1287,7 +1287,7 @@ const LDA: BuildingBylaws = {
   source: 'LDA Building and Zoning Regulations 2019 (amendments to 28 Jan 2020 and the office order of 28 Oct 2022)',
   areas: LDA_AREAS,
   sqFtPerCar: 250,
-  sqFtPerCarClause: "Mimar (LDA gives only the 8'×16' stall, 5.7.3)",
+  sqFtPerCarClause: "MIMAR (LDA gives only the 8'×16' stall, 5.7.3)",
   usesRoadWidth: true,
   heightWithMumty: false,
   parking: (use, m, limits) => {

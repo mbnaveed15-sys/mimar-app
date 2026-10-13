@@ -36,7 +36,7 @@ describe('storage', () => {
     expect(loadPlan(storage).doc).toEqual(doc);
   });
 
-  it('migrates a plan saved by Mimar 1.x and keeps the old keys', () => {
+  it('migrates a plan saved by MIMAR 1.x and keeps the old keys', () => {
     const legacyElements = JSON.stringify([
       { id: 1700000000001, type: 'wall', x1: 0, y1: 0, x2: 100, y2: 0, material: 'mat_brick' },
       { id: 1700000000002, type: 'door', wallId: 1700000000001, x: 50, y: 0, angle: 0, width: 90 },

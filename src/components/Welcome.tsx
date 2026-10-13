@@ -173,13 +173,13 @@ export function Welcome({
           ref={ref}
           role="dialog"
           aria-modal="true"
-          aria-label="Welcome to Mimar"
+          aria-label="Welcome to MIMAR"
           className="w-full max-w-md rounded-xl border border-line bg-raised p-6 text-ink shadow-popover"
         >
           <div className="flex items-center gap-3">
             <Mark size={52} />
             <div>
-              <h2 className="text-xl font-semibold">Welcome to Mimar</h2>
+              <h2 className="text-xl font-semibold">Welcome to MIMAR</h2>
               <p className="text-sm text-muted">Houses, buildings and studio projects, in 2D and 3D.</p>
             </div>
           </div>

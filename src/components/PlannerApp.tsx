@@ -63,7 +63,7 @@ export default function PlannerApp() {
   const phone = usePhone();
 
   useEffect(() => {
-    document.title = `${dirty ? '• ' : ''}${baseName(fileName)} — Mimar`;
+    document.title = `${dirty ? '• ' : ''}${baseName(fileName)} — MIMAR`;
   }, [fileName, dirty]);
 
   // Replacing the plan asks first when there are unsaved changes.

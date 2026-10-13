@@ -11,7 +11,7 @@ describe('plan files', () => {
 
   it.each([
     ['not json', 'damaged'],
-    ['{"hello": 1}', 'not a Mimar plan'],
+    ['{"hello": 1}', 'not a MIMAR plan'],
     ['{"format": "mimar-plan", "version": 99, "doc": {}}', 'newer version'],
   ])('rejects %s', (text, message) => {
     expect(() => parsePlanFile(text)).toThrow(PlanFileError);
