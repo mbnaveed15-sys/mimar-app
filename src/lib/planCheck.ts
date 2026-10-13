@@ -4,7 +4,18 @@
  */
 import { elementOutline, pointInPolygon, pointToSegmentDistance } from '../geometry';
 import { roofTopMm } from './roof/roof';
-import { CDA_ROOMS, GENERAL, plotRule, plotSetbacks, roomRuleFor, type Authority, type PlotRule } from './bylaws';
+import {
+  CDA_ROOMS,
+  GENERAL,
+  plotRule,
+  plotSetbacks,
+  roomRuleFor,
+  withTyped,
+  type Authority,
+  type MumtyRule,
+  type PlotRule,
+} from './bylaws';
+import { buildingPlotRule, buildingRuleFor, type BuildingRule } from './buildingBylaws';
 import { MM_PER_UNIT } from './scale';
 import { isCornerPlot, leftRightOf, outlinePoints, plotSides, sideLine, sideSetbacks, SIDE_KIND_NAMES } from './plot';
 import { distanceToWall } from './arc';
@@ -57,9 +68,11 @@ export interface PlanCheck {
   rows: CheckRow[];
   /** What the figures are, under the authority's name (the table row, or why there is none). */
   note: string;
+  /** A building's rule under its authority, where Mimar has one: its rows are added in `fullCheck.ts`. */
+  building?: BuildingRule;
 }
 
-const SQ_MM_PER_SQ_FT = 92903.04;
+export const SQ_MM_PER_SQ_FT = 92903.04;
 const TOLERANCE = 1; // plan units (10 mm)
 const BUILT_KINDS = (w: Wall) => isBuildingWall(w) || w.kind === 'retaining';
 
@@ -147,8 +160,47 @@ export function mumtyLevelIds(doc: PlanDoc): Set<string> {
   );
 }
 
+/** What is built: everything shown but the plot and layout lines. */
+export const builtElements = (doc: PlanDoc) =>
+  doc.elements.filter((el) => !el.hidden && el.type !== 'plot' && el.type !== 'line');
+
+/** The storeys: floors with ordinary walls, not basements or the mumty. */
+export function storeyLevelIds(doc: PlanDoc): string[] {
+  const built = builtElements(doc);
+  const mumtys = mumtyLevelIds(doc);
+  return doc.levels
+    .filter(
+      (l) =>
+        !l.basement &&
+        !mumtys.has(l.id) &&
+        built.some((el) => el.type === 'wall' && BUILT_KINDS(el) && levelOf(el) === l.id),
+    )
+    .map((l) => l.id);
+}
+
+/** Rooms that aren't counted in a building's floor area: parking and lift wells. */
+export const PARKING_ROOM = /parking|car ?park|garage/i;
+export const NOT_FLOOR_AREA = new RegExp(`${PARKING_ROOM.source}|lift|elevator`, 'i');
+
+/**
+ * The floor area for the FAR (sq ft): every floor's covered area, without the mumty, and without
+ * basements unless they count. A building leaves out its parking and lift wells too.
+ */
+export function floorAreaSqFt(doc: PlanDoc, withBasement: boolean, leaveOut?: RegExp): number {
+  const mumtys = mumtyLevelIds(doc);
+  let total = 0;
+  for (const l of doc.levels) {
+    if (mumtys.has(l.id) || (l.basement && !withBasement)) continue;
+    total += builtAreaSqFt(doc, l.id);
+    if (leaveOut)
+      for (const r of doc.rooms)
+        if (!r.hidden && levelOf(r) === l.id && leaveOut.test(r.name)) total -= roomAreaSqMm(r) / SQ_MM_PER_SQ_FT;
+  }
+  return Math.max(0, total);
+}
+
 /** A box's two sides (plan units): the shorter first. */
-function boxSides(pts: Point[]): [number, number] {
+export function boxSides(pts: Point[]): [number, number] {
   const xs = pts.map((p) => p.x);
   const ys = pts.map((p) => p.y);
   const w = Math.max(...xs) - Math.min(...xs);
@@ -156,8 +208,8 @@ function boxSides(pts: Point[]): [number, number] {
   return w < h ? [w, h] : [h, w];
 }
 
-const pct = (v: number) => `${Math.round(v)}%`;
-const sqft = (v: number) => `${Math.round(v).toLocaleString('en-US')} sq ft`;
+export const pct = (v: number) => `${Math.round(v)}%`;
+export const sqft = (v: number) => `${Math.round(v).toLocaleString('en-US')} sq ft`;
 
 /**
  * Check the plan against the first plot that has bylaws, or else the first plot's own setbacks
@@ -175,18 +227,23 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
   const plot = plots.find((el) => !!plotRule(el)) ?? plots[0];
   const found = plot ? plotRule(plot) : null;
   const authority = found?.authority ?? GENERAL;
-  const rule = building ? null : (found?.rule ?? null);
+  // A building under an authority Mimar has building bylaws for: the area's limits.
+  const buildingRule =
+    building && plot ? buildingRuleFor(plot, project.use ?? 'other', storeyLevelIds(doc).length) : null;
+  const rule = building ? (buildingRule ? buildingPlotRule(buildingRule) : null) : (found?.rule ?? null);
   const len = (mm: number) => formatLength(mm, ctx.units);
   const rows: CheckRow[] = [];
   const clause = (c: string) => (c === 'summary' ? 'Summary (provisional)' : c);
   const useName = (BUILDING_USES.find((u) => u.id === (project.use ?? 'other'))?.label ?? 'Other').toLowerCase();
-  const note = building
-    ? `A ${useName} building: its plot’s own setbacks, and the national fire and access codes`
-    : !found
-      ? 'The plot’s own setbacks'
-      : rule
-        ? rule.label
-        : 'No row of the table fits this plot: its own setbacks are used';
+  const note = buildingRule
+    ? `${buildingRule.area.label}: ${buildingRule.limits.label}`
+    : building
+      ? `A ${useName} building: its plot’s own setbacks, and the national fire and access codes`
+      : !found
+        ? 'The plot’s own setbacks'
+        : rule
+          ? rule.label
+          : 'No row of the table fits this plot: its own setbacks are used';
 
   if (!plot) {
     if (!building) return null;
@@ -215,12 +272,17 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
     // Without a table row (or for a building), the plot's own setbacks as typed.
     let ruled: Plot = plot;
     if (rule) {
-      const fromRule = plotSetbacks(rule);
-      const swapped = plotSetbacks(rule, true);
+      const options = [plotSetbacks(rule), plotSetbacks(rule, true)];
+      if (rule.altSides) {
+        const alt = { ...rule, setbacks: { ...rule.setbacks, side1: rule.altSides[0], side2: rule.altSides[1] } };
+        options.push(plotSetbacks(alt), plotSetbacks(alt, true));
+      }
       const matches = (a: Plot['setbacks']) =>
         Math.abs(a.sides - plot.setbacks.sides) < 1 &&
         Math.abs((a.side2 ?? 0) - (plot.setbacks.side2 ?? plot.setbacks.sides)) < 1;
-      const setbacks = matches(swapped) && !matches(fromRule) ? swapped : fromRule;
+      const picked = options.find(matches) ?? options[0];
+      // Where the authority leaves a side to the plot (or sets it case by case), the one typed for the plot.
+      const setbacks = withTyped(picked, rule, plot);
       // The bylaws' setbacks on every side, whatever was typed for a side.
       ruled = {
         ...plot,
@@ -244,10 +306,14 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       else soft.push(el.id);
     }
     const own = leftRightOf(plot);
+    const side = (mm: number) => (mm ? len(mm) : '–');
     const required = rule
-      ? `Front ${len(rule.setbacks.front)}, rear ${len(rule.setbacks.rear)}, sides ${rule.setbacks.side1 ? len(rule.setbacks.side1) : '–'} / ${rule.setbacks.side2 ? len(rule.setbacks.side2) : '–'}`
+      ? `Front ${rule.frontAsTyped ? `${len(plot.setbacks.front)} as typed` : len(rule.setbacks.front)}, rear ${rule.rearAsTyped ? `${len(plot.setbacks.rear)} as typed` : len(rule.setbacks.rear)}, sides ${rule.sidesAsTyped ? `${len(own.left)} / ${len(own.right)} as typed` : `${side(rule.setbacks.side1)} / ${side(rule.setbacks.side2)}`}${rule.altSides ? ` (or ${side(rule.altSides[0])} / ${side(rule.altSides[1])})` : ''}`
       : `The plot’s own: front ${len(plot.setbacks.front)}, rear ${len(plot.setbacks.rear)}, left ${len(own.left)}, right ${len(own.right)}`;
-    const setbackClause = rule ? clause(authority.setbackClause) : 'Plot’s own';
+    const ruleClause = buildingRule
+      ? (buildingRule.limits.setbacksClause ?? buildingRule.limits.clause)
+      : authority.setbackClause;
+    const setbackClause = rule ? clause(ruleClause) : 'Plot’s own';
     rows.push({
       id: 'setbacks',
       label: 'Setbacks',
@@ -260,6 +326,15 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       ids: hard,
     });
     rows.push(...sideRows(doc, ruled, len, setbackClause));
+    if (rule?.frontAsTyped)
+      rows.push({
+        id: 'building-line',
+        label: 'Building line',
+        required: rule.frontAsTyped.replace(/\.$/, ''),
+        actual: `Front setback typed: ${len(plot.setbacks.front)}`,
+        status: 'check',
+        clause: setbackClause,
+      });
     if (soft.length)
       rows.push({
         id: 'setback-items',
@@ -272,7 +347,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       });
 
     // Projections (chajjas, ledges) that reach into the setbacks.
-    if (rule && authority.projection) {
+    if (rule && !building && authority.projection) {
       const max = authority.projection.maxMm;
       const deep = doc.elements.filter((el) => el.type === 'window' && el.flat && (el.depthMm ?? 0) > max);
       if (doc.elements.some((el) => el.type === 'window' && el.flat && (el.depthMm ?? 0) > 0))
@@ -298,7 +373,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       });
   }
 
-  if (rule) {
+  if (rule && !building) {
     const plotSqFt = plotAreaSqFt(plot);
     const ground = GROUND_LEVEL;
     const groundSqFt = builtAreaSqFt(doc, ground);
@@ -326,6 +401,19 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
         clause: clause(authority.setbackClause),
       });
     }
+    if (rule.far !== undefined && plotSqFt > 0) {
+      const withBasement = authority.far?.withBasement ?? false;
+      const total = floorAreaSqFt(doc, withBasement);
+      if (total > 0)
+        rows.push({
+          id: 'far',
+          label: 'Floor area ratio (FAR)',
+          required: `At most 1:${rule.far} (${sqft(plotSqFt * rule.far)} of floors${withBasement ? ', the basement included' : ''})`,
+          actual: `About 1:${(total / plotSqFt).toFixed(2)} (${sqft(total)})`,
+          status: total <= plotSqFt * rule.far + 0.5 ? 'ok' : 'fail',
+          clause: clause(authority.far?.clause ?? authority.setbackClause),
+        });
+    }
     if (rule.plinthMm !== undefined)
       rows.push({
         id: 'plinth',
@@ -338,6 +426,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
   }
 
   if (building) {
+    if (buildingRule) return { authority, rule, plot, rows, note, building: buildingRule };
     rows.push({
       id: 'building-bylaws',
       label: 'Height, coverage and parking',
@@ -364,15 +453,10 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
     });
 
   // Storeys and height: floors that have ordinary walls, and the top of everything built.
-  const built = doc.elements.filter((el) => !el.hidden && el.type !== 'plot' && el.type !== 'line');
+  const built = builtElements(doc);
   const mumtys = mumtyLevelIds(doc);
   // A basement isn't a storey.
-  const storeyLevels = doc.levels.filter(
-    (l) =>
-      !l.basement &&
-      !mumtys.has(l.id) &&
-      built.some((el) => el.type === 'wall' && BUILT_KINDS(el) && levelOf(el) === l.id),
-  );
+  const storeyLevels = storeyLevelIds(doc);
   if (!authority.storeys && storeyLevels.length) missing('storeys', 'Storeys', String(storeyLevels.length));
   if (authority.storeys && storeyLevels.length)
     rows.push({
@@ -438,21 +522,23 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
     }
   }
 
-  const withMumty = authority.height?.withMumty !== false;
+  // The table row's height where it goes by plot size (LDA), else the authority's.
+  const height = authority.height && rule?.heightMm ? { ...authority.height, maxMm: rule.heightMm } : authority.height;
+  const withMumty = height?.withMumty !== false;
   const topMm = buildingTopMm(
     doc,
     withMumty ? built : built.filter((el) => !mumtys.has(levelOf(el))),
     ctx.wallHeightMm,
   );
-  if (!authority.height && topMm > 0) missing('height', 'Height', `About ${len(topMm)} from the ground`);
-  if (authority.height && topMm > 0)
+  if (!height && topMm > 0) missing('height', 'Height', `About ${len(topMm)} from the ground`);
+  if (height && topMm > 0)
     rows.push({
       id: 'height',
       label: 'Height',
-      required: `At most ${len(authority.height.maxMm)}${authority.height.note ? ` (${authority.height.note.replace(/\.$/, '').toLowerCase()})` : ''}`,
+      required: `At most ${len(height.maxMm)}${height.note ? ` (${height.note.replace(/\.$/, '').toLowerCase()})` : ''}`,
       actual: `About ${len(topMm)} from the ground${mumtys.size && !withMumty ? ', without the mumty' : ''}`,
-      status: topMm <= authority.height.maxMm + 1 ? 'ok' : 'fail',
-      clause: clause(authority.height.clause),
+      status: topMm <= height.maxMm + 1 ? 'ok' : 'fail',
+      clause: clause(height.clause),
     });
 
   // Boundary walls.
@@ -512,65 +598,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
   }
 
   // The mumty (stair tower) on the roof.
-  const mumtyWalls = built.filter((el): el is Wall => el.type === 'wall' && BUILT_KINDS(el) && mumtys.has(levelOf(el)));
-  if (authority.mumty && mumtyWalls.length) {
-    const { area, height, widthShare } = authority.mumty;
-    const ids = mumtyWalls.map((w) => w.id);
-    if (area) {
-      const plotSqFt = plotAreaSqFt(plot);
-      const buildableSqFt = rule ? polygonSqFt(buildableArea({ ...plot, setbacks: plotSetbacks(rule) })) : plotSqFt;
-      const max = area.maxSqFt({ plotSqFt, buildableSqFt });
-      // Its covered area, out to the outer faces of its walls.
-      const has = [...mumtys].reduce((sum, id) => sum + builtAreaSqFt(doc, id), 0);
-      rows.push({
-        id: 'mumty-area',
-        label: 'Mumty area',
-        required: `At most ${sqft(max)} (${area.rule})`,
-        actual: `About ${sqft(has)}`,
-        status: has <= max + 0.5 ? 'ok' : 'fail',
-        clause: clause(area.clause),
-        ids: has <= max + 0.5 ? [] : ids,
-      });
-    }
-    if (height) {
-      const wallOf = (w: Wall) => w.heightMm ?? levelWallMm(doc, levelOf(w), ctx.wallHeightMm);
-      const tall = mumtyWalls.filter((w) => wallOf(w) + slabMm(doc) > height.maxMm + 1);
-      const top = Math.max(...mumtyWalls.map((w) => wallOf(w) + slabMm(doc)));
-      rows.push({
-        id: 'mumty-height',
-        label: 'Mumty height',
-        required: `At most ${len(height.maxMm)} above the roof`,
-        actual: `About ${len(top)} with its roof slab`,
-        status: tall.length ? 'fail' : 'ok',
-        clause: clause(height.clause),
-        ids: tall.map((w) => w.id),
-      });
-    }
-    if (widthShare) {
-      const a = plot.points[plot.front % plot.points.length];
-      const b = plot.points[(plot.front + 1) % plot.points.length];
-      const along = { x: b.x - a.x, y: b.y - a.y };
-      const l = Math.hypot(along.x, along.y) || 1;
-      const u = { x: along.x / l, y: along.y / l };
-      // The plot's average width along the road: its area over its depth from the road.
-      const outline = outlinePoints(plot);
-      const depths = outline.map((p) => (p.x - a.x) * u.y - (p.y - a.y) * u.x);
-      const depth = Math.max(...depths) - Math.min(...depths) || 1;
-      const avg = polygonArea(outline) / depth;
-      const proj = mumtyWalls.flatMap((w) => wallCorners(w)).map((p) => p.x * u.x + p.y * u.y);
-      const width = Math.max(...proj) - Math.min(...proj);
-      const max = avg * widthShare.share;
-      rows.push({
-        id: 'mumty-width',
-        label: 'Mumty width',
-        required: `At most ${len(max * MM_PER_UNIT)} (half the plot's width)`,
-        actual: `About ${len(width * MM_PER_UNIT)} along the road`,
-        status: width <= max + TOLERANCE ? 'ok' : 'fail',
-        clause: clause(widthShare.clause),
-        ids: width <= max + TOLERANCE ? [] : ids,
-      });
-    }
-  }
+  if (authority.mumty) rows.push(...mumtyRows(doc, plot, rule, authority.mumty, ctx.wallHeightMm, len, clause));
 
   // Car porches, by the rooms named so on the ground floor.
   if (authority.carPorch) {
@@ -619,6 +647,80 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
   return { authority, rule, plot, rows, note };
 }
 
+/** The mumty's rows: its area, height and width, against its limits. */
+export function mumtyRows(
+  doc: PlanDoc,
+  plot: Plot,
+  rule: PlotRule | null,
+  mumty: MumtyRule,
+  wallHeightMm: number,
+  len: (mm: number) => string,
+  clause: (c: string) => string = (c) => c,
+): CheckRow[] {
+  const rows: CheckRow[] = [];
+  const mumtys = mumtyLevelIds(doc);
+  const built = builtElements(doc);
+  const mumtyWalls = built.filter((el): el is Wall => el.type === 'wall' && BUILT_KINDS(el) && mumtys.has(levelOf(el)));
+  if (!mumtyWalls.length) return [];
+  const { area, height, widthShare } = mumty;
+  const ids = mumtyWalls.map((w) => w.id);
+  if (area) {
+    const plotSqFt = plotAreaSqFt(plot);
+    const buildableSqFt = rule ? polygonSqFt(buildableArea({ ...plot, setbacks: plotSetbacks(rule) })) : plotSqFt;
+    const max = area.maxSqFt({ plotSqFt, buildableSqFt });
+    // Its covered area, out to the outer faces of its walls.
+    const has = [...mumtys].reduce((sum, id) => sum + builtAreaSqFt(doc, id), 0);
+    rows.push({
+      id: 'mumty-area',
+      label: 'Mumty area',
+      required: `At most ${sqft(max)} (${area.rule})`,
+      actual: `About ${sqft(has)}`,
+      status: has <= max + 0.5 ? 'ok' : 'fail',
+      clause: clause(area.clause),
+      ids: has <= max + 0.5 ? [] : ids,
+    });
+  }
+  if (height) {
+    const wallOf = (w: Wall) => w.heightMm ?? levelWallMm(doc, levelOf(w), wallHeightMm);
+    const tall = mumtyWalls.filter((w) => wallOf(w) + slabMm(doc) > height.maxMm + 1);
+    const top = Math.max(...mumtyWalls.map((w) => wallOf(w) + slabMm(doc)));
+    rows.push({
+      id: 'mumty-height',
+      label: 'Mumty height',
+      required: `At most ${len(height.maxMm)} above the roof`,
+      actual: `About ${len(top)} with its roof slab`,
+      status: tall.length ? 'fail' : 'ok',
+      clause: clause(height.clause),
+      ids: tall.map((w) => w.id),
+    });
+  }
+  if (widthShare) {
+    const a = plot.points[plot.front % plot.points.length];
+    const b = plot.points[(plot.front + 1) % plot.points.length];
+    const along = { x: b.x - a.x, y: b.y - a.y };
+    const l = Math.hypot(along.x, along.y) || 1;
+    const u = { x: along.x / l, y: along.y / l };
+    // The plot's average width along the road: its area over its depth from the road.
+    const outline = outlinePoints(plot);
+    const depths = outline.map((p) => (p.x - a.x) * u.y - (p.y - a.y) * u.x);
+    const depth = Math.max(...depths) - Math.min(...depths) || 1;
+    const avg = polygonArea(outline) / depth;
+    const proj = mumtyWalls.flatMap((w) => wallCorners(w)).map((p) => p.x * u.x + p.y * u.y);
+    const width = Math.max(...proj) - Math.min(...proj);
+    const max = avg * widthShare.share;
+    rows.push({
+      id: 'mumty-width',
+      label: 'Mumty width',
+      required: `At most ${len(max * MM_PER_UNIT)} (half the plot's width)`,
+      actual: `About ${len(width * MM_PER_UNIT)} along the road`,
+      status: width <= max + TOLERANCE ? 'ok' : 'fail',
+      clause: clause(widthShare.clause),
+      ids: width <= max + TOLERANCE ? [] : ids,
+    });
+  }
+  return rows;
+}
+
 /** The outline an item takes up on the plan, for the setback check (null for things that don't count). */
 function itemOutline(el: PlanElement): Point[] | null {
   switch (el.type) {
@@ -637,7 +739,7 @@ function itemOutline(el: PlanElement): Point[] | null {
 }
 
 const polygonSqFt = (pts: Point[]) => (polygonArea(pts) * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
-const plotAreaSqFt = (plot: Plot) => polygonSqFt(outlinePoints(plot));
+export const plotAreaSqFt = (plot: Plot) => polygonSqFt(outlinePoints(plot));
 
 /**
  * One row per side of the plot, from the road going round: its setback, and how far the nearest
@@ -687,7 +789,7 @@ function sideRows(doc: PlanDoc, plot: Plot, len: (mm: number) => string, clause:
 }
 
 /** How high the top of the building is above the ground (mm): walls, slabs and blocks. */
-function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: number): number {
+export function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: number): number {
   let top = 0;
   for (const el of built) {
     const base = levelBaseM(doc, levelOf(el), wallHeightMm) * 1000 + (el.elevMm ?? 0);

@@ -273,6 +273,10 @@ export interface Plot extends Grouped {
   splay?: { sizeMm: number; wallId?: Id };
   /** The authority whose bylaws apply (setbacks and the plan check). */
   authority?: AuthorityId;
+  /** A building's area under its authority (a CDA Markaz, DHA main commercial, an LDA commercial road…). */
+  bylawArea?: string;
+  /** The main road's width (right of way), mm: LDA's limits and some CDA areas go by it. */
+  roadWidthMm?: number;
   material?: Id;
 }
 

@@ -1,4 +1,4 @@
-import { plotRule } from '../lib/bylaws';
+import { appliedRule } from '../lib/buildingCheck';
 import { runLength } from '../lib/arc';
 import {
   isCornerPlot,
@@ -37,7 +37,8 @@ export function PlotSidesPanel({ plot }: { plot: Plot }) {
   const n = plot.points.length;
   const order = Array.from({ length: n }, (_, k) => (plot.front + k) % n);
   const len = (mm: number) => formatLength(mm, units);
-  const hasBylaws = !!plotRule(plot)?.rule;
+  const doc = usePlanner((s) => s.doc);
+  const hasBylaws = !!appliedRule(doc, plot);
   const linked = sides.some((s) => s.wallId) || !!plot.splay?.wallId;
   const gatesOn = (wallId: string | undefined) =>
     wallId ? elements.filter((el) => el.type === 'door' && el.gate && el.wallId === wallId).length : 0;

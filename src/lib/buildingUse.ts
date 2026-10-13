@@ -104,7 +104,7 @@ const PRAYER_HALL =
   /(prayer|banquet|wedding|marriage|main|function|dining|assembly|sports|exam|community|lecture) hall/i;
 const TOILET = /toilet|\bwc\b|wash|bath/i;
 const ACCESSIBLE = /accessible|disabled|wheelchair|\bada\b/i;
-const LIFT = /lift|elevator/i;
+export const LIFT = /lift|elevator/i;
 
 /** How many people a room holds by its name and the building's use. */
 export function occupantsOf(room: Pick<Room, 'name' | 'points'>, use: BuildingUse): number {

@@ -49,9 +49,10 @@ export const STORAGE_KEY = 'mimar.plan';
  * 4 added groups and components; 5 added levels, columns, beams and slabs; 9 section lines and sheets;
  * 10 the ground; 11 curved and glass walls, pitched roofs and double-height rooms; 12 curved layout lines;
  * 13 curved and spiral stairs, and curved edges on slabs, levelled areas and plots; 14 furniture for
- * every kind of building, and more building uses; 15 dimensions and curved slab voids.
+ * every kind of building, and more building uses; 15 dimensions and curved slab voids; 16 a plot's
+ * bylaw area and road width, and LDA's built-up and open areas.
  */
-export const CURRENT_VERSION = 15;
+export const CURRENT_VERSION = 16;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -437,6 +438,10 @@ function normaliseElement(raw: unknown): PlanElement | null {
         },
         ...extras,
         ...(authorityById(raw.authority as string) ? { authority: raw.authority as AuthorityId } : {}),
+        ...(typeof raw.bylawArea === 'string' && raw.bylawArea ? { bylawArea: raw.bylawArea } : {}),
+        ...(typeof raw.roadWidthMm === 'number' && Number.isFinite(raw.roadWidthMm) && raw.roadWidthMm > 0
+          ? { roadWidthMm: raw.roadWidthMm }
+          : {}),
       };
     }
     case 'stair': {
