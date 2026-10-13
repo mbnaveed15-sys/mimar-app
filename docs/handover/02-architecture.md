@@ -141,6 +141,17 @@ autosaves to local storage on every change.
   `model.ts`). `src/lib/itemShape.ts` `visibleShapes` (what the setback check and its marks use). Push/Pull snaps to
   corners through `Picker3D.cornerAt`. Stairwells: `stairOpenings`, `slabVoids`, `floorVoids` in `voids.ts`, computed
   live (not stored) and used by the model, drawings, exports and quantities. Format 18.
+- Editing, plinth and zones (1.49): `src/lib/roomGrips.ts` (`wallEndsAt`, `dragRoomCorner`: room corner grips move the
+  wall ends within ¾ of a wall's thickness of the corner, then `detectRoom` finds each room sharing it again). Corner
+  grips `corner-rb|rt|lb|lt` (`cornerGrips`, `dragCorner` in `resize.ts`, furniture and straight stairs) and beam
+  `beam-width-*` grips in `Canvas.tsx` / `usePlanInput.ts`. `snapToFurniture` (`furnitureSnap.ts`) through
+  `snapFurniture` (`furnitureTool.ts`). `SharedPanel.tsx` with store `editElements(ids, fn)` (one undo step, openings
+  re-attached). `mirrorItems` regroups whole groups. `src/lib/plinth.ts`: `plinthProjectMm`, `plinthMaterialOf`,
+  `plinthWalls` (used by `model.ts`), `plinthOutlines` (plan in `PlanDrawing.tsx`, DXF `A-WALL-PLIN`), `plinthAt`
+  (2D select and erase); `Wall.plinthProjectMm`, `Wall.plinthMaterial`, store `setWallPlinthOwn`. `doorSwingAreas`
+  (`openingPlace.ts`) in `blockedZones`. `src/lib/roomMinimums.ts` (`ROOM_MINIMUMS`, `minimumOf`, `narrowWidth`,
+  `PASSAGE`) used by `planHints` for houses. 3D zone tint in `drawOverlay` (`Plan3DView.tsx`); pref `pdfZones` →
+  `PlanDrawing` `showZones`. `CameraRig.turnAbout` for the twist. Format 19.
   `levelBaseM` puts floors below the ground floor at the plinth less a slab and their height. Wall kind
   `'retaining'` (`WallKind` in `types.ts`; `KIND_HEIGHT_MM`, `RETAINING_MM` in the store); `addRetainingWalls`
   builds them from `outsideOutline` (`src/lib/outline.ts`: the walls' outside faces from `wallFaces(walls, true)`,

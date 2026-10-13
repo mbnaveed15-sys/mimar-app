@@ -137,7 +137,7 @@ export function SettingsPanel() {
           data-testid="pdf-zones"
           onChange={(e) => setLayer('pdfZones', e.target.checked)}
         />
-        Show furniture use zones in PDF and PNG exports
+        Print furniture use zones in PDF and PNG exports
       </label>
       <label className="flex items-center gap-2">
         <input
