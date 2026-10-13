@@ -171,9 +171,9 @@ export function exportSheetsPdf() {
         (levelId) => levelContent(s, shown, levelId),
         pdfExtras(),
         `${baseName(s.fileName)} - Drawings.pdf`,
-        (w, h) =>
+        (w, h, camera) =>
           import('../three/picture').then((m) =>
-            m.renderPicture(shown, { wallHeightMm: s.wallHeightMm, showFurniture: s.showFurniture }, w, h),
+            m.renderPicture(shown, { wallHeightMm: s.wallHeightMm, showFurniture: s.showFurniture }, w, h, camera),
           ),
       );
     })
@@ -191,7 +191,12 @@ export async function exportDrawingsDxf() {
   const s = plannerStore.getState();
   const { drawingSource } = await import('./drawings/source');
   const src = drawingSource(s);
-  const refs: DrawingRef[] = [...sideDrawingRefs(src.doc), { kind: 'view3d', style: 'iso' }];
+  const refs: DrawingRef[] = [
+    ...sideDrawingRefs(src.doc),
+    { kind: 'view3d', style: 'iso' },
+    // Saved 3D views, in lines.
+    ...(src.doc.views ?? []).filter((v) => v.kind === '3d').map((v): DrawingRef => ({ kind: 'view', id: v.id })),
+  ];
   const drawings = refs.map((ref) => src.side(ref)).filter((d): d is SideDrawing => !!d?.bounds);
   if (!drawings.length) {
     s.setWarning('There is nothing to draw yet: draw some walls first.');

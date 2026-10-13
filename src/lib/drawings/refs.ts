@@ -2,7 +2,19 @@
  * Which sections and elevations a plan has, their names and keys, and which way each section looks.
  * Light (no geometry), so the store and the plan can use it without loading the drawing code.
  */
-import type { DrawingRef, ElevationSide, PlanDoc, SectionLine, View3dStyle } from '../../types';
+import type { DrawingRef, ElevationSide, PlanDoc, SavedView, SectionLine, View3dStyle } from '../../types';
+
+/** A saved view by its id (null when it has been deleted). */
+export const savedView = (doc: Pick<PlanDoc, 'views'>, id: string): SavedView | null =>
+  doc.views?.find((v) => v.id === id) ?? null;
+
+/** Which way a saved 3D camera looks along the ground (scene x, z), and how far down (radians). */
+export function cameraLook(c: { azimuth: number; elevation: number }): {
+  look: { x: number; z: number };
+  tilt: number;
+} {
+  return { look: { x: -Math.sin(c.azimuth), z: -Math.cos(c.azimuth) }, tilt: c.elevation };
+}
 
 export const ELEVATION_SIDES: ElevationSide[] = ['front', 'back', 'left', 'right'];
 
@@ -25,6 +37,7 @@ export function drawingKey(ref: DrawingRef): string {
   if (ref.kind === 'plan') return `plan:${ref.levelId}`;
   if (ref.kind === 'section') return `section:${ref.id}`;
   if (ref.kind === 'view3d') return `view3d:${ref.style}`;
+  if (ref.kind === 'view') return ref.style ? `view:${ref.id}:${ref.style}` : `view:${ref.id}`;
   return `elevation:${ref.side}`;
 }
 
@@ -36,6 +49,12 @@ export function drawingFromKey(key: string): DrawingRef | null {
     return { kind: 'elevation', side: rest as ElevationSide };
   if (kind === 'view3d' && VIEW3D_STYLES.includes(rest as View3dStyle))
     return { kind: 'view3d', style: rest as View3dStyle };
+  if (kind === 'view' && rest) {
+    const [id, style] = rest.split(':');
+    return VIEW3D_STYLES.includes(style as View3dStyle)
+      ? { kind: 'view', id, style: style as View3dStyle }
+      : { kind: 'view', id };
+  }
   return null;
 }
 
@@ -86,5 +105,6 @@ export function drawingTitle(doc: PlanDoc, ref: DrawingRef): string | null {
     return line ? sectionTitle(line) : null;
   }
   if (ref.kind === 'view3d') return VIEW3D_NAMES[ref.style];
+  if (ref.kind === 'view') return savedView(doc, ref.id)?.name ?? null;
   return ELEVATION_NAMES[ref.side];
 }

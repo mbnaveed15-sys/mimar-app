@@ -513,6 +513,24 @@ export function buildCommands(ctx: CommandContext): Command[] {
       },
     })),
     {
+      id: 'view.save2d',
+      label: 'Save plan view',
+      menu: 'view',
+      group: 1.6,
+      run: () => {
+        if (st().view3d && !st().split) st().setView3d(false);
+        st().saveView('plan');
+      },
+    },
+    {
+      id: 'view.save3d',
+      label: 'Save 3D view',
+      menu: 'view',
+      group: 1.6,
+      run: () => st().saveView('3d'),
+      enabled: (s) => s.view3d || s.split,
+    },
+    {
       id: 'view.parallel',
       label: 'Parallel projection',
       menu: 'view',

@@ -2,13 +2,7 @@ import type { Bounds, PaperSize } from '../types';
 import { downloadUrl, padBounds, renderPlan } from './exportPng';
 import type { PlanImageContent } from './planImage';
 import { MM_PER_UNIT } from './scale';
-
-/** Landscape paper sizes in millimetres. */
-export const PAPER_MM: Record<PaperSize, { w: number; h: number }> = {
-  A4: { w: 297, h: 210 },
-  A3: { w: 420, h: 297 },
-  A1: { w: 841, h: 594 },
-};
+import { paperMm } from './paper';
 
 /** Architectural scales, from most to least detailed. */
 export const STANDARD_SCALES = [20, 50, 100, 200, 250, 500, 1000, 2000, 5000];
@@ -231,7 +225,7 @@ export async function exportPdf(content: PlanImageContent, area: Bounds, details
 
   // Portrait suits plans that are taller than they are wide.
   const landscape = planW >= planH;
-  const paper = PAPER_MM[details.paper];
+  const paper = paperMm({ paper: details.paper });
   const pageW = landscape ? paper.w : paper.h;
   const pageH = landscape ? paper.h : paper.w;
   const spaceW = pageW - 2 * MARGIN;
@@ -253,7 +247,7 @@ export async function exportPdf(content: PlanImageContent, area: Bounds, details
   const pdf = new jsPDF({
     orientation: landscape ? 'landscape' : 'portrait',
     unit: 'mm',
-    format: details.paper.toLowerCase(),
+    format: [paper.w, paper.h],
   });
   pdf.setProperties({ title: details.title, creator: `Mimar ${details.version}` });
   const x = MARGIN + (spaceW - drawW) / 2;

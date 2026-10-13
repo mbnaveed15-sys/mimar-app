@@ -74,7 +74,7 @@ export function RunFields({
       <div className="text-muted">
         {run.from || run.to
           ? 'Its joined ends follow their items when they move.'
-          : 'Not joined to an item: drag an end onto one, or draw it again from the item.'}
+          : 'Not joined to an item: draw it again starting on the item to join it.'}
       </div>
     </>
   );

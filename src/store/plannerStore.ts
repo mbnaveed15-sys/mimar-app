@@ -96,6 +96,7 @@ import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from
 import { clampGap, type Hand } from '../lib/openingPlace';
 import { besideOpening, loneOpenings, nounOf, openingAt, refitOpening, tidy } from './openingAt';
 import { setActivePicker } from '../three/picker';
+import { getViewControls, requestCamera } from '../three/viewControls';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SITE_LEVEL } from '../types';
 import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
@@ -129,6 +130,7 @@ import type {
   MarlaSqFt,
   Material,
   PaperSize,
+  SavedView,
   PlanDoc,
   DrawingStyle,
   PlanElement,
@@ -540,6 +542,12 @@ export interface PlannerState {
   showDrawing: (key?: string) => void;
   /** Keep these drawing sheets in the plan (none: go back to the suggested set). */
   setSheets: (sheets: Sheet[] | undefined) => void;
+  /** Change the saved views (rename, delete). */
+  setViews: (views: SavedView[]) => void;
+  /** Save what the plan (the part of the floor on screen) or the 3D view (its camera) shows, by a new name. */
+  saveView: (kind: 'plan' | '3d') => SavedView | null;
+  /** Go back to a saved view: its floor and part of the plan, or its 3D camera. */
+  goToView: (id: Id) => void;
   /** Text typed into the Measurements box, not yet applied. */
   measureText: string;
   /** What the pointer snapped to, shown as a coloured marker. */
@@ -2773,6 +2781,53 @@ export function createPlannerStore(
         if (split === get().split && !get().drawing) return;
         abandonDraft();
         set({ split, drawing: null, draft: null, inference: null, measureText: '', axisLock: null, shiftLock: null });
+      },
+      setViews: (views) =>
+        get().commit((doc) => {
+          const next: PlanDoc = { ...doc, views };
+          if (!views.length) delete next.views;
+          return next;
+        }),
+      saveView: (kind) => {
+        const s = get();
+        const views = s.doc.views ?? [];
+        let n = views.length + 1;
+        while (views.some((v) => v.name === `View ${n}`)) n++;
+        const base = { id: newId(), name: `View ${n}` };
+        let view: SavedView;
+        if (kind === '3d') {
+          const controls = getViewControls();
+          if (!controls) {
+            s.setWarning('Open the 3D view and look the way you want first, then save it.');
+            return null;
+          }
+          view = { ...base, kind: '3d', camera: controls.camera() };
+        } else {
+          const { view: v, viewport } = s;
+          if (!viewport.width || !viewport.height) return null;
+          const area = {
+            minX: v.x,
+            minY: v.y,
+            maxX: v.x + viewport.width / v.zoom,
+            maxY: v.y + viewport.height / v.zoom,
+          };
+          view = { ...base, kind: 'plan', levelId: s.activeLevel, area };
+        }
+        s.setViews([...views, view]);
+        s.setWarning(`Saved as “${view.name}”. Put it on a sheet in the Drawings view (rename it there too).`);
+        return view;
+      },
+      goToView: (id) => {
+        const v = get().doc.views?.find((x) => x.id === id);
+        if (!v) return;
+        if (v.kind === '3d') {
+          if (!get().view3d || get().drawing) get().setView3d(true);
+          requestCamera(v.camera);
+          return;
+        }
+        if (get().doc.levels.some((l) => l.id === v.levelId)) get().setActiveLevel(v.levelId);
+        if ((get().view3d && !get().split) || get().drawing) get().setView3d(false);
+        get().zoomToBox(v.area);
       },
       setSheets: (sheets) =>
         get().commit((doc) => {

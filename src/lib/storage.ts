@@ -1,5 +1,6 @@
 import { cleanText } from './text';
 import { isRunSystem } from './services';
+import { DEFAULT_CUSTOM, isPaperSize, paperSideOf } from './paper';
 import { curveOf } from './curvedEdges';
 import { MAX_RISE_MM } from './site';
 import {
@@ -29,7 +30,7 @@ import {
   type WallKind,
   type DrawingRef,
   type ElevationSide,
-  type PaperSize,
+  type SavedView,
   type Sheet,
   type SheetItem,
   type GroundSettings,
@@ -758,6 +759,7 @@ export function normaliseDoc(raw: unknown): PlanDoc {
       ? { northDeg: ((obj.northDeg % 360) + 360) % 360 }
       : {}),
     ...(Array.isArray(obj.sheets) ? { sheets: normaliseSheets(obj.sheets) } : {}),
+    ...(Array.isArray(obj.views) && normaliseViews(obj.views).length ? { views: normaliseViews(obj.views) } : {}),
     ...(normaliseGround(obj.ground) ? { ground: normaliseGround(obj.ground) } : {}),
     ...(normaliseDrawing(obj.drawing) ? { drawing: normaliseDrawing(obj.drawing) } : {}),
     ...(isObject(obj.northArrow) && Number.isFinite(obj.northArrow.x) && Number.isFinite(obj.northArrow.y)
@@ -811,7 +813,6 @@ function normaliseDrawing(raw: unknown): DrawingStyle | undefined {
   return Object.keys(out).length ? out : undefined;
 }
 
-const PAPERS: PaperSize[] = ['A4', 'A3', 'A1'];
 const SIDES: ElevationSide[] = ['front', 'back', 'left', 'right'];
 
 function normaliseDrawingRef(raw: unknown): DrawingRef | null {
@@ -822,7 +823,50 @@ function normaliseDrawingRef(raw: unknown): DrawingRef | null {
     return { kind: 'elevation', side: raw.side as ElevationSide };
   if (raw.kind === 'view3d' && (raw.style === 'iso' || raw.style === 'picture'))
     return { kind: 'view3d', style: raw.style };
+  if (raw.kind === 'view' && raw.id !== undefined)
+    return { kind: 'view', id: String(raw.id), ...(raw.style === 'picture' && { style: 'picture' as const }) };
   return null;
+}
+
+const finite = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+
+/** Saved views, keeping only sound ones. */
+function normaliseViews(raw: unknown[]): SavedView[] {
+  return raw.flatMap((v, i): SavedView[] => {
+    if (!isObject(v) || v.id === undefined) return [];
+    const base = { id: String(v.id), name: nameOf(v.name, '').trim() || `View ${i + 1}` };
+    if (v.kind === 'plan' && v.levelId !== undefined && isObject(v.area)) {
+      const a = v.area;
+      if (![a.minX, a.minY, a.maxX, a.maxY].every(finite)) return [];
+      const area = {
+        minX: Math.min(a.minX as number, a.maxX as number),
+        minY: Math.min(a.minY as number, a.maxY as number),
+        maxX: Math.max(a.minX as number, a.maxX as number),
+        maxY: Math.max(a.minY as number, a.maxY as number),
+      };
+      if (area.maxX - area.minX < 1 || area.maxY - area.minY < 1) return [];
+      return [{ ...base, kind: 'plan', levelId: String(v.levelId), area }];
+    }
+    if (v.kind === '3d' && isObject(v.camera)) {
+      const c = v.camera;
+      const t = Array.isArray(c.target) ? c.target : [];
+      if (t.length !== 3 || !t.every(finite) || ![c.distance, c.azimuth, c.elevation].every(finite)) return [];
+      return [
+        {
+          ...base,
+          kind: '3d',
+          camera: {
+            target: [t[0], t[1], t[2]] as [number, number, number],
+            distance: Math.max(0.1, c.distance as number),
+            azimuth: c.azimuth as number,
+            elevation: Math.max(-1.55, Math.min(1.55, c.elevation as number)),
+            ...(c.parallel === true && { parallel: true }),
+          },
+        },
+      ];
+    }
+    return [];
+  });
 }
 
 /** Drawing sheets, keeping only sound ones (an empty list stays: the owner cleared the sheets). */
@@ -832,7 +876,14 @@ function normaliseSheets(raw: unknown[]): Sheet[] {
     .map((s, i) => ({
       id: String(s.id),
       name: nameOf(s.name, '').trim() || `Sheet ${i + 1}`,
-      paper: PAPERS.includes(s.paper as PaperSize) ? (s.paper as PaperSize) : 'A3',
+      paper: isPaperSize(s.paper) ? s.paper : 'A3',
+      ...(s.portrait === true && s.paper !== 'custom' && { portrait: true }),
+      ...(s.paper === 'custom' && {
+        customMm: {
+          w: (isObject(s.customMm) && paperSideOf(s.customMm.w)) || DEFAULT_CUSTOM.w,
+          h: (isObject(s.customMm) && paperSideOf(s.customMm.h)) || DEFAULT_CUSTOM.h,
+        },
+      }),
       items: (Array.isArray(s.items) ? s.items : []).flatMap((item): SheetItem[] => {
         const drawing = isObject(item) ? normaliseDrawingRef(item.drawing) : null;
         if (!drawing) return [];

@@ -679,6 +679,8 @@ export interface PlanDoc {
   project?: ProjectSettings;
   /** The drawing sheets printed to PDF; the suggested set (worked out from the plan) when missing. */
   sheets?: Sheet[];
+  /** Views saved by name (part of a floor plan, or a 3D camera), to put on sheets. */
+  views?: SavedView[];
   /** How the ground is shown and finished (flat at ±0 and levelled there when missing). */
   ground?: GroundSettings;
   /** Where the site is on the map, for the surroundings and satellite levels. */
@@ -732,7 +734,24 @@ export type DrawingRef =
   | { kind: 'plan'; levelId: Id }
   | { kind: 'section'; id: Id }
   | { kind: 'elevation'; side: ElevationSide }
-  | { kind: 'view3d'; style: View3dStyle };
+  | { kind: 'view3d'; style: View3dStyle }
+  /** A saved view; a 3D one drawn in lines or as a coloured picture. */
+  | { kind: 'view'; id: Id; style?: View3dStyle };
+
+/** The 3D camera of a saved view: it circles `target` (metres) at `distance`, turned and tilted (radians). */
+export interface SavedCamera {
+  target: [number, number, number];
+  distance: number;
+  azimuth: number;
+  elevation: number;
+  /** Parallel projection (no perspective). */
+  parallel?: boolean;
+}
+
+/** A view saved by name: a part of a floor plan (plan units), or the 3D camera. */
+export type SavedView =
+  | { id: Id; name: string; kind: 'plan'; levelId: Id; area: Bounds }
+  | { id: Id; name: string; kind: '3d'; camera: SavedCamera };
 
 /** A 3D view on a sheet: an isometric line drawing, or a coloured picture with the materials. */
 export type View3dStyle = 'iso' | 'picture';
@@ -750,6 +769,10 @@ export interface Sheet {
   id: Id;
   name: string;
   paper: PaperSize;
+  /** Turned upright (the longer side down the page); sheets are landscape otherwise. */
+  portrait?: boolean;
+  /** A custom paper's size, mm across and down (when `paper` is 'custom'). */
+  customMm?: { w: number; h: number };
   items: SheetItem[];
 }
 
@@ -1088,7 +1111,30 @@ export const MODIFY_TOOLS: Tool[] = [
   'scale',
 ];
 
-export type PaperSize = 'A4' | 'A3' | 'A1';
+/** A paper size (see lib/paper.ts): ISO A and B, US architectural, US (ANSI), or custom. */
+export type PaperSize =
+  | 'A0'
+  | 'A1'
+  | 'A2'
+  | 'A3'
+  | 'A4'
+  | 'B1'
+  | 'B2'
+  | 'B3'
+  | 'B4'
+  | 'ARCH A'
+  | 'ARCH B'
+  | 'ARCH C'
+  | 'ARCH D'
+  | 'ARCH E1'
+  | 'ARCH E'
+  | 'Letter'
+  | 'Legal'
+  | 'Tabloid'
+  | 'ANSI C'
+  | 'ANSI D'
+  | 'ANSI E'
+  | 'custom';
 
 /** Size of one marla in square feet: 225 (LDA and most societies) or 272.25 (traditional). */
 export type MarlaSqFt = 225 | 272.25;

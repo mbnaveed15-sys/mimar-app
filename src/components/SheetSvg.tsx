@@ -5,6 +5,7 @@ import { PLAN_FONT } from '../lib/planImage';
 import { MM_PER_UNIT } from '../lib/scale';
 import type { Prim } from '../lib/drawings/sheet';
 import { PRINT_PALETTE } from '../theme/plan';
+import type { SavedCamera } from '../types';
 
 const ANCHOR = { left: 'start', center: 'middle', right: 'end' } as const;
 
@@ -20,7 +21,7 @@ export function PrimsSvg({
   prims: Prim[];
   plan?: (levelId: string) => PlanImageContent;
   /** Draws the coloured 3D picture at a size in pixels. */
-  picture?: (width: number, height: number) => Promise<string | null>;
+  picture?: (width: number, height: number, camera?: SavedCamera) => Promise<string | null>;
 }) {
   return (
     <g fontFamily={PLAN_FONT}>
@@ -106,8 +107,8 @@ function Picture({
   box,
   make,
 }: {
-  box: { x: number; y: number; w: number; h: number };
-  make?: (width: number, height: number) => Promise<string | null>;
+  box: { x: number; y: number; w: number; h: number; camera?: SavedCamera };
+  make?: (width: number, height: number, camera?: SavedCamera) => Promise<string | null>;
 }) {
   const [url, setUrl] = useState<string | null | undefined>(undefined);
   const px = (mm: number) => Math.max(2, Math.round((mm / 25.4) * 110));
@@ -116,7 +117,7 @@ function Picture({
     let live = true;
     // Drawn after the sheet shows, so the page doesn't wait for it.
     const t = setTimeout(() => {
-      (make?.(w, h) ?? Promise.resolve(null)).then(
+      (make?.(w, h, box.camera) ?? Promise.resolve(null)).then(
         (u) => live && setUrl(u),
         () => live && setUrl(null),
       );
@@ -125,7 +126,7 @@ function Picture({
       live = false;
       clearTimeout(t);
     };
-  }, [make, w, h]);
+  }, [make, w, h, box.camera]);
   if (url)
     return (
       <image

@@ -6,7 +6,10 @@ import {
   layoutSheet,
   MAX_SHEET_SCALE,
   MIN_SHEET_SCALE,
+  isPicture,
+  linesOf,
   planArea,
+  planOf,
   sheetScaleOf,
   sheetsOf,
   sidePrims,
@@ -20,12 +23,24 @@ import {
   ELEVATION_NAMES,
   ELEVATION_SIDES,
   sectionLines,
+  savedView,
   sectionTitle,
 } from '../lib/drawings/views';
 import { VIEW3D_NAMES, VIEW3D_STYLES } from '../lib/drawings/refs';
 import { withoutHidden } from '../lib/layers';
 import { plannerStore, usePlanner } from '../store/plannerStore';
-import type { DrawingRef, PaperSize, Sheet, SheetScale } from '../types';
+import type { DrawingRef, PaperSize, SavedCamera, SavedView, Sheet, SheetScale, View3dStyle } from '../types';
+import { MM_PER_UNIT } from '../lib/scale';
+import {
+  DEFAULT_CUSTOM,
+  MAX_PAPER_MM,
+  MIN_PAPER_MM,
+  PAPER_GROUPS,
+  PAPER_SIZES,
+  PAPERS,
+  paperName,
+  paperSideOf,
+} from '../lib/paper';
 import { Icon } from './Icon';
 import { PrimsSvg } from './SheetSvg';
 
@@ -46,6 +61,9 @@ export function DrawingsView() {
   const showDrawing = usePlanner((s) => s.showDrawing);
   const setSheets = usePlanner((s) => s.setSheets);
   const setDrawingStyle = usePlanner((s) => s.setDrawingStyle);
+  const setViews = usePlanner((s) => s.setViews);
+  const goToView = usePlanner((s) => s.goToView);
+  const views = doc.views ?? [];
   const [zoom, setZoom] = useState(1);
 
   const shown = useMemo(() => withoutHidden(doc, { layers: doc.layers, showFurniture }), [doc, showFurniture]);
@@ -70,15 +88,30 @@ export function DrawingsView() {
       const l = layoutSheet(src, sheet, sheetIndex, sheets.length);
       return { w: l.paper.w, h: l.paper.h, prims: l.prims, overflow: l.overflow };
     }
-    if (!ref || ref.kind === 'plan') return null;
-    const d = src.side(ref.kind === 'view3d' ? { kind: 'view3d', style: 'iso' } : ref);
+    if (!ref) return null;
+    const plan = planOf(src.doc, ref);
+    if (ref.kind === 'view' && plan) {
+      // A saved part of a plan, at 1:100.
+      const a = plan.area;
+      const w = ((a.maxX - a.minX) * MM_PER_UNIT) / VIEW_SCALE;
+      const h = ((a.maxY - a.minY) * MM_PER_UNIT) / VIEW_SCALE;
+      return {
+        w: w + 20,
+        h: h + 20,
+        prims: [{ t: 'plan', levelId: plan.levelId, x: 10, y: 10, w, h, area: a, scale: VIEW_SCALE }],
+      };
+    }
+    if (ref.kind === 'plan') return null;
+    const d = src.side(linesOf(ref));
     if (!d?.bounds) return null;
-    if (ref.kind === 'view3d' && ref.style === 'picture') {
+    if (isPicture(ref)) {
       // The picture in the isometric's box, at 1:100.
       const k = 1000 / VIEW_SCALE;
       const w = (d.bounds.maxU - d.bounds.minU + 0.6) * k;
       const h = (d.bounds.maxV - d.bounds.minV + 0.6) * k;
-      return { w: w + 20, h: h + 20, prims: [{ t: 'picture', x: 10, y: 10, w, h }] };
+      const v = ref.kind === 'view' ? savedView(doc, ref.id) : null;
+      const camera = v?.kind === '3d' ? v.camera : undefined;
+      return { w: w + 20, h: h + 20, prims: [{ t: 'picture', x: 10, y: 10, w, h, camera }] };
     }
     const prims = sidePrims(d, VIEW_SCALE, 10, 10, src.doc.drawing);
     const xs = prims.flatMap((p) => (p.t === 'line' ? [p.a[0], p.b[0]] : p.t === 'text' ? [p.x + 40] : []));
@@ -100,10 +133,25 @@ export function DrawingsView() {
     ...sections.map((s): DrawingRef => ({ kind: 'section', id: s.id })),
     ...ELEVATION_SIDES.map((side): DrawingRef => ({ kind: 'elevation', side })),
     ...VIEW3D_STYLES.map((style): DrawingRef => ({ kind: 'view3d', style })),
+    ...views.flatMap((v): DrawingRef[] =>
+      v.kind === '3d'
+        ? [
+            { kind: 'view', id: v.id },
+            { kind: 'view', id: v.id, style: 'picture' },
+          ]
+        : [{ kind: 'view', id: v.id }],
+    ),
   ];
+  /** A drawing's name in the lists: a saved 3D view says whether it is in lines or a picture. */
+  const titleOf = (r: DrawingRef) => {
+    const t = drawingTitle(shown, r) ?? '';
+    if (r.kind !== 'view' || savedView(doc, r.id)?.kind !== '3d') return t;
+    return `${t} (${r.style === 'picture' ? 'picture' : 'lines'})`;
+  };
+  const view = ref?.kind === 'view' ? savedView(doc, ref.id) : null;
   const picture = useCallback(
-    (w: number, h: number) =>
-      import('../three/picture').then((m) => m.renderPicture(shown, { wallHeightMm, showFurniture }, w, h)),
+    (w: number, h: number, camera?: SavedCamera) =>
+      import('../three/picture').then((m) => m.renderPicture(shown, { wallHeightMm, showFurniture }, w, h, camera)),
     [shown, wallHeightMm, showFurniture],
   );
 
@@ -144,8 +192,39 @@ export function DrawingsView() {
           {VIEW3D_STYLES.map((style) => item(`view3d:${style}`, VIEW3D_NAMES[style], `drawing-view3d-${style}`))}
         </div>
         <div>
+          <div className="m-heading px-2">Saved views</div>
+          {views.length ? (
+            views.map((v) => item(`view:${v.id}`, v.kind === '3d' ? `${v.name} (3D)` : v.name, `saved-view-${v.name}`))
+          ) : (
+            <p className="px-2 py-1 text-muted">
+              None yet. On the plan or in 3D, frame what you want and pick View &gt; Save plan view (or Save 3D view).
+            </p>
+          )}
+        </div>
+        {view && ref?.kind === 'view' && (
+          <ViewEditor
+            view={view}
+            style={ref.style}
+            onRename={(name) => setViews(views.map((v) => (v.id === view.id ? { ...v, name } : v)))}
+            onStyle={(style) => showDrawing(drawingKey({ kind: 'view', id: view.id, ...(style && { style }) }))}
+            onGo={() => goToView(view.id)}
+            onDelete={() => {
+              setViews(views.filter((v) => v.id !== view.id));
+              // Sheets let go of it too.
+              if (doc.sheets)
+                setSheets(
+                  doc.sheets.map((s) => ({
+                    ...s,
+                    items: s.items.filter((it) => it.drawing.kind !== 'view' || it.drawing.id !== view.id),
+                  })),
+                );
+              showDrawing(drawingKey({ kind: 'elevation', side: 'front' }));
+            }}
+          />
+        )}
+        <div>
           <div className="m-heading px-2">Sheets</div>
-          {sheets.map((s, i) => item(`sheet:${s.id}`, `${i + 1}. ${s.name} (${s.paper})`, `sheet-${i + 1}`))}
+          {sheets.map((s, i) => item(`sheet:${s.id}`, `${i + 1}. ${s.name} (${paperName(s)})`, `sheet-${i + 1}`))}
           <div className="mt-1 flex flex-wrap gap-1 px-2">
             <button className="m-btn" onClick={addSheet}>
               Add sheet
@@ -166,7 +245,7 @@ export function DrawingsView() {
           <SheetEditor
             sheet={sheet}
             choices={choices}
-            title={(r) => drawingTitle(shown, r) ?? ''}
+            title={titleOf}
             onChange={patchSheet}
             onDelete={() => {
               change(sheets.filter((s) => s.id !== sheet.id));
@@ -298,13 +377,7 @@ function SheetEditor({
           className="rounded-sm border p-1"
         />
       </label>
-      <div role="radiogroup" aria-label="Paper" className="m-seg self-start">
-        {(['A4', 'A3', 'A1'] as PaperSize[]).map((p) => (
-          <button key={p} role="radio" aria-checked={sheet.paper === p} onClick={() => onChange({ paper: p })}>
-            {p}
-          </button>
-        ))}
-      </div>
+      <PaperPicker sheet={sheet} onChange={onChange} />
       <div className="flex flex-col gap-1">
         {sheet.items.map((it, i) => (
           <div key={drawingKey(it.drawing)} className="flex items-center gap-1">
@@ -411,5 +484,130 @@ function ScalePicker({
         </span>
       )}
     </>
+  );
+}
+
+/** A saved view: its name, lines or picture (3D), going back to it, and deleting it. */
+function ViewEditor({
+  view,
+  style,
+  onRename,
+  onStyle,
+  onGo,
+  onDelete,
+}: {
+  view: SavedView;
+  style?: View3dStyle;
+  onRename: (name: string) => void;
+  onStyle: (style?: View3dStyle) => void;
+  onGo: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-line bg-raised p-2" data-testid="view-editor">
+      <label className="flex flex-col gap-0.5">
+        <span className="text-muted">View name</span>
+        <input
+          key={view.id + view.name}
+          defaultValue={view.name}
+          aria-label="View name"
+          onBlur={(e) => {
+            const name = e.currentTarget.value.trim();
+            if (name && name !== view.name) onRename(name);
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+          className="rounded-sm border p-1"
+        />
+      </label>
+      {view.kind === '3d' && (
+        <div role="radiogroup" aria-label="Drawn as" className="m-seg self-start">
+          <button role="radio" aria-checked={style !== 'picture'} onClick={() => onStyle()}>
+            Lines
+          </button>
+          <button role="radio" aria-checked={style === 'picture'} onClick={() => onStyle('picture')}>
+            Picture
+          </button>
+        </div>
+      )}
+      <p className="text-muted">
+        {view.kind === '3d'
+          ? 'Seen from where the 3D camera was. On a sheet, lines are drawn in parallel projection.'
+          : 'This part of the floor plan, at the scale you pick on each sheet.'}
+      </p>
+      <div className="flex flex-wrap gap-1">
+        <button className="m-btn" onClick={onGo}>
+          Go to this view
+        </button>
+        <button className="m-btn m-btn-danger" onClick={onDelete}>
+          Delete view
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** A sheet's paper: a size from the lists (or a custom one), and which way up. */
+function PaperPicker({ sheet, onChange }: { sheet: Sheet; onChange: (patch: Partial<Sheet>) => void }) {
+  const custom = sheet.customMm ?? DEFAULT_CUSTOM;
+  const side = (key: 'w' | 'h', v: string) => {
+    const n = paperSideOf(v);
+    if (n && n !== custom[key]) onChange({ customMm: { ...custom, [key]: n } });
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <select
+          aria-label="Paper"
+          value={sheet.paper}
+          onChange={(e) => {
+            const paper = e.target.value as PaperSize;
+            onChange(paper === 'custom' ? { paper, customMm: custom } : { paper });
+          }}
+          className="rounded-sm border p-1"
+        >
+          {PAPER_GROUPS.map((g) => (
+            <optgroup key={g} label={g}>
+              {PAPER_SIZES.filter((p) => PAPERS[p].group === g).map((p) => (
+                <option key={p} value={p}>
+                  {p} ({Math.round(PAPERS[p].h)} × {Math.round(PAPERS[p].w)} mm)
+                </option>
+              ))}
+            </optgroup>
+          ))}
+          <option value="custom">Custom size…</option>
+        </select>
+        {sheet.paper !== 'custom' && (
+          <label className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={!!sheet.portrait}
+              onChange={(e) => onChange({ portrait: e.target.checked || undefined })}
+            />
+            Portrait
+          </label>
+        )}
+      </div>
+      {sheet.paper === 'custom' && (
+        <div className="flex items-center gap-1">
+          {(['w', 'h'] as const).map((k, i) => (
+            <span key={k} className="flex items-center gap-1">
+              {i > 0 && '×'}
+              <input
+                key={`${k}${custom[k]}`}
+                aria-label={k === 'w' ? 'Paper width (mm)' : 'Paper height (mm)'}
+                type="number"
+                min={MIN_PAPER_MM}
+                max={MAX_PAPER_MM}
+                defaultValue={custom[k]}
+                onBlur={(e) => side(k, e.currentTarget.value)}
+                onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                className="w-16 rounded-sm border p-0.5 tabular-nums"
+              />
+            </span>
+          ))}
+          <span className="text-muted">mm, across × down</span>
+        </div>
+      )}
+    </div>
   );
 }

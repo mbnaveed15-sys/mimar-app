@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three';
 import { shadowsOn, sunDirection } from '../lib/sun';
-import type { PlanDoc } from '../types';
+import type { PlanDoc, SavedCamera } from '../types';
 import { frontLook } from '../lib/drawings/views';
 import { rightOf } from '../lib/drawings/hiddenLines';
 import { mergeParts } from './merge';
@@ -30,6 +30,8 @@ function rendererFor(): THREE.WebGLRenderer | null {
 /** How far down the camera looks, and its lens (vertical field of view), degrees. */
 const DOWN_DEG = 24;
 const FOV_DEG = 30;
+/** The 3D view's own lens, for saved views (as in Plan3DView). */
+const VIEW_FOV_DEG = 45;
 
 /**
  * The picture as a PNG data URL, `width` × `height` pixels, or null when this computer can't draw 3D (or there
@@ -40,6 +42,8 @@ export function renderPicture(
   opts: { wallHeightMm: number; showFurniture: boolean },
   width: number,
   height: number,
+  /** A saved view's camera; from the front-left corner when missing. */
+  saved?: SavedCamera,
 ): string | null {
   const r = rendererFor();
   if (!r || width < 2 || height < 2) return null;
@@ -77,6 +81,42 @@ export function renderPicture(
   ground.position.set(centre.x, (model.groundY ?? 0) - 0.01, centre.z);
   ground.receiveShadow = true;
   scene.add(ground, group);
+
+  if (saved) {
+    // A saved view: the camera where it was saved, its lens as the 3D view's.
+    const [tx, ty, tz] = saved.target;
+    const flat = Math.cos(saved.elevation) * saved.distance;
+    const eye = new THREE.Vector3(
+      tx + flat * Math.sin(saved.azimuth),
+      ty + Math.sin(saved.elevation) * saved.distance,
+      tz + flat * Math.cos(saved.azimuth),
+    );
+    const target = new THREE.Vector3(tx, ty, tz);
+    let view: THREE.Camera;
+    if (saved.parallel) {
+      // The parallel camera frames what the perspective one would show at the target.
+      const half = Math.tan((VIEW_FOV_DEG * Math.PI) / 360) * saved.distance;
+      const aspect = width / height;
+      view = new THREE.OrthographicCamera(
+        -half * aspect,
+        half * aspect,
+        half,
+        -half,
+        0.05,
+        span * 20 + 100 + saved.distance,
+      );
+    } else view = new THREE.PerspectiveCamera(VIEW_FOV_DEG, width / height, 0.05, span * 20 + 100 + saved.distance);
+    view.position.copy(eye);
+    view.lookAt(target);
+    if (view instanceof THREE.OrthographicCamera || view instanceof THREE.PerspectiveCamera)
+      view.updateProjectionMatrix();
+    r.setSize(width, height, false);
+    r.render(scene, view);
+    const url = r.domElement.toDataURL('image/png');
+    disposeGroup(scene);
+    r.renderLists.dispose();
+    return url;
+  }
 
   // From the front-left corner, looking down a little, far enough back for the whole building to fit.
   const f = frontLook(doc);

@@ -319,7 +319,7 @@ describe('storage', () => {
         {
           id: 'a',
           name: '',
-          paper: 'A2',
+          paper: 'A9',
           items: [
             { drawing: { kind: 'section', id: 's' }, scale: 50 },
             { drawing: { kind: 'elevation', side: 'up' }, scale: 100 },

@@ -1,3 +1,5 @@
+import type { SavedCamera } from '../types';
+import { pdfPage } from './paper';
 import { downloadUrl, renderPlan } from './exportPng';
 import { checkPage, costPage, pdfText, type Pdf, type PdfDetails } from './exportPdf';
 import type { PlanImageContent } from './planImage';
@@ -16,7 +18,7 @@ export type SheetExtras = Pick<PdfDetails, 'check' | 'hints' | 'cost'> & { check
 
 /** Draw one sheet's instructions onto the current PDF page. */
 /** Draws the coloured 3D picture at a size in pixels (a PNG data URL), or null when it can't be drawn. */
-export type PictureMaker = (width: number, height: number) => Promise<string | null>;
+export type PictureMaker = (width: number, height: number, camera?: SavedCamera) => Promise<string | null>;
 
 async function drawPrims(pdf: Pdf, prims: Prim[], plan: (levelId: string) => PlanImageContent, picture?: PictureMaker) {
   pdf.setDrawColor(17, 17, 17);
@@ -73,7 +75,7 @@ async function drawPrims(pdf: Pdf, prims: Prim[], plan: (levelId: string) => Pla
       case 'picture': {
         // 150 dots an inch is plenty for a picture.
         const px = (mm: number) => Math.max(2, Math.round((mm / 25.4) * 150));
-        const url = await picture?.(px(p.w), px(p.h));
+        const url = await picture?.(px(p.w), px(p.h), p.camera);
         if (url) pdf.addImage(url, 'PNG', p.x, p.y, p.w, p.h, undefined, 'FAST');
         break;
       }
@@ -100,9 +102,9 @@ export async function exportSheets(
   for (const [i, sheet] of sheets.entries()) {
     const layout = layoutSheet(src, sheet, i, sheets.length);
     if (layout.overflow) overflow.push(sheet.name);
-    const format = sheet.paper.toLowerCase();
-    if (!pdf) pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format });
-    else pdf.addPage(format, 'landscape');
+    const { format, orientation } = pdfPage(sheet);
+    if (!pdf) pdf = new jsPDF({ orientation, unit: 'mm', format });
+    else pdf.addPage(format, orientation);
     await drawPrims(pdf, layout.prims, plan, picture);
   }
   if (!pdf) throw new Error('There are no sheets to print. Add a sheet in the Drawings view first.');
