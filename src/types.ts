@@ -258,11 +258,44 @@ export interface Roof extends Grouped {
    * null or missing. The eaves stay level all round, so a steeper side reaches out less past the walls.
    */
   sidePitches?: (number | null)[];
+  /** Roof windows in its slopes (see roofOpenings.ts). */
+  skylights?: Skylight[];
+  /** Dormers standing up out of its slopes. */
+  dormers?: Dormer[];
   /** How far the eaves reach past the walls, mm. */
   overhangMm: number;
   /** The roof's thickness (deck, insulation and covering), mm. */
   thicknessMm: number;
   material?: Id;
+}
+
+/**
+ * A roof window: it lies in the slope of the roof face its middle (x, y, plan units) is over, or on a small
+ * upstand on a flat roof. Its width runs along the eaves, its length up the slope (true length).
+ */
+export interface Skylight {
+  id: Id;
+  x: number;
+  y: number;
+  wMm: number;
+  lMm: number;
+}
+
+/** A dormer's own little roof: two slopes and a gable at the front, or one slope back up to the main roof. */
+export type DormerKind = 'gable' | 'shed';
+
+/**
+ * A dormer: a small box standing up out of a sloping roof face, with a window in its front. (x, y) is the
+ * middle of its front, in plan; it runs back up the slope until its roof meets the main roof.
+ */
+export interface Dormer {
+  id: Id;
+  x: number;
+  y: number;
+  wMm: number;
+  kind: DormerKind;
+  /** How high its front wall stands above the roof, to the underside of its own roof, mm. */
+  wallMm: number;
 }
 
 /** The plot: its outline, which edge faces the road, and the setbacks (in mm) from each side. */
@@ -755,6 +788,8 @@ export type Tool =
   | 'contour'
   | 'pad'
   | 'roof'
+  | 'skylight'
+  | 'dormer'
   | 'dimension';
 
 /** Every tool, in tool-rail order. */
@@ -772,6 +807,8 @@ export const TOOLS: Tool[] = [
   'beam',
   'slab',
   'roof',
+  'skylight',
+  'dormer',
   'plot',
   'stairs',
   'door',

@@ -270,7 +270,10 @@ export function modelPrisms(model: Model3D, skip: Set<Id> = new Set(), hatch?: H
   // A roof: each sloped face pushed straight up through the roof's thickness.
   for (const r of model.roofs ?? []) {
     if (!keep(r.id)) continue;
-    for (const face of r.faces) if (face.length >= 3) out.push(tag({ rings: [face], extrude: [0, r.h, 0] }, r.id));
+    r.faces.forEach((face, i) => {
+      if (face.length >= 3)
+        out.push(tag({ rings: [face, ...(r.holes?.[i] ?? [])], extrude: [0, r.h, 0] }, r.id, r.role));
+    });
   }
   for (const s of [...model.slabs, ...model.blocks]) {
     if (s.role === 'shape' || s.role === 'furniture' || !keep(s.id) || s.h <= 0 || s.points.length < 3) continue;

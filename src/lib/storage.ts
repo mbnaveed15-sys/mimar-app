@@ -34,7 +34,10 @@ import {
   type SheetScale,
   type GroundSettings,
   type DrawingStyle,
+  type Dormer,
+  type Roof,
   type RoofKind,
+  type Skylight,
   type DimTie,
   type PlinthSpec,
 } from '../types';
@@ -133,6 +136,27 @@ const nameOf = (v: unknown, fallback: string) => (typeof v === 'string' ? cleanT
 
 const inRange = (v: unknown, lo: number, hi: number): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+/** A roof's skylights and dormers, each kept only when it is whole and sensible. */
+function roofOpeningsOf(raw: Record<string, unknown>): Pick<Roof, 'skylights' | 'dormers'> {
+  const list = (v: unknown) =>
+    Array.isArray(v) ? (v.filter((x) => x && typeof x === 'object') as Record<string, unknown>[]) : [];
+  const where = (x: Record<string, unknown>) =>
+    typeof x.id === 'string' && x.id && Number.isFinite(x.x) && Number.isFinite(x.y)
+      ? { id: x.id, x: x.x as number, y: x.y as number }
+      : null;
+  const skylights = list(raw.skylights).flatMap((x): Skylight[] => {
+    const at = where(x);
+    return at && inRange(x.wMm, 200, 5000) && inRange(x.lMm, 200, 5000) ? [{ ...at, wMm: x.wMm, lMm: x.lMm }] : [];
+  });
+  const dormers = list(raw.dormers).flatMap((x): Dormer[] => {
+    const at = where(x);
+    return at && inRange(x.wMm, 500, 10000) && inRange(x.wallMm, 300, 5000)
+      ? [{ ...at, wMm: x.wMm, wallMm: x.wallMm, kind: x.kind === 'shed' ? 'shed' : 'gable' }]
+      : [];
+  });
+  return { ...(skylights.length && { skylights }), ...(dormers.length && { dormers }) };
+}
+
 /** Height above the floor and window sill, kept only when set and sensible. */
 const heightsOf = (raw: Record<string, unknown>) => ({
   ...(inRange(raw.elevMm, -5000, 30000) && raw.elevMm !== 0 ? { elevMm: raw.elevMm } : {}),
@@ -395,6 +419,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
               return inRange(v, 0, MAX_PITCH_DEG) ? (v as number) : null;
             }),
           }),
+        ...roofOpeningsOf(raw),
         overhangMm: inRange(raw.overhangMm, 0, 5000) ? raw.overhangMm : ROOF_OVERHANG_MM.imperial,
         thicknessMm: inRange(raw.thicknessMm, 10, 1000) ? raw.thicknessMm : ROOF_THICKNESS_MM,
       };

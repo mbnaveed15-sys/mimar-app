@@ -1,5 +1,6 @@
 import { elementOutline, fromFurnitureLocal, planBounds, wallLength, wallParam } from '../geometry';
 import { formatPitch, roofEaves, roofShape } from './roof/roof';
+import { dormerParts, skylightParts } from './roof/roofOpenings';
 import { bentSymbol, openingSymbol } from './openingKinds';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
@@ -676,6 +677,16 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       case 'roof': {
         // The eaves dashed (above the cut); ridges, hips and valleys, and the pitch.
         dxf.poly('A-ROOF-OTLN', roofEaves(el));
+        for (const sk of el.skylights ?? []) {
+          const p = skylightParts(el, sk);
+          if (p) dxf.poly('A-ROOF', p.hole);
+        }
+        for (const d of el.dormers ?? []) {
+          const p = dormerParts(el, d);
+          if (!p) continue;
+          dxf.poly('A-ROOF', p.footprint);
+          if (p.ridge) dxf.line('A-ROOF', p.ridge[0], p.ridge[1]);
+        }
         if (el.shape === 'flat') break;
         for (const l of roofShape(el).lines)
           if (l.kind === 'ridge' || l.kind === 'hip' || l.kind === 'valley') dxf.line('A-ROOF', l.a, l.b);

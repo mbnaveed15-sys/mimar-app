@@ -11,8 +11,9 @@ import {
 } from '../lib/roof/roof';
 import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, plannerStore, usePlanner } from '../store/plannerStore';
-import type { Roof, RoofKind } from '../types';
+import type { Dormer, Roof, RoofKind, Skylight } from '../types';
 import { LengthField } from './LengthField';
+import { DORMER_KINDS, dormerInMm, dormerMovedIn, dormerParts, skylightParts } from '../lib/roof/roofOpenings';
 
 const box = 'flex flex-col gap-1.5 rounded-md border border-line bg-raised p-2 text-xs';
 const btn = 'm-btn px-2 py-0.5';
@@ -164,6 +165,7 @@ export function RoofFields({ roof }: { roof: Roof }) {
         </div>
       )}
       {(roof.shape === 'hip' || roof.shape === 'gable') && <SidePitches roof={roof} ends={ends} len={len} />}
+      <RoofOpenings roof={roof} />
       {roof.shape === 'shed' && (
         <div className="flex flex-col gap-1">
           <span className="text-muted">Low side</span>
@@ -238,6 +240,112 @@ function SidePitches({ roof, ends, len }: { roof: Roof; ends: Set<number>; len: 
         })}
       </div>
       {error && <span className="text-danger">{error}</span>}
+    </div>
+  );
+}
+
+/** The roof's skylights and dormers: their sizes, a dormer's roof and where it stands, and taking them out. */
+function RoofOpenings({ roof }: { roof: Roof }) {
+  const units = usePlanner((s) => s.units);
+  const updateElement = usePlanner((s) => s.updateElement);
+  const warn = (m: string) => plannerStore.getState().setWarning(m);
+  const skylights = roof.skylights ?? [];
+  const dormers = roof.dormers ?? [];
+  if (!skylights.length && !dormers.length) return null;
+  const putSkylight = (i: number, next: Skylight | null) => {
+    if (next && !skylightParts(roof, next)) return warn('The skylight wouldn’t fit in its slope at that size.');
+    const list = skylights.flatMap((k, j) => (j !== i ? [k] : next ? [next] : []));
+    const out: Roof = { ...roof, skylights: list };
+    if (!list.length) delete out.skylights;
+    updateElement(out);
+  };
+  const putDormer = (i: number, next: Dormer | null) => {
+    if (next && !dormerParts(roof, next))
+      return warn('The dormer wouldn’t fit on its slope like that: try it narrower, lower or nearer the eaves.');
+    const list = dormers.flatMap((d, j) => (j !== i ? [d] : next ? [next] : []));
+    const out: Roof = { ...roof, dormers: list };
+    if (!list.length) delete out.dormers;
+    updateElement(out);
+  };
+  return (
+    <div className="flex flex-col gap-2" data-testid="roof-openings">
+      {skylights.map((k, i) => (
+        <div key={k.id} className="flex flex-col gap-1 border-t border-line pt-1.5" data-testid="roof-skylight">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">Skylight {i + 1}</span>
+            <button className={btn} onClick={() => putSkylight(i, null)}>
+              Remove
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <LengthField
+              id={`skylight-${i}-w`}
+              label="Width"
+              mm={k.wMm}
+              units={units}
+              min={300}
+              onCommit={(mm) => putSkylight(i, { ...k, wMm: Math.min(mm, 5000) })}
+            />
+            <LengthField
+              id={`skylight-${i}-l`}
+              label="Length (up the slope)"
+              mm={k.lMm}
+              units={units}
+              min={300}
+              onCommit={(mm) => putSkylight(i, { ...k, lMm: Math.min(mm, 5000) })}
+            />
+          </div>
+        </div>
+      ))}
+      {dormers.map((d, i) => (
+        <div key={d.id} className="flex flex-col gap-1 border-t border-line pt-1.5" data-testid="roof-dormer">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">Dormer {i + 1}</span>
+            <button className={btn} onClick={() => putDormer(i, null)}>
+              Remove
+            </button>
+          </div>
+          <div className="flex gap-1" role="radiogroup" aria-label={`Dormer ${i + 1} roof`}>
+            {DORMER_KINDS.map((k) => (
+              <button
+                key={k.id}
+                role="radio"
+                className={btn}
+                aria-checked={d.kind === k.id}
+                onClick={() => putDormer(i, { ...d, kind: k.id })}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <LengthField
+              id={`dormer-${i}-w`}
+              label="Width"
+              mm={d.wMm}
+              units={units}
+              min={600}
+              onCommit={(mm) => putDormer(i, { ...d, wMm: Math.min(mm, 10000) })}
+            />
+            <LengthField
+              id={`dormer-${i}-wall`}
+              label="Front wall height"
+              mm={d.wallMm}
+              units={units}
+              min={500}
+              onCommit={(mm) => putDormer(i, { ...d, wallMm: Math.min(mm, 5000) })}
+            />
+            <LengthField
+              id={`dormer-${i}-in`}
+              label="In from the eaves"
+              mm={dormerInMm(roof, d)}
+              units={units}
+              min={0}
+              onCommit={(mm) => putDormer(i, dormerMovedIn(roof, d, mm))}
+            />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

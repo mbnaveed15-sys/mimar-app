@@ -25,7 +25,18 @@ interface Store {
   getState: () => PlannerState;
 }
 
-export const STRUCTURE_TOOLS: Tool[] = ['column', 'beam', 'slab', 'roof', 'plot', 'stairs', 'section', ...GROUND_TOOLS];
+export const STRUCTURE_TOOLS: Tool[] = [
+  'column',
+  'beam',
+  'slab',
+  'roof',
+  'skylight',
+  'dormer',
+  'plot',
+  'stairs',
+  'section',
+  ...GROUND_TOOLS,
+];
 
 /** Default wall half-thickness (4½"), how far a slab reaches past a room's inner faces to the wall centres. */
 const SLAB_OVERHANG = (4.5 * 25.4) / MM_PER_UNIT;
@@ -112,6 +123,12 @@ export function structurePress(store: Store, inf: Inference) {
       return;
     case 'roof':
       return roofCorner(store, p, true);
+    case 'skylight':
+      s.addSkylight(p);
+      return;
+    case 'dormer':
+      s.addDormer(p);
+      return;
     case 'section':
       if (d?.type !== 'section')
         return s.setDraft({ type: 'section', x1: p.x, y1: p.y, x2: p.x, y2: p.y, placed: false, flip: false });
@@ -551,6 +568,10 @@ export function structureHint(s: PlannerState): string {
           ? 'Click the next corner round the walls, or type the side’s length.'
           : 'Click the next corner, or click the first corner (or press Enter) to put the roof on. Ctrl+Z takes back a corner.';
       return 'Click the corners round the outside of the walls (a drag makes a rectangle); the eaves reach past them by the overhang. Or use Roof over the house on the right.';
+    case 'skylight':
+      return 'Click on a roof slope to put a skylight there (780 × 980 mm). Select the roof to change its size or take it out.';
+    case 'dormer':
+      return 'Click on a roof slope where the dormer goes: its front stands 600 mm in from the eaves. Select the roof to change it.';
     case 'stairs':
       return 'Click to place a stair. Pick straight, L, U or a ramp on the right; risers are worked out for you.';
     case 'section':

@@ -4,7 +4,11 @@ import type { Tool } from '../types';
 export const TOOLBARS = [
   { id: 'view', label: 'View', tools: ['select', 'pan', 'zoom', 'orbit'] },
   { id: 'draw', label: 'Draw', tools: ['wall', 'curve', 'line', 'rectangle', 'room', 'door', 'window', 'furniture'] },
-  { id: 'structure', label: 'Structure', tools: ['column', 'beam', 'slab', 'roof', 'plot', 'stairs', 'section'] },
+  {
+    id: 'structure',
+    label: 'Structure',
+    tools: ['column', 'beam', 'slab', 'roof', 'skylight', 'dormer', 'plot', 'stairs', 'section'],
+  },
   { id: 'ground', label: 'Ground', tools: ['level', 'contour', 'pad'] },
   { id: 'shapes', label: 'Shape & Push/Pull', tools: ['shape', 'pushpull'] },
   { id: 'change', label: 'Move, rotate & measure', tools: ['move', 'rotate', 'tape', 'dimension'] },
@@ -29,7 +33,7 @@ export const PHONE_GROUPS = [
   {
     id: 'build',
     label: 'Build',
-    tools: ['column', 'beam', 'slab', 'roof', 'stairs', 'shape', 'pushpull', 'section'],
+    tools: ['column', 'beam', 'slab', 'roof', 'skylight', 'dormer', 'stairs', 'shape', 'pushpull', 'section'],
   },
   {
     id: 'edit',

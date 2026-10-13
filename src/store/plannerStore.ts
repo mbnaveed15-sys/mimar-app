@@ -77,6 +77,16 @@ import { wallPath, type WallLine } from '../lib/arc';
 import { pathOutline, roundedRect, type CurveMode } from '../lib/curves';
 import { splitSolidsByLine } from '../lib/splitSolids';
 import { divideWall } from '../lib/modify';
+import {
+  DORMER_W_MM,
+  DORMER_WALL_MM,
+  dormerFrontAt,
+  dormerParts,
+  faceUnder,
+  SKYLIGHT_L_MM,
+  SKYLIGHT_W_MM,
+  skylightParts,
+} from '../lib/roof/roofOpenings';
 import { groundOf, roundLevel } from '../lib/terrain/ground';
 import type { Built } from '../lib/layoutBuild';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
@@ -89,6 +99,9 @@ import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SITE_LEVEL } from '../types'
 import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
 import type {
   RoofKind,
+  Roof,
+  Skylight,
+  Dormer,
   Block,
   ContextItem,
   GroundSettings,
@@ -393,6 +406,10 @@ export interface PlannerState {
   padUnderHouse: () => boolean;
   /** A roof over an outline drawn round the walls, reaching past it by the overhang, with the Roof tool's settings. */
   addRoof: (points: Point[]) => boolean;
+  /** A skylight on the roof slope under p (on this floor); false, with a warning, when it can't go there. */
+  addSkylight: (p: Point) => boolean;
+  /** A dormer on the roof slope under p, its front 600 mm in from the eaves. */
+  addDormer: (p: Point) => boolean;
   /** A roof over the outside of the walls on the floor being viewed. */
   roofOverHouse: () => boolean;
   /** How the ground is finished and drawn. */
@@ -2161,6 +2178,45 @@ export function createPlannerStore(
         };
         updateElements((els) => [...els, onActive(roof)]);
         get().select(roof.id);
+        return true;
+      },
+      addSkylight: (p) => {
+        const roof = get()
+          .pickableElements()
+          .find((el): el is Roof => el.type === 'roof' && !!faceUnder(el, p));
+        if (!roof) {
+          get().setWarning('Click on a roof (draw one with the Roof tool, Shift+H, on this floor).');
+          return false;
+        }
+        const sk: Skylight = { id: newId(), x: p.x, y: p.y, wMm: SKYLIGHT_W_MM, lMm: SKYLIGHT_L_MM };
+        if (!skylightParts(roof, sk)) {
+          get().setWarning(
+            'A skylight doesn’t fit there: keep it inside one slope, clear of the hips, ridge and valleys.',
+          );
+          return false;
+        }
+        get().setWarning(null);
+        get().updateElement({ ...roof, skylights: [...(roof.skylights ?? []), sk] });
+        return true;
+      },
+      addDormer: (p) => {
+        const roof = get()
+          .pickableElements()
+          .find((el): el is Roof => el.type === 'roof' && !!faceUnder(el, p));
+        const front = roof && dormerFrontAt(roof, p);
+        if (!roof || !front) {
+          get().setWarning('Click on a sloping roof (draw one with the Roof tool, Shift+H, on this floor).');
+          return false;
+        }
+        const d: Dormer = { id: newId(), ...front, wMm: DORMER_W_MM, kind: 'gable', wallMm: DORMER_WALL_MM };
+        if (!dormerParts(roof, d)) {
+          get().setWarning(
+            'A dormer doesn’t fit on that slope: it needs a slope of 15° or more and room to run back up to the roof. Try a steeper roof, or a narrower or lower dormer.',
+          );
+          return false;
+        }
+        get().setWarning(null);
+        get().updateElement({ ...roof, dormers: [...(roof.dormers ?? []), d] });
         return true;
       },
       roofOverHouse: () => {

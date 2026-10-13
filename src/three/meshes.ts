@@ -255,9 +255,9 @@ export function buildMeshes(model: Model3D): THREE.Group {
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(geometry, material(roof.color, 1, roof.finish));
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    const mesh = new THREE.Mesh(geometry, material(roof.color, roof.opacity ?? 1, roof.finish));
+    mesh.castShadow = roof.role !== 'glass';
+    mesh.receiveShadow = roof.role !== 'glass';
     mesh.userData = { id: roof.id, level: roof.level };
     group.add(mesh);
     // Ridges, hips, valleys and the eaves, not the joins across a flat face.

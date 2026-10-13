@@ -305,6 +305,95 @@ export function triangulate(pts: { x: number; y: number }[]): [number, number, n
 }
 
 /**
+ * Triangles for a polygon with holes (in plan x, y): each hole is joined to the outline by a cut to a corner
+ * it can see, then the one outline that makes is ear-clipped. Indices run over the outline's points, then each
+ * hole's in turn. Holes must lie inside the outline and apart from each other.
+ */
+export function triangulateHoles(outer: Point[], holes: Point[][]): [number, number, number][] {
+  if (!holes.length) return triangulate(outer);
+  const all = [...outer, ...holes.flat()];
+  const sign = signedArea(outer) >= 0 ? 1 : -1;
+  // The outline as indices; each hole goes the other way round.
+  let ring = outer.map((_, i) => i);
+  let base = outer.length;
+  const starts = holes.map((h) => {
+    const ids = h.map((_, i) => base + i);
+    base += h.length;
+    return signedArea(h) * sign > 0 ? ids.reverse() : ids;
+  });
+  const cross = (a: Point, b: Point, c: Point, d: Point) => {
+    const o = (p: Point, q: Point, r: Point) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+    return o(a, b, c) * o(a, b, d) < -1e-12 && o(c, d, a) * o(c, d, b) < -1e-12;
+  };
+  const edgesOf = (ids: number[]) => ids.map((id, k): [number, number] => [id, ids[(k + 1) % ids.length]]);
+  // The hole furthest right first, as earcut does, so later cuts don't have to cross earlier ones.
+  const order = starts
+    .map((ids) => ({ ids, x: Math.max(...ids.map((i) => all[i].x)) }))
+    .sort((a, b) => b.x - a.x)
+    .map((h) => h.ids);
+  for (let h = 0; h < order.length; h++) {
+    const hole = order[h];
+    const others = [...edgesOf(ring), ...order.slice(h).flatMap(edgesOf)];
+    let best: { k: number; m: number; d: number } | null = null;
+    for (let m = 0; m < hole.length; m++)
+      for (let k = 0; k < ring.length; k++) {
+        const [p, q] = [all[hole[m]], all[ring[k]]];
+        const d = Math.hypot(p.x - q.x, p.y - q.y);
+        if (best && d >= best.d) continue;
+        const blocked = others.some(
+          ([i, j]) => i !== hole[m] && j !== hole[m] && i !== ring[k] && j !== ring[k] && cross(p, q, all[i], all[j]),
+        );
+        if (!blocked) best = { k, m, d };
+      }
+    if (!best) continue;
+    const { k, m } = best;
+    const turned = [...hole.slice(m), ...hole.slice(0, m)];
+    ring = [...ring.slice(0, k + 1), ...turned, turned[0], ...ring.slice(k)];
+  }
+  // Ear-clip, leaving out of the "anything inside" test the corners that sit where a cut doubles back.
+  const pts = ring.map((i) => all[i]);
+  const tris = earClip(pts);
+  return tris.map(([a, b, c]) => [ring[a], ring[b], ring[c]]);
+}
+
+/** triangulate, but a corner at the same place as the ear's own corners never blocks it (for cut outlines). */
+function earClip(pts: Point[]): [number, number, number][] {
+  const n = pts.length;
+  if (n < 3) return [];
+  const sign = signedArea(pts) >= 0 ? 1 : -1;
+  const idx = pts.map((_, i) => i);
+  const cross = (o: number, a: number, b: number) =>
+    (pts[a].x - pts[o].x) * (pts[b].y - pts[o].y) - (pts[a].y - pts[o].y) * (pts[b].x - pts[o].x);
+  const same = (p: number, q: number) => Math.abs(pts[p].x - pts[q].x) < 1e-9 && Math.abs(pts[p].y - pts[q].y) < 1e-9;
+  const inTri = (p: number, a: number, b: number, c: number) =>
+    cross(a, b, p) * sign >= 0 && cross(b, c, p) * sign >= 0 && cross(c, a, p) * sign >= 0;
+  const out: [number, number, number][] = [];
+  let guard = n * n;
+  while (idx.length > 3 && guard-- > 0) {
+    let cut = false;
+    for (let k = 0; k < idx.length; k++) {
+      const a = idx[(k + idx.length - 1) % idx.length];
+      const b = idx[k];
+      const c = idx[(k + 1) % idx.length];
+      const turn = cross(a, b, c) * sign;
+      if (turn < 0) continue;
+      if (
+        turn > 0 &&
+        idx.some((p) => p !== a && p !== b && p !== c && !same(p, a) && !same(p, b) && !same(p, c) && inTri(p, a, b, c))
+      )
+        continue;
+      if (turn > 0) out.push([a, b, c]);
+      idx.splice(k, 1);
+      cut = true;
+      break;
+    }
+    if (!cut) break;
+  }
+  if (idx.length === 3) out.push([idx[0], idx[1], idx[2]]);
+  return out;
+}
+
+/**
  * A pitch typed in: degrees ("30", "30°", "22.5 deg") or a rise in a run ("6 in 12", "6/12", "6:12").
  * Null when it isn't one, or is steeper than a roof takes.
  */

@@ -98,6 +98,8 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   beam: 'length',
   slab: 'pair',
   roof: 'length',
+  skylight: 'none',
+  dormer: 'none',
   plot: 'pair',
   stairs: 'none',
   section: 'none',

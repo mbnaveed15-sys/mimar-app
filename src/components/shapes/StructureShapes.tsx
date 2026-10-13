@@ -1,5 +1,6 @@
 import { centroid, fromFurnitureLocal } from '../../geometry';
 import { roofEaves, roofShape, slopedFaces } from '../../lib/roof/roof';
+import { dormerParts, skylightParts } from '../../lib/roof/roofOpenings';
 import { PLAN } from '../../theme/plan';
 import type { Beam, Block, Column, Point, Roof, Slab } from '../../types';
 import { ringsPath, type Hatch } from '../../lib/hatch';
@@ -205,6 +206,26 @@ export function RoofShape({ roof, selected, k }: { roof: Roof; selected: boolean
             </g>
           );
         })}
+      {(roof.skylights ?? []).map((sk) => {
+        const p = skylightParts(roof, sk);
+        if (!p) return null;
+        return (
+          <g key={sk.id} data-testid="roof-skylight-plan" style={stroke} strokeWidth={1 * k} fill="none">
+            <path d={ring(p.hole)} strokeDasharray={`${6 * k} ${3 * k}`} />
+            <path d={ring(p.glass)} strokeDasharray={`${6 * k} ${3 * k}`} />
+          </g>
+        );
+      })}
+      {(roof.dormers ?? []).map((d) => {
+        const p = dormerParts(roof, d);
+        if (!p) return null;
+        return (
+          <g key={d.id} data-testid="roof-dormer-plan" style={stroke} strokeWidth={1 * k} fill="none">
+            <path d={ring(p.footprint)} strokeDasharray={`${10 * k} ${5 * k}`} />
+            {p.ridge && <line x1={p.ridge[0].x} y1={p.ridge[0].y} x2={p.ridge[1].x} y2={p.ridge[1].y} />}
+          </g>
+        );
+      })}
       {selected &&
         roof.points.map((a, i) => {
           const b = roof.points[(i + 1) % n];
