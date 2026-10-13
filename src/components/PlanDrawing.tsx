@@ -44,6 +44,8 @@ export interface PlanDrawingProps {
   showRoomFills: boolean;
   /** Plan units per screen (or output) pixel, for line widths and text that keep a fixed size. */
   k: number;
+  /** Plan units per pixel the hatches are spaced for, when not `k`: the screen's fixed scale, so they zoom with the plan. */
+  hatchK?: number;
   /** Selected furniture shows its use zone sized for a wheelchair user (ADA), where that differs. */
   accessibleZones?: boolean;
   /** The ground worked out from the levels (contour lines, cut and fill), on the ground floor. */
@@ -127,7 +129,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
 
   return (
     <>
-      {used.size > 0 && <HatchDefs uid={uid} k={k} hatches={used} />}
+      {used.size > 0 && <HatchDefs uid={uid} k={k} size={props.hatchK} hatches={used} />}
       {doc.elements.map((el) =>
         el.type === 'context' ? <ContextShape key={el.id} item={el} selected={selected.has(el.id)} k={k} /> : null,
       )}

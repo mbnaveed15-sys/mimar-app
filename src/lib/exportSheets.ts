@@ -108,7 +108,7 @@ export async function exportSheets(
     await drawPrims(pdf, layout.prims, plan, picture);
   }
   if (!pdf) throw new Error('There are no sheets to print. Add a sheet in the Drawings view first.');
-  pdf.setProperties({ title: src.projectName, creator: `Mimar ${src.version}` });
+  pdf.setProperties({ title: src.projectName, creator: `MIMAR ${src.version}` });
   if (extras.check || extras.hints?.length) checkPage(pdf, extras.check, extras.hints ?? [], extras.checkTitle);
   if (extras.cost) costPage(pdf, extras.cost, extras.checkTitle);
   const url = URL.createObjectURL(pdf.output('blob'));

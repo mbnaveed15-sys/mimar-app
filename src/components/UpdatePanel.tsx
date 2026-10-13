@@ -32,7 +32,7 @@ export function UpdatePanel() {
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5">
           <Mark size={16} />
-          Mimar {status.version ?? __APP_VERSION__}
+          MIMAR {status.version ?? __APP_VERSION__}
         </span>
         {bridge && status.state !== 'unsupported' && (
           <button
@@ -61,13 +61,13 @@ export function UpdatePanel() {
       )}
       {status.state === 'available-portable' && bridge && (
         <button onClick={() => bridge.openDownload()} className="m-btn m-btn-primary text-xs">
-          Download Mimar {status.latest}
+          Download MIMAR {status.latest}
         </button>
       )}
       {applyWebUpdate && (
         <>
           <p role="status" className="font-medium text-accent-ink">
-            A new version of Mimar is ready. Your plan is kept.
+            A new version of MIMAR is ready. Your plan is kept.
           </p>
           <button onClick={applyWebUpdate} className="m-btn m-btn-primary text-xs">
             Reload to update

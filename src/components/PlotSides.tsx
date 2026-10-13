@@ -186,7 +186,7 @@ export function PlotSidesPanel({ plot }: { plot: Plot }) {
         <div className="flex flex-col gap-1 rounded-sm border border-line p-1.5" data-testid="corner-plot">
           <div className="font-medium">Corner plot</div>
           <div className="text-muted">
-            The second road takes the side setback for now. No official corner-plot figures are in Mimar yet, so check
+            The second road takes the side setback for now. No official corner-plot figures are in MIMAR yet, so check
             them with the authority.
           </div>
           <label className="flex items-center gap-2">

@@ -10,10 +10,10 @@ describe('release notes', () => {
   it('has a note of what is new for the version being released', () => {
     const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
     const text = notes();
-    expect(text.startsWith(`# Mimar ${version}\n`)).toBe(true);
+    expect(text.startsWith(`# MIMAR ${version}\n`)).toBe(true);
     expect(text).toContain(`## New in ${version}`);
     expect(text).toContain(`Mimar-Setup-${version}.exe`);
-    expect(text).toContain('## What Mimar does');
+    expect(text).toContain('## What MIMAR does');
     expect(text).not.toMatch(/\{\{|<!--/);
   });
 

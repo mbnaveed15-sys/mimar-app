@@ -16,10 +16,10 @@ describe('updates', () => {
   it('describes each state in plain words', () => {
     expect(describeUpdate({ state: 'unsupported' })).toBe('');
     expect(describeUpdate({ state: 'downloading', latest: '1.8.0', percent: 40 })).toBe(
-      'Downloading Mimar 1.8.0 (40%)…',
+      'Downloading MIMAR 1.8.0 (40%)…',
     );
-    expect(describeUpdate({ state: 'ready', latest: '1.8.0' })).toBe('Mimar 1.8.0 is ready to install.');
-    expect(describeUpdate({ state: 'available-portable', latest: '1.8.0' })).toBe('Mimar 1.8.0 is available.');
+    expect(describeUpdate({ state: 'ready', latest: '1.8.0' })).toBe('MIMAR 1.8.0 is ready to install.');
+    expect(describeUpdate({ state: 'available-portable', latest: '1.8.0' })).toBe('MIMAR 1.8.0 is available.');
     expect(describeUpdate({ state: 'error' })).toMatch(/internet connection/);
   });
 });

@@ -1,18 +1,18 @@
 <!--
-  The description every Mimar release gets on GitHub. The release build (.github/workflows/build-installer.yml)
+  The description every MIMAR release gets on GitHub. The release build (.github/workflows/build-installer.yml)
   runs scripts/release-notes.mjs, which fills in {{VERSION}} and puts docs/release-notes/<version>.md where
-  {{WHATS_NEW}} is. Keep "What Mimar does" up to date when a release adds or changes a feature.
+  {{WHATS_NEW}} is. Keep "What MIMAR does" up to date when a release adds or changes a feature.
 -->
 
-# Mimar {{VERSION}}
+# MIMAR {{VERSION}}
 
 **Plan a house the way it is actually built, in feet and marla, and check it against the bylaws as you draw.**
 
-Mimar is a house-planning app made for Pakistan. You draw your plot and rooms, see the house in 3D, check it against CDA, DHA and other bylaws, estimate quantities and cost, and print drawings to scale. It is built for homeowners who want to plan their own house and for architects and draftsmen who need proper drawings and exports. Since 1.33 it also handles free design work and non-residential buildings.
+MIMAR is a house-planning app made for Pakistan. You draw your plot and rooms, see the house in 3D, check it against CDA, DHA and other bylaws, estimate quantities and cost, and print drawings to scale. It is built for homeowners who want to plan their own house and for architects and draftsmen who need proper drawings and exports. Since 1.33 it also handles free design work and non-residential buildings.
 
 It is free, and runs on Windows or in any modern browser.
 
-## Get Mimar
+## Get MIMAR
 
 | | |
 | --- | --- |
@@ -24,7 +24,7 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 
 {{WHATS_NEW}}
 
-## What Mimar does
+## What MIMAR does
 
 ### Draw the plan
 - **Walls** in 4½", 9" and 13½" brick, retaining walls, and **glass curtain walls** with mullions and transoms. Walls can be straight or **curved** (true arcs).
@@ -58,8 +58,8 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 - **Plan hints:** good practice rather than law. Rooms reached only through a bedroom, kitchens and living rooms without an outside window, the kitchen far from dining, blocked furniture (by walls, other items or a door's swing), narrow corridors, doors and stairs, and more.
 - **Terrain:** spot levels, contours and levelled areas build a ground surface, measured from the road level.
 
-### Let Mimar lay it out
-- **Layout from a room list:** say how many bedrooms and baths, and whether you want a drawing room, dining, car porch, prayer room and so on. Mimar checks the list fits the plot and the bylaws, then offers several plans to choose from. With the ground floor in place, it plans the **first floor** too: bedrooms, a TV lounge and a terrace round the stair, with baths over the wet rooms below.
+### Let MIMAR lay it out
+- **Layout from a room list:** say how many bedrooms and baths, and whether you want a drawing room, dining, car porch, prayer room and so on. MIMAR checks the list fits the plot and the bylaws, then offers several plans to choose from. With the ground floor in place, it plans the **first floor** too: bedrooms, a TV lounge and a terrace round the stair, with baths over the wet rooms below.
 
 ### See it in 3D
 - A live 3D model with materials and textures, open doors, glass and furniture.

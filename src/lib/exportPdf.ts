@@ -249,7 +249,7 @@ export async function exportPdf(content: PlanImageContent, area: Bounds, details
     unit: 'mm',
     format: [paper.w, paper.h],
   });
-  pdf.setProperties({ title: details.title, creator: `Mimar ${details.version}` });
+  pdf.setProperties({ title: details.title, creator: `MIMAR ${details.version}` });
   const x = MARGIN + (spaceW - drawW) / 2;
   const y = MARGIN + (spaceH - drawH) / 2;
   pdf.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, drawW, drawH, undefined, 'FAST');
@@ -273,7 +273,7 @@ export async function exportPdf(content: PlanImageContent, area: Bounds, details
   });
   if (details.bylawNote) pdf.text(details.bylawNote, right, tbY + 9, { align: 'right' });
   pdf.setTextColor(120);
-  pdf.text(`Drawn with Mimar ${details.version}`, right, tbY + (details.bylawNote ? 14 : 9), { align: 'right' });
+  pdf.text(`Drawn with MIMAR ${details.version}`, right, tbY + (details.bylawNote ? 14 : 9), { align: 'right' });
   pdf.setTextColor(0);
   northArrow(pdf, pageW - MARGIN - 8, MARGIN + 11, details.northDeg ?? 0);
   if (details.check || details.hints?.length)

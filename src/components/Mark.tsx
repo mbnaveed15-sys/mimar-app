@@ -12,7 +12,7 @@ export function Mark({ size = 28, bare = false }: { size?: number; bare?: boolea
   // The side of the M: a darker tile colour on the tile, the ink faded on its own.
   const side = bare ? 'var(--ink)' : 'color-mix(in srgb, var(--mark-tile) 55%, black)';
   return (
-    <svg width={size} height={size} viewBox="0 0 96 96" role="img" aria-label="Mimar" className="block flex-none">
+    <svg width={size} height={size} viewBox="0 0 96 96" role="img" aria-label="MIMAR" className="block flex-none">
       {!bare && <rect width="96" height="96" rx="22" style={{ fill: 'var(--mark-tile)' }} />}
       {Array.from({ length: DEPTH_STEPS }, (_, i) => {
         const k = DEPTH_STEPS - i;

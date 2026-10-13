@@ -42,5 +42,5 @@ export async function openSection(page: Page, title: string) {
 /** Wait until the app is ready for keyboard shortcuts. */
 export async function ready(page: Page) {
   await page.getByTestId('plan-canvas').waitFor();
-  await page.waitForFunction(() => document.title.includes('Mimar'));
+  await page.waitForFunction(() => document.title.includes('MIMAR'));
 }

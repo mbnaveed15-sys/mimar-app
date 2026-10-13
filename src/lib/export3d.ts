@@ -276,7 +276,7 @@ const f = (n: number) => (Math.abs(n) < 1e-9 ? '0' : String(Math.round(n * 1e6) 
 
 /** Wavefront OBJ and its MTL: open in 3ds Max, Rhino, Revit, Blender, Twinmotion and most others. */
 export function toObj(meshes: ExportMesh[], mtlName: string): { obj: string; mtl: string } {
-  const obj = ['# Mimar 3D export (metres, y up)', `mtllib ${mtlName}`];
+  const obj = ['# MIMAR 3D export (metres, y up)', `mtllib ${mtlName}`];
   let offset = 1;
   for (const m of meshes) {
     obj.push(`o ${m.name}`);
@@ -292,7 +292,7 @@ export function toObj(meshes: ExportMesh[], mtlName: string): { obj: string; mtl
     offset += m.positions.length / 3;
   }
   const seen = new Set<string>();
-  const mtl = ['# Mimar materials'];
+  const mtl = ['# MIMAR materials'];
   for (const { material } of meshes) {
     if (seen.has(material.name)) continue;
     seen.add(material.name);
@@ -361,7 +361,7 @@ export function toDae(meshes: ExportMesh[], title: string): string {
     .join('\n');
   return `<?xml version="1.0" encoding="utf-8"?>
 <COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
-  <asset><contributor><authoring_tool>Mimar</authoring_tool></contributor><title>${xml(title)}</title><unit name="meter" meter="1"/><up_axis>Y_UP</up_axis></asset>
+  <asset><contributor><authoring_tool>MIMAR</authoring_tool></contributor><title>${xml(title)}</title><unit name="meter" meter="1"/><up_axis>Y_UP</up_axis></asset>
   <library_effects>
 ${effects}
   </library_effects>
@@ -422,7 +422,7 @@ export function toGlb(meshes: ExportMesh[]): Uint8Array<ArrayBuffer> {
     };
   });
   const json = {
-    asset: { version: '2.0', generator: 'Mimar' },
+    asset: { version: '2.0', generator: 'MIMAR' },
     scene: 0,
     scenes: [{ nodes: meshes.map((_, i) => i) }],
     nodes: meshes.map((m, i) => ({ name: m.name, mesh: i })),

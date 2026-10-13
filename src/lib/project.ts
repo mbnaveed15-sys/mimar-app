@@ -12,7 +12,7 @@ export const PROJECT_TYPES: { id: ProjectType; label: string; blurb: string }[] 
   {
     id: 'house',
     label: 'House on a plot',
-    blurb: 'A plot with setbacks and bylaws, marla, the room list, plan check and cost (as Mimar has always done).',
+    blurb: 'A plot with setbacks and bylaws, marla, the room list, plan check and cost (as MIMAR has always done).',
   },
   {
     id: 'free',

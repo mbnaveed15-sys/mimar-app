@@ -5,7 +5,7 @@ test('first run: welcome, the tour, and a sample house to explore', async ({ pag
   await page.goto('/?welcome');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  const welcome = page.getByRole('dialog', { name: 'Welcome to Mimar' });
+  const welcome = page.getByRole('dialog', { name: 'Welcome to MIMAR' });
   await expect(welcome).toBeVisible();
   await welcome.getByRole('button', { name: /sample 5-marla/ }).click();
 
@@ -25,9 +25,9 @@ test('first run: welcome, the tour, and a sample house to explore', async ({ pag
   // Seen once, it stays away; Help › Getting started brings it back.
   await page.goto('/');
   await ready(page);
-  await expect(page.getByRole('dialog', { name: 'Welcome to Mimar' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Welcome to MIMAR' })).toHaveCount(0);
   await menu(page, 'Help', 'Getting started');
-  await expect(page.getByRole('dialog', { name: 'Welcome to Mimar' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Welcome to MIMAR' })).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: 'Welcome to Mimar' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Welcome to MIMAR' })).toHaveCount(0);
 });

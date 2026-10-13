@@ -1,6 +1,6 @@
 {
-  "name": "Mimar — house plans",
-  "short_name": "Mimar",
+  "name": "MIMAR",
+  "short_name": "MIMAR",
   "description": "Draw house plans in feet and marla, see them in 3D, and print to scale.",
   "start_url": "./",
   "scope": "./",

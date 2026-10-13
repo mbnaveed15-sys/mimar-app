@@ -44,7 +44,7 @@ function setupUpdates(getWindow) {
       send({ state: 'checking' });
       try {
         const res = await net.fetch(LATEST_API, {
-          headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Mimar' },
+          headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'MIMAR' },
         });
         if (res.status === 404) return send({ state: 'up-to-date' }); // no releases yet
         if (!res.ok) throw new Error(`GitHub answered ${res.status}`);

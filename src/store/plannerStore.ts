@@ -3153,7 +3153,7 @@ if (typeof window !== 'undefined') {
     plannerStore
       .getState()
       .setWarning(
-        'Mimar is open in another window too. Both save to the same place, so the last change wins: close one of them, or save this plan to a file.',
+        'MIMAR is open in another window too. Both save to the same place, so the last change wins: close one of them, or save this plan to a file.',
       );
   });
 }
