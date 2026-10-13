@@ -19,9 +19,19 @@ import { formatLength } from '../lib/units';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
 import { levelBaseM, M_PER_UNIT } from '../three/model';
 import { getPicker, getPointer } from '../three/picker';
-import type { Id, PlanDoc, PlanElement, Plot, Point, SketchLine, Tool } from '../types';
+import {
+  GROUND_LEVEL,
+  levelOf,
+  type Id,
+  type PlanDoc,
+  type PlanElement,
+  type Plot,
+  type Point,
+  type SketchLine,
+  type Tool,
+} from '../types';
 import { MODIFY_TOOLS } from '../types';
-import { wallsOf } from '../walls';
+import { wallPolygon, wallsOf } from '../walls';
 import { bowForRadius, bowThrough, radiusOf } from '../lib/arc';
 import {
   modifyAnchor,
@@ -163,6 +173,26 @@ function itemPoints(s: PlannerState, elements: PlanElement[], ignoreIds: Set<Id>
   return points;
 }
 
+/** The ground floor's wall corners, kept while the plan stays the same. */
+let traceMemo: { doc: PlanDoc; points: SnapPoint[] } | null = null;
+
+/**
+ * On the Ground (site) level, the corners of the ground floor's walls (their faces and centre lines),
+ * so plinth walls can be drawn under them; none on other floors.
+ */
+function tracePoints(s: PlannerState): SnapPoint[] {
+  if (!s.doc.levels.find((l) => l.id === s.activeLevel)?.site) return [];
+  if (traceMemo?.doc === s.doc) return traceMemo.points;
+  const walls = wallsOf(s.doc.elements).filter((w) => !w.hidden && levelOf(w) === GROUND_LEVEL);
+  const points: SnapPoint[] = walls.flatMap((w) => [
+    ...wallPolygon(w, walls).map((point) => ({ point, kind: 'item-corner' as const })),
+    { point: { x: w.x1, y: w.y1 }, kind: 'item-corner' as const },
+    { point: { x: w.x2, y: w.y2 }, kind: 'item-corner' as const },
+  ]);
+  traceMemo = { doc: s.doc, points };
+  return points;
+}
+
 /** Snap a point for the active tool, drawing from `from` when there is one. */
 export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreIds?: Set<Id>): Inference {
   const lock = from ? (s.axisLock === 'x' || s.axisLock === 'y' ? axisDirection(s.axisLock) : s.shiftLock) : null;
@@ -185,7 +215,10 @@ export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreI
     lock,
     ignoreIds,
     allow,
-    points: allow('item-corner') || allow('midpoint') ? itemPoints(s, elements, ignoreIds, previewing) : [],
+    points: [
+      ...(allow('item-corner') || allow('midpoint') ? itemPoints(s, elements, ignoreIds, previewing) : []),
+      ...(allow('item-corner') ? tracePoints(s) : []),
+    ],
   });
 }
 

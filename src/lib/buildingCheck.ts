@@ -33,6 +33,7 @@ import { roomAreaSqMm } from '../rooms';
 import {
   BASEMENT_HEIGHT_MM,
   GROUND_LEVEL,
+  SITE_LEVEL,
   levelOf,
   type PlanDoc,
   type Plot,
@@ -351,7 +352,7 @@ export function buildingCheckRows(
   if (ramp.needed) {
     const ramps = stairs.filter(
       (s): s is Extract<typeof s, { type: 'stair' }> =>
-        s.type === 'stair' && s.shape === 'ramp' && levelOf(s) === GROUND_LEVEL,
+        s.type === 'stair' && s.shape === 'ramp' && (levelOf(s) === GROUND_LEVEL || levelOf(s) === SITE_LEVEL),
     );
     const wide = ramp.minWidthMm
       ? ramps.filter((s) => s.width * MM_PER_UNIT >= ramp.minWidthMm! - TOLERANCE_MM)

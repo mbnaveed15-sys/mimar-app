@@ -58,7 +58,7 @@ import {
 } from '../lib/plot';
 import { boundaryWallsAlong, buildPlotWalls, syncPlotWalls } from '../lib/plotWalls';
 import { formatLength } from '../lib/units';
-import { basementOf, groundIndex, levelWallMm, slabMm } from '../lib/levels';
+import { basementOf, groundIndex, isSiteLevel, levelWallMm, slabMm, stairRiseMm, withSiteLevel } from '../lib/levels';
 import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
 import { CURTAIN_MM, isBuildingWall } from '../walls';
@@ -72,7 +72,7 @@ import { clampGap, type Hand } from '../lib/openingPlace';
 import { besideOpening, loneOpenings, nounOf, openingAt, refitOpening, tidy } from './openingAt';
 import { setActivePicker } from '../three/picker';
 import { applyTheme, type ThemeId } from '../theme/themes';
-import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf } from '../types';
+import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SITE_LEVEL } from '../types';
 import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
 import type {
   RoofKind,
@@ -232,7 +232,7 @@ const NOT_COPIED_UP: PlanElement['type'][] = ['plot', 'section', 'level', 'conto
 const FLOOR_NAMES = ['Ground floor', 'First floor', 'Second floor', 'Third floor', 'Fourth floor'];
 /** A new top floor's name, by how far above the ground floor it is (a basement doesn't count). */
 function nextFloorName(doc: PlanDoc): string {
-  const n = doc.levels.filter((l) => !l.basement).length;
+  const n = doc.levels.filter((l) => !l.basement && !l.site).length;
   return FLOOR_NAMES[n] ?? `Floor ${n}`;
 }
 
@@ -304,6 +304,10 @@ export interface PlannerState {
   setBelowOpacity: (percent: number) => void;
   /** Add a basement below the ground floor (or go to the one there is) and draw on it. */
   addBasement: () => void;
+  /** Go to the Ground (site) level, the lawn under the ground floor, adding it if the plan has none. */
+  showSiteLevel: () => void;
+  /** Draw the plinth yourself on the Ground (site) level (ground-floor walls start at the floor), or not. */
+  setOwnPlinth: (own: boolean) => void;
   /** The basement's clear height, floor to ceiling, in millimetres. */
   setBasementHeight: (mm: number) => void;
   /**
@@ -313,7 +317,7 @@ export interface PlannerState {
    */
   addRetainingWalls: (mode: 'house' | 'building') => boolean;
   renameLevel: (id: Id, name: string) => void;
-  /** Remove a floor (not the ground floor) and everything on it. */
+  /** Remove a floor (not the ground floor, nor the Ground (site) level while it has items) and everything on it. */
   deleteLevel: (id: Id) => void;
   /** Elements and rooms on the active floor. */
   levelElements: () => PlanElement[];
@@ -1631,7 +1635,8 @@ export function createPlannerStore(
       duplicateLevel: () => {
         const { doc, activeLevel } = get();
         const from = doc.levels.find((l) => l.id === activeLevel);
-        if (!from) return;
+        // The Ground (site) level isn't a floor to copy upwards.
+        if (!from || from.site) return;
         const ids = [
           ...doc.elements.filter(
             (el) =>
@@ -1671,6 +1676,18 @@ export function createPlannerStore(
         get().commit((doc) => ({ ...doc, levels: [{ id, name: 'Basement', basement: true }, ...doc.levels] }));
         get().setActiveLevel(id);
       },
+      showSiteLevel: () => {
+        if (!get().doc.levels.some((l) => l.site))
+          get().commit((doc) => ({ ...doc, levels: withSiteLevel(doc.levels) }));
+        get().setActiveLevel(SITE_LEVEL);
+      },
+      setOwnPlinth: (own) =>
+        get().commit((doc) => {
+          if (!!doc.ownPlinth === own) return doc;
+          const next: PlanDoc = { ...doc, ownPlinth: true };
+          if (!own) delete next.ownPlinth;
+          return next;
+        }),
       addRetainingWalls: (mode) => {
         const { doc } = get();
         const basement = basementOf(doc);
@@ -1744,6 +1761,11 @@ export function createPlannerStore(
         ),
       deleteLevel: (id) => {
         if (id === GROUND_LEVEL) return;
+        const { doc } = get();
+        if (isSiteLevel(doc, id) && [...doc.elements, ...doc.rooms].some((it) => levelOf(it) === id)) {
+          get().setWarning('Ground (site) has items on it. Delete them first, or leave it: it is not a floor.');
+          return;
+        }
         if (get().activeLevel === id) get().setActiveLevel(GROUND_LEVEL);
         get().commit((doc) => ({
           ...doc,
@@ -2258,8 +2280,7 @@ export function createPlannerStore(
       addStair: (p) => {
         const { site, doc, wallHeightMm, activeLevel } = get();
         // A full floor: this floor's height and the slab over it (a basement's own height).
-        const riseMm =
-          site.climb === 'plinth' ? doc.plinthMm : levelWallMm(doc, activeLevel, wallHeightMm) + slabMm(doc);
+        const riseMm = stairRiseMm(doc, activeLevel, site.climb, wallHeightMm);
         const spec = stairSpec(site, riseMm);
         const layout = stairLayout(spec);
         const stair: PlanElement = {

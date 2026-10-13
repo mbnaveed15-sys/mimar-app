@@ -495,6 +495,12 @@ export interface Level {
   /** A floor below the ground floor (there is at most one, first in the list). */
   basement?: boolean;
   /**
+   * The Ground (site) level: the lawn, under the ground floor (after the basement, if any). What is
+   * drawn on it stands on the finished ground: plinth walls, platforms, steps up the plinth. It is
+   * not a storey. Its id is `SITE_LEVEL`.
+   */
+  site?: boolean;
+  /**
    * This floor's wall height (a basement's clear height), floor to ceiling, in millimetres; the
    * project's usual height (a basement's `BASEMENT_HEIGHT_MM`) when missing.
    */
@@ -506,6 +512,9 @@ export const BASEMENT_HEIGHT_MM = 3048;
 
 /** The ground floor's id; items without a levelId are on it. */
 export const GROUND_LEVEL = 'ground';
+
+/** The Ground (site) level's id. */
+export const SITE_LEVEL = 'site';
 
 /** The level an item is on. */
 export const levelOf = (item: { levelId?: Id }): Id => item.levelId ?? GROUND_LEVEL;
@@ -559,6 +568,11 @@ export interface PlanDoc {
   levels: Level[];
   /** Height of the plinth (floor above natural ground), in millimetres. */
   plinthMm: number;
+  /**
+   * The plinth is drawn on the Ground (site) level: ground-floor walls start at the floor instead of
+   * running down to the ground (automatic, as before 1.47, when missing).
+   */
+  ownPlinth?: boolean;
   /** Which way north points on the plan, in degrees clockwise from straight up (up when missing). */
   northDeg?: number;
   /** Layers that are hidden or locked (every item is on the layer for its kind). */

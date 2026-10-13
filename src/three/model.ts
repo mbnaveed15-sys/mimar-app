@@ -6,7 +6,7 @@ import { doorKindOf, SWING_KINDS } from '../lib/openingKinds';
 import { openingProfileMm } from '../lib/shapes';
 import { buildableArea, stairLayout } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
-import { basementOf, groundIndex, levelWallMm, slabMm } from '../lib/levels';
+import { basementOf, buildingLevels, groundIndex, isSiteLevel, lawnMm, levelWallMm, slabMm } from '../lib/levels';
 import { outsideOutline } from '../lib/outline';
 import { openRooms, voidsOver, within } from '../lib/voids';
 import {
@@ -994,14 +994,17 @@ const toXZ = (p: Point): [number, number] => [m(p.x), m(p.y)];
  * between it and the ground floor; a basement is below the ground floor by its slab and its height.
  */
 export function levelBaseM(doc: PlanDoc, levelId: string, wallHeightMm: number): number {
-  const g = groundIndex(doc);
-  const found = doc.levels.findIndex((l) => l.id === levelId);
+  // The Ground (site) level is the lawn.
+  if (isSiteLevel(doc, levelId)) return mmToM(lawnMm(doc));
+  const levels = buildingLevels(doc);
+  const g = groundIndex({ levels });
+  const found = levels.findIndex((l) => l.id === levelId);
   const i = found < 0 ? g : found;
   const slab = slabMm(doc);
   let base = mmToM(doc.plinthMm);
   // Up a floor's walls and its slab for each floor between it and the ground floor; down for a basement.
-  for (let k = g; k < i; k++) base += mmToM(levelWallMm(doc, doc.levels[k].id, wallHeightMm) + slab);
-  for (let k = g - 1; k >= i; k--) base -= mmToM(slab + levelWallMm(doc, doc.levels[k].id, wallHeightMm));
+  for (let k = g; k < i; k++) base += mmToM(levelWallMm(doc, levels[k].id, wallHeightMm) + slab);
+  for (let k = g - 1; k >= i; k--) base -= mmToM(slab + levelWallMm(doc, levels[k].id, wallHeightMm));
   return base;
 }
 
@@ -1061,6 +1064,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   levels.forEach((level) => {
     const base = doc.levels.length ? levelBaseM(doc, level.id, options.wallHeightMm) : plinth;
     const ground = level.id === GROUND_LEVEL;
+    // The Ground (site) level: what is drawn on it stands on the finished ground.
+    const siteLevel = !!level.site;
     // A basement's walls, columns and slab over it go to its own height.
     const levelMm = levelWallMm(doc, level.id, options.wallHeightMm);
     const wallTop = mmToM(levelMm);
@@ -1093,8 +1098,9 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       const paint = <T extends Solid | Panel>(s: T): T =>
         s.role === 'wall' && (color || sides) ? { ...s, ...(color && { color, finish }), ...(sides && { sides }) } : s;
       const height = wall.heightMm ?? levelMm;
-      // A boundary wall stands on the natural ground, not on the plinth.
-      const onGround = wall.kind === 'boundary' && ground;
+      // A boundary wall stands on the natural ground, not on the plinth; so does a wall on the Ground
+      // (site) level where the ground isn't flat (on flat ground it stands on the lawn, its floor).
+      const onGround = (wall.kind === 'boundary' && ground) || (siteLevel && !!terrain);
       const place = <T extends Part>(s: T): T => from(wall.id)(raise(wall)(onGround ? s : lift(s)));
       const parts = isCurtain(wall)
         ? curtainParts(wall, own, height, metric)
@@ -1123,7 +1129,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       // lowest finished ground along them.
       const footMm =
         ground && terrain ? lowestAlong(terrain, { x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 }) : 0;
-      if (ground && doc.plinthMm - footMm > 0.5 && !wall.elevMm)
+      // Drawing your own plinth (on the Ground (site) level), they start at the floor.
+      if (ground && !doc.ownPlinth && doc.plinthMm - footMm > 0.5 && !wall.elevMm)
         solids.push(
           ...curvedWallParts(wall, walls, [], doc.plinthMm - footMm)
             .solids.map((s) => (footMm ? { ...s, y0: s.y0 + mmToM(footMm) } : s))
@@ -1139,7 +1146,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           ? closedDoor(door, host.heightMm ?? levelMm, openingBend(door, host))
           : doorLeaves(door, host.heightMm ?? levelMm, m(thicknessOf(host)), openingBend(door, host))
       ).map(raise(host));
-      const onGround = host.kind === 'boundary' && ground;
+      const onGround = (host.kind === 'boundary' && ground) || (siteLevel && !!terrain);
       // A gate in a wall on sloping ground rises with the ground at it.
       const rise =
         onGround && terrain
@@ -1193,14 +1200,16 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         // Steps up the plinth start from the natural ground; others from the floor they are on.
         const fromGround = ground && Math.abs(el.riseMm - doc.plinthMm) < 1 && !el.elevMm;
         let parts = stairSolids(el, colorOf(el.material)).map(withFinish(el.material, 'concrete'));
+        // Steps on the Ground (site) level start from the lawn.
+        if (siteLevel) parts = parts.map(lift);
         // On sloping or levelled ground each step reaches down to (or starts from) the ground under it.
-        if (fromGround && terrain)
+        if ((fromGround || siteLevel) && terrain)
           parts = parts.map((s) => {
             const top = s.y0 + s.h;
             const h = Math.max(0.01, top - mmToM(lowestUnder(terrain, s)));
             return { ...s, y0: top - h, h };
           });
-        solids.push(...(fromGround ? parts : parts.map(lift)).map(raise(el)).map(from(el.id)));
+        solids.push(...(fromGround || siteLevel ? parts : parts.map(lift)).map(raise(el)).map(from(el.id)));
         const finish = finishOf(el.material, 'concrete');
         blocks.push(
           ...stairBlocks(el, colorOf(el.material))
@@ -1264,10 +1273,11 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         // On a slab it stands on the slab's top; otherwise on the floor.
         const host = el.slabId ? els.find((x): x is Slab => x.type === 'slab' && x.id === el.slabId) : undefined;
         let foot = host ? base + wallTop + mmToM(host.elevMm ?? 0) + m(host.thickness) : base;
-        // A path or driveway lies on the ground (on a sloping site, at the ground's height at its middle).
-        if (el.path && ground && !host) {
+        // A path or driveway lies on the ground (on a sloping site, at the ground's height at its middle),
+        // and so does anything on the Ground (site) level.
+        if (((el.path && ground) || siteLevel) && !host) {
           const c = centroid(el.points);
-          foot = site ? (site.lawnY ?? mmToM(site.lawnAt(c.x, c.y))) : 0;
+          foot = site ? (site.lawnY ?? mmToM(site.lawnAt(c.x, c.y))) : siteLevel ? base : 0;
         }
         const flatShape = el.heightMm <= 0;
         blocks.push({

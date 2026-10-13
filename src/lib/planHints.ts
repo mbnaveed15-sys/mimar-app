@@ -25,6 +25,7 @@ import {
 } from '../types';
 import { isBuildingWall, thicknessOf, wallPolygon } from '../walls';
 import { overlaps, voidsOver } from './voids';
+import { buildingLevels } from './levels';
 import { directionAlong, pointAlong, projectOnWall, runLength } from './arc';
 import { isCurtain, TRANSOM_MM } from './curtain';
 import { DEFAULT_OPENING_GAP_MM, openingFits } from './openingPlace';
@@ -202,7 +203,10 @@ export function planHints(
   const len = (mm: number) => formatLength(mm, ctx.units);
 
   // Furniture without the free space it needs to be used.
-  const levelNames = new Map(doc.levels.map((l, i) => [l.id, i > 0 ? `${l.name}: ` : ''] as const));
+  const levelNames = new Map([
+    ...buildingLevels(doc).map((l, i) => [l.id, i > 0 ? `${l.name}: ` : ''] as const),
+    ...doc.levels.filter((l) => l.site).map((l) => [l.id, `${l.name}: `] as const),
+  ]);
   for (const { item, sides } of blockedZones(doc, ctx.accessible)) {
     const zone = zoneOf(item.kind, ctx.accessible)!;
     const mmOf = (s: ZoneSide) => (s === 'front' ? zone.front : s === 'back' ? zone.back : zone.sides) ?? 0;
@@ -254,7 +258,8 @@ export function planHints(
   const wallById = new Map(doc.elements.filter((el): el is Wall => el.type === 'wall').map((w) => [w.id, w] as const));
 
   const floors: FloorInfo[] = [];
-  doc.levels.forEach((level, index) => {
+  // The Ground (site) level is the lawn, not a floor people use.
+  buildingLevels(doc).forEach((level, index) => {
     const rooms = doc.rooms.filter((r) => !r.hidden && levelOf(r) === level.id);
     if (!rooms.length) return;
     const indoor = rooms.filter((r) => !OUTDOOR.test(r.name));
@@ -326,7 +331,7 @@ export function planHints(
         starts = [];
       }
     } else {
-      const below = doc.levels[index - 1]?.id;
+      const below = buildingLevels(doc)[index - 1]?.id;
       const stairs = doc.elements.filter(
         (el): el is Stair => el.type === 'stair' && !el.hidden && (levelOf(el) === level.id || levelOf(el) === below),
       );

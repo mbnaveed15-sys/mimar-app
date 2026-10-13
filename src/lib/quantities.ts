@@ -158,6 +158,10 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
   const site = groundOf(doc);
   const floors = levels.map((level) => {
     const ground = level.id === GROUND_LEVEL;
+    // The Ground (site) level: the plinth you draw yourself, standing on the ground.
+    const siteLevel = !!level.site;
+    // Ground-floor walls carry the plinth down to the ground, unless it is drawn on the Ground (site) level.
+    const autoPlinth = ground && !doc.ownPlinth;
     const levelMm = levelWallMm(doc, level.id, wallHeightMm);
     const q = emptyFloor(level.id, level.name);
     const els = doc.elements.filter((el) => levelOf(el) === level.id);
@@ -190,13 +194,16 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       // The plinth rises from the finished ground under the wall (±0 on flat ground).
       const centre = pointAlong(wall, 0.5);
       const under = ground ? site.finishedAt(centre.x, centre.y) : 0;
-      const plinth = ground && !wall.kind && !wall.elevMm ? Math.max(0, mmFt(doc.plinthMm - under)) : 0;
+      const plinth = autoPlinth && !wall.kind && !wall.elevMm ? Math.max(0, mmFt(doc.plinthMm - under)) : 0;
+      // Walls on the ground carry foundations: the ground floor's, unless they stand on your own
+      // plinth (boundary walls still do), and the Ground (site) level's.
+      const footed = !wall.elevMm && (siteLevel || (ground && (!doc.ownPlinth || !!wall.kind)));
       // A glass curtain wall is glazing, standing on a brick plinth like the other walls.
       if (isCurtain(wall)) {
         const doorsSqft = own.filter((o) => o.type === 'door' && !o.flat).reduce((s, o) => s + openingSqft(o, H), 0);
         q.glazingSqft += Math.max(0, L * H - doorsSqft);
         q.brickworkCft += L * t * plinth;
-        if (ground && !wall.elevMm) q.foundationRft += L;
+        if (footed) q.foundationRft += L;
         continue;
       }
       // Beside a double-height room it carries on up through where the slab would be.
@@ -211,7 +218,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       if (wall.kind === 'retaining') q.retainingCft += volume;
       else if (wall.kind) q.boundaryCft += volume;
       else q.brickworkCft += volume;
-      if (ground && !wall.elevMm) q.foundationRft += L;
+      if (footed) q.foundationRft += L;
 
       // Each face: towards a room is inside; otherwise (and boundary walls) outside.
       const face = Math.max(0, L * H - holes);
@@ -298,9 +305,11 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       q.cutCft = earth.cutM3 * CFT_PER_M3;
       q.fillCft = earth.fillM3 * CFT_PER_M3;
     }
-    if (!els.some((el) => el.type === 'slab' || el.type === 'roof'))
+    // No slab is reckoned over the plinth on the Ground (site) level.
+    if (!siteLevel && !els.some((el) => el.type === 'slab' || el.type === 'roof'))
       q.slabEstimateCft = Math.max(0, q.coveredSqft - openSqft) * ESTIMATED_SLAB_FT;
-    for (const r of rooms) {
+    // Spaces inside the plinth walls on the Ground (site) level are earth, not floors.
+    for (const r of siteLevel ? [] : rooms) {
       const kind = floorKind(r);
       q.flooring[kind] = (q.flooring[kind] ?? 0) + areaSqft(r.points);
     }

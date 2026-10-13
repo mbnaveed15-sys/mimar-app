@@ -205,3 +205,48 @@ test('duplicate a floor above, and set how strongly the floor below shows', asyn
   await slider.fill('0');
   await expect(below).toHaveCount(0);
 });
+
+test('Ground (site): draw your own plinth under the ground floor, at the lawn', async ({ page }) => {
+  const click = async (x: number, y: number) => page.mouse.click(...(await at(page, ...P(x, y))));
+  const room = async () => {
+    await page.keyboard.press('r');
+    await click(2, 2);
+    await page.mouse.move(...(await at(page, ...P(5, 5))));
+    await page.keyboard.type(`20',16'`);
+    await page.keyboard.press('Enter');
+  };
+  await room();
+  await expect(page.locator('[data-type="wall"]')).toHaveCount(4);
+
+  // It is listed under the ground floor, and added when picked.
+  await page.getByRole('button', { name: /^Floor:/ }).click();
+  const floors = page.getByRole('menuitemradio');
+  await expect(floors).toHaveText([/Ground floor/, /Ground \(site\)/]);
+  await page.getByRole('menuitemradio', { name: 'Ground (site)' }).click();
+  await expect(page.getByRole('button', { name: 'Floor: Ground (site)' })).toBeVisible();
+  // The ground floor shows faintly over it, to draw the plinth under its walls.
+  const faint = page.getByTestId('level-below');
+  await expect(faint.locator('[data-type="wall"]')).toHaveCount(4);
+
+  await page.getByRole('button', { name: /^Floor:/ }).click();
+  await expect(page.getByTestId('site-heights')).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Duplicate this floor above' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: 'Delete this floor' })).toHaveCount(0);
+  await expect(page.getByLabel('Ground floor: how strongly it shows')).toBeVisible();
+  const own = page.getByRole('group', { name: 'Plinth' }).getByRole('button', { name: 'Draw my own' });
+  await own.click();
+  await expect(own).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Escape');
+
+  // The plinth walls, drawn on the lawn.
+  await room();
+  await expect(page.locator('[data-type="wall"]')).toHaveCount(8);
+
+  // Back on the ground floor, the plinth shows faintly under it.
+  await page.getByRole('button', { name: /^Floor:/ }).click();
+  await page.getByRole('menuitemradio', { name: 'Ground floor' }).click();
+  await expect(faint.locator('[data-type="wall"]')).toHaveCount(4);
+  const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('mimar.plan') ?? '{}').doc);
+  await expect.poll(async () => (await saved())?.ownPlinth).toBe(true);
+  expect((await saved()).levels.map((l: { id: string }) => l.id)).toEqual(['site', 'ground']);
+});
