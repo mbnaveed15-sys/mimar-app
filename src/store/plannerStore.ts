@@ -334,6 +334,8 @@ export interface PlannerState {
   selectPlinth: (wallId: Id | null) => void;
   /** Change the automatic plinth's projection past the walls or its material (undefined: back to the usual). */
   setPlinth: (patch: Partial<PlinthSpec>) => void;
+  /** The plinth's own projection (mm) and material under one wall; null goes back to the plinth's own setting. */
+  setWallPlinthOwn: (wallId: Id, patch: { projectMm?: number | null; material?: Id | null }) => void;
   /** Build the automatic plinth under a wall, or leave it off. */
   setWallPlinth: (wallId: Id, on: boolean) => void;
   /** The basement's clear height, floor to ceiling, in millimetres. */
@@ -1844,6 +1846,19 @@ export function createPlannerStore(
           if (!Object.keys(plinth).length) delete next.plinth;
           return next;
         }),
+      setWallPlinthOwn: (wallId, patch) =>
+        updateElements((els) => {
+          const wall = els.find((el) => el.id === wallId);
+          if (!wall || wall.type !== 'wall') return els;
+          const next: Wall = { ...wall };
+          if (patch.projectMm === null) delete next.plinthProjectMm;
+          else if (patch.projectMm !== undefined)
+            next.plinthProjectMm = Math.max(0, Math.min(Math.round(patch.projectMm), 1000));
+          if (patch.material === null) delete next.plinthMaterial;
+          else if (patch.material !== undefined) next.plinthMaterial = patch.material;
+          if (next.plinthProjectMm === wall.plinthProjectMm && next.plinthMaterial === wall.plinthMaterial) return els;
+          return els.map((el) => (el === wall ? next : el));
+        }),
       setWallPlinth: (wallId, on) =>
         updateElements((els) => {
           const wall = els.find((el) => el.id === wallId);
@@ -2619,9 +2634,11 @@ export function createPlannerStore(
 
       addRoomAt: (p) => {
         // Any room already there (even a hidden or locked one) counts.
+        // On Ground, a room on its floor or its lawn counts (they show together).
+        const { doc: d0, activeLevel } = get();
         const existing =
-          get()
-            .levelRooms()
+          d0.rooms
+            .filter(onSharedLevel(d0, activeLevel))
             .filter((r) => pointInPolygon(p, r.points))
             .at(-1) ?? null;
         if (existing) {
@@ -2629,7 +2646,11 @@ export function createPlannerStore(
           set({ warnings: [] });
           return;
         }
-        const points = detectRoom(get().levelElements(), p);
+        // On Ground, closed in by the floor's and the lawn's walls together (a courtyard between the
+        // house and the boundary walls), else by this one's alone.
+        const shared = d0.elements.filter(onSharedLevel(d0, activeLevel));
+        const own = get().levelElements();
+        const points = (shared.length > own.length ? detectRoom(shared, p) : null) ?? detectRoom(own, p);
         if (!points) {
           const gapEnds = openWallEnds(get().levelElements());
           if (gapEnds.length)

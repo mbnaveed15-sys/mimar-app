@@ -20,6 +20,7 @@ import { itemsInBox, moveItems } from '../lib/selection';
 import { dragDimension } from '../lib/dimensions';
 import { dragCorner, dragSide, isCornerGrip, isSideGrip } from '../lib/resize';
 import { dragRoomCorner, wallEndsAt } from '../lib/roomGrips';
+import { hasOwnPlinth, plinthAt } from '../lib/plinth';
 import { snapFurniture } from '../tools/furnitureTool';
 import { plinthWallOf } from '../walls';
 import { panBy } from '../lib/view';
@@ -331,6 +332,13 @@ export function usePlanInput(
           return;
         }
         const hit = hitAt(e, raw);
+        // On the plan, the plinth standing out round the ground floor's walls is its own item too.
+        const plinthHere =
+          !hit && !screenBox && !e.shiftKey ? plinthAt({ ...s.doc, elements: s.pickableElements() }, raw) : null;
+        if (plinthHere) {
+          s.selectPlinth(plinthHere);
+          return;
+        }
         if (!hit) {
           // Empty space (or inside a room): a click picks the room, a drag draws a selection box.
           startDrag(e, { kind: 'box', start: raw, additive: e.shiftKey, client: { x: e.clientX, y: e.clientY } });
@@ -364,13 +372,19 @@ export function usePlanInput(
       case 'room':
         s.addRoomAt(raw);
         break;
-      case 'paint':
-        if (plinthWallOf(pickId?.(e))) s.setPlinth({ material: s.selectedMat });
+      case 'paint': {
+        const painted = plinthWallOf(pickId?.(e));
+        const ownWall = painted ? s.doc.elements.find((el) => el.id === painted) : undefined;
+        // A wall with its own plinth settings takes the paint under it only.
+        if (ownWall?.type === 'wall' && hasOwnPlinth(ownWall))
+          s.setWallPlinthOwn(ownWall.id, { material: s.selectedMat });
+        else if (painted) s.setPlinth({ material: s.selectedMat });
         else if (pickId) {
           const id = idAt(e, raw);
           if (id) s.applyMaterial(id, wallFaceAt(s, e, id));
         } else s.paintAt(raw);
         break;
+      }
       case 'brush':
         capture(e);
         s.beginBatch();
@@ -385,8 +399,15 @@ export function usePlanInput(
         const wall = e.shiftKey ? nearestWall(s.pickableElements(), raw, s.hitTolerance() * 1.5) : null;
         // The item under the pointer, as Select would pick it: a door or window before its wall.
         const picked = wall ? null : pickId ? idAt(e, raw) : (hitAt(e, raw)?.id ?? null);
-        // In 3D, erasing the automatic plinth leaves it off under its wall (the wall stays).
-        const plinth = wall ? null : plinthWallOf(pickId?.(e));
+        // Erasing the automatic plinth (in 3D, or where it stands out on the plan) leaves it off under
+        // its wall (the wall stays).
+        const plinth = wall
+          ? null
+          : pickId
+            ? plinthWallOf(pickId(e))
+            : picked
+              ? null
+              : plinthAt({ ...s.doc, elements: s.pickableElements() }, raw);
         const click = () => {
           if (plinth) s.setWallPlinth(plinth, false);
           else if (wall) s.commit((doc) => trimAt(doc, wall.id, raw, 10 * s.pxUnits()));

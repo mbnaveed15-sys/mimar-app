@@ -104,6 +104,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const hoverEdge = usePlanner((s) => s.hoverEdge);
   const dimMode = usePlanner((s) => s.site.dimMode);
   const selectedIds = usePlanner((s) => s.selectedIds);
+  const selectedPlinth = usePlanner((s) => s.selectedPlinth);
   const openGroupId = usePlanner((s) => s.openGroupId);
   const gridPx = usePlanner((s) => s.gridPx);
   const grid = usePlanner((s) => s.grid);
@@ -283,6 +284,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         accessibleZones={accessibleZones}
         ground={ground}
         voids={voids}
+        selectedPlinth={selectedPlinth}
       />
 
       {otherSections.map((line) => (

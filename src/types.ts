@@ -88,6 +88,10 @@ export interface Wall extends Grouped {
   kind?: WallKind;
   /** No automatic plinth under this ground-floor wall (one is built when missing). */
   noPlinth?: boolean;
+  /** The plinth under this wall stands out this far past its faces, mm (the plinth's own setting when missing). */
+  plinthProjectMm?: number;
+  /** The plinth under this wall has this material (the plinth's own setting when missing). */
+  plinthMaterial?: Id;
   /** Height in millimetres, when it differs from the usual wall height (e.g. a boundary wall). */
   heightMm?: number;
   /** A glass curtain wall: the spacing of its mullions (upright frames), mm; 4' (1.2 m metric) when missing. */

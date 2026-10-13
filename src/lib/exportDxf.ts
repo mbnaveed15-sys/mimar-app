@@ -5,6 +5,7 @@ import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
 import type { Dimension, MarlaSqFt, Opening, PlanDoc, Point, Room, Units, Wall } from '../types';
 import { dimLine } from './dimLine';
+import { plinthOutlines } from './plinth';
 import { placeWallDimension, thicknessOf, wallExtensions, wallPolygon, wallsOf } from '../walls';
 import { arcOf, directionAlong, isArc, openingBend, paramAlong, pointAlong, wallPath } from './arc';
 import { isCurtain, metricProject, mullionStops } from './curtain';
@@ -36,6 +37,7 @@ const LAYERS = {
   'A-ANNO-LAYT': { color: 9, ltype: 'CONTINUOUS' },
   'A-FLOR-BLCK': { color: 8, ltype: 'CONTINUOUS' },
   'A-WALL-PROJ': { color: 7, ltype: 'DASHED' },
+  'A-WALL-PLIN': { color: 8, ltype: 'CONTINUOUS' },
   'S-WALL-RETN': { color: 1, ltype: 'CONTINUOUS' },
   'A-ANNO-SECT': { color: 2, ltype: 'DASHED' },
   'A-SECT-CUT': { color: 7, ltype: 'CONTINUOUS' },
@@ -373,6 +375,9 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
         dxf.text('C-PROP', { x: m.x + o.x * off, y: m.y + o.y * off }, 'ROAD');
       });
     }
+
+  // The plinth where it stands out past the ground floor's walls.
+  for (const { points } of plinthOutlines(doc)) dxf.poly('A-WALL-PLIN', points);
 
   for (const wall of walls) {
     // A basement's retaining walls are RCC: on the structure layers; glass walls on the glazing ones.

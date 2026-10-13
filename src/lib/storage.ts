@@ -53,9 +53,10 @@ export const STORAGE_KEY = 'mimar.plan';
  * 13 curved and spiral stairs, and curved edges on slabs, levelled areas and plots; 14 furniture for
  * every kind of building, and more building uses; 15 dimensions and curved slab voids; 16 a plot's
  * bylaw area and road width, and LDA's built-up and open areas; 17 the Ground (site) level and your own
- * plinth; 18 furniture heights, items on the lawn of the one Ground level, and the plinth's own settings.
+ * plinth; 18 furniture heights, items on the lawn of the one Ground level, and the plinth's own settings;
+ * 19 the plinth's own projection and material under single walls.
  */
-export const CURRENT_VERSION = 18;
+export const CURRENT_VERSION = 19;
 
 /** The automatic plinth's projection (0 to 1 m) and material; nothing when neither is set. */
 function normalisePlinth(raw: unknown): PlinthSpec | undefined {
@@ -206,6 +207,8 @@ function normaliseElement(raw: unknown): PlanElement | null {
           : undefined,
         heightMm: num('heightMm') > 0 ? num('heightMm') : undefined,
         ...(raw.noPlinth === true && { noPlinth: true }),
+        ...(num('plinthProjectMm') >= 0 && { plinthProjectMm: Math.min(num('plinthProjectMm'), 1000) }),
+        ...(idOf(raw.plinthMaterial) && { plinthMaterial: idOf(raw.plinthMaterial) }),
         ...(num('mullionMm') >= 100 && { mullionMm: num('mullionMm') }),
         ...(num('transomMm') >= 0 && { transomMm: num('transomMm') }),
         materialA: idOf(raw.materialA),

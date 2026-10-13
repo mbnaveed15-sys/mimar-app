@@ -3,6 +3,7 @@
  * (cft), square feet (sqft), running feet (rft) and counts. Walls are measured along their centre
  * lines (the usual centre-line method), with doors and windows taken out.
  */
+import { plinthProjectMm } from './plinth';
 import { pointInPolygon, wallLength } from '../geometry';
 import { directionAlong, pointAlong } from './arc';
 import { openRooms, slabVoids, within } from './voids';
@@ -199,7 +200,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       const plinth =
         autoPlinth && !wall.kind && !wall.elevMm && !wall.noPlinth ? Math.max(0, mmFt(doc.plinthMm - under)) : 0;
       // It stands out past both faces of the wall by the plinth's projection.
-      const plinthCft = L * (t + 2 * mmFt(doc.plinth?.projectMm ?? 0)) * plinth;
+      const plinthCft = L * (t + 2 * mmFt(plinthProjectMm(doc, wall))) * plinth;
       // Walls on the ground carry foundations: the ground floor's, unless they stand on your own
       // plinth (boundary walls still do), and the Ground (site) level's.
       const footed = !wall.elevMm && (siteLevel || (ground && (!doc.ownPlinth || !!wall.kind)));
