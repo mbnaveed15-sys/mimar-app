@@ -36,11 +36,17 @@ windows bent with curved walls, curved and spiral stairs, curved slab, levelled-
 driveways (1.42, all in one release as the owner asked); furniture for every kind of building with a grouped library,
 checks for every building type and locality, more building uses, left and right setbacks, and snapping to every
 corner with more grips (1.43, one release); dimensions that follow the plan, zoom window and zoom previous, curved doors,
-curved slab voids, a cut corner on a curved plot side, a phone layout, and first floors from a room list (1.44, one release).
+curved slab voids, a cut corner on a curved plot side, a phone layout, and first floors from a room list (1.44, one release);
+CDA, DHA Islamabad and LDA rules for commercial and other buildings, and LDA houses made official (1.45).
 
-Planned next (plan each with the owner first): the authorities' commercial bylaw figures (the owner set these aside
-for the step after 1.44 and may send CDA/DHA/LDA schedules). Left from 1.43: the authorities'
-non-residential (commercial, institutional) figures, needed from the owner's official schedules; room corners are
+Planned next (plan each with the owner first): DHA Lahore and Bahria building figures (their buildings still say
+"check with the authority" until the owner sends the schedules). Left from 1.45: Mimar can't tell a veranda, an
+emergency stair or a flat unless they are named so (Veranda, Emergency stair, Kitchen); parking counts rooms named
+Parking, Car park or Garage at 250 sq ft a car (no motorcycle share, no stall layout); a mixed building is checked
+for its one use (DHA 6.8.5 adds each use up); the FAR leaves out parking and lift rooms by name, not stairs or plant;
+LDA skyscrapers' FAR (4% of the height) and the CAA's height limits are rows to check; CDA's area is picked by hand
+(Mimar has no sector map); the LDA Land Use Rules' List A (building lines per road) isn't in Mimar, so a converted
+plot's front is the one typed. Left from 1.43: room corners are
 where walls meet (drag a wall end), not their own grips; stairs and furniture have no corner grips (furniture keeps
 its resize grip); grips are 2D only (3D edits by Move, Push/Pull and the panel); the older library items keep their
 hand-drawn symbols. Left from curves: a single or double swing door in a curved wall keeps a flat leaf (its frame
@@ -87,8 +93,8 @@ placing with the Furniture tool; room minimums (corridors, door widths) as their
 check the "General practice" figures against local homes.
 
 Left from basements for later: more than one basement; sloping sites; footings and columns drawn for the
-basement; ramps down for cars; air shafts or light wells drawn for you; basement figures for CDA private schemes,
-Bahria and LDA (the check says "check").
+basement; ramps down for cars; air shafts or light wells drawn for you; basement figures for CDA private schemes
+and Bahria (the check says "check").
 
 Left from layouts for later: first-floor plans from the same list (over the ground floor's stair); L-shaped and
 irregular plots used fully (plans go in the largest rectangle); furniture placed in the rooms; a lawn or courtyard

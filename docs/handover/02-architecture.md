@@ -59,7 +59,8 @@ autosaves to local storage on every change.
   apart), `src/lib/planHints.ts` (pure good-practice hints: door graph per floor, outside walls and windows, sizes by
   name, kitchen and prayer room placement), `src/store/usePlanCheck.ts` (`usePlanCheck`, `usePlanHints`),
   `src/components/PlanCheckPanel.tsx` (bylaw rows, then Hints), `CheckMarks.tsx` (red, dashed and dotted marks, on
-  items and rooms) and `PlotBylaws.tsx` (authority, presets, the plot's setbacks). Figures and sources:
+  items and rooms) and `PlotBylaws.tsx` (authority, presets, a building's area and the road width, the plot's
+  setbacks). Figures and sources:
   `docs/handover/06-bylaws.md`. The plan's `northDeg` (degrees clockwise from up) drives the PDF's north arrow.
 - Plots (1.30): `src/lib/plot.ts` (pure) has the sides (`Plot.sideList`, one `PlotSide` per edge: kind, typed
   `setbackMm`, `wall` spec, `wallId`; missing in older plots, whose sides `plotSides` works out from `front`),
@@ -320,6 +321,19 @@ autosaves to local storage on every change.
   - Left/right setbacks (1.43): data unchanged (`setbacks.sides` = side 1, `side2`); `leftSlot`, `leftRightOf` and
     `setbacksFromLeftRight` in `plot.ts` translate to left and right seen from the road. `site.setbacks.sides` is the
     left and `side2` the right for new plots (`addPlot` converts).
+  - Building bylaws (1.45): `src/lib/buildingBylaws.ts` is data only (CDA, DHA Islamabad and LDA: areas with a
+    `limits(measures)` function, a `parking()` rule and `facilities`); `buildingRuleFor(plot, use, storeys)` picks the
+    plot's `bylawArea` (or the usual area for the use) and works out the limits from the plot's size, frontage, depth
+    and `roadWidthMm`. `planCheck` keeps it on `PlanCheck.building` and checks the setbacks from it (`buildingPlotRule`;
+    the plot's own when the area has none; `altSides`, and `frontAsTyped`/`rearAsTyped`/`sidesAsTyped` through
+    `withTyped`, handled with the swap); `fullCheck` then adds `buildingCheckRows` (`src/lib/buildingCheck.ts`, ids
+    `bylaw-*`, one row per id). Where the authority and the national codes check the same thing (lift, ramp,
+    stairs), `mergeOverlaps` in `fullCheck.ts` keeps one row: the authority's, with the worse result and both
+    clauses. The `bylaw-area` row shows only until the area is picked (the check's note names it). `appliedRule`/`appliedSetbacks` in the
+    same file give the rule the check uses, for `setPlotAuthority`, `setPlotBylawArea`, placing a plot and the plot
+    panels. Import order avoids a cycle: `buildingBylaws` <- `planCheck` <- `buildingCheck` <- `fullCheck`/store.
+    Houses: `Authority.adjust(rule, {areaSqFt, frontageFt, roadFt})` lets a table row depend on the road or frontage
+    (LDA built-up and open areas); `PlotRule.far`/`heightMm` give the house FAR row and the row's own height.
   - Corners (1.43): `src/lib/snapPoints.ts` gives every item's corners (`item-corner`), edge middles and round
     centres; `inferAt` passes them (memoised per plan) as `InferOptions.points`; `infer` also finds true wall corners
     where faces of nearby walls cross, and ranks a midpoint 1.6× further than it is so corners win. Snap group
