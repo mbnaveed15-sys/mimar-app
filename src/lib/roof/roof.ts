@@ -83,25 +83,77 @@ export function lowEdgeOf(roof: Pick<Roof, 'points' | 'lowEdge'>): number {
   return best;
 }
 
-const shapes = new WeakMap<Roof, RoofShape>();
+/** A side's own pitch can't be gentler than this (a near-flat side would reach out for ever). */
+export const MIN_SIDE_PITCH_DEG = 5;
 
-/** The roof's faces and lines, heights in plan units above its eaves. */
-export function roofShape(roof: Roof): RoofShape {
-  let shape = shapes.get(roof);
-  if (shape) return shape;
+/**
+ * Each side's pitch in degrees: its own where it has one (hip and gable roofs), else the roof's. Gable ends
+ * and every side of a shed or flat roof take the roof's.
+ */
+export function sidePitchesOf(roof: Roof): number[] {
+  const own = roof.shape === 'hip' || roof.shape === 'gable' ? (roof.sidePitches ?? []) : [];
+  const ends = roof.shape === 'gable' ? new Set(gableEdges(roof)) : new Set<number>();
+  return roof.points.map((_, i) => {
+    const p = own[i];
+    return p === null || p === undefined || ends.has(i) || !Number.isFinite(p)
+      ? roof.pitchDeg
+      : Math.min(MAX_PITCH_DEG, Math.max(MIN_SIDE_PITCH_DEG, p));
+  });
+}
+
+const shapes = new WeakMap<Roof, { shape: RoofShape; eaves: Point[] }>();
+
+/**
+ * The shape and its eaves' line. With a pitch per side, each eave is moved in (steeper) or out (gentler) so
+ * every side's slope passes over the walls' line at the same height as the roof's pitch would, with the eaves
+ * level all round: the roof's weighted skeleton is built on that outline.
+ */
+function built(roof: Roof): { shape: RoofShape; eaves: Point[] } {
+  const done = shapes.get(roof);
+  if (done) return done;
   const slope = slopeOf(roof);
-  if (roof.shape === 'shed') shape = shedRoof(roof.points, slope, lowEdgeOf(roof));
-  else if (roof.shape === 'gable') {
-    const ends = new Set(gableEdges(roof));
-    shape = skeletonRoof(
+  const ends = roof.shape === 'gable' ? new Set(gableEdges(roof)) : new Set<number>();
+  let out: { shape: RoofShape; eaves: Point[] } | null = null;
+  if (roof.shape === 'shed') out = { shape: shedRoof(roof.points, slope, lowEdgeOf(roof)), eaves: roof.points };
+  else if (slope > 0) {
+    const slopes = sidePitchesOf(roof).map((deg) => Math.tan((deg * Math.PI) / 180));
+    if (slopes.some((s) => Math.abs(s - slope) > 1e-6)) {
+      const over = roof.overhangMm / MM_PER_UNIT;
+      const moved = insetPolygon(
+        roof.points,
+        slopes.map((s) => over * (1 - slope / s)),
+      );
+      // Every side still there, or it isn't the roof that was asked for: fall back to one pitch.
+      if (moved.points.length === roof.points.length && new Set(moved.edges).size === roof.points.length) {
+        const shape = skeletonRoof(
+          moved.points,
+          slope,
+          moved.edges.map((e) => ends.has(e)),
+          moved.edges.map((e) => slope / slopes[e]),
+        );
+        const faces = shape.faces.map((f) => ({ ...f, edge: moved.edges[f.edge] ?? f.edge }));
+        faces.sort((a, b) => a.edge - b.edge);
+        out = { shape: { ...shape, faces }, eaves: moved.points };
+      }
+    }
+  }
+  out ??= {
+    shape: skeletonRoof(
       roof.points,
       slope,
       roof.points.map((_, i) => ends.has(i)),
-    );
-  } else shape = skeletonRoof(roof.points, slope);
-  shapes.set(roof, shape);
-  return shape;
+    ),
+    eaves: roof.points,
+  };
+  shapes.set(roof, out);
+  return out;
 }
+
+/** The roof's faces and lines, heights in plan units above its eaves. */
+export const roofShape = (roof: Roof): RoofShape => built(roof).shape;
+
+/** The eaves' line in plan: the roof's outline, or where a pitch per side has moved it. */
+export const roofEaves = (roof: Roof): Point[] => built(roof).eaves;
 
 /** How far (mm) the eaves are below the top of the walls: the slope carried on over the overhang. */
 export const eaveDropMm = (roof: Roof) => roof.overhangMm * slopeOf(roof);
@@ -289,6 +341,7 @@ export function withOverhang(roof: Roof, overhangMm: number): Roof | null {
   const from = grown.edges;
   const next: Roof = { ...roof, points: grown.points, overhangMm };
   if (roof.gables) next.gables = from.flatMap((orig, k) => (roof.gables!.includes(orig) ? [k] : []));
+  if (roof.sidePitches) next.sidePitches = from.map((orig) => roof.sidePitches![orig] ?? null);
   if (roof.lowEdge !== undefined) {
     const k = from.indexOf(roof.lowEdge);
     if (k >= 0) next.lowEdge = k;

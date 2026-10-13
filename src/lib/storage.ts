@@ -388,6 +388,13 @@ function normaliseElement(raw: unknown): PlanElement | null {
         pitchDeg: inRange(raw.pitchDeg, 0, MAX_PITCH_DEG) ? raw.pitchDeg : ROOF_PITCH_DEG,
         ...(gables && { gables }),
         ...(edge(raw.lowEdge) && { lowEdge: raw.lowEdge as number }),
+        ...(Array.isArray(raw.sidePitches) &&
+          raw.sidePitches.some((v) => inRange(v, 0, MAX_PITCH_DEG)) && {
+            sidePitches: points.map((_, i) => {
+              const v = (raw.sidePitches as unknown[])[i];
+              return inRange(v, 0, MAX_PITCH_DEG) ? (v as number) : null;
+            }),
+          }),
         overhangMm: inRange(raw.overhangMm, 0, 5000) ? raw.overhangMm : ROOF_OVERHANG_MM.imperial,
         thicknessMm: inRange(raw.thicknessMm, 10, 1000) ? raw.thicknessMm : ROOF_THICKNESS_MM,
       };

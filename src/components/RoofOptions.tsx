@@ -3,6 +3,7 @@ import {
   formatPitch,
   gableEdges,
   lowEdgeOf,
+  MIN_SIDE_PITCH_DEG,
   readPitch,
   ROOF_KINDS,
   ROOF_OVERHANG_MM,
@@ -162,6 +163,7 @@ export function RoofFields({ roof }: { roof: Roof }) {
           </div>
         </div>
       )}
+      {(roof.shape === 'hip' || roof.shape === 'gable') && <SidePitches roof={roof} ends={ends} len={len} />}
       {roof.shape === 'shed' && (
         <div className="flex flex-col gap-1">
           <span className="text-muted">Low side</span>
@@ -179,6 +181,63 @@ export function RoofFields({ roof }: { roof: Roof }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * A pitch for each side of a hip or gable roof (not its gable ends): blank uses the roof's pitch. The eaves stay
+ * level, so a steeper side reaches out less past the walls.
+ */
+function SidePitches({ roof, ends, len }: { roof: Roof; ends: Set<number>; len: (i: number) => string }) {
+  const updateElement = usePlanner((s) => s.updateElement);
+  const [error, setError] = useState<string | null>(null);
+  const own = roof.sidePitches ?? [];
+  const set = (i: number, deg: number | null) => {
+    const next = roof.points.map((_, k) => (k === i ? deg : (own[k] ?? null)));
+    const next2: Roof = { ...roof, sidePitches: next };
+    if (next.every((v) => v === null)) delete next2.sidePitches;
+    updateElement(next2);
+  };
+  const commit = (i: number, input: HTMLInputElement) => {
+    const text = input.value.trim();
+    if (!text) {
+      setError(null);
+      return set(i, null);
+    }
+    const v = readPitch(text);
+    if (v === null || v < MIN_SIDE_PITCH_DEG)
+      return setError(`Enter degrees (${MIN_SIDE_PITCH_DEG}° to 75°) or a rise in 12, or leave it blank.`);
+    setError(null);
+    set(i, Math.abs(v - roof.pitchDeg) < 0.05 ? null : v);
+  };
+  return (
+    <div className="flex flex-col gap-1" data-testid="side-pitches">
+      <span className="text-muted">Pitch per side (blank: the roof’s pitch)</span>
+      <div className="grid grid-cols-2 gap-1">
+        {roof.points.map((_, i) => {
+          if (ends.has(i)) return null;
+          const v = own[i];
+          const shown = v === null || v === undefined ? '' : `${Math.round(v * 10) / 10}°`;
+          return (
+            <label key={i} className="flex items-center gap-1">
+              <span className="w-14 shrink-0 truncate text-muted" title={len(i)}>
+                Side {i + 1}
+              </span>
+              <input
+                key={shown}
+                aria-label={`Pitch of side ${i + 1}`}
+                defaultValue={shown}
+                placeholder={`${Math.round(roof.pitchDeg * 10) / 10}°`}
+                onBlur={(e) => commit(i, e.currentTarget)}
+                onKeyDown={(e) => e.key === 'Enter' && commit(i, e.currentTarget)}
+                className="w-full min-w-0 rounded-sm border p-1 tabular-nums"
+              />
+            </label>
+          );
+        })}
+      </div>
+      {error && <span className="text-danger">{error}</span>}
     </div>
   );
 }

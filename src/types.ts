@@ -253,6 +253,11 @@ export interface Roof extends Grouped {
   gables?: number[];
   /** A shed roof's low side (an edge index); the longest edge when missing. */
   lowEdge?: number;
+  /**
+   * Hip and gable roofs: each side's own pitch in degrees (points[i] to points[i+1]); the roof's pitch where
+   * null or missing. The eaves stay level all round, so a steeper side reaches out less past the walls.
+   */
+  sidePitches?: (number | null)[];
   /** How far the eaves reach past the walls, mm. */
   overhangMm: number;
   /** The roof's thickness (deck, insulation and covering), mm. */

@@ -1,5 +1,5 @@
 import { centroid, fromFurnitureLocal } from '../../geometry';
-import { roofShape, slopedFaces } from '../../lib/roof/roof';
+import { roofEaves, roofShape, slopedFaces } from '../../lib/roof/roof';
 import { PLAN } from '../../theme/plan';
 import type { Beam, Block, Column, Point, Roof, Slab } from '../../types';
 import { ringsPath, type Hatch } from '../../lib/hatch';
@@ -157,7 +157,7 @@ export function RoofShape({ roof, selected, k }: { roof: Roof; selected: boolean
   return (
     <g data-type="roof" data-id={roof.id} data-shape={roof.shape}>
       <path
-        d={ring(roof.points)}
+        d={ring(roofEaves(roof))}
         style={{ fill: PLAN.selection, ...stroke }}
         fillOpacity={selected ? 0.08 : 0}
         strokeWidth={(selected ? 2.5 : 1.25) * k}

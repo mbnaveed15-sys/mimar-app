@@ -104,6 +104,7 @@ export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Poin
       points: map(el.points),
       ...(el.gables && { gables: el.gables.map(edge) }),
       ...(el.lowEdge !== undefined && { lowEdge: edge(el.lowEdge) }),
+      ...(el.sidePitches && { sidePitches: el.points.map((_, i) => el.sidePitches![edge(i)] ?? null) }),
     };
   }
   return { ...el, points: map(el.points) };
