@@ -24,7 +24,7 @@ import {
   type Stair,
   type Wall,
 } from '../types';
-import { isBuildingWall, thicknessOf, wallExtensions, wallsOf } from '../walls';
+import { isBuildingWall, thicknessOf, wallReach, wallsOf } from '../walls';
 import { bendPath, openingBend, paramAlong, pointAlong, straightPieces, type Bend } from '../lib/arc';
 import { FRAME_MM, isCurtain, metricProject, mullionStops, transomMm } from '../lib/curtain';
 import { eaveMm, gableWalls, GABLE_WALL_MM, slopedFaces, thicknessUpMm, triangulate } from '../lib/roof/roof';
@@ -330,7 +330,8 @@ function wallParts(
   const origin = { x: wall.x1, y: wall.y1 };
   const thickness = m(thicknessOf(wall));
   const top = mmToM(heightMm);
-  const joins = wallExtensions(wall, walls);
+  // Mitred corners reach just to their outer corner, so angled corners close without a notch.
+  const joins = wallReach(wall, walls);
   const start = ends.start ?? joins.start;
   const end = ends.end ?? joins.end;
 

@@ -79,3 +79,45 @@ test('draws walls with taps, pinches to zoom, and long-presses for the menu', as
   await expect(page.getByRole('menu')).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Delete' })).toBeVisible();
 });
+
+test('a two-finger tap undoes, a three-finger tap redoes; the selection bar acts on the selection', async ({
+  page,
+}) => {
+  const touch = await touchApi(page);
+  await page.keyboard.press('w');
+  for (const [x, y] of [
+    [4, 4],
+    [20, 4],
+  ]) {
+    const [px, py] = await at(page, ...P(x, y));
+    await touch.tap(px, py);
+    await page.waitForTimeout(80);
+  }
+  await page.keyboard.press('Escape');
+  const walls = page.locator('[data-type="wall"]');
+  await expect(walls).toHaveCount(1);
+
+  await touch.start([
+    { x: 500, y: 400, id: 1 },
+    { x: 560, y: 400, id: 2 },
+  ]);
+  await touch.end();
+  await expect(walls).toHaveCount(0);
+  await touch.start([
+    { x: 500, y: 400, id: 1 },
+    { x: 560, y: 400, id: 2 },
+    { x: 620, y: 400, id: 3 },
+  ]);
+  await touch.end();
+  await expect(walls).toHaveCount(1);
+
+  // Tap the wall with Select: the bar offers what can be done to it.
+  await page.keyboard.press('Space');
+  const box = (await walls.first().boundingBox())!;
+  await touch.tap(box.x + box.width / 2, box.y + box.height / 2);
+  const bar = page.getByRole('toolbar', { name: 'Selection actions' });
+  await bar.getByRole('button', { name: 'Duplicate' }).click();
+  await expect(walls).toHaveCount(2);
+  await bar.getByRole('button', { name: 'Delete' }).click();
+  await expect(walls).toHaveCount(1);
+});

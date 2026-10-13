@@ -40,7 +40,18 @@ autosaves to local storage on every change.
   `finishMove` joins the paste and the move into one undo step (`mergeLastSteps`), and `cancel` takes the paste
   back (`discardLastStep`).
 - `src/components/useTouch.ts`: one finger acts like the mouse; two fingers pan/pinch; three fingers orbit (3D);
-  long-press opens the menu.
+  long-press opens the menu. A quick two-finger tap (under 300 ms, under 12 px of travel and spread, no twist) calls
+  `undo`, a three-finger tap `redo`. `Gesture.turn` is the two fingers' twist (radians, clockwise on screen), 0 until
+  it passes `TWIST_START` (about 8°) in a gesture; `Plan3DView` turns the rig with it (`orbit(-turn / ORBIT_SPEED, 0)`),
+  2D ignores it.
+- `src/walls.ts` `wallPolygon`: walls overlap at square corners (ends reach on by half the thickness); two straight
+  walls meeting end to end at another angle are mitred (`mitreAt`; not for T-junctions, three walls, curves or a
+  mitre longer than 4 half-thicknesses). 3D boxes use `wallReach` (to the outer mitre corner).
+- `src/components/TouchBar.tsx`: over the plan's bottom-left corner. While drawing on touch: Done, Cancel, Flip hinge
+  ("Touch actions"). With a selection: the selection bar ("Selection actions": Delete, Duplicate, Rotate 90°, Mirror,
+  Properties, Deselect; enabled by `canCopy` / `canTransform` from `commands.ts`), shown when the plan was touched, on
+  a phone, on a coarse pointer, or when the pref `selectionBar` (View › Selection bar, `setLayer`) is on. Labels hide
+  below 1024 px.
 - `src/tools/controller.ts`: tools that take clicks and typed measurements (wall, line, rectangle, tape, move,
   rotate…), with `structureTools.ts` (column, beam, slab, plot, stairs) and `modifyTools.ts` (Modify menu).
 - Shapes and Push/Pull: `src/tools/shapeTools.ts` (the Shape and Push/Pull tools), `src/lib/pushPull.ts` (pure:
@@ -292,7 +303,8 @@ autosaves to local storage on every change.
   - Phones: `usePhone()` (`useCompact.ts`, `PHONE_QUERY`: under 640 px wide, or under 500 px tall with a coarse
     pointer) and the same query as Tailwind variants `phone:` / `phone-short:` (`index.css`). `PlannerApp` drops the
     tool docks for `PhoneTools.tsx` (groups `PHONE_GROUPS`, `PHONE_ALWAYS`, `phoneGroupOf` in `toolbars.ts`; a tested
-    rule that every tool is in it once) and puts `main` and the panel in one column; `SidePanel` renders
+    rule that every tool is in it once; since 1.46 `PHONE_ALWAYS` (Select, Move, Eraser) and a Fit view button sit in a
+    non-scrolling `phone-pinned` part, and Pan is in the View group) and puts `main` and the panel in one column; `SidePanel` renders
     `PhoneSheet` (peek / half / full, `data-sheet`; state in `panelSheet.ts` `overStore`, which also holds the iPad
     drawer's open state; `revealPanel()` opens either for menu commands via `showSection`). MenuBar adds Undo/Redo
     and hides Split (split view renders 2D on a phone); `StatusBar` has a two-line phone form; `Welcome` places the

@@ -148,7 +148,7 @@ export default function PlannerApp() {
           ) : (
             plan2d
           )}
-          {!drawing && <TouchBar />}
+          {!drawing && <TouchBar onProperties={focusProperties} />}
           {warnings.length > 0 && (
             <div className="pointer-events-none absolute inset-x-0 top-3 flex flex-col items-center gap-2">
               {warnings.map((w) => (

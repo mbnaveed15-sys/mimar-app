@@ -226,6 +226,16 @@ function omit<T extends object, K extends keyof T>(obj: T, key: K): T {
 
 const inch = (n: number) => (n * 25.4) / MM_PER_UNIT;
 /** Items a plan from the room list takes the place of on its floor (with ordinary walls). */
+/** Items Duplicate floor leaves behind: the plot and the site, section lines and roofs. */
+const NOT_COPIED_UP: PlanElement['type'][] = ['plot', 'section', 'level', 'contour', 'pad', 'context', 'roof'];
+
+const FLOOR_NAMES = ['Ground floor', 'First floor', 'Second floor', 'Third floor', 'Fourth floor'];
+/** A new top floor's name, by how far above the ground floor it is (a basement doesn't count). */
+function nextFloorName(doc: PlanDoc): string {
+  const n = doc.levels.filter((l) => !l.basement).length;
+  return FLOOR_NAMES[n] ?? `Floor ${n}`;
+}
+
 const REPLACED_BY_LAYOUT = new Set<string>(['stair', 'furniture', 'column', 'beam', 'slab', 'block']);
 
 /**
@@ -284,6 +294,14 @@ export interface PlannerState {
   setActiveLevel: (id: Id) => void;
   /** Add a floor above the top one and switch to it. */
   addLevel: () => void;
+  /**
+   * A new floor on top with a copy of everything on the floor being drawn (not the plot, site and
+   * terrain items, section lines or roofs), then draw on it.
+   */
+  duplicateLevel: () => void;
+  /** How strongly the floor below shows under the one being drawn, 0 (hidden) to 100. */
+  belowOpacity: number;
+  setBelowOpacity: (percent: number) => void;
   /** Add a basement below the ground floor (or go to the one there is) and draw on it. */
   addBasement: () => void;
   /** The basement's clear height, floor to ceiling, in millimetres. */
@@ -588,7 +606,8 @@ export interface PlannerState {
       | 'pdfCheck'
       | 'showHints'
       | 'pdfHints'
-      | 'accessibleZones',
+      | 'accessibleZones'
+      | 'selectionBar',
     show: boolean,
   ) => void;
   /** Add the plan check page to PDFs. */
@@ -599,6 +618,8 @@ export interface PlannerState {
   pdfHints: boolean;
   /** Furniture use zones sized for a wheelchair user (ADA), where they differ. */
   accessibleZones: boolean;
+  /** Show the selection bar with a mouse (touch screens always show it). */
+  selectionBar: boolean;
   /** Library item placed by the Furniture tool. */
   furnitureKind: FurnitureKind;
   setFurnitureKind: (kind: FurnitureKind) => void;
@@ -709,7 +730,7 @@ export function createPlannerStore(
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
-      const { showHints, pdfHints, accessibleZones, checks, snaps } = get();
+      const { showHints, pdfHints, accessibleZones, selectionBar, belowOpacity, checks, snaps } = get();
       const { wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } = get();
       savePrefs({
         units,
@@ -722,6 +743,8 @@ export function createPlannerStore(
         showHints,
         pdfHints,
         accessibleZones,
+        selectionBar,
+        belowOpacity,
         wallThicknessMm,
         openingGapMm,
         marlaSqFt,
@@ -844,6 +867,7 @@ export function createPlannerStore(
       showHints: prefs.showHints,
       pdfHints: prefs.pdfHints,
       accessibleZones: prefs.accessibleZones,
+      selectionBar: prefs.selectionBar,
       furnitureKind: DEFAULT_FURNITURE_KIND,
       wallThicknessMm: prefs.wallThicknessMm,
       openingGapMm: prefs.openingGapMm,
@@ -1600,14 +1624,45 @@ export function createPlannerStore(
         set({ activeLevel: id, selectedId: null, selectedIds: [], draft: null, inference: null, lastCopy: null });
       },
       addLevel: () => {
-        const names = ['Ground floor', 'First floor', 'Second floor', 'Third floor', 'Fourth floor'];
         const id = newId();
-        get().commit((doc) => {
-          // Named by how far above the ground floor it is (a basement doesn't count).
-          const n = doc.levels.filter((l) => !l.basement).length;
-          return { ...doc, levels: [...doc.levels, { id, name: names[n] ?? `Floor ${n}` }] };
+        get().commit((doc) => ({ ...doc, levels: [...doc.levels, { id, name: nextFloorName(doc) }] }));
+        get().setActiveLevel(id);
+      },
+      duplicateLevel: () => {
+        const { doc, activeLevel } = get();
+        const from = doc.levels.find((l) => l.id === activeLevel);
+        if (!from) return;
+        const ids = [
+          ...doc.elements.filter(
+            (el) =>
+              levelOf(el) === activeLevel && !NOT_COPIED_UP.includes(el.type) && !(el.type === 'wall' && el.plotId),
+          ),
+          ...doc.rooms.filter((r) => levelOf(r) === activeLevel),
+        ].map((it) => it.id);
+        const id = newId();
+        get().commit((d) => {
+          // The new floor keeps the copied floor's own wall height (a basement's is a clear height).
+          const level = {
+            id,
+            name: nextFloorName(d),
+            ...(from.heightMm !== undefined && !from.basement && { heightMm: from.heightMm }),
+          };
+          const copied = copyItems({ ...d, levels: [...d.levels, level] }, ids, 0, 0);
+          const made = new Set(copied.ids);
+          const up = <T extends { id: Id; levelId?: Id }>(it: T): T => (made.has(it.id) ? { ...it, levelId: id } : it);
+          return {
+            ...copied.doc,
+            elements: copied.doc.elements.map(up),
+            // A copied room isn't open to the floor below it.
+            rooms: copied.doc.rooms.map((r) => (made.has(r.id) ? { ...up(r), openAbove: undefined } : r)),
+          };
         });
         get().setActiveLevel(id);
+      },
+      belowOpacity: prefs.belowOpacity,
+      setBelowOpacity: (percent) => {
+        set({ belowOpacity: Math.max(0, Math.min(100, Math.round(percent))) });
+        persistPrefs();
       },
       addBasement: () => {
         const existing = basementOf(get().doc);

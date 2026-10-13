@@ -59,5 +59,9 @@ describe('tool bars', () => {
     expect([...phone].sort()).toEqual([...all].sort());
     expect(phoneGroupOf('dimension')).toBe('annotate');
     expect(phoneGroupOf('select')).toBe('draw');
+    expect(phoneGroupOf('erase')).toBe('draw');
+    expect(phoneGroupOf('pan')).toBe('view');
+    // Each tool shows once: the pinned ones aren't in a group too.
+    expect(new Set(phone).size).toBe(phone.length);
   });
 });

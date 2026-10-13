@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { usePlanner } from '../store/plannerStore';
+import { plannerStore, usePlanner } from '../store/plannerStore';
+import { getViewControls } from '../three/viewControls';
 import { TOOL_INFO } from '../tools/toolInfo';
 import { PHONE_ALWAYS, PHONE_GROUPS, phoneGroupOf, type PhoneGroupId } from '../lib/toolbars';
 import type { Tool } from '../types';
@@ -8,9 +9,17 @@ import { Icon } from './Icon';
 /** How long a tool is held before its name shows (ms). */
 const HOLD_MS = 450;
 
+/** Show the whole plan (or the whole model in 3D). */
+function fitView() {
+  const s = plannerStore.getState();
+  if (s.view3d && getViewControls()) getViewControls()!.extents();
+  else s.fitToPlan();
+}
+
 /**
- * The tools on a phone: one scrolling strip along the bottom, a group at a time, with the groups
- * to switch between above it. Hold a tool to see its name.
+ * The tools on a phone: a strip along the bottom, a group at a time, with the groups to switch
+ * between above it. Select, Move, Erase and Fit view stay pinned at its start while the group's
+ * tools scroll. Hold a tool to see its name.
  */
 export function PhoneTools() {
   const tool = usePlanner((s) => s.tool);
@@ -27,9 +36,9 @@ export function PhoneTools() {
   const shown = PHONE_GROUPS.find((g) => g.id === group)!;
   const tools = shown.tools as readonly Tool[];
 
-  const hold = (t: Tool) => {
+  const hold = (t: Tool | 'fit') => {
     window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setName(TOOL_INFO[t].label), HOLD_MS);
+    timer.current = window.setTimeout(() => setName(t === 'fit' ? 'Fit view' : TOOL_INFO[t].label), HOLD_MS);
   };
   const release = () => {
     window.clearTimeout(timer.current);
@@ -42,7 +51,11 @@ export function PhoneTools() {
     return (
       <button
         key={t}
-        onClick={() => setTool(t)}
+        onClick={() => {
+          setTool(t);
+          // A pinned tool keeps the group on show.
+          setPicked({ group, tool: t });
+        }}
         onPointerDown={() => hold(t)}
         onPointerUp={release}
         onPointerCancel={release}
@@ -77,27 +90,40 @@ export function PhoneTools() {
           </button>
         ))}
       </div>
-      <div
-        role="toolbar"
-        aria-label={`${shown.label} tools`}
-        className="flex items-center gap-0.5 overflow-x-auto px-1.5 py-1"
-      >
-        {/* A phone on its side has no room for the row of groups: a list of them starts the strip. */}
-        <select
-          aria-label="Tool group"
-          value={group}
-          onChange={(e) => setPicked({ group: e.target.value as PhoneGroupId, tool })}
-          className="mr-1 hidden h-9 flex-none rounded-full border border-line bg-raised px-2 text-xs font-medium phone-short:block"
-        >
-          {PHONE_GROUPS.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.label}
-            </option>
-          ))}
-        </select>
-        {PHONE_ALWAYS.map(button)}
+      <div role="toolbar" aria-label={`${shown.label} tools`} className="flex items-center px-1.5 py-1">
+        <div data-testid="phone-pinned" className="flex flex-none items-center gap-0.5">
+          {PHONE_ALWAYS.map(button)}
+          <button
+            onClick={fitView}
+            onPointerDown={() => hold('fit')}
+            onPointerUp={release}
+            onPointerCancel={release}
+            onPointerLeave={release}
+            onContextMenu={(e) => e.preventDefault()}
+            aria-label="Fit view"
+            title="Fit view"
+            className="grid h-11 w-11 flex-none place-items-center rounded-md text-ink select-none active:bg-sunken"
+          >
+            <Icon name="fit" size={22} />
+          </button>
+        </div>
         <span aria-hidden className="mx-1 h-7 w-px flex-none bg-line" />
-        {tools.map(button)}
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+          {/* A phone on its side has no room for the row of groups: a list of them starts the strip. */}
+          <select
+            aria-label="Tool group"
+            value={group}
+            onChange={(e) => setPicked({ group: e.target.value as PhoneGroupId, tool })}
+            className="mr-1 hidden h-9 flex-none rounded-full border border-line bg-raised px-2 text-xs font-medium phone-short:block"
+          >
+            {PHONE_GROUPS.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.label}
+              </option>
+            ))}
+          </select>
+          {tools.map(button)}
+        </div>
       </div>
       {name && (
         <div

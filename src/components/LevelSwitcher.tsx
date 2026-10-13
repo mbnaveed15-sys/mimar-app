@@ -10,6 +10,7 @@ export function LevelSwitcher() {
   const active = usePlanner((s) => s.activeLevel);
   const units = usePlanner((s) => s.units);
   const wallHeightMm = usePlanner((s) => s.wallHeightMm);
+  const belowOpacity = usePlanner((s) => s.belowOpacity);
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -67,6 +68,15 @@ export function LevelSwitcher() {
             <span className="w-3" />
             Add floor above
           </button>
+          <button
+            role="menuitem"
+            className={item}
+            title="A new floor on top with a copy of this floor's walls, doors, windows, rooms and furniture"
+            onClick={() => (s.duplicateLevel(), setOpen(false))}
+          >
+            <span className="w-3" />
+            Duplicate this floor above
+          </button>
           {!levels.some((l) => l.basement) && (
             <button role="menuitem" className={item} onClick={() => (s.addBasement(), setOpen(false))}>
               <span className="w-3" />
@@ -121,6 +131,22 @@ export function LevelSwitcher() {
                 </button>
               </div>
             </div>
+          )}
+          {levels.indexOf(current) > 0 && (
+            <label className="flex items-center gap-2 px-2 py-1 text-xs">
+              <span className="text-muted">Floor below</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                aria-label="Floor below: how strongly it shows"
+                value={belowOpacity}
+                onChange={(e) => s.setBelowOpacity(Number(e.target.value))}
+                className="min-w-0 flex-1"
+              />
+              <span className="w-8 text-right tabular-nums">{belowOpacity ? `${belowOpacity}%` : 'Off'}</span>
+            </label>
           )}
           {renaming ? (
             <input

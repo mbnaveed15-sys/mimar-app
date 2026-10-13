@@ -63,6 +63,6 @@ test('on-screen buttons finish a wall chain and delete the selection', async ({ 
   await page.keyboard.press('Space');
   const wall = (await page.locator('[data-type="wall"]').first().boundingBox())!;
   await tap(page, wall.x + wall.width / 2, wall.y + wall.height / 2);
-  await touchBar.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('toolbar', { name: 'Selection actions' }).getByRole('button', { name: 'Delete' }).click();
   await expect(page.locator('[data-type="wall"]')).toHaveCount(1);
 });

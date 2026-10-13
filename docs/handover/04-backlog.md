@@ -37,7 +37,8 @@ driveways (1.42, all in one release as the owner asked); furniture for every kin
 checks for every building type and locality, more building uses, left and right setbacks, and snapping to every
 corner with more grips (1.43, one release); dimensions that follow the plan, zoom window and zoom previous, curved doors,
 curved slab voids, a cut corner on a curved plot side, a phone layout, and first floors from a room list (1.44, one release);
-CDA, DHA Islamabad and LDA rules for commercial and other buildings, and LDA houses made official (1.45).
+CDA, DHA Islamabad and LDA rules for commercial and other buildings, and LDA houses made official (1.45); phone tools
+always at hand (Select, Move, Eraser, Fit view), a selection bar, two/three-finger tap for Undo/Redo and a 3D twist (1.46).
 
 Planned next (plan each with the owner first): DHA Lahore and Bahria building figures (their buildings still say
 "check with the authority" until the owner sends the schedules). Left from 1.45: Mimar can't tell a veranda, an
@@ -60,6 +61,9 @@ floor only (no second floor, no basement from the list), the ground stair room i
 doesn't carry on to the roof), no Mirror for first-floor plans, and the ground floor needs a stair first. On phones,
 the tool bars can't be docked (one strip at the bottom) and the panel's sections are tabs only; the welcome tour's
 hover hints still mention keys.
+Left from 1.46: on a 375 px phone about four of a group's tools show beside the pinned ones (the rest scroll); the
+twist turns the 3D model round the middle of the view, not the point between the fingers; the welcome tour doesn't
+teach the gestures yet.
 Floating side panels were assessed with 1.39 and left out; revisit only if the owner still wants them.
 
 Left from sections and elevations for later: dimension strings on sections (only level marks now); each section and

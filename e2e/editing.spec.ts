@@ -72,6 +72,35 @@ test('doors slide along their wall and can be flipped', async ({ page }) => {
   expect(await door.getAttribute('transform')).toContain('scale(1,-1)');
 });
 
+test('the Eraser takes a door or window out of its wall, not the wall', async ({ page }) => {
+  await tool(page, 'wall');
+  await drag(page, [304.8, 304.8], [1219.2, 304.8]);
+  await tool(page, 'door');
+  await page.mouse.click(...(await at(page, 500, 330)));
+  await tool(page, 'window');
+  await page.mouse.click(...(await at(page, 950, 280)));
+  const walls = page.locator('[data-type="wall"]');
+  await expect(page.locator('[data-type="door"]')).toHaveCount(1);
+  await expect(page.locator('[data-type="window"]')).toHaveCount(1);
+
+  await tool(page, 'erase');
+  // A click on the door in the wall.
+  await page.mouse.click(...(await at(page, 500, 305)));
+  await expect(page.locator('[data-type="door"]')).toHaveCount(0);
+  await expect(walls).toHaveCount(1);
+  // A short drag across the window.
+  const [x, y] = await at(page, 950, 305);
+  await page.mouse.move(x - 6, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 6, y, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.locator('[data-type="window"]')).toHaveCount(0);
+  await expect(walls).toHaveCount(1);
+  // Then the wall itself.
+  await page.mouse.click(...(await at(page, 700, 305)));
+  await expect(walls).toHaveCount(0);
+});
+
 test('save a plan to a file, start a new one, and open it again', async ({ page }) => {
   await tool(page, 'wall');
   await drag(page, [304.8, 304.8], [609.6, 304.8]);

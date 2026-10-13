@@ -13,8 +13,9 @@ interface Handlers {
   /** Undo whatever the first finger started, because a second finger turned it into a pinch. */
   abort: () => void;
   /**
-   * Two or three fingers moved: by (dx, dy) screen pixels, spread by `scale`, about (x, y) in the
-   * element. Two fingers pan and zoom; three fingers turn the 3D view.
+   * Two or three fingers moved: by (dx, dy) screen pixels, spread by `scale`, twisted by `turn`, about
+   * (x, y) in the element. Two fingers pan and zoom (and in 3D a twist turns the model); three fingers
+   * turn the 3D view.
    */
   gesture: (g: Gesture) => void;
 }
@@ -25,6 +26,8 @@ export interface Gesture {
   scale: number;
   x: number;
   y: number;
+  /** Radians the two fingers turned by, clockwise on screen (0 until a twist is clearly meant). */
+  turn: number;
   fingers: 2 | 3;
 }
 
@@ -35,6 +38,11 @@ const DOUBLE_TAP_MS = 320;
 const DOUBLE_TAP_PX = 30;
 /** Native mouse-compatibility events this soon after a touch are ignored; the touch was handled. */
 const TOUCH_ECHO_MS = 800;
+/** Two or three fingers down and up within this, barely moving, are a tap: Undo or Redo. */
+const MULTI_TAP_MS = 300;
+const MULTI_TAP_PX = 12;
+/** Fingers twist this far (radians, about 8°) before a twist turns the model, so a pinch doesn't. */
+const TWIST_START = 0.14;
 
 interface Snapshot {
   pointerId: number;
@@ -69,7 +77,8 @@ const snapshot = (e: SvgPointer): Snapshot => ({
 /**
  * Touch on the plan: one finger draws and selects like the mouse; two fingers pinch to zoom and
  * drag to pan; a long press (with Select) opens the item's menu; a double tap works like a
- * double-click. Mouse and pen go straight through.
+ * double-click; a quick two-finger tap undoes and a three-finger tap redoes. Mouse and pen go
+ * straight through.
  */
 export function useTouch(handlers: Handlers) {
   const h = useRef(handlers);
@@ -87,7 +96,9 @@ export function useTouch(handlers: Handlers) {
     longTimer: 0,
     lastTap: { time: 0, x: 0, y: 0 },
     lastTouch: 0,
-    gesture: { x: 0, y: 0, dist: 1 },
+    gesture: { x: 0, y: 0, dist: 1, angle: 0 },
+    /** The gesture so far: when it began, most fingers, how far they went, how much they turned. */
+    multi: { time: 0, most: 0, travel: 0, spread: 0, twist: 0, twisting: false },
     element: null as Element | null,
   });
 
@@ -115,7 +126,7 @@ export function useTouch(handlers: Handlers) {
     h.current.down(e as unknown as SvgPointer);
   };
 
-  /** Middle of the fingers and how far apart the first two are. */
+  /** Middle of the fingers, and how far apart the first two are and the angle between them. */
   const fingers = () => {
     const pts = [...state.current.touches.values()];
     const [a, b] = pts;
@@ -123,6 +134,7 @@ export function useTouch(handlers: Handlers) {
       x: pts.reduce((sum, p) => sum + p.x, 0) / pts.length,
       y: pts.reduce((sum, p) => sum + p.y, 0) / pts.length,
       dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+      angle: Math.atan2(b.y - a.y, b.x - a.x),
     };
   };
 
@@ -170,6 +182,9 @@ export function useTouch(handlers: Handlers) {
     if (st.touches.size === 2 || st.touches.size === 3) {
       clearTimers();
       if (st.mode === 'single') h.current.abort();
+      if (st.mode !== 'gesture')
+        st.multi = { time: Date.now(), most: 0, travel: 0, spread: 0, twist: 0, twisting: false };
+      st.multi.most = Math.max(st.multi.most, st.touches.size);
       st.pending = null;
       st.mode = 'gesture';
       st.gesture = fingers();
@@ -189,12 +204,24 @@ export function useTouch(handlers: Handlers) {
       const now = fingers();
       const r = e.currentTarget.getBoundingClientRect();
       const three = st.touches.size >= 3;
+      const dx = now.x - st.gesture.x;
+      const dy = now.y - st.gesture.y;
+      // The angle's change, kept within a half turn either way.
+      const turn = Math.atan2(Math.sin(now.angle - st.gesture.angle), Math.cos(now.angle - st.gesture.angle));
+      const m = st.multi;
+      m.travel += Math.hypot(dx, dy);
+      m.spread += Math.abs(now.dist - st.gesture.dist);
+      if (!three) {
+        m.twist += turn;
+        if (Math.abs(m.twist) > TWIST_START) m.twisting = true;
+      }
       h.current.gesture({
-        dx: now.x - st.gesture.x,
-        dy: now.y - st.gesture.y,
+        dx,
+        dy,
         scale: three ? 1 : now.dist / st.gesture.dist,
         x: now.x - r.left,
         y: now.y - r.top,
+        turn: !three && m.twisting ? turn : 0,
         fingers: three ? 3 : 2,
       });
       st.gesture = now;
@@ -218,7 +245,20 @@ export function useTouch(handlers: Handlers) {
     st.touches.delete(e.pointerId);
     st.lastTouch = Date.now();
     if (st.mode === 'gesture' || st.mode === 'menu') {
-      if (st.touches.size === 0) st.mode = 'idle';
+      if (st.touches.size > 0) return;
+      // A quick tap with two fingers undoes; with three, redoes.
+      const m = st.multi;
+      if (
+        st.mode === 'gesture' &&
+        Date.now() - m.time < MULTI_TAP_MS &&
+        m.travel + m.spread < MULTI_TAP_PX &&
+        !m.twisting
+      ) {
+        const s = plannerStore.getState();
+        if (m.most >= 3) s.redo();
+        else s.undo();
+      }
+      st.mode = 'idle';
       return;
     }
     clearTimers();

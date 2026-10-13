@@ -28,6 +28,27 @@ describe('wall outlines', () => {
     expect([p1.y, p3.y]).toEqual([10, -10]);
   });
 
+  it('mitres two walls meeting at 45°, so the corner has no step or notch', () => {
+    // Down the left side, then off at 45° towards the bottom right (like a cut corner).
+    const a = wall('a', 0, 0, 0, 100);
+    const b = wall('b', 0, 100, 100, 200);
+    const pa = wallPolygon(a, [a, b]);
+    const pb = wallPolygon(b, [a, b]);
+    // The two walls share their corner points exactly (both faces run into each other).
+    const key = (p: { x: number; y: number }) => `${p.x.toFixed(6)},${p.y.toFixed(6)}`;
+    const shared = pa.map(key).filter((k) => pb.map(key).includes(k));
+    expect(shared).toHaveLength(2);
+    // The outer corner sits on the line of a's outer face (x = -10) and of b's outer face.
+    const outer = pa.find((p) => Math.abs(p.x + 10) < 1e-9 && p.y > 50)!;
+    expect(outer.y).toBeCloseTo(100 + 10 * Math.tan(Math.PI / 8));
+  });
+
+  it('keeps a square corner as before', () => {
+    const a = wall('a', 0, 0, 100, 0);
+    const b = wall('b', 100, 0, 100, 100);
+    expect(wallPolygon(a, [a, b]).map((p) => p.x)).toEqual([0, 110, 110, 0]);
+  });
+
   it('treats a wall ending on the middle of another (T-junction) as joined', () => {
     const top = wall('top', 0, 0, 200, 0);
     const divider = wall('d', 100, 0, 100, 80);

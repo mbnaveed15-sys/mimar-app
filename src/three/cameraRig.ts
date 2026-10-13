@@ -2,7 +2,7 @@ import { MathUtils, OrthographicCamera, PerspectiveCamera, Vector3 } from 'three
 
 const MIN_ELEVATION = MathUtils.degToRad(2);
 const MAX_ELEVATION = MathUtils.degToRad(89.9);
-const ORBIT_SPEED = 0.008; // radians per pixel
+export const ORBIT_SPEED = 0.008; // radians per pixel
 /** The camera never goes lower than this above the ground (metres). */
 const MIN_EYE = 0.2;
 

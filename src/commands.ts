@@ -68,11 +68,11 @@ const hasSelection = (s: PlannerState) => s.selectedIds.length > 0;
 const selectedElement = (s: PlannerState) =>
   s.selectedIds.length === 1 ? s.doc.elements.find((el) => el.id === s.selectedId) : undefined;
 /** Something that can be copied or turned: anything but a lone door or window. */
-const canTransform = (s: PlannerState) =>
+export const canTransform = (s: PlannerState) =>
   s.selectedIds.length > 1 || ['wall', 'furniture'].includes(selectedElement(s)?.type ?? '') || !!s.selectedGroup();
 
 /** Copy and Duplicate also take a door or window on its own (it goes onto a wall). */
-const canCopy = (s: PlannerState) => {
+export const canCopy = (s: PlannerState) => {
   const el = selectedElement(s);
   return canTransform(s) || ((el?.type === 'door' || el?.type === 'window') && !el.flat);
 };
@@ -554,6 +554,17 @@ export function buildCommands(ctx: CommandContext): Command[] {
     layer('view.furniture', 'Furniture', 'showFurniture'),
     layer('view.roomLabels', 'Room names & areas', 'showRoomLabels'),
     layer('view.roomFills', 'Room colours', 'showRoomFills'),
+    {
+      id: 'view.selectionBar',
+      // Touch screens always show it; with a mouse it is the owner's choice.
+      label: 'Selection bar',
+      menu: 'view',
+      group: 4,
+      run: () => st().setLayer('selectionBar', !st().selectionBar),
+      kind: 'check',
+      checked: (s) => s.selectionBar,
+      aliases: ['selection bar', 'actions'],
+    },
     { id: 'view.resetToolbars', label: 'Reset tool bars', menu: 'view', group: 4, run: () => st().resetToolbars() },
     {
       id: 'view.panelTabs',

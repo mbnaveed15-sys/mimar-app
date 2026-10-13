@@ -13,7 +13,7 @@ import { themeColor } from '../theme/themes';
 import { drawPattern } from '../lib/patterns';
 import type { Bounds, Pattern, PlanDoc, Point } from '../types';
 import { setCameraEye } from './cameraEye';
-import { CameraRig } from './cameraRig';
+import { CameraRig, ORBIT_SPEED } from './cameraRig';
 import { draftElements, draftLines } from './draft3d';
 import { withoutHidden } from '../lib/layers';
 import { shapeDraftScene } from '../tools/shapeTools';
@@ -792,6 +792,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
   const theme = usePlanner((s) => s.theme);
   const hasWalls = doc.elements.some((el) => el.type === 'wall');
   const tool = usePlanner((s) => s.tool);
+  const touchInput = usePlanner((s) => s.touchInput);
   /** The last pick, reused while the pointer has not moved. */
   const pickRef = useRef<{ x: number; y: number; pick: Pick } | null>(null);
   /** A camera drag in progress (middle button, or the Orbit, Pan and Zoom tools). */
@@ -1217,12 +1218,14 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     doubleClick: input.onDoubleClick,
     contextMenu: input.onRightClick,
     abort: input.abortPress,
-    gesture: ({ dx, dy, scale, x, y, fingers }) => {
+    gesture: ({ dx, dy, scale, x, y, turn, fingers }) => {
       const stage = stageRef.current;
       const host = hostRef.current;
       if (!stage || !host) return;
       if (fingers === 3) stage.rig.orbit(dx, dy);
       else {
+        // A twist turns the model with the fingers (round the middle of the view).
+        if (turn) stage.rig.orbit(-turn / ORBIT_SPEED, 0);
         stage.rig.pan(dx, dy, host.clientHeight);
         const r = host.getBoundingClientRect();
         stage.rig.dolly(1 / scale, pickAt(r.left + x, r.top + y)?.world);
@@ -1384,7 +1387,9 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         </label>
       </div>
       <div className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-raised/85 px-2 py-1 text-xs text-muted">
-        Middle-drag to orbit · Shift+middle-drag to pan · Scroll to zoom · Orbit tool (O) for touchpads
+        {touchInput
+          ? 'Two fingers pan, pinch to zoom, twist to turn · Three fingers orbit · Tap two fingers to undo'
+          : 'Middle-drag to orbit · Shift+middle-drag to pan · Scroll to zoom · Orbit tool (O) for touchpads'}
       </div>
       {!hasWalls && tool === 'select' && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

@@ -48,11 +48,16 @@ test.describe('a phone held upright', () => {
     const plan = (await page.getByTestId('plan-canvas').boundingBox())!;
     expect(plan.width).toBe(375);
 
-    // Groups: Build has the column; Draw has the wall. Select and Pan are in every group.
+    // Groups: Build has the column; Draw has the wall. Select, Move, Eraser and Fit view are pinned.
     const groups = strip(page).getByRole('radiogroup', { name: 'Tool groups' });
     await groups.getByRole('radio', { name: 'Build' }).click();
     await expect(strip(page).getByRole('button', { name: 'Column', exact: true })).toBeVisible();
-    await expect(strip(page).getByRole('button', { name: 'Select', exact: true })).toBeVisible();
+    for (const name of ['Select', 'Move', 'Eraser', 'Fit view'])
+      await expect(strip(page).getByTestId('phone-pinned').getByRole('button', { name, exact: true })).toBeVisible();
+    // Pan waits in the View group (two fingers pan).
+    await expect(strip(page).getByRole('button', { name: 'Pan', exact: true })).toHaveCount(0);
+    await groups.getByRole('radio', { name: 'View' }).click();
+    await expect(strip(page).getByRole('button', { name: 'Pan', exact: true })).toBeVisible();
     // A tool picked another way (its key) brings its group forward.
     await page.keyboard.press('w');
     await expect(groups.getByRole('radio', { name: 'Draw' })).toHaveAttribute('aria-checked', 'true');
@@ -75,8 +80,23 @@ test.describe('a phone held upright', () => {
     await page.getByRole('button', { name: 'Redo', exact: true }).click();
     await expect(page.locator('[data-type="wall"]')).toHaveCount(1);
 
+    // A phone always has the selection bar, icons only, clear of the panel sheet.
+    await pick(page, 'Select');
+    const wall = (await page.locator('[data-type="wall"]').first().boundingBox())!;
+    await page.mouse.click(wall.x + wall.width / 2, wall.y + wall.height / 2);
+    const bar = page.getByRole('toolbar', { name: 'Selection actions' });
+    await expect(bar.getByRole('button', { name: 'Mirror' })).toBeVisible();
+    const barBox = (await bar.boundingBox())!;
+    expect(barBox.x + barBox.width).toBeLessThanOrEqual(375);
+    const sheet = (await page.getByTestId('phone-sheet').boundingBox())!;
+    expect(barBox.y + barBox.height).toBeLessThanOrEqual(sheet.y);
+    await bar.getByRole('button', { name: 'Deselect' }).click();
+    await expect(bar).toHaveCount(0);
+
     // Hold a tool to see its name.
     const door = strip(page).getByRole('button', { name: 'Door', exact: true });
+    // The group's tools scroll beside the pinned ones.
+    await door.scrollIntoViewIfNeeded();
     const box = (await door.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();

@@ -48,6 +48,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const doc = useLevelDoc()!;
   // The floor below, drawn faintly so the walls above can be traced over it.
   const below = useLevelDoc(-1);
+  const belowOpacity = usePlanner((s) => s.belowOpacity);
   const belowWalls = useMemo(
     () =>
       below
@@ -226,8 +227,8 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         />
       )}
 
-      {below && (
-        <g opacity={0.22} pointerEvents="none" data-testid="level-below">
+      {below && belowOpacity > 0 && (
+        <g opacity={belowOpacity / 100} pointerEvents="none" data-testid="level-below">
           <PlanDrawing
             doc={belowWalls!}
             selectedIds={NONE}
