@@ -20,8 +20,9 @@ export const TOOLBARS = [
 export type ToolbarId = (typeof TOOLBARS)[number]['id'];
 
 /**
- * On a phone the tools run along the bottom in one scrolling strip, a group at a time. Select and Pan
- * start every group, so the plan can always be picked from and moved.
+ * On a phone the tools run along the bottom in one strip, a group at a time. Select, Move and Erase
+ * (and a Fit view button) are pinned at its start; fingers pan, zoom and turn the view, so Pan, Zoom
+ * and Orbit wait in the View group for one-handed use.
  */
 export const PHONE_GROUPS = [
   { id: 'draw', label: 'Draw', tools: ['wall', 'curve', 'line', 'rectangle', 'room', 'door', 'window', 'furniture'] },
@@ -34,9 +35,7 @@ export const PHONE_GROUPS = [
     id: 'edit',
     label: 'Edit',
     tools: [
-      'move',
       'rotate',
-      'erase',
       'paint',
       'offset',
       'mirror',
@@ -52,15 +51,15 @@ export const PHONE_GROUPS = [
   },
   { id: 'annotate', label: 'Annotate', tools: ['dimension', 'tape', 'brush', 'mask'] },
   { id: 'site', label: 'Site', tools: ['plot', 'level', 'contour', 'pad'] },
-  { id: 'view', label: 'View', tools: ['zoom', 'orbit'] },
+  { id: 'view', label: 'View', tools: ['pan', 'zoom', 'orbit'] },
 ] as const satisfies readonly { id: string; label: string; tools: readonly Tool[] }[];
 
 export type PhoneGroupId = (typeof PHONE_GROUPS)[number]['id'];
 
-/** The tools at the start of every phone group. */
-export const PHONE_ALWAYS: readonly Tool[] = ['select', 'pan'];
+/** The tools pinned at the start of the phone strip, whatever the group. */
+export const PHONE_ALWAYS: readonly Tool[] = ['select', 'move', 'erase'];
 
-/** The phone group a tool is in (the Draw group for Select and Pan). */
+/** The phone group a tool is in (the Draw group for the pinned tools). */
 export function phoneGroupOf(tool: Tool): PhoneGroupId {
   return PHONE_GROUPS.find((g) => (g.tools as readonly Tool[]).includes(tool))?.id ?? 'draw';
 }

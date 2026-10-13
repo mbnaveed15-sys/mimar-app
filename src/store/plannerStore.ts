@@ -588,7 +588,8 @@ export interface PlannerState {
       | 'pdfCheck'
       | 'showHints'
       | 'pdfHints'
-      | 'accessibleZones',
+      | 'accessibleZones'
+      | 'selectionBar',
     show: boolean,
   ) => void;
   /** Add the plan check page to PDFs. */
@@ -599,6 +600,8 @@ export interface PlannerState {
   pdfHints: boolean;
   /** Furniture use zones sized for a wheelchair user (ADA), where they differ. */
   accessibleZones: boolean;
+  /** Show the selection bar with a mouse (touch screens always show it). */
+  selectionBar: boolean;
   /** Library item placed by the Furniture tool. */
   furnitureKind: FurnitureKind;
   setFurnitureKind: (kind: FurnitureKind) => void;
@@ -709,7 +712,7 @@ export function createPlannerStore(
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
-      const { showHints, pdfHints, accessibleZones, checks, snaps } = get();
+      const { showHints, pdfHints, accessibleZones, selectionBar, checks, snaps } = get();
       const { wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } = get();
       savePrefs({
         units,
@@ -722,6 +725,7 @@ export function createPlannerStore(
         showHints,
         pdfHints,
         accessibleZones,
+        selectionBar,
         wallThicknessMm,
         openingGapMm,
         marlaSqFt,
@@ -844,6 +848,7 @@ export function createPlannerStore(
       showHints: prefs.showHints,
       pdfHints: prefs.pdfHints,
       accessibleZones: prefs.accessibleZones,
+      selectionBar: prefs.selectionBar,
       furnitureKind: DEFAULT_FURNITURE_KIND,
       wallThicknessMm: prefs.wallThicknessMm,
       openingGapMm: prefs.openingGapMm,
