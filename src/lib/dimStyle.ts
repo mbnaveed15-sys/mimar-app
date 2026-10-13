@@ -14,7 +14,7 @@ export const DEFAULT_DIM_STYLE: DimStyle = { text: 'medium', ends: 'tick' };
 /** Text size against Medium (today's look). */
 export const DIM_TEXT_SCALE: Record<DimText, number> = { small: 0.75, medium: 1, large: 1.4 };
 /** The text's height on paper, mm (for printed drawings and the DXF's dimension style). */
-export const DIM_TEXT_MM: Record<DimText, number> = { small: 2.5, medium: 3.5, large: 5 };
+export const DIM_TEXT_MM: Record<DimText, number> = { small: 1.8, medium: 2.5, large: 3.5 };
 
 export const DIM_TEXT_LABELS: { id: DimText; label: string }[] = [
   { id: 'small', label: 'Small' },
@@ -34,9 +34,7 @@ export const dimStyleOf = (doc: { drawing?: DrawingStyle }): DimStyle => ({
 
 /** One piece of an end mark: a line, a filled outline or a filled dot. */
 export type EndMark =
-  | { kind: 'line'; a: Point; b: Point }
-  | { kind: 'fill'; pts: Point[] }
-  | { kind: 'dot'; c: Point; r: number };
+  { kind: 'line'; a: Point; b: Point } | { kind: 'fill'; pts: Point[] } | { kind: 'dot'; c: Point; r: number };
 
 /**
  * The mark at one end `p` of a dimension line running along `u` (a unit vector, start to end), with `n` its

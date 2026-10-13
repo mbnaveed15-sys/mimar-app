@@ -232,11 +232,7 @@ export const HATCH_FAMILIES: Record<Hatch, HatchFamily[]> = {
     { angle: 70, gap: 3, offset: 0.35, shift: 1.3, dashes: [0.8, -3.2] },
     { angle: 110, gap: 3, offset: -0.35, shift: 1.3, dashes: [0.8, -3.2] },
   ],
-  gravel: [
-    dots(0, 1.3, 0.7, 1.6, 0.5),
-    dots(60, 1.7, 0.4, 2.1, 0.45),
-    dots(120, 1.9, 1.1, 1.8, 0.4),
-  ],
+  gravel: [dots(0, 1.3, 0.7, 1.6, 0.5), dots(60, 1.7, 0.4, 2.1, 0.45), dots(120, 1.9, 1.1, 1.8, 0.4)],
   sand: [dots(0, 0.8, 0.5, 1.1, 0.12), dots(45, 1.1, 0.3, 1.3, 0.12), dots(100, 1.4, 0.9, 1.6, 0.12)],
   water: [
     { angle: 0, gap: 2, shift: 2.6, dashes: [3.5, -1.8] },

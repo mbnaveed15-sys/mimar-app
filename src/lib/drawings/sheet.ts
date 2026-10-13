@@ -8,6 +8,7 @@ import {
   levelOf,
   type Bounds,
   type DrawingRef,
+  type DrawingStyle,
   type PaperSize,
   type PlanDoc,
   type Sheet,
@@ -15,6 +16,9 @@ import {
   type SheetScale,
 } from '../../types';
 import { groundAt } from './hiddenLines';
+import { hatchSegments } from '../hatch';
+import { DIM_TEXT_MM, dimStyleOf, endMark, type DimStyle } from '../dimStyle';
+import { formatLength } from '../units';
 import { drawingKey, drawingTitle, sideDrawingRefs, type SideDrawing } from './views';
 
 /** Landscape paper sizes in millimetres. */
@@ -35,7 +39,17 @@ export type Prim =
   | { t: 'tri'; pts: [XY, XY, XY] }
   | { t: 'rect'; x: number; y: number; w: number; h: number; lw: number }
   | { t: 'circle'; x: number; y: number; r: number; lw: number }
-  | { t: 'text'; x: number; y: number; text: string; size: number; bold?: boolean; align?: 'left' | 'center' | 'right' }
+  | {
+      t: 'text';
+      x: number;
+      y: number;
+      text: string;
+      size: number;
+      bold?: boolean;
+      align?: 'left' | 'center' | 'right';
+      /** Turned anticlockwise, degrees (90 reads up the page). */
+      angle?: number;
+    }
   /** A floor plan, drawn by the plan renderer: `area` (plan units) fills the box. */
   | { t: 'plan'; levelId: string; x: number; y: number; w: number; h: number; area: Bounds; scale: number };
 
@@ -91,8 +105,62 @@ function drawingSize(src: SheetSource, ref: DrawingRef, scale: number): { w: num
   const d = src.side(ref);
   if (!d) return null;
   const e = sideExtent(d);
-  return { w: ((e.maxU - e.minU) * 1000) / scale + LEVEL_ROOM, h: ((e.maxV - e.minV) * 1000) / scale };
+  const room = dimRoom(d, src.doc.drawing);
+  return {
+    w: ((e.maxU - e.minU) * 1000) / scale + LEVEL_ROOM + room.left,
+    h: ((e.maxV - e.minV) * 1000) / scale + room.below,
+  };
 }
+
+/** Room for the dimension strings, paper mm: two strings up the left side, two under the drawing. */
+const DIM_STEP = 7;
+function dimRoom(d: SideDrawing, style?: DrawingStyle): { left: number; below: number } {
+  if (style?.sideDims === false || !d.dims) return { left: 0, below: 0 };
+  const strings = (stops: number[]) => (stops.length > 2 ? 2 : stops.length === 2 ? 1 : 0);
+  return { left: strings(d.dims.heights) * DIM_STEP, below: strings(d.dims.across) * DIM_STEP };
+}
+
+/** A string of dimensions along a line on paper, from stop to stop, with the plan's text size and ends. */
+function dimString(prims: Prim[], stops: XY[], labels: string[], normal: XY, style: DimStyle, textMm: number) {
+  if (stops.length < 2) return;
+  const a = stops[0];
+  const b = stops[stops.length - 1];
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  if (len < 1e-6) return;
+  const u = { x: (b[0] - a[0]) / len, y: (b[1] - a[1]) / len };
+  const n = { x: normal[0], y: normal[1] };
+  prims.push({ t: 'line', a, b, w: PEN.fine });
+  stops.forEach((p, i) => {
+    // A short extension line through each stop, and its end mark.
+    prims.push({
+      t: 'line',
+      a: [p[0] - n.x * 1.5, p[1] - n.y * 1.5],
+      b: [p[0] + n.x * 1.2, p[1] + n.y * 1.2],
+      w: PEN.fine,
+    });
+    const inward = i === stops.length - 1 ? -1 : 1;
+    const mark = endMark(style.ends, { x: p[0], y: p[1] }, u, n, inward, 0.8);
+    if (mark.kind === 'line') prims.push({ t: 'line', a: [mark.a.x, mark.a.y], b: [mark.b.x, mark.b.y], w: PEN.cut });
+    else if (mark.kind === 'dot') prims.push({ t: 'fill', rings: [circleRing(mark.c, mark.r)] });
+    else prims.push({ t: 'fill', rings: [mark.pts.map((q): XY => [q.x, q.y])] });
+  });
+  // Each length beside its piece, upright or reading up the page, where it fits.
+  const angle = Math.abs(u.x) >= Math.abs(u.y) ? 0 : 90;
+  for (let i = 0; i + 1 < stops.length; i++) {
+    const p = stops[i];
+    const q = stops[i + 1];
+    const piece = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    if (piece < labels[i].length * textMm * 0.45) continue;
+    const mid: XY = [(p[0] + q[0]) / 2 + n.x * 0.8, (p[1] + q[1]) / 2 + n.y * 0.8];
+    prims.push({ t: 'text', x: mid[0], y: mid[1], text: labels[i], size: textMm, align: 'center', angle });
+  }
+}
+
+const circleRing = (c: { x: number; y: number }, r: number): XY[] =>
+  Array.from({ length: 12 }, (_, i): XY => [
+    c.x + r * Math.cos((i * Math.PI) / 6),
+    c.y + r * Math.sin((i * Math.PI) / 6),
+  ]);
 
 function sideExtent(d: SideDrawing) {
   const b = d.bounds ?? { minU: -1, maxU: 1, minV: 0, maxV: 1 };
@@ -181,7 +249,7 @@ export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count
       });
     } else {
       const d = src.side(ref);
-      if (d) prims.push(...sidePrims(d, p.item.scale, p.x, p.y));
+      if (d) prims.push(...sidePrims(d, p.item.scale, p.x, p.y, src.doc.drawing));
     }
     caption(prims, drawingTitle(src.doc, ref) ?? '', p.item.scale, p.x, p.y + p.h, p.w);
   }
@@ -204,20 +272,25 @@ function caption(prims: Prim[], title: string, scale: number, x: number, bottom:
   prims.push({ t: 'text', x: cx, y: y + 5, text: `Scale 1:${scale}`, size: 2.5, align: 'center' });
 }
 
-/** A section or elevation at 1:scale with its top-left corner at (x, y). */
-export function sidePrims(d: SideDrawing, scale: number, x: number, y: number): Prim[] {
+/** A section or elevation at 1:scale with its top-left corner at (x, y), in the plan's drawing style. */
+export function sidePrims(d: SideDrawing, scale: number, x0: number, y: number, style?: DrawingStyle): Prim[] {
   const e = sideExtent(d);
+  const room = dimRoom(d, style);
+  const x = x0 + room.left;
   const k = 1000 / scale;
   const X = (u: number) => x + (u - e.minU) * k;
   const Y = (v: number) => y + (e.maxV - v) * k;
   const prims: Prim[] = [];
   for (const l of d.lines)
     prims.push({ t: 'line', a: [X(l.a[0]), Y(l.a[1])], b: [X(l.b[0]), Y(l.b[1])], w: l.heavy ? PEN.heavy : PEN.thin });
-  for (const poly of d.cut) {
+  d.cut.forEach((poly, j) => {
     const rings = poly.map((r) => r.map((p): XY => [X(p[0]), Y(p[1])]));
-    prims.push({ t: 'fill', rings });
+    // Hatched by what it is made of (glass is its outline only), or solid black.
+    const hatch = style?.solidCuts ? null : (d.cutHatch?.[j] ?? null);
+    if (hatch) for (const [a, b] of hatchSegments(hatch, rings, 1)) prims.push({ t: 'line', a, b, w: PEN.fine });
+    else prims.push({ t: 'fill', rings });
     for (const r of rings) r.forEach((p, i) => prims.push({ t: 'line', a: p, b: r[(i + 1) % r.length], w: PEN.cut }));
-  }
+  });
   // The ground line (or the finished ground, and the natural ground dashed where they differ), with
   // earth hatching under it (not under a basement that is cut).
   const g0 = X(d.ground.u0);
@@ -244,6 +317,45 @@ export function sidePrims(d: SideDrawing, scale: number, x: number, y: number): 
       const gy = gyAt(hx + 1);
       prims.push({ t: 'line', a: [hx + 2, gy + 0.4], b: [hx, gy + 2.4], w: PEN.fine });
     }
+  // Dimension strings: heights up the left side, and across under the drawing (each piece, then the whole).
+  if (d.dims && (room.left || room.below)) {
+    const look = dimStyleOf({ drawing: style });
+    const textMm = DIM_TEXT_MM[look.text];
+    const len = (m: number) => formatLength(m * 1000, d.dims!.units);
+    const labels = (stops: number[]) => stops.slice(1).map((s, i) => len(s - stops[i]));
+    const hs = d.dims.heights;
+    if (hs.length >= 2) {
+      const lx = X(e.minU) - 3;
+      dimString(prims, hs.map((v): XY => [lx, Y(v)]).reverse(), labels(hs).reverse(), [-1, 0], look, textMm);
+      if (hs.length > 2) {
+        const ends = [hs[0], hs[hs.length - 1]];
+        dimString(prims, ends.map((v): XY => [lx - DIM_STEP, Y(v)]).reverse(), labels(ends), [-1, 0], look, textMm);
+      }
+    }
+    const xs = d.dims.across;
+    if (xs.length >= 2) {
+      const by = Math.max(Y(e.minV), Y(0) + 2.4) + 4;
+      dimString(
+        prims,
+        xs.map((u): XY => [X(u), by]),
+        labels(xs),
+        [0, -1],
+        look,
+        textMm,
+      );
+      if (xs.length > 2) {
+        const ends = [xs[0], xs[xs.length - 1]];
+        dimString(
+          prims,
+          ends.map((u): XY => [X(u), by + DIM_STEP]),
+          labels(ends),
+          [0, -1],
+          look,
+          textMm,
+        );
+      }
+    }
+  }
   // Level marks to the right: a leader from the drawing, a marker, the height and the name.
   const right = X(e.maxU) + 3;
   let lastY = Infinity;

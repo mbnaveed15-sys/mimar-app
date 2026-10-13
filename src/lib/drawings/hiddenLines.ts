@@ -11,6 +11,8 @@
  * height and d the distance away from the viewer.
  */
 
+import type { Hatch } from '../hatch';
+
 /** A 2D point on the drawing: [u, v] in metres. */
 export type P2 = [number, number];
 /** A 3D point on the drawing: [u, v, d] in metres. */
@@ -22,6 +24,8 @@ export type V3 = [number, number, number];
 export interface Prism {
   rings: V3[][];
   extrude: V3;
+  /** How its cut is hatched on a section (solid black when missing or null). */
+  hatch?: Hatch | null;
 }
 
 /** Where the drawing is seen from: a point and the (level) direction looked in, in scene x/z. */
@@ -51,6 +55,8 @@ export interface Line2 {
 export interface Projection {
   /** Cut through (sections only): each an outline and its holes, filled solid. */
   cut: P2[][][];
+  /** Each cut piece's hatch (in step with `cut`); solid black when null. */
+  cutHatch?: (Hatch | null)[];
   /** Visible edges beyond the cut (or all visible edges, for an elevation). */
   lines: Line2[];
   /** Extent of what is drawn, or null when nothing is. */
@@ -385,12 +391,17 @@ export function project(prisms: Prism[], frame: ViewFrame): Projection {
   const view = toView(frame);
   const faces: Face[] = [];
   const cut: P2[][][] = [];
+  const cutHatch: (Hatch | null)[] = [];
   /** Edges keyed by their rounded ends, so an edge shared by two faces is drawn once. */
   const edges = new Map<string, [P3, P3]>();
   const key = (p: P3) => `${Math.round(p[0] * 1e4)},${Math.round(p[1] * 1e4)},${Math.round(p[2] * 1e4)}`;
 
   for (const prism of prisms) {
-    if (frame.cut) cut.push(...cutOf(prism, view));
+    if (frame.cut)
+      for (const piece of cutOf(prism, view)) {
+        cut.push(piece);
+        cutHatch.push(prism.hatch ?? null);
+      }
     for (const face of prismFaces(prism)) {
       let rings = face.map((r) => r.map(view));
       if (frame.cut) rings = rings.map(clipRing).filter((r) => r.length >= 3);
@@ -427,7 +438,7 @@ export function project(prisms: Prism[], frame: ViewFrame): Projection {
   const minV = frame.minV;
   let shown = minV === undefined ? lines : clipBelow(lines, minV);
   if (frame.ground && frame.ground.length) shown = clipBelowGround(shown, frame.ground);
-  return { cut, lines: mergeLines(shown), bounds: boundsOf(cut, shown) };
+  return { cut, cutHatch, lines: mergeLines(shown), bounds: boundsOf(cut, shown) };
 }
 
 /** The visible pieces of one edge. */

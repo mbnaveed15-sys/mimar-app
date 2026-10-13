@@ -34,6 +34,7 @@ export function DrawingsView() {
   const current = usePlanner((s) => s.drawing);
   const showDrawing = usePlanner((s) => s.showDrawing);
   const setSheets = usePlanner((s) => s.setSheets);
+  const setDrawingStyle = usePlanner((s) => s.setDrawingStyle);
   const [zoom, setZoom] = useState(1);
 
   const shown = useMemo(() => withoutHidden(doc, { layers: doc.layers, showFurniture }), [doc, showFurniture]);
@@ -61,7 +62,7 @@ export function DrawingsView() {
     if (!ref || ref.kind === 'plan') return null;
     const d = src.side(ref);
     if (!d?.bounds) return null;
-    const prims = sidePrims(d, VIEW_SCALE, 10, 10);
+    const prims = sidePrims(d, VIEW_SCALE, 10, 10, src.doc.drawing);
     const xs = prims.flatMap((p) => (p.t === 'line' ? [p.a[0], p.b[0]] : p.t === 'text' ? [p.x + 40] : []));
     const ys = prims.flatMap((p) => (p.t === 'line' ? [p.a[1], p.b[1]] : p.t === 'text' ? [p.y] : []));
     return { w: Math.max(...xs) + 10, h: Math.max(...ys) + 10, prims };
@@ -146,7 +147,35 @@ export function DrawingsView() {
           />
         )}
 
-        <div className="mt-auto flex flex-col gap-1 border-t border-line pt-2">
+        <div className="mt-auto flex flex-col gap-1.5 border-t border-line pt-2">
+          <label className="flex items-center gap-2 px-1">
+            <input
+              type="checkbox"
+              data-testid="side-dims"
+              checked={doc.drawing?.sideDims !== false}
+              onChange={(e) => setDrawingStyle({ sideDims: e.target.checked })}
+            />
+            Dimensions on sections and elevations
+          </label>
+          <div className="flex items-center gap-2 px-1">
+            <span className="text-muted">Cut parts</span>
+            <div role="radiogroup" aria-label="Cut parts" className="m-seg">
+              <button
+                role="radio"
+                aria-checked={!doc.drawing?.solidCuts}
+                onClick={() => setDrawingStyle({ solidCuts: false })}
+              >
+                Hatched
+              </button>
+              <button
+                role="radio"
+                aria-checked={!!doc.drawing?.solidCuts}
+                onClick={() => setDrawingStyle({ solidCuts: true })}
+              >
+                Solid black
+              </button>
+            </div>
+          </div>
           <button className="m-btn m-btn-primary justify-center" onClick={() => exportSheetsPdf()}>
             <Icon name="sheet" size={15} />
             Export sheets (PDF)

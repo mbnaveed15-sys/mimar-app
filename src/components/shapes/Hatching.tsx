@@ -60,7 +60,17 @@ export function HatchDefs({ uid, k, hatches }: { uid: string; k: number; hatches
 }
 
 /** An outline (an SVG path) filled with a hatch's lines; it takes no clicks. */
-export function HatchArea({ uid, hatch, d, opacity = 0.75 }: { uid: string; hatch: Hatch; d: string; opacity?: number }) {
+export function HatchArea({
+  uid,
+  hatch,
+  d,
+  opacity = 0.75,
+}: {
+  uid: string;
+  hatch: Hatch;
+  d: string;
+  opacity?: number;
+}) {
   return (
     <g pointerEvents="none" data-hatch={hatch} opacity={opacity}>
       {HATCH_FAMILIES[hatch].map((_, i) => (

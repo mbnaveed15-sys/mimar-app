@@ -192,7 +192,11 @@ export async function exportDrawingsDxf() {
     return;
   }
   try {
-    saveBlob(sideDrawingsToDxf(drawings), 'application/dxf', `${baseName(s.fileName)} - Sections and elevations.dxf`);
+    saveBlob(
+      sideDrawingsToDxf(drawings, s.doc.drawing),
+      'application/dxf',
+      `${baseName(s.fileName)} - Sections and elevations.dxf`,
+    );
   } catch (e) {
     s.setWarning(`The DXF could not be created. ${String(e)}`);
   }

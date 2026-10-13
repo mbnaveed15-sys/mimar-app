@@ -50,7 +50,13 @@ async function drawPrims(pdf: Pdf, prims: Prim[], plan: (levelId: string) => Pla
       case 'text':
         pdf.setFont('helvetica', p.bold ? 'bold' : 'normal');
         pdf.setFontSize(p.size / MM_PER_PT);
-        pdf.text(pdfText(p.text), p.x, p.y, { align: p.align ?? 'left' });
+        if (p.angle) {
+          // Turned text: start it so it is centred (or aligned) on its point along its own line.
+          const w = pdf.getTextWidth(pdfText(p.text));
+          const back = p.align === 'center' ? w / 2 : p.align === 'right' ? w : 0;
+          const rad = (p.angle * Math.PI) / 180;
+          pdf.text(pdfText(p.text), p.x - Math.cos(rad) * back, p.y + Math.sin(rad) * back, { angle: p.angle });
+        } else pdf.text(pdfText(p.text), p.x, p.y, { align: p.align ?? 'left' });
         break;
       case 'plan': {
         const dpi = Math.min(DPI, Math.sqrt(MAX_PIXELS / ((p.w / 25.4) * (p.h / 25.4))));

@@ -56,6 +56,7 @@ export function PrimsSvg({ prims, plan }: { prims: Prim[]; plan?: (levelId: stri
                 fontSize={p.size}
                 fontWeight={p.bold ? 700 : 400}
                 textAnchor={ANCHOR[p.align ?? 'left']}
+                transform={p.angle ? `rotate(${-p.angle} ${p.x} ${p.y})` : undefined}
                 fill="#111"
               >
                 {p.text}

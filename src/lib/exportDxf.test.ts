@@ -203,3 +203,84 @@ describe('DXF export', () => {
     expect(bare).not.toContain('\r\n8\r\nC-TOPO-MINR\r\n');
   });
 });
+
+describe('DXF dimensions and hatches (1.50)', () => {
+  it('writes dimensions as DIMENSION entities with their picture in a block, in the MIMAR style', () => {
+    const doc: PlanDoc = {
+      ...emptyDoc(),
+      elements: [{ id: 'd1', type: 'dimension', x1: 0, y1: 0, x2: 300, y2: 0, lx: 150, ly: -50 } as PlanElement],
+      drawing: { dimEnds: 'dot', dimText: 'large' },
+    };
+    const dxf = planToDxf(doc, opts);
+    expect(dxf).toContain('\r\n0\r\nDIMENSION\r\n');
+    expect(dxf).toContain('\r\n2\r\nBLOCKS\r\n');
+    expect(dxf).toContain('\r\n2\r\n*D1\r\n');
+    expect(dxf).toContain('\r\n2\r\nDIMSTYLE\r\n');
+    expect(dxf).toContain('\r\n3\r\nMIMAR\r\n');
+    // Dot ends: the style's arrow block is a dot.
+    expect(dxf).toContain('\r\n5\r\nDOT\r\n');
+    expect(dxf).toContain('3.00 m');
+    // The blocks come before the entities.
+    expect(dxf.indexOf('BLOCKS')).toBeLessThan(dxf.indexOf('ENTITIES'));
+  });
+
+  it('hatches walls (by material) and floors on their own layers, and can leave them off', () => {
+    const doc: PlanDoc = {
+      ...emptyDoc(),
+      elements: [wall],
+      rooms: [
+        {
+          id: 'r',
+          name: 'Lawn',
+          material: 'mat_lawn',
+          points: [
+            { x: 0, y: 10 },
+            { x: 500, y: 10 },
+            { x: 500, y: 300 },
+            { x: 0, y: 300 },
+          ],
+        },
+      ],
+    };
+    doc.materials = [...doc.materials, { id: 'mat_lawn', name: 'Lawn', color: '#0a0', texture: '' }];
+    const dxf = planToDxf(doc, opts);
+    expect(dxf).toContain('\r\n8\r\nA-WALL-PATT\r\n');
+    expect(dxf).toContain('\r\n8\r\nA-FLOR-PATT\r\n');
+    const off = planToDxf({ ...doc, drawing: { planHatch: false, floorHatch: false } }, opts);
+    expect(off).not.toContain('\r\n8\r\nA-WALL-PATT\r\n');
+    expect(off).not.toContain('\r\n8\r\nA-FLOR-PATT\r\n');
+  });
+
+  it('hatches a section cut and gives it dimension strings', () => {
+    const d: SideDrawing = {
+      title: 'Section A–A',
+      cut: [
+        [
+          [
+            [0, 0],
+            [0.23, 0],
+            [0.23, 3],
+            [0, 3],
+          ],
+        ],
+      ],
+      cutHatch: ['brick'],
+      lines: [],
+      bounds: { minU: 0, maxU: 1, minV: 0, maxV: 3 },
+      ground: { u0: -1, u1: 2 },
+      levels: [
+        { v: 0, name: 'Natural ground', label: '+/-0.000' },
+        { v: 3, name: 'Top of roof slab', label: '+3.000' },
+      ],
+      dims: { heights: [0, 3], across: [0, 0.23], units: 'metric' },
+    };
+    const dxf = sideDrawingsToDxf([d]);
+    expect(dxf).toContain('\r\n8\r\nA-SECT-PATT\r\n');
+    expect(dxf).not.toContain('\r\n0\r\nSOLID\r\n');
+    expect(dxf).toContain('\r\n0\r\nDIMENSION\r\n');
+    expect(dxf).toContain('3.00 m');
+    const solid = sideDrawingsToDxf([d], { solidCuts: true, sideDims: false });
+    expect(solid).toContain('\r\n0\r\nSOLID\r\n');
+    expect(solid).not.toContain('\r\n0\r\nDIMENSION\r\n');
+  });
+});

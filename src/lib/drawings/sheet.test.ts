@@ -95,8 +95,15 @@ describe('sheets', () => {
         'Drawn with Mimar 1.35.0',
       ]),
     );
-    // The section is filled where it is cut.
-    expect(l.prims.some((p) => p.t === 'fill')).toBe(true);
+    // The section is hatched where it is cut (brick walls, concrete slabs: thin lines), or filled solid.
+    const fine = (prims: typeof l.prims) => prims.filter((p) => p.t === 'line' && p.w === PEN.fine).length;
+    const solid = layoutSheet({ ...src, doc: { ...src.doc, drawing: { solidCuts: true } } }, sheet, 1, 3);
+    expect(fine(l.prims)).toBeGreaterThan(fine(solid.prims) + 20);
+    expect(solid.prims.some((p) => p.t === 'fill')).toBe(true);
+    // Its dimensions: the heights and the cut walls, in feet and inches.
+    expect(texts(l.prims).some((t) => /^\d+' \d+"$/.test(t))).toBe(true);
+    const plain = layoutSheet({ ...src, doc: { ...src.doc, drawing: { sideDims: false } } }, sheet, 1, 3);
+    expect(texts(plain.prims).length).toBeLessThan(texts(l.prims).length);
   });
 
   it('warns when the drawings do not fit', () => {

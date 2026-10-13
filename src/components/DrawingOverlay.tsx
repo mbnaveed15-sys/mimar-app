@@ -301,7 +301,9 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
         />
       )}
 
-      {d?.type === 'dimension' && <DimensionDraft d={d} mode={dimMode ?? 'linear'} units={units} k={k} dimLook={dimLook} />}
+      {d?.type === 'dimension' && (
+        <DimensionDraft d={d} mode={dimMode ?? 'linear'} units={units} k={k} dimLook={dimLook} />
+      )}
 
       {d?.type === 'section' && (
         <SectionShape
