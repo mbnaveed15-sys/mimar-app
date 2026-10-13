@@ -46,8 +46,10 @@ const MAX_BEND_GRIPS = 48;
 
 export function Canvas({ svgRef, onContextMenu }: Props) {
   const doc = useLevelDoc()!;
-  // The floor below, drawn faintly so the walls above can be traced over it.
-  const below = useLevelDoc(-1);
+  // The floor below, drawn faintly so the walls above can be traced over it (on Ground (site), the
+  // ground floor over it, so the plinth can be drawn under its walls).
+  const onSite = usePlanner((s) => !!s.doc.levels.find((l) => l.id === s.activeLevel)?.site);
+  const below = useLevelDoc(onSite ? 1 : -1);
   const belowOpacity = usePlanner((s) => s.belowOpacity);
   const belowWalls = useMemo(
     () =>
@@ -77,8 +79,8 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   const fullDoc = usePlanner((s) => s.doc);
   const metric = usePlanner((s) => s.units) === 'metric';
   const ground = useMemo(
-    () => (activeLevel === GROUND_LEVEL ? groundOnPlan(fullDoc, metric) : null),
-    [fullDoc, activeLevel, metric],
+    () => (activeLevel === GROUND_LEVEL || onSite ? groundOnPlan(fullDoc, metric) : null),
+    [fullDoc, activeLevel, onSite, metric],
   );
   // Double-height rooms on the floor below leave this floor open over them.
   const voids = useMemo(() => voidsOver(fullDoc, activeLevel), [fullDoc, activeLevel]);

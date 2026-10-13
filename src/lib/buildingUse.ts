@@ -7,6 +7,7 @@
  */
 import {
   GROUND_LEVEL,
+  SITE_LEVEL,
   levelOf,
   type BuildingUse,
   type Furniture,
@@ -19,7 +20,7 @@ import {
   type Stair,
 } from '../types';
 import { roomAreaSqMm } from '../rooms';
-import { groundIndex } from './levels';
+import { buildingLevels, groundIndex } from './levels';
 import { MM_PER_UNIT } from './scale';
 import type { Hint } from './planHints';
 import type { CheckRow } from './planCheck';
@@ -158,7 +159,7 @@ export function buildingUseHints(
       .map((d) => [d.id, d] as const),
   );
   let total = 0;
-  const levels = doc.levels;
+  const levels = buildingLevels(doc);
 
   for (const { level, index, rooms, links, on } of floors) {
     const people = rooms.reduce((n, r) => n + occupantsOf(r, use), 0);
@@ -323,7 +324,8 @@ export function buildingUseHints(
           text: `${r.name} is ${len(shortSide(r.points) * MM_PER_UNIT)} across: a wheelchair needs ${len(ACCESSIBLE_MIN_MM)} to turn.`,
           ids: [r.id],
         });
-  const ramp = stairs.some((s) => s.shape === 'ramp' && levelOf(s) === GROUND_LEVEL);
+  // A ramp up the plinth is drawn on the ground floor or on the Ground (site) level.
+  const ramp = stairs.some((s) => s.shape === 'ramp' && (levelOf(s) === GROUND_LEVEL || levelOf(s) === SITE_LEVEL));
   if (doc.plinthMm > 0 && !ramp)
     hints.push({
       id: 'use-ramp',

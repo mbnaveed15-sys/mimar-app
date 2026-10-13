@@ -20,7 +20,7 @@ import { MM_PER_UNIT } from './scale';
 import { isCornerPlot, leftRightOf, outlinePoints, plotSides, sideLine, sideSetbacks, SIDE_KIND_NAMES } from './plot';
 import { distanceToWall } from './arc';
 import { buildableArea } from './site';
-import { basementOf, groundIndex, levelWallMm, slabMm } from './levels';
+import { basementOf, groundIndex, isSiteLevel, levelWallMm, slabMm } from './levels';
 import { outsideOutline } from './outline';
 import { BUILDING_USES, projectOf, shows } from './project';
 import { formatLength, MM_PER_FOOT } from './units';
@@ -103,6 +103,8 @@ export const OPEN_AIR = /lawn|garden|court|yard|drive|patio|terrace/i;
  * round them. Areas and rooms open to the sky (lawns, courtyards, driveways) are left out.
  */
 export function builtAreaSqFt(doc: PlanDoc, levelId: string): number {
+  // The Ground (site) level's walls are the plinth, under the ground floor: no floor area of their own.
+  if (isSiteLevel(doc, levelId)) return 0;
   const walls = doc.elements.filter(
     (el): el is Wall => el.type === 'wall' && BUILT_KINDS(el) && !el.hidden && levelOf(el) === levelId,
   );
@@ -172,6 +174,7 @@ export function storeyLevelIds(doc: PlanDoc): string[] {
     .filter(
       (l) =>
         !l.basement &&
+        !l.site &&
         !mumtys.has(l.id) &&
         built.some((el) => el.type === 'wall' && BUILT_KINDS(el) && levelOf(el) === l.id),
     )
@@ -793,8 +796,9 @@ export function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: 
   let top = 0;
   for (const el of built) {
     const base = levelBaseM(doc, levelOf(el), wallHeightMm) * 1000 + (el.elevMm ?? 0);
-    if (el.type === 'wall' && el.kind !== 'boundary') top = Math.max(top, base + (el.heightMm ?? wallHeightMm));
-    if (el.type === 'slab') top = Math.max(top, base + wallHeightMm + el.thickness * MM_PER_UNIT);
+    const levelMm = levelWallMm(doc, levelOf(el), wallHeightMm);
+    if (el.type === 'wall' && el.kind !== 'boundary') top = Math.max(top, base + (el.heightMm ?? levelMm));
+    if (el.type === 'slab') top = Math.max(top, base + levelMm + el.thickness * MM_PER_UNIT);
     if (el.type === 'block' && el.heightMm > 0 && !el.path) top = Math.max(top, base + el.heightMm);
     // A pitched roof to its ridge.
     if (el.type === 'roof')
@@ -805,7 +809,7 @@ export function buildingTopMm(doc: PlanDoc, built: PlanElement[], wallHeightMm: 
   }
   // A floor with walls carries a slab over it even when none is drawn (a basement's is below the ground).
   for (const l of doc.levels)
-    if (!l.basement && built.some((el) => el.type === 'wall' && isBuildingWall(el) && levelOf(el) === l.id))
+    if (!l.basement && !l.site && built.some((el) => el.type === 'wall' && isBuildingWall(el) && levelOf(el) === l.id))
       top = Math.max(
         top,
         levelBaseM(doc, l.id, wallHeightMm) * 1000 + levelWallMm(doc, l.id, wallHeightMm) + slabMm(doc),

@@ -3,19 +3,22 @@
  * has a void, the floor above shows the void crossed through, and quantities leave it out. Pure.
  */
 import { pointInPolygon } from '../geometry';
+import { buildingLevels } from './levels';
 import { polygonArea } from '../rooms';
 import { levelOf, type Id, type PlanDoc, type Point, type Room } from '../types';
 
-/** The floor above this one, if there is one. */
+/** The floor above this one, if there is one (the Ground (site) level isn't a floor of the building). */
 export function levelAbove(doc: Pick<PlanDoc, 'levels'>, levelId: Id): Id | null {
-  const i = doc.levels.findIndex((l) => l.id === levelId);
-  return i >= 0 && i + 1 < doc.levels.length ? doc.levels[i + 1].id : null;
+  const levels = buildingLevels(doc);
+  const i = levels.findIndex((l) => l.id === levelId);
+  return i >= 0 && i + 1 < levels.length ? levels[i + 1].id : null;
 }
 
-/** The floor below this one, if there is one. */
+/** The floor below this one, if there is one (the Ground (site) level isn't a floor of the building). */
 export function levelBelow(doc: Pick<PlanDoc, 'levels'>, levelId: Id): Id | null {
-  const i = doc.levels.findIndex((l) => l.id === levelId);
-  return i > 0 ? doc.levels[i - 1].id : null;
+  const levels = buildingLevels(doc);
+  const i = levels.findIndex((l) => l.id === levelId);
+  return i > 0 ? levels[i - 1].id : null;
 }
 
 /** Rooms on this floor that are open to the floor above (none on the top floor). */

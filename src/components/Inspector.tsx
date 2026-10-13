@@ -344,7 +344,7 @@ export function Inspector() {
               <LengthField
                 id="wall-height-edit"
                 label="Height"
-                mm={el.heightMm ?? kindHeightMm(el.kind) ?? wallHeightMm}
+                mm={el.heightMm ?? kindHeightMm(el.kind) ?? levelWallMm(doc, levelOf(el), wallHeightMm)}
                 units={units}
                 min={100}
                 onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 10000) })}
@@ -503,7 +503,7 @@ export function Inspector() {
               <LengthField
                 id="column-height"
                 label="Height"
-                mm={el.heightMm ?? wallHeightMm}
+                mm={el.heightMm ?? levelWallMm(doc, levelOf(el), wallHeightMm)}
                 units={units}
                 min={100}
                 onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 30000) })}

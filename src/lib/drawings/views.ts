@@ -3,7 +3,7 @@
  * itself (what is cut, the lines beyond, the ground and the level marks). Pure.
  */
 import { buildModel, levelBaseM, M_PER_UNIT, type Model3D } from '../../three/model';
-import { levelWallMm, slabMm } from '../levels';
+import { buildingLevels, levelWallMm, slabMm } from '../levels';
 import { outsideOutline } from '../outline';
 import { isBuildingWall } from '../../walls';
 import { openRooms, voidsOver, within } from '../voids';
@@ -116,13 +116,15 @@ export function impliedSlabList(doc: PlanDoc, wallHeightMm: number): ImpliedSlab
   const drawn = (id: Id) => doc.elements.some((el) => el.type === 'slab' && levelOf(el) === id);
   // A roof over a floor takes the place of its slab.
   const roofed = (id: Id) => doc.elements.some((el) => el.type === 'roof' && levelOf(el) === id);
-  doc.levels.forEach((level, i) => {
+  // Plinth walls on the Ground (site) level carry no slab of their own.
+  const levels = buildingLevels(doc);
+  levels.forEach((level, i) => {
     const outline = outsideOutline(buildingWalls(doc, level.id));
     if (!outline) return;
     const base = levelBaseM(doc, level.id, wallHeightMm);
     // Double-height rooms leave the slab over them open.
     const voids = (pts: Point[][]) => pts.filter((v) => within(v, outline));
-    const below = doc.levels[i - 1];
+    const below = levels[i - 1];
     if (!below || !drawn(below.id)) {
       const holes = voids(voidsOver(doc, level.id).map((r) => r.points));
       out.push({ level: level.id, kind: 'floor', outline, holes, y: base - slab, h: slab });
@@ -223,7 +225,8 @@ export function levelMarks(doc: PlanDoc, opts: DrawingOptions): LevelMark[] {
   let parapet: number | null = null;
   let eaves: number | null = null;
   let ridge: { v: number; name: string } | null = null;
-  for (const level of doc.levels) {
+  // The Ground (site) level is the finished ground, marked above.
+  for (const level of buildingLevels(doc)) {
     const base = levelBaseM(doc, level.id, opts.wallHeightMm);
     const els = doc.elements.filter((el) => levelOf(el) === level.id);
     const walls = els.filter((el): el is Wall => el.type === 'wall');

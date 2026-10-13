@@ -3,6 +3,7 @@ import { curveOf } from './curvedEdges';
 import { MAX_RISE_MM } from './site';
 import {
   GROUND_LEVEL,
+  SITE_LEVEL,
   type ComponentDef,
   type Group,
   type Level,
@@ -50,9 +51,10 @@ export const STORAGE_KEY = 'mimar.plan';
  * 10 the ground; 11 curved and glass walls, pitched roofs and double-height rooms; 12 curved layout lines;
  * 13 curved and spiral stairs, and curved edges on slabs, levelled areas and plots; 14 furniture for
  * every kind of building, and more building uses; 15 dimensions and curved slab voids; 16 a plot's
- * bylaw area and road width, and LDA's built-up and open areas.
+ * bylaw area and road width, and LDA's built-up and open areas; 17 the Ground (site) level and your own
+ * plinth.
  */
-export const CURRENT_VERSION = 16;
+export const CURRENT_VERSION = 17;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -552,23 +554,29 @@ function normaliseProject(raw: unknown): ProjectSettings | undefined {
 function normaliseLevels(raw: unknown): Level[] {
   const levels = (Array.isArray(raw) ? raw : [])
     .filter((l): l is Record<string, unknown> => isObject(l) && l.id !== undefined)
-    .map((l): Level => ({
-      id: String(l.id),
-      name: nameOf(l.name, 'Floor'),
-      ...(l.basement === true && l.id !== GROUND_LEVEL ? { basement: true } : {}),
-      ...(inRange(l.heightMm, 1800, 9000) ? { heightMm: l.heightMm } : {}),
-    }));
-  // The ground floor always exists; one basement (if any) comes before it, the other floors after.
+    .map((l): Level => {
+      // The Ground (site) level is known by its id.
+      if (l.id === SITE_LEVEL) return { id: SITE_LEVEL, name: nameOf(l.name, 'Ground (site)'), site: true };
+      return {
+        id: String(l.id),
+        name: nameOf(l.name, 'Floor'),
+        ...(l.basement === true && l.id !== GROUND_LEVEL ? { basement: true } : {}),
+        ...(inRange(l.heightMm, 1800, 9000) ? { heightMm: l.heightMm } : {}),
+      };
+    });
+  // The ground floor always exists; one basement (if any) comes before it, then the Ground (site)
+  // level (if any), the other floors after.
   const ground = levels.find((l) => l.id === GROUND_LEVEL) ?? defaultLevels()[0];
   const basement = levels.find((l) => l.basement);
+  const site = levels.find((l) => l.site);
   const above = levels
-    .filter((l) => l.id !== GROUND_LEVEL && l !== basement)
+    .filter((l) => l.id !== GROUND_LEVEL && l !== basement && l !== site)
     .map((l) => {
       const plain = { ...l };
       delete plain.basement;
       return plain;
     });
-  return [...(basement ? [basement] : []), ground, ...above];
+  return [...(basement ? [basement] : []), ...(site ? [site] : []), ground, ...above];
 }
 
 function normaliseMask(raw: unknown, index: number): Mask | null {
@@ -671,6 +679,7 @@ export function normaliseDoc(raw: unknown): PlanDoc {
     ...(normaliseProject(obj.project) ? { project: normaliseProject(obj.project) } : {}),
     plinthMm:
       typeof obj.plinthMm === 'number' && obj.plinthMm >= 0 && obj.plinthMm <= 3000 ? obj.plinthMm : DEFAULT_PLINTH_MM,
+    ...(obj.ownPlinth === true ? { ownPlinth: true } : {}),
     ...(normaliseLayers(obj.layers) ? { layers: normaliseLayers(obj.layers) } : {}),
     ...(typeof obj.northDeg === 'number' && Number.isFinite(obj.northDeg) && obj.northDeg % 360 !== 0
       ? { northDeg: ((obj.northDeg % 360) + 360) % 360 }

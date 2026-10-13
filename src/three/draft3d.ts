@@ -1,7 +1,7 @@
 import { outlineProblem } from '../lib/plot';
 import { plotRect, stairLayout, stairSpec } from '../lib/site';
 import { MM_PER_UNIT } from '../lib/scale';
-import { levelWallMm, slabMm } from '../lib/levels';
+import { stairRiseMm } from '../lib/levels';
 import type { PlannerState } from '../store/plannerStore';
 import type { PlanElement, Point } from '../types';
 
@@ -69,6 +69,16 @@ export function draftElements(s: PlannerState): PlanElement[] {
         ...at,
       },
     ];
+  if (d?.type === 'slabPoly' && d.points.length >= 2)
+    return [
+      {
+        id: `${DRAFT}-slab`,
+        type: 'slab',
+        points: [...d.points, d.cursor],
+        thickness: s.structure.slabThickness,
+        ...at,
+      },
+    ];
   if (d?.type === 'plotPoly' && d.points.length >= 2 && !outlineProblem([...d.points, d.cursor]))
     return [
       {
@@ -109,8 +119,7 @@ export function draftElements(s: PlannerState): PlanElement[] {
   }
   if (!d && p && s.tool === 'stairs') {
     const { site } = s;
-    const riseMm =
-      site.climb === 'plinth' ? s.doc.plinthMm : levelWallMm(s.doc, s.activeLevel, s.wallHeightMm) + slabMm(s.doc);
+    const riseMm = stairRiseMm(s.doc, s.activeLevel, site.climb, s.wallHeightMm);
     const spec = stairSpec(site, riseMm);
     const l = stairLayout(spec);
     return [
