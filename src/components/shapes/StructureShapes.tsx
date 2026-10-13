@@ -2,39 +2,55 @@ import { centroid, fromFurnitureLocal } from '../../geometry';
 import { roofShape, slopedFaces } from '../../lib/roof/roof';
 import { PLAN } from '../../theme/plan';
 import type { Beam, Block, Column, Point, Roof, Slab } from '../../types';
+import { ringsPath, type Hatch } from '../../lib/hatch';
+import { HatchArea } from './Hatching';
 
-/** A column: solid, as it is cut by the plan. */
+/** A column's corners on the plan (a square column; a round one is its circle). */
+const columnCorners = (col: Column) =>
+  [
+    { x: -col.w / 2, y: -col.h / 2 },
+    { x: col.w / 2, y: -col.h / 2 },
+    { x: col.w / 2, y: col.h / 2 },
+    { x: -col.w / 2, y: col.h / 2 },
+  ].map((c) => fromFurnitureLocal(col, c));
+
+/** A column: solid as it is cut by the plan, or hatched (by its material) when `hatch` is given. */
 export function ColumnShape({
   col,
   selected,
   color,
   k,
+  hatch,
 }: {
   col: Column;
   selected: boolean;
   color?: string;
   k: number;
+  hatch?: { uid: string; hatch: Hatch };
 }) {
-  const style = { fill: color ?? PLAN.wallEdge, stroke: selected ? PLAN.selection : PLAN.wallEdge };
+  const style = {
+    fill: color ?? (hatch ? PLAN.paper : PLAN.wallEdge),
+    stroke: selected ? PLAN.selection : PLAN.wallEdge,
+  };
+  const r = col.w / 2;
+  const d =
+    col.shape === 'round'
+      ? `M${col.x - r} ${col.y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`
+      : ringsPath([columnCorners(col)]);
   return (
     <g data-type="column" data-id={col.id}>
       {col.shape === 'round' ? (
-        <circle cx={col.x} cy={col.y} r={col.w / 2} style={style} strokeWidth={(selected ? 3 : 1) * k} />
+        <circle cx={col.x} cy={col.y} r={r} style={style} strokeWidth={(selected ? 3 : 1) * k} />
       ) : (
         <polygon
-          points={[
-            { x: -col.w / 2, y: -col.h / 2 },
-            { x: col.w / 2, y: -col.h / 2 },
-            { x: col.w / 2, y: col.h / 2 },
-            { x: -col.w / 2, y: col.h / 2 },
-          ]
-            .map((c) => fromFurnitureLocal(col, c))
+          points={columnCorners(col)
             .map((p) => `${p.x},${p.y}`)
             .join(' ')}
           style={style}
           strokeWidth={(selected ? 3 : 1) * k}
         />
       )}
+      {hatch && <HatchArea uid={hatch.uid} hatch={hatch.hatch} d={d} />}
     </g>
   );
 }

@@ -12,6 +12,7 @@ import { curvePreview } from '../tools/curveTool';
 import { draftDimension } from '../tools/dimensionTool';
 import type { DimMode } from '../store/plannerStore';
 import { DimensionShape } from './shapes/DimensionShape';
+import type { DimStyle } from '../lib/dimStyle';
 
 /** An outline with its first point repeated at the end, when it should be drawn closed. */
 const closedShape = (points: Point[], closed: boolean) => (closed && points.length ? [...points, points[0]] : points);
@@ -27,6 +28,8 @@ interface Props {
   k: number;
   /** How the Dimension tool measures. */
   dimMode?: DimMode;
+  /** How dimensions look. */
+  dimLook?: DimStyle;
 }
 
 const SNAP_COLORS: Partial<Record<Inference['kind'], string>> = {
@@ -132,7 +135,7 @@ function CurveDraft({
 }
 
 /** Rubber bands, previews and the snap marker for the drawing tools. */
-export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverEdge, dimMode }: Props) {
+export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverEdge, dimMode, dimLook }: Props) {
   const dash = `${6 * k} ${4 * k}`;
   const len = (a: Point, b: Point) => formatLength(Math.hypot(b.x - a.x, b.y - a.y) * MM_PER_UNIT, units);
   const band = bandColor(inference, axisLock);
@@ -298,7 +301,7 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
         />
       )}
 
-      {d?.type === 'dimension' && <DimensionDraft d={d} mode={dimMode ?? 'linear'} units={units} k={k} />}
+      {d?.type === 'dimension' && <DimensionDraft d={d} mode={dimMode ?? 'linear'} units={units} k={k} dimLook={dimLook} />}
 
       {d?.type === 'section' && (
         <SectionShape
@@ -605,11 +608,13 @@ function DimensionDraft({
   mode,
   units,
   k,
+  dimLook,
 }: {
   d: Extract<Draft, { type: 'dimension' }>;
   mode: DimMode;
   units: Units;
   k: number;
+  dimLook?: DimStyle;
 }) {
   const dim = draftDimension(mode, d, d.cursor);
   const last = d.points[d.points.length - 1];
@@ -629,7 +634,7 @@ function DimensionDraft({
           strokeDasharray={`${4 * k} ${3 * k}`}
         />
       )}
-      {dim && <DimensionShape dim={dim} units={units} selected={false} k={k} ghost />}
+      {dim && <DimensionShape dim={dim} units={units} selected={false} k={k} ghost look={dimLook} />}
     </g>
   );
 }

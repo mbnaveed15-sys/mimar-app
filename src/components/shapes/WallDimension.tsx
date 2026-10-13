@@ -5,6 +5,8 @@ import { MM_PER_UNIT } from '../../store/plannerStore';
 import type { Units, Wall } from '../../types';
 import { thicknessOf } from '../../walls';
 import { PLAN } from '../../theme/plan';
+import { DEFAULT_DIM_STYLE, DIM_TEXT_SCALE, endMark, type DimStyle } from '../../lib/dimStyle';
+import { DimEnd } from './DimEnd';
 
 interface Props {
   wall: Wall;
@@ -13,13 +15,15 @@ interface Props {
   k: number;
   /** Which side of the wall the dimension goes on: 1 = left of the drawing direction, -1 = right. */
   side: 1 | -1;
+  /** Text size and end marks (Medium text and ticks when missing). */
+  look?: DimStyle;
 }
 
 /** Architectural dimension line drawn beside a wall, with its real length. */
-export function WallDimension({ wall, units, k, side }: Props) {
+export function WallDimension({ wall, units, k, side, look = DEFAULT_DIM_STYLE }: Props) {
   const len = wallLength(wall);
   if (len * (1 / k) < 24) return null; // too short on screen to label
-  if (isArc(wall)) return <ArcDimension wall={wall} units={units} k={k} side={side} />;
+  if (isArc(wall)) return <ArcDimension wall={wall} units={units} k={k} side={side} look={look} />;
   const ux = (wall.x2 - wall.x1) / len;
   const uy = (wall.y2 - wall.y1) / len;
   const nx = uy * side;
@@ -31,7 +35,8 @@ export function WallDimension({ wall, units, k, side }: Props) {
   const tick = 4 * k;
   let angle = (Math.atan2(uy, ux) * 180) / Math.PI;
   if (angle > 90 || angle <= -90) angle += 180;
-  const mid = { x: (a.x + b.x) / 2 + nx * 6 * k, y: (a.y + b.y) / 2 + ny * 6 * k };
+  const t = DIM_TEXT_SCALE[look.text];
+  const mid = { x: (a.x + b.x) / 2 + nx * 6 * t * k, y: (a.y + b.y) / 2 + ny * 6 * t * k };
 
   return (
     <g data-type="dimension" style={{ stroke: PLAN.dim }} strokeWidth={k}>
@@ -49,20 +54,18 @@ export function WallDimension({ wall, units, k, side }: Props) {
       />
       <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
       {[a, b].map((p, i) => (
-        <line
+        <DimEnd
           key={i}
-          x1={p.x - (ux + nx) * tick}
-          y1={p.y - (uy + ny) * tick}
-          x2={p.x + (ux + nx) * tick}
-          y2={p.y + (uy + ny) * tick}
-          strokeWidth={1.5 * k}
+          mark={endMark(look.ends, p, { x: ux, y: uy }, { x: -nx, y: -ny }, i ? -1 : 1, tick)}
+          colour={PLAN.dim}
+          width={1.5 * k}
         />
       ))}
       <text
         x={mid.x}
         y={mid.y}
         transform={`rotate(${angle} ${mid.x} ${mid.y})`}
-        fontSize={11 * k}
+        fontSize={11 * t * k}
         textAnchor="middle"
         dominantBaseline="middle"
         style={{ fill: PLAN.dim, stroke: PLAN.paper }}
@@ -76,7 +79,7 @@ export function WallDimension({ wall, units, k, side }: Props) {
 }
 
 /** A curved wall's dimension: an arc beside it, with its length along the curve. */
-function ArcDimension({ wall, units, k, side }: Props) {
+function ArcDimension({ wall, units, k, side, look = DEFAULT_DIM_STYLE }: Props) {
   const face = thicknessOf(wall) / 2;
   const off = face + 16 * k;
   // The dimension's side (1 = right of the drawing direction) is the wall's side B.
@@ -91,7 +94,8 @@ function ArcDimension({ wall, units, k, side }: Props) {
   const md = directionAlong(wall, 0.5);
   const mn = { x: md.y * side, y: -md.x * side };
   const mp = pointAlong(wall, 0.5);
-  const mid = { x: mp.x + mn.x * (off + 6 * k), y: mp.y + mn.y * (off + 6 * k) };
+  const t = DIM_TEXT_SCALE[look.text];
+  const mid = { x: mp.x + mn.x * (off + 6 * t * k), y: mp.y + mn.y * (off + 6 * t * k) };
   let angle = (Math.atan2(md.y, md.x) * 180) / Math.PI;
   if (angle > 90 || angle <= -90) angle += 180;
   return (
@@ -107,20 +111,18 @@ function ArcDimension({ wall, units, k, side }: Props) {
       ))}
       <polyline points={line.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" />
       {ends.map(({ d, n, q }, i) => (
-        <line
+        <DimEnd
           key={`t${i}`}
-          x1={q.x - (d.x + n.x) * tick}
-          y1={q.y - (d.y + n.y) * tick}
-          x2={q.x + (d.x + n.x) * tick}
-          y2={q.y + (d.y + n.y) * tick}
-          strokeWidth={1.5 * k}
+          mark={endMark(look.ends, q, d, { x: -n.x, y: -n.y }, i ? -1 : 1, tick)}
+          colour={PLAN.dim}
+          width={1.5 * k}
         />
       ))}
       <text
         x={mid.x}
         y={mid.y}
         transform={`rotate(${angle} ${mid.x} ${mid.y})`}
-        fontSize={11 * k}
+        fontSize={11 * t * k}
         textAnchor="middle"
         dominantBaseline="middle"
         style={{ fill: PLAN.dim, stroke: PLAN.paper }}

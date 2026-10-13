@@ -110,6 +110,7 @@ import type {
   Material,
   PaperSize,
   PlanDoc,
+  DrawingStyle,
   PlanElement,
   Point,
   Room,
@@ -355,6 +356,8 @@ export interface PlannerState {
   setPlinthMm: (mm: number) => void;
   /** Which way north points on the plan, in degrees clockwise from up. */
   setNorthDeg: (deg: number) => void;
+  /** Change how dimensions and drawings look (one undo step); a default value is dropped. */
+  setDrawingStyle: (patch: Partial<DrawingStyle>) => void;
   /** Sizes for new columns, beams and slabs, in plan units. */
   structure: StructureSpec;
   setStructure: (patch: Partial<StructureSpec>) => void;
@@ -2516,6 +2519,22 @@ export function createPlannerStore(
         get().endBatch();
         get().setActiveLevel(roofId);
       },
+      setDrawingStyle: (patch) =>
+        get().commit((doc) => {
+          const next: DrawingStyle = { ...doc.drawing, ...patch };
+          if (next.dimText === 'medium') delete next.dimText;
+          if (next.dimEnds === 'tick') delete next.dimEnds;
+          if (next.sideDims !== false) delete next.sideDims;
+          if (next.solidCuts !== true) delete next.solidCuts;
+          if (next.planHatch !== false) delete next.planHatch;
+          if (next.floorHatch !== false) delete next.floorHatch;
+          const was: DrawingStyle = doc.drawing ?? {};
+          const keys = new Set([...Object.keys(next), ...Object.keys(was)]) as Set<keyof DrawingStyle>;
+          if ([...keys].every((key) => next[key] === was[key])) return doc;
+          const out: PlanDoc = { ...doc, drawing: next };
+          if (!Object.keys(next).length) delete out.drawing;
+          return out;
+        }),
       setNorthDeg: (deg) => {
         const north = ((deg % 360) + 360) % 360;
         get().commit((doc) => {

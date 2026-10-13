@@ -1,3 +1,4 @@
+import type { Hatch } from './lib/hatch';
 import type { LayerState } from './lib/layers';
 import type { FurnitureKind } from './furniture/catalog';
 import type { AuthorityId } from './lib/bylaws';
@@ -37,6 +38,11 @@ export interface Material {
   pattern?: Pattern;
   /** Size of one repeat (a tile, a brick, a plank's width), in millimetres. */
   sizeMm?: number;
+  /**
+   * The hatch on 2D drawings (plans, sections, sheets): one of the hatches, 'none', or worked out from the
+   * name and pattern when missing. 3D always shows the material itself.
+   */
+  hatch?: Hatch | 'none';
 }
 
 /** Membership of a group or component copy, and the floor (level) an item is on. */
@@ -603,6 +609,29 @@ export interface PlanDoc {
   ground?: GroundSettings;
   /** Where the site is on the map, for the surroundings and satellite levels. */
   location?: { lat: number; lon: number };
+  /** How dimensions and drawings look (the defaults when missing). */
+  drawing?: DrawingStyle;
+}
+
+/** Dimension text sizes: about 2.5, 3.5 and 5 mm on paper. */
+export type DimText = 'small' | 'medium' | 'large';
+/** How a dimension line ends: a slash, an arrowhead or a dot. */
+export type DimEnds = 'tick' | 'arrow' | 'dot';
+
+/** How dimensions and the sections and elevations look; only what differs from the defaults is kept. */
+export interface DrawingStyle {
+  /** Medium when missing. */
+  dimText?: DimText;
+  /** A tick when missing. */
+  dimEnds?: DimEnds;
+  /** Dimension strings drawn on sections and elevations (on when missing). */
+  sideDims?: boolean;
+  /** What a section cuts is hatched by its material (when missing), or filled solid black. */
+  solidCuts?: boolean;
+  /** Walls and columns on the plan are hatched by their material (on when missing). */
+  planHatch?: boolean;
+  /** Floors, lawns, paths and levelled areas on the plan are hatched by their material (on when missing). */
+  floorHatch?: boolean;
 }
 
 /** The finished ground and how the ground is drawn. */

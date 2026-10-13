@@ -33,6 +33,7 @@ import {
   type SheetItem,
   type SheetScale,
   type GroundSettings,
+  type DrawingStyle,
   type RoofKind,
   type DimTie,
   type PlinthSpec,
@@ -42,6 +43,7 @@ import { authorityById, type AuthorityId } from './bylaws';
 import { LAYERS, type LayerState } from './layers';
 import { defaultMaterials, PATTERNS } from './materials';
 import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
+import { parseHatch } from './hatch';
 import { MAX_PITCH_DEG, ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from './roof/roof';
 
 const ROOF_SHAPES: RoofKind[] = ['hip', 'gable', 'shed', 'flat'];
@@ -54,9 +56,10 @@ export const STORAGE_KEY = 'mimar.plan';
  * every kind of building, and more building uses; 15 dimensions and curved slab voids; 16 a plot's
  * bylaw area and road width, and LDA's built-up and open areas; 17 the Ground (site) level and your own
  * plinth; 18 furniture heights, items on the lawn of the one Ground level, and the plinth's own settings;
- * 19 the plinth's own projection and material under single walls.
+ * 19 the plinth's own projection and material under single walls; 20 dimension text size and ends,
+ * drawing options, a pitch per roof side, skylights and dormers.
  */
-export const CURRENT_VERSION = 19;
+export const CURRENT_VERSION = 20;
 
 /** The automatic plinth's projection (0 to 1 m) and material; nothing when neither is set. */
 function normalisePlinth(raw: unknown): PlinthSpec | undefined {
@@ -668,6 +671,7 @@ function normaliseMaterial(raw: unknown): Material | null {
       ? { pattern: raw.pattern as Pattern }
       : {}),
     ...(typeof raw.sizeMm === 'number' && raw.sizeMm > 0 ? { sizeMm: raw.sizeMm } : {}),
+    ...(parseHatch(raw.hatch) ? { hatch: parseHatch(raw.hatch) } : {}),
   };
 }
 
@@ -707,6 +711,7 @@ export function normaliseDoc(raw: unknown): PlanDoc {
       : {}),
     ...(Array.isArray(obj.sheets) ? { sheets: normaliseSheets(obj.sheets) } : {}),
     ...(normaliseGround(obj.ground) ? { ground: normaliseGround(obj.ground) } : {}),
+    ...(normaliseDrawing(obj.drawing) ? { drawing: normaliseDrawing(obj.drawing) } : {}),
     ...(isObject(obj.location) && inRange(obj.location.lat, -90, 90) && inRange(obj.location.lon, -180, 180)
       ? { location: { lat: obj.location.lat, lon: obj.location.lon } }
       : {}),
@@ -721,6 +726,20 @@ function normaliseGround(raw: unknown): GroundSettings | undefined {
     ...(inRange(raw.levelMm, -MAX_LEVEL_MM, MAX_LEVEL_MM) && raw.levelMm !== 0 ? { levelMm: raw.levelMm } : {}),
     ...(inRange(raw.contourMm, 10, 100_000) ? { contourMm: raw.contourMm } : {}),
     ...(raw.cutFill === false ? { cutFill: false } : {}),
+  };
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** How dimensions and drawings look, keeping only what differs from the defaults. */
+function normaliseDrawing(raw: unknown): DrawingStyle | undefined {
+  if (!isObject(raw)) return undefined;
+  const out: DrawingStyle = {
+    ...(raw.dimText === 'small' || raw.dimText === 'large' ? { dimText: raw.dimText } : {}),
+    ...(raw.dimEnds === 'arrow' || raw.dimEnds === 'dot' ? { dimEnds: raw.dimEnds } : {}),
+    ...(raw.sideDims === false ? { sideDims: false } : {}),
+    ...(raw.solidCuts === true ? { solidCuts: true } : {}),
+    ...(raw.planHatch === false ? { planHatch: false } : {}),
+    ...(raw.floorHatch === false ? { floorHatch: false } : {}),
   };
   return Object.keys(out).length ? out : undefined;
 }

@@ -347,6 +347,19 @@ describe('storage', () => {
     // A plan with no sheets of its own gets the suggested ones; an emptied list stays empty.
     expect(normaliseDoc(emptyDoc()).sheets).toBeUndefined();
     expect(normaliseDoc({ ...emptyDoc(), sheets: [] }).sheets).toEqual([]);
-    expect(CURRENT_VERSION).toBe(19);
+    expect(CURRENT_VERSION).toBe(20);
+  });
+});
+
+describe('drawing style (format 20)', () => {
+  it('keeps the dimension text size, ends and drawing options that differ from the defaults', () => {
+    const doc = normaliseDoc({
+      ...emptyDoc(),
+      drawing: { dimText: 'large', dimEnds: 'arrow', sideDims: false, solidCuts: true },
+    });
+    expect(doc.drawing).toEqual({ dimText: 'large', dimEnds: 'arrow', sideDims: false, solidCuts: true });
+    // Defaults and nonsense are dropped.
+    expect(normaliseDoc({ ...emptyDoc(), drawing: { dimText: 'medium', dimEnds: 'tick' } }).drawing).toBeUndefined();
+    expect(normaliseDoc({ ...emptyDoc(), drawing: { dimText: 'huge', sideDims: 'no' } }).drawing).toBeUndefined();
   });
 });

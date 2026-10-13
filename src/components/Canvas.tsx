@@ -22,6 +22,7 @@ import { pointAlong } from '../lib/arc';
 import { edgeMiddles, holeEdgeMiddles } from '../lib/curvedEdges';
 import { sideMiddle } from '../lib/plot';
 import { floorVoids } from '../lib/voids';
+import { dimStyleOf } from '../lib/dimStyle';
 import { DrawingOverlay } from './DrawingOverlay';
 import { FurnitureShape } from './shapes/FurnitureShape';
 import { furnitureAt } from '../tools/furnitureTool';
@@ -448,6 +449,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         k={k}
         hoverEdge={hoverEdge}
         dimMode={dimMode}
+        dimLook={dimStyleOf(doc)}
       />
       <CameraEyeMark k={k} />
     </svg>

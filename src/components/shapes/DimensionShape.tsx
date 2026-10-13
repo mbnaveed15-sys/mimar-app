@@ -3,6 +3,8 @@ import { formatLength } from '../../lib/units';
 import { MM_PER_UNIT } from '../../lib/scale';
 import { PLAN } from '../../theme/plan';
 import type { Dimension, Units } from '../../types';
+import { DEFAULT_DIM_STYLE, DIM_TEXT_SCALE, endMark, type DimStyle } from '../../lib/dimStyle';
+import { DimEnd } from './DimEnd';
 
 interface Props {
   dim: Omit<Dimension, 'id'> & { id?: string };
@@ -12,16 +14,19 @@ interface Props {
   k: number;
   /** Being placed: drawn in the drafting colour and not picked. */
   ghost?: boolean;
+  /** Text size and end marks (Medium text and ticks when missing). */
+  look?: DimStyle;
 }
 
 /**
  * A placed dimension, as on a drawing: extension lines from the points measured to the dimension
- * line (with a small gap at the points), a slash tick at each end, and the length above the line,
+ * line (with a small gap at the points), a tick (or an arrow or a dot) at each end, and the length above the line,
  * never upside down. A radius is a line from the centre to the curve, an arrow on the curve and
  * "R" before its length.
  */
-export function DimensionShape({ dim, units, selected, k, ghost }: Props) {
+export function DimensionShape({ dim, units, selected, k, ghost, look = DEFAULT_DIM_STYLE }: Props) {
   const { p1, p2, a, b, u, n, value } = dimLine(dim);
+  const t = DIM_TEXT_SCALE[look.text];
   const colour = ghost ? PLAN.draft : selected ? PLAN.selection : PLAN.dim;
   const text = formatLength(value * MM_PER_UNIT, units);
   const common = {
@@ -37,7 +42,7 @@ export function DimensionShape({ dim, units, selected, k, ghost }: Props) {
       x={x}
       y={y}
       transform={`rotate(${deg} ${x} ${y})`}
-      fontSize={11 * k}
+      fontSize={11 * t * k}
       textAnchor="middle"
       dominantBaseline="middle"
       style={{ fill: colour, stroke: PLAN.paper }}
@@ -63,7 +68,7 @@ export function DimensionShape({ dim, units, selected, k, ghost }: Props) {
     const deg = readable(d.x, d.y);
     // The text sits beside the line, halfway along it.
     const side = deg === (Math.atan2(d.y, d.x) * 180) / Math.PI ? 1 : -1;
-    const mid = { x: (p1.x + p2.x) / 2 + d.y * 7 * k * side, y: (p1.y + p2.y) / 2 - d.x * 7 * k * side };
+    const mid = { x: (p1.x + p2.x) / 2 + d.y * 7 * t * k * side, y: (p1.y + p2.y) / 2 - d.x * 7 * t * k * side };
     return (
       <g {...common} data-radius>
         <line x1={p1.x} y1={p1.y} x2={base.x} y2={base.y} />
@@ -95,22 +100,14 @@ export function DimensionShape({ dim, units, selected, k, ghost }: Props) {
   const deg = readable(u.x, u.y);
   // The text above the line as it reads (on the side its "up" points to).
   const flip = deg === (Math.atan2(u.y, u.x) * 180) / Math.PI ? 1 : -1;
-  const mid = { x: (a.x + b.x) / 2 + n.x * 7 * k * -flip, y: (a.y + b.y) / 2 + n.y * 7 * k * -flip };
-  const slash = { x: (u.x - n.x) * tick, y: (u.y - n.y) * tick };
+  const mid = { x: (a.x + b.x) / 2 + n.x * 7 * t * k * -flip, y: (a.y + b.y) / 2 + n.y * 7 * t * k * -flip };
   return (
     <g {...common}>
       {e1 && <line {...e1} />}
       {e2 && <line {...e2} />}
       <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
       {[a, b].map((p, i) => (
-        <line
-          key={i}
-          x1={p.x - slash.x}
-          y1={p.y - slash.y}
-          x2={p.x + slash.x}
-          y2={p.y + slash.y}
-          strokeWidth={1.5 * k}
-        />
+        <DimEnd key={i} mark={endMark(look.ends, p, u, n, i ? -1 : 1, tick)} colour={colour} width={1.5 * k} />
       ))}
       {/* A wide invisible line along the dimension, so it is easy to click. */}
       {!ghost && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={10 * k} />}

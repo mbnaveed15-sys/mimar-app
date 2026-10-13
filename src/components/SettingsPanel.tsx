@@ -1,8 +1,9 @@
 import { MARLA_OPTIONS, UNIT_LABELS } from '../lib/units';
 import { usePlanner } from '../store/plannerStore';
-import type { MarlaSqFt, PaperSize, Units } from '../types';
+import type { DimEnds, DimText, MarlaSqFt, PaperSize, Units } from '../types';
 import { LengthField } from './LengthField';
 import { MIN_OPENING_GAP_MM } from '../lib/openingPlace';
+import { DIM_END_LABELS, DIM_TEXT_LABELS, dimStyleOf } from '../lib/dimStyle';
 
 /** Which way north points on the plan (for the PDF's north arrow). */
 const NORTH = [
@@ -35,6 +36,11 @@ export function SettingsPanel() {
   const setPlinthMm = usePlanner((s) => s.setPlinthMm);
   const openingGapMm = usePlanner((s) => s.openingGapMm);
   const setOpeningGapMm = usePlanner((s) => s.setOpeningGapMm);
+  const dimText = usePlanner((s) => dimStyleOf(s.doc).text);
+  const dimEnds = usePlanner((s) => dimStyleOf(s.doc).ends);
+  const planHatch = usePlanner((s) => s.doc.drawing?.planHatch !== false);
+  const floorHatch = usePlanner((s) => s.doc.drawing?.floorHatch !== false);
+  const setDrawingStyle = usePlanner((s) => s.setDrawingStyle);
 
   return (
     <div className="flex flex-col gap-2 text-xs">
@@ -101,6 +107,54 @@ export function SettingsPanel() {
         ))}
         {!NORTH.some((n) => n.deg === northDeg) && <option value="other">{northDeg}°</option>}
       </select>
+      <label htmlFor="dim-text" className="font-medium">
+        Dimension text size
+      </label>
+      <select
+        id="dim-text"
+        value={dimText}
+        onChange={(e) => setDrawingStyle({ dimText: e.target.value as DimText })}
+        className="rounded-sm border p-1"
+      >
+        {DIM_TEXT_LABELS.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <label htmlFor="dim-ends" className="font-medium">
+        Dimension line ends
+      </label>
+      <select
+        id="dim-ends"
+        value={dimEnds}
+        onChange={(e) => setDrawingStyle({ dimEnds: e.target.value as DimEnds })}
+        className="rounded-sm border p-1"
+      >
+        {DIM_END_LABELS.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={planHatch}
+          data-testid="plan-hatch"
+          onChange={(e) => setDrawingStyle({ planHatch: e.target.checked })}
+        />
+        Hatch walls and columns on the plan (by material)
+      </label>
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={floorHatch}
+          data-testid="floor-hatch"
+          onChange={(e) => setDrawingStyle({ floorHatch: e.target.checked })}
+        />
+        Hatch floors, lawns and paths on the plan (by material)
+      </label>
       <label htmlFor="paper-size" className="font-medium">
         PDF paper size
       </label>
