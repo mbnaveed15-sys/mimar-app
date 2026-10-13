@@ -92,6 +92,10 @@ export const ICONS = {
   gate: "<path d='M3 20V6M21 20V6M3 9h18M3 20h18'/><path d='M8 9v11M12 9v11M16 9v11'/>",
   duplicate:
     "<rect x='8.5' y='8.5' width='12' height='12' rx='1.5'/><path d='M15.5 5V4.5a1 1 0 0 0-1-1h-10a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1H5'/>",
+  hinge:
+    "<path d='M5 20h14'/><path d='M7 20V5'/><circle cx='7' cy='5' r='1.6' fill='currentColor' stroke='none'/><path d='M7 5a13 13 0 0 1 11 9' stroke-dasharray='2 2'/><path d='m16 14 2 0 .4-2'/>",
+  swing:
+    "<path d='M3 12h18'/><path d='M8 12V4'/><path d='M8 4a8 8 0 0 1 8 8' stroke-dasharray='2 2'/><path d='M8 12v8'/><path d='M8 20a8 8 0 0 0 8-8' stroke-dasharray='2 2'/>",
   fit: "<path d='M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'/><rect x='8' y='8' width='8' height='8' rx='0.5'/>",
 } as const;
 

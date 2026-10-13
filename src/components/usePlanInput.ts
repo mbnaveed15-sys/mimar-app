@@ -349,7 +349,8 @@ export function usePlanInput(
       case 'erase': {
         // Shift+click erases just the piece of wall between the walls crossing it (like Trim).
         const wall = e.shiftKey ? nearestWall(s.pickableElements(), raw, s.hitTolerance() * 1.5) : null;
-        const picked = !wall && pickId ? idAt(e, raw) : null;
+        // The item under the pointer, as Select would pick it: a door or window before its wall.
+        const picked = wall ? null : pickId ? idAt(e, raw) : (hitAt(e, raw)?.id ?? null);
         const click = () => {
           if (wall) s.commit((doc) => trimAt(doc, wall.id, raw, 10 * s.pxUnits()));
           else if (picked) s.deleteElement(picked);
@@ -401,7 +402,10 @@ export function usePlanInput(
               x: drag.last.x + ((raw.x - drag.last.x) * i) / steps,
               y: drag.last.y + ((raw.y - drag.last.y) * i) / steps,
             };
-            for (const el of items) if (isNear(el, p, tol)) ids.add(el.id);
+            // Over a door or window, that is what goes, not the wall it is in.
+            const near = items.filter((el) => isNear(el, p, tol));
+            const hosts = new Set(near.flatMap((el) => ('wallId' in el ? [el.wallId] : [])));
+            for (const el of near) if (!hosts.has(el.id)) ids.add(el.id);
           }
           const picked = pickId?.(e);
           if (picked && items.some((el) => el.id === picked)) ids.add(picked);

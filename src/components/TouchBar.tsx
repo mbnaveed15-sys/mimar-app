@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { canCopy, canTransform } from '../commands';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import { cancel } from '../tools/controller';
@@ -33,7 +34,7 @@ const BTN =
 /**
  * Buttons over the bottom-left corner of the plan. While something is drawn on a touch screen: the
  * keys a step needs (Enter to finish, Esc to cancel, V to flip a door). While something is selected:
- * the selection bar (Delete, Duplicate, Rotate 90°, Mirror, Properties), always on a tablet or a
+ * the selection bar (Delete, Duplicate, Rotate 90°, Mirror, and for doors Flip hinge and Flip swing, Properties), always on a tablet or a
  * phone, and with a mouse when View > Selection bar is on.
  */
 export function TouchBar({ onProperties }: { onProperties: () => void }) {
@@ -44,6 +45,13 @@ export function TouchBar({ onProperties }: { onProperties: () => void }) {
   const copyable = usePlanner(canCopy);
   const turnable = usePlanner(canTransform);
   const wanted = usePlanner((s) => s.selectionBar);
+  // Doors only (not gates): their hinge and swing can be flipped from the bar.
+  const doorIds = usePlanner(
+    useShallow((s) => {
+      const doors = s.doc.elements.filter((el) => el.type === 'door' && !el.gate && s.selectedIds.includes(el.id));
+      return doors.length === s.selectedIds.length ? doors.map((d) => d.id) : [];
+    }),
+  );
   const phone = usePhone();
   const coarse = useCoarsePointer();
 
@@ -82,6 +90,14 @@ export function TouchBar({ onProperties }: { onProperties: () => void }) {
       {action('Duplicate', 'duplicate', () => st().duplicateSelected(), copyable)}
       {action('Rotate 90°', 'rotate', () => st().rotateSelected(90), turnable)}
       {action('Mirror', 'mirror', () => st().setTool('mirror'), turnable)}
+      {doorIds.length > 0 &&
+        action('Flip hinge', 'hinge', () =>
+          st().editOpenings(doorIds, (d) => ({ flipHinge: !d.flipHinge || undefined })),
+        )}
+      {doorIds.length > 0 &&
+        action('Flip swing', 'swing', () =>
+          st().editOpenings(doorIds, (d) => ({ flipSide: !d.flipSide || undefined })),
+        )}
       {action('Properties', 'settings', onProperties)}
       {action('Deselect', 'close', () => st().select(null))}
     </div>
