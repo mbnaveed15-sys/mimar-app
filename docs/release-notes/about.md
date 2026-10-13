@@ -29,12 +29,13 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 ### Draw the plan
 - **Walls** in 4½", 9" and 13½" brick, retaining walls, and **glass curtain walls** with mullions and transoms. Walls can be straight or **curved** (true arcs).
 - **Curves:** a Curve tool draws arcs (by their ends and a bend, by 3 points, by their centre, or carrying on smoothly from the last piece), **circles**, **ovals** and **freeform curves**, as walls, layout lines or **paths and driveways** of a set width. Circles, ovals and closed curves get their room inside. The Rectangle tool can round its corners, and slab, slab-void, levelled-area and plot edges can be bent into curves.
-- **Rooms** show their area in sq ft or m² and in **marla** (225 or 272.25 sq ft), measured to the centre of the walls.
+- **Rooms** show their area in sq ft or m², in **marla** (225 or 272.25 sq ft), or both, measured to the centre of the walls.
 - **Doors:** single, double, sliding, folding, rolling shutter, a plain opening, and gates. **Windows:** sliding, casement, double casement, fixed and ventilator. Placing one shows the clear distance to each corner and never puts it flush against a corner. Doors and windows in a curved wall follow the curve.
-- **Structure:** columns, beams, slabs of any shape with voids (drawn as a rectangle, corner by corner, over the rooms you pick, or round the walls), stairs (straight, L, U, ramp, **curved** and **spiral**), plinth, **basements** with retaining walls, and **pitched roofs** (hip, gable, shed, flat) that work on L, T and any other plan shape.
+- **Structure:** columns, beams, slabs of any shape with voids (drawn as a rectangle, corner by corner, over the rooms you pick, or round the walls), stairs (straight, L, U, ramp, **curved** and **spiral**), plinth, **basements** with retaining walls, and **pitched roofs** (hip, gable, shed, flat) that work on L, T and any other plan shape, with a pitch for each side, **skylights** and **dormers**.
 - **Floors:** as many as you need, each with its own height, plus a basement and the mumty. Duplicate a floor to start the one above, and choose how faintly the floor below shows while you draw. The **Ground** floor and its lawn are one level, with a Floor | Lawn switch, so you can draw your own plinth, platforms and steps from the ground up. The automatic plinth is its own item, with its own height, projection and material (and its own projection and material under any wall), and it shows on the plan where it stands out. Stairs cut their own stairwell in the slab above.
 - **Furniture and garden:** a library of about 100 items at their real sizes, in groups for homes, offices, schools, clinics and hospitals, shops, mosques, restaurants, public toilets and gardens, with search and recent picks. Items can be turned before placing, snap against a room's walls, into its corners and beside other furniture, and can be resized one side or one corner at a time. Each item shows the **free space it needs** to be used, from the ADA standards or common practice.
-- **Layout lines** for drafting, straight or curved, which can be turned into walls.
+- **Layout lines** for drafting, straight or curved, which can be turned into walls. A line drawn across a block or slab splits it, and walls and lines can be **divided** into equal parts or set lengths.
+- A **north arrow** on the plan, which also turns the sun in 3D.
 
 ### Draw quickly and precisely (AutoCAD and SketchUp habits work)
 - **Snapping** to ends, midpoints, wall faces and corners, the corners of every item (in 2D and 3D), crossings, perpendiculars, the building line and the grid, with red and green axis guides. The **Snap** button at the bottom turns snapping off (its ▴ arrow turns each kind on or off), and holding **Alt** flips it for a moment. The pointer's X and Y show beside it.
@@ -63,17 +64,19 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 - A live 3D model with materials and textures, open doors, glass and furniture.
 - **Build and edit directly in 3D.** Every tool works there, with a SketchUp-style camera and standard views (top, front, sides, iso).
 - **Split view:** the plan and the 3D model side by side, both editable.
+- **Sun and shadows:** turn shadows on or off, or use the real sun for any date and time.
 - It stays fast on large plans.
 
 ### Drawings, quantities and cost
-- **Sections and elevations,** worked out from the model, with level marks. Sheets on A4, A3 or A1 at 1:50, 1:100 or 1:200, with a title block.
+- **Sections and elevations,** worked out from the model, with level marks, dimension strings and hatched cuts. **Hatches** on the plan for every common material. Dimensions in your choice of text size and ends.
+- **Sheets** on A4, A3 or A1 at 1:50, 1:100, 1:200 or any scale you type, with a title block, and isometric and coloured 3D views.
 - **Quantities and cost:** brickwork, RCC, steel, plaster, paint, flooring, glazing, roofing and services, measured from your drawing in the units Pakistani estimates use. Rates can be edited, and everything exports to CSV.
 
 ### Share and export
 - **PDF** to a true scale with a title block, a north arrow, the plan check and cost pages. **PNG** images.
-- **DXF** for AutoCAD, with proper layers and true arcs.
+- **DXF** for AutoCAD, with proper layers, true arcs, hatch layers and real DIMENSION entities.
 - **IFC4** for Revit and ArchiCAD. **GLB, DAE and OBJ** for SketchUp, Blender and other 3D tools.
-- Plans save as `.mimar` files that you can back up, email or move between computers. Work is also autosaved.
+- Plans save as `.mimar` files that you can back up, email or move between computers. Work is also autosaved, and **Open recent** brings back the last plans you worked on.
 
 ### Made to fit you
 - Every tool is on hand from the start: no separate simple and pro modes.

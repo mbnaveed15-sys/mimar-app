@@ -309,7 +309,7 @@ export function planToIfc(doc: PlanDoc, opts: IfcOptions): string {
   const itemFor = (
     id: Id | undefined,
     level: Id | undefined,
-    part: 'solid' | 'panel' | 'slab' | 'roof',
+    part: 'solid' | 'panel' | 'slab' | 'roof' | 'skylight',
   ): Item | null => {
     // The automatic plinth goes with the wall over it.
     const el = id ? byId.get(plinthWallOf(id) ?? id) : undefined;
@@ -358,7 +358,10 @@ export function planToIfc(doc: PlanDoc, opts: IfcOptions): string {
         [cls, name] = ['IFCBUILDINGELEMENTPROXY', 'Block'];
         break;
       case 'roof':
-        if (part === 'panel') {
+        if (part === 'skylight') {
+          // A roof's skylight glass is a window in it.
+          [cls, name, predefined, key] = ['IFCWINDOW', 'Skylight', '.SKYLIGHT.', `${el.id}/skylights`];
+        } else if (part === 'panel') {
           // The gable ends under a roof are walls.
           [cls, name, predefined, key] = ['IFCWALL', 'Gable wall', '.STANDARD.', `${el.id}/gables`];
         } else [cls, name, predefined] = ['IFCROOF', 'Roof', `.${ROOF_TYPE[el.shape]}.`];
@@ -379,7 +382,7 @@ export function planToIfc(doc: PlanDoc, opts: IfcOptions): string {
         shapes: [],
         material: '',
         el: host,
-        kind: part === 'roof' ? 'mesh' : 'swept',
+        kind: part === 'roof' || part === 'skylight' ? 'mesh' : 'swept',
       };
       items.set(k, item);
     }
@@ -410,7 +413,7 @@ export function planToIfc(doc: PlanDoc, opts: IfcOptions): string {
     if (item) addShape(item, slab(b.points, b.holes, b.y0 - storeyOf(item.level).elev, b.h), b);
   }
   for (const r of model.roofs ?? []) {
-    const item = itemFor(r.id, r.level, 'roof');
+    const item = itemFor(r.id, r.level, r.role === 'glass' ? 'skylight' : 'roof');
     if (!item) continue;
     const { positions, indices } = roofMesh(r);
     if (!indices.length) continue;
@@ -474,6 +477,9 @@ export function planToIfc(doc: PlanDoc, opts: IfcOptions): string {
           : `${item.predefined},${el.windowKind === 'sliding' || el.windowKind === 'casement2' ? '.DOUBLE_PANEL_VERTICAL.' : '.SINGLE_PANEL.'},$`;
       id = step.add(`${item.cls}(${head},${real(heightM)},${real(widthM)},${tail})`, false);
       elementIds.set(el.id, id);
+    } else if (item.cls === 'IFCWINDOW') {
+      // A roof's skylights: sizes left to the shape.
+      id = step.add(`IFCWINDOW(${head},$,$,${item.predefined},.SINGLE_PANEL.,$)`, false);
     } else id = step.add(`${item.cls}(${head},${item.predefined})`, false);
     if (el && item.cls !== 'IFCDOOR' && item.cls !== 'IFCWINDOW') elementIds.set(el.id, elementIds.get(el.id) ?? id);
     contained.set(item.level, [...(contained.get(item.level) ?? []), id]);

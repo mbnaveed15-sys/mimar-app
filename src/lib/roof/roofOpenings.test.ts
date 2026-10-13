@@ -5,6 +5,8 @@ import { dormerFrontAt, dormerInMm, dormerMovedIn, dormerParts, faceUnder, skyli
 import { buildModel, roofMesh } from '../../three/model';
 import { emptyDoc, normaliseDoc } from '../storage';
 import { quantities } from '../quantities';
+import { planToIfc } from '../exportIfc';
+import { writeFileSync } from 'node:fs';
 import { mapOutline } from '../../geometry';
 import { MM_PER_UNIT } from '../scale';
 
@@ -133,5 +135,19 @@ describe('dormers', () => {
     // Saved and opened again.
     const back = normaliseDoc(JSON.parse(JSON.stringify(doc)));
     expect((back.elements[0] as Roof).dormers).toEqual([dormer]);
+  });
+});
+
+describe('IFC', () => {
+  it('writes a roof with a skylight as a roof and a skylight window', () => {
+    const at = dormerFrontAt(roof, { x: 600, y: 250 })!;
+    const dormer: Dormer = { id: 'd', ...at, wMm: 1500, kind: 'gable', wallMm: 1000 };
+    const sky2 = { ...sky, y: 650 };
+    const doc = { ...emptyDoc(), elements: [{ ...roof, skylights: [sky2], dormers: [dormer] }] };
+    const ifc = planToIfc(doc, { wallHeightMm: 3048, name: 'House', time: '2026-10-13T12:00:00' });
+    expect(ifc).toMatch(/=IFCROOF\(/);
+    expect(ifc).toMatch(/=IFCWINDOW\([^\n]*'Skylight'[^\n]*\.SKYLIGHT\.,\.SINGLE_PANEL\.,\$\)/);
+    // IFC_OUT=file.ifc keeps it, to check with IfcOpenShell.
+    if (process.env.IFC_OUT) writeFileSync(process.env.IFC_OUT, ifc);
   });
 });
