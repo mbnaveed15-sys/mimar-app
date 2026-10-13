@@ -19,8 +19,10 @@ import {
   pitchOfRise,
   readPitch,
   riseIn12,
+  roofEaves,
   roofShape,
   roofTopMm,
+  sidePitchesOf,
   slopedArea,
   triangulate,
   withOverhang,
@@ -242,5 +244,66 @@ describe('pitched roofs', () => {
     });
     expect(dxf).toContain('A-ROOF-OTLN');
     expect(dxf).toContain('HIP ROOF 30%%d');
+  });
+});
+
+describe('a pitch per side', () => {
+  // A 10 m × 6 m roof outline, 500 mm overhang, 30° pitch.
+  const base: Roof = {
+    id: 'r',
+    type: 'roof',
+    points: [
+      { x: 0, y: 0 },
+      { x: 1000, y: 0 },
+      { x: 1000, y: 600 },
+      { x: 0, y: 600 },
+    ],
+    shape: 'hip',
+    pitchDeg: 30,
+    overhangMm: 500,
+    thicknessMm: 150,
+  };
+  const over = 50;
+  const drop = over * TAN30;
+  const slopeOfFace = (r: Roof, edge: number) => {
+    const f = roofShape(r).faces.find((x) => x.edge === edge && !x.vertical)!;
+    const top = f.points.reduce((m, p) => (p.z > m.z ? p : m));
+    const [a, b] = f.points;
+    const ex = b.x - a.x;
+    const ey = b.y - a.y;
+    const d = Math.abs((top.x - a.x) * ey - (top.y - a.y) * ex) / Math.hypot(ex, ey);
+    return top.z / d;
+  };
+
+  it('makes the side steeper, its eaves level and its slope over the walls at the same height', () => {
+    const r: Roof = { ...base, sidePitches: [45, null, null, null] };
+    expect(slopeOfFace(r, 0)).toBeCloseTo(1, 5);
+    expect(slopeOfFace(r, 1)).toBeCloseTo(TAN30, 5);
+    // Every side passes over the walls' line (the overhang in) at the same height.
+    const shape = roofShape(r);
+    expect(shape.heightAt({ x: 500, y: over })).toBeCloseTo(drop, 5);
+    expect(shape.heightAt({ x: 500, y: 600 - over })).toBeCloseTo(drop, 5);
+    expect(shape.heightAt({ x: over, y: 300 })).toBeCloseTo(drop, 5);
+    // The steep side's eaves reach out less.
+    const eaves = roofEaves(r);
+    expect(Math.min(...eaves.map((p) => p.y))).toBeCloseTo(over - drop, 5);
+    expect(roofEaves(base)).toBe(base.points);
+  });
+
+  it('leaves gable ends upright, and is kept through a new overhang and a mirror', () => {
+    const g: Roof = { ...base, shape: 'gable', sidePitches: [45, 60, null, 60] };
+    // Sides 1 and 3 (the short ends) are the gables: their pitches don't count.
+    expect(sidePitchesOf(g)).toEqual([45, 30, 30, 30]);
+    expect(
+      roofShape(g)
+        .faces.filter((f) => f.vertical)
+        .map((f) => f.edge),
+    ).toEqual([1, 3]);
+    expect(withOverhang(g, 600)!.sidePitches).toEqual([45, 60, null, 60]);
+    const flipped = mapOutline(g, (p) => ({ x: -p.x, y: p.y }), true) as Roof;
+    expect(sidePitchesOf(flipped).filter((p) => p === 45)).toHaveLength(1);
+    // Saved and opened again.
+    const doc = normaliseDoc(JSON.parse(JSON.stringify({ ...emptyDoc(), elements: [g] })))!;
+    expect((doc.elements[0] as Roof).sidePitches).toEqual([45, 60, null, 60]);
   });
 });

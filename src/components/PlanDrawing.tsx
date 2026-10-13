@@ -1,10 +1,11 @@
-import { memo } from 'react';
+import { memo, useId } from 'react';
+import { NorthArrowShape } from './shapes/NorthArrowShape';
 import { openingBend } from '../lib/arc';
 import { projectOf } from '../lib/project';
 import { elementOutline, planBounds } from '../geometry';
 import { formatLength } from '../lib/units';
 import { PLAN } from '../theme/plan';
-import type { MarlaSqFt, PlanDoc, Room, Units } from '../types';
+import type { AreaIn, EdgeCurve, MarlaSqFt, PlanDoc, PlanElement, Point, Room, Units, Wall } from '../types';
 import { labelPoint, wallFaces } from '../rooms';
 import { metricProject } from '../lib/curtain';
 import { plinthOutlines } from '../lib/plinth';
@@ -16,12 +17,17 @@ import { RoomShape } from './shapes/RoomShape';
 import { PlotShape, StairShape } from './shapes/SiteShapes';
 import { SectionShape } from './shapes/SectionShape';
 import { DimensionShape } from './shapes/DimensionShape';
+import { dimStyleOf } from '../lib/dimStyle';
 import { SketchLineShape } from './shapes/SketchLineShape';
 import { BeamShape, BlockShape, ColumnShape, RoofShape, SlabShape } from './shapes/StructureShapes';
 import { WallDimension } from './shapes/WallDimension';
 import { WallsLayer } from './shapes/WallsLayer';
 import { ContextShape, ContourShape, GroundOverlay, PadShape, SpotLevelShape } from './shapes/TerrainShapes';
 import type { GroundOnPlan } from '../lib/terrain/groundView';
+import { hatchOf, ringsPath, surfaceHatchOf, type Hatch } from '../lib/hatch';
+import { curveOf, facetOutline } from '../lib/curvedEdges';
+import { outlinePoints } from '../lib/plot';
+import { HatchArea, HatchDefs } from './shapes/Hatching';
 
 export interface PlanDrawingProps {
   doc: PlanDoc;
@@ -29,6 +35,8 @@ export interface PlanDrawingProps {
   selectedIds: readonly string[];
   units: Units;
   marlaSqFt: MarlaSqFt;
+  /** What room areas are shown in (the units when missing). */
+  areaIn?: AreaIn;
   showDimensions: boolean;
   showFurniture: boolean;
   showRoomLabels: boolean;
@@ -52,8 +60,20 @@ export interface PlanDrawingProps {
  * exports. Memoised: moving the pointer or panning doesn't redraw it, only a change to what it shows.
  */
 export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
-  const { doc, selectedIds, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, k } = props;
+  const {
+    doc,
+    selectedIds,
+    units,
+    marlaSqFt,
+    areaIn,
+    showDimensions,
+    showFurniture,
+    showRoomLabels,
+    showRoomFills,
+    k,
+  } = props;
   const marla = projectOf(doc).type === 'house' ? marlaSqFt : undefined;
+  const look = dimStyleOf(doc);
   const walls = wallsOf(doc.elements);
   const wallById = new Map(walls.map((w) => [w.id, w] as const));
   const selected = new Set(selectedIds);
@@ -61,9 +81,52 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
   const faces = showDimensions ? wallFaces(walls) : [];
   const bounds = planBounds(walls, []);
   const centre = bounds ? { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 } : { x: 0, y: 0 };
+  // Hatching: walls and columns by what they are made of, floors and ground by their finish.
+  const uid = `h${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const cutHatch = doc.drawing?.planHatch !== false;
+  const floorHatch = doc.drawing?.floorHatch !== false;
+  const used = new Set<Hatch>();
+  // Worked out here, before drawing, so the patterns for every hatch in use are made.
+  const cutHatches = new Map<string, Hatch>();
+  if (cutHatch)
+    for (const el of doc.elements)
+      if (el.type === 'wall' || el.type === 'column') {
+        const h = el.type === 'wall' && el.kind === 'curtain' ? null : hatchOf(el, doc.materials);
+        if (h) {
+          cutHatches.set(el.id, h);
+          used.add(h);
+        }
+      }
+  const wallHatch = (w: Wall) => cutHatches.get(w.id) ?? null;
+  const cutOf = (el: PlanElement) => {
+    const h = cutHatches.get(el.id);
+    return h ? { uid, hatch: h } : undefined;
+  };
+  const floors: { key: string; hatch: Hatch; d: string }[] = [];
+  const blockHatches: { key: string; hatch: Hatch; d: string }[] = [];
+  if (floorHatch) {
+    const add = (list: typeof floors, key: string, material: string | undefined, outline: Point[]) => {
+      const h = surfaceHatchOf(material, doc.materials);
+      if (!h || outline.length < 3) return;
+      used.add(h);
+      list.push({ key, hatch: h, d: ringsPath([outline]) });
+    };
+    const curved = (el: { points: Point[]; curve?: EdgeCurve }) => {
+      const c = curveOf(el);
+      return c ? facetOutline(c) : el.points;
+    };
+    for (const el of doc.elements) {
+      if (el.type === 'plot') add(floors, el.id, el.material, outlinePoints(el));
+      if (el.type === 'pad') add(floors, el.id, el.material, curved(el));
+      if (el.type === 'block') add(blockHatches, el.id, el.material, el.points);
+    }
+    for (const r of doc.rooms) add(floors, r.id, r.material, r.points);
+  }
+  const wallHatches = cutHatch ? { uid, of: wallHatch } : undefined;
 
   return (
     <>
+      {used.size > 0 && <HatchDefs uid={uid} k={k} hatches={used} />}
       {doc.elements.map((el) =>
         el.type === 'context' ? <ContextShape key={el.id} item={el} selected={selected.has(el.id)} k={k} /> : null,
       )}
@@ -88,11 +151,16 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
           selected={selected.has(r.id)}
           units={units}
           marlaSqFt={marla}
+          areaIn={areaIn}
           showLabel={showRoomLabels}
           showFill={showRoomFills}
           k={k}
           part="area"
         />
+      ))}
+
+      {floors.map((f) => (
+        <HatchArea key={`fh-${f.key}`} uid={uid} hatch={f.hatch} d={f.d} opacity={0.45} />
       ))}
 
       {doc.masks.map((m) => (
@@ -115,7 +183,14 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
         />
       ))}
 
-      <WallsLayer walls={walls} colorOf={colorOf} selected={selected} k={k} metric={metricProject(doc)} />
+      <WallsLayer
+        walls={walls}
+        colorOf={colorOf}
+        selected={selected}
+        k={k}
+        metric={metricProject(doc)}
+        hatch={wallHatches}
+      />
 
       {doc.elements.map((el) => {
         const isSelected = selected.has(el.id);
@@ -155,7 +230,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
               />
             );
           case 'column':
-            return <ColumnShape key={el.id} col={el} selected={isSelected} color={color} k={k} />;
+            return <ColumnShape key={el.id} col={el} selected={isSelected} color={color} k={k} hatch={cutOf(el)} />;
           case 'beam':
             return <BeamShape key={el.id} beam={el} selected={isSelected} k={k} />;
           case 'stair':
@@ -166,6 +241,10 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
             return null;
         }
       })}
+
+      {blockHatches.map((f) => (
+        <HatchArea key={`bh-${f.key}`} uid={uid} hatch={f.hatch} d={f.d} opacity={0.45} />
+      ))}
 
       {doc.elements.map((el) =>
         el.type === 'slab' ? (
@@ -179,9 +258,11 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
         el.type === 'section' ? <SectionShape key={el.id} line={el} selected={selected.has(el.id)} k={k} /> : null,
       )}
 
+      {doc.northArrow && <NorthArrowShape at={doc.northArrow} deg={doc.northDeg ?? 0} k={k} />}
+
       {doc.elements.map((el) =>
         el.type === 'dimension' ? (
-          <DimensionShape key={el.id} dim={el} units={units} selected={selected.has(el.id)} k={k} />
+          <DimensionShape key={el.id} dim={el} units={units} selected={selected.has(el.id)} k={k} look={look} />
         ) : null,
       )}
 
@@ -202,6 +283,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
           selected={selected.has(r.id)}
           units={units}
           marlaSqFt={marla}
+          areaIn={areaIn}
           showLabel={showRoomLabels}
           showFill={showRoomFills}
           k={k}
@@ -241,7 +323,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
           const { side, exterior } = placeWallDimension(w, faces, centre);
           // Interior walls are measured by the rooms around them; show theirs only when selected.
           if (!exterior && !selected.has(w.id)) return null;
-          return <WallDimension key={`dim-${w.id}`} wall={w} units={units} k={k} side={side} />;
+          return <WallDimension key={`dim-${w.id}`} wall={w} units={units} k={k} side={side} look={look} />;
         })}
     </>
   );

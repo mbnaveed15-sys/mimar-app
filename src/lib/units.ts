@@ -1,4 +1,4 @@
-import type { MarlaSqFt, Units } from '../types';
+import type { AreaIn, MarlaSqFt, Units } from '../types';
 
 export const MM_PER_INCH = 25.4;
 export const MM_PER_FOOT = 304.8;
@@ -100,4 +100,11 @@ export function formatMarla(sqMm: number, marlaSqFt: MarlaSqFt): string {
   const marla = sqMm / SQ_MM_PER_SQ_FT / marlaSqFt;
   if (marla >= 20) return `${(marla / 20).toFixed(2)} kanal`;
   return `${marla.toFixed(2)} marla`;
+}
+
+/** A room's area as its label shows it: in the units, in marla, or both (marla only when a size is given). */
+export function roomAreaText(sqMm: number, units: Units, marlaSqFt: MarlaSqFt | undefined, areaIn: AreaIn = 'units') {
+  if (!marlaSqFt || areaIn === 'units') return formatArea(sqMm, units);
+  if (areaIn === 'marla') return formatMarla(sqMm, marlaSqFt);
+  return `${formatArea(sqMm, units)} · ${formatMarla(sqMm, marlaSqFt)}`;
 }

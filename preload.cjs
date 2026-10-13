@@ -6,6 +6,13 @@ contextBridge.exposeInMainWorld('mimarFiles', {
   save: (request) => ipcRenderer.invoke('mimar:save', request),
 });
 
+// Plans opened or saved lately; the app keeps the list, and opens only files on it.
+contextBridge.exposeInMainWorld('mimarRecent', {
+  list: () => ipcRenderer.invoke('mimar:recent-list'),
+  open: (path) => ipcRenderer.invoke('mimar:recent-open', path),
+  clear: () => ipcRenderer.invoke('mimar:recent-clear'),
+});
+
 // Update status and actions; see updater.cjs.
 contextBridge.exposeInMainWorld('mimarUpdates', {
   getStatus: () => ipcRenderer.invoke('mimar:update-status'),

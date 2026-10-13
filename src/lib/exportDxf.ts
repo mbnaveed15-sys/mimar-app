@@ -1,10 +1,13 @@
 import { elementOutline, fromFurnitureLocal, planBounds, wallLength, wallParam } from '../geometry';
-import { formatPitch, roofShape } from './roof/roof';
+import { formatPitch, roofEaves, roofShape } from './roof/roof';
+import { dormerParts, skylightParts } from './roof/roofOpenings';
 import { bentSymbol, openingSymbol } from './openingKinds';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
-import type { Dimension, MarlaSqFt, Opening, PlanDoc, Point, Room, Units, Wall } from '../types';
+import type { AreaIn, Dimension, DrawingStyle, MarlaSqFt, Opening, PlanDoc, Point, Room, Units, Wall } from '../types';
 import { dimLine } from './dimLine';
+import { DEFAULT_DIM_STYLE, DIM_TEXT_SCALE, dimStyleOf, endMark, type DimStyle } from './dimStyle';
+import { hatchOf, hatchSegments, surfaceHatchOf, type Hatch } from './hatch';
 import { plinthOutlines } from './plinth';
 import { placeWallDimension, thicknessOf, wallExtensions, wallPolygon, wallsOf } from '../walls';
 import { arcOf, directionAlong, isArc, openingBend, paramAlong, pointAlong, wallPath } from './arc';
@@ -12,7 +15,7 @@ import { isCurtain, metricProject, mullionStops } from './curtain';
 import { MM_PER_UNIT } from './scale';
 import { outlinePoints, plotSides, sideMiddle, sideOutward } from './plot';
 import { buildableArea, partOutline, stairLayout } from './site';
-import { formatArea, formatLength, formatMarla } from './units';
+import { formatLength, roomAreaText } from './units';
 import { sectionLook } from './drawings/refs';
 import { formatLevel } from './drawings/levels';
 import type { SideDrawing } from './drawings/views';
@@ -40,6 +43,7 @@ const LAYERS = {
   'A-WALL-PLIN': { color: 8, ltype: 'CONTINUOUS' },
   'S-WALL-RETN': { color: 1, ltype: 'CONTINUOUS' },
   'A-ANNO-SECT': { color: 2, ltype: 'DASHED' },
+  'A-ANNO-SYMB': { color: 2, ltype: 'CONTINUOUS' },
   'A-SECT-CUT': { color: 7, ltype: 'CONTINUOUS' },
   'A-SECT-OUTL': { color: 7, ltype: 'CONTINUOUS' },
   'A-SECT-BYND': { color: 8, ltype: 'CONTINUOUS' },
@@ -56,12 +60,17 @@ const LAYERS = {
   'A-ROOF-OTLN': { color: 4, ltype: 'DASHED' },
   'A-ROOF': { color: 4, ltype: 'CONTINUOUS' },
   'A-ANNO-TTLB': { color: 7, ltype: 'CONTINUOUS' },
+  'A-WALL-PATT': { color: 8, ltype: 'CONTINUOUS' },
+  'A-FLOR-PATT': { color: 9, ltype: 'CONTINUOUS' },
+  'A-SECT-PATT': { color: 8, ltype: 'CONTINUOUS' },
 } as const;
 type Layer = keyof typeof LAYERS;
 
 export interface DxfOptions {
   units: Units;
   marlaSqFt: MarlaSqFt;
+  /** What room areas are shown in (the units when missing). */
+  areaIn?: AreaIn;
   showDimensions: boolean;
   showFurniture: boolean;
   showRoomLabels: boolean;
@@ -195,9 +204,107 @@ export function dxfText(value: string): string {
     .join('');
 }
 
+/** A dimension for the DXF: its kind, where it measures and where its line and text sit (plan points). */
+interface DxfDim {
+  /** Linear (turned to `angleDeg`), aligned with what it measures, or a radius. */
+  kind: 'linear' | 'aligned' | 'radius';
+  /** What is measured: the two points (for a radius, the centre and a point on the curve). */
+  p1: Point;
+  p2: Point;
+  /** A point on the dimension line, level with p2 (the definition point). */
+  on: Point;
+  /** The middle of the text. */
+  text: Point;
+  /** A linear dimension's direction on the drawing (degrees, y up). */
+  angleDeg?: number;
+}
+
 class Dxf {
   private lines: string[] = [];
-  constructor(private readonly scale: number) {}
+  private blocks: string[][] = [];
+  private dims = 0;
+  constructor(
+    private readonly scale: number,
+    private readonly look: DimStyle = DEFAULT_DIM_STYLE,
+    private readonly units: Units = 'imperial',
+  ) {}
+
+  /** The entities `draw` writes, kept apart (for a block). */
+  capture(draw: (d: Dxf) => void): string[] {
+    const sub = new Dxf(this.scale, this.look, this.units);
+    draw(sub);
+    return sub.lines;
+  }
+
+  /**
+   * A DIMENSION entity (so CAD programs can stretch and edit it), drawn by `picture` in its own block so that
+   * simple viewers show it too.
+   */
+  dimension(layer: Layer, dim: DxfDim, picture: (d: Dxf) => void) {
+    const name = `*D${++this.dims}`;
+    const block: string[] = [];
+    const p = (code: number, value: string | number) => block.push(String(code), String(value));
+    p(0, 'BLOCK');
+    p(8, '0');
+    p(2, name);
+    p(70, 1);
+    p(10, 0);
+    p(20, 0);
+    p(30, 0);
+    p(3, name);
+    block.push(...this.capture(picture));
+    p(0, 'ENDBLK');
+    p(8, '0');
+    this.blocks.push(block);
+    this.pair(0, 'DIMENSION');
+    this.pair(8, layer);
+    this.pair(2, name);
+    this.pair(3, 'MIMAR');
+    if (dim.kind === 'radius') {
+      this.xy(dim.p1);
+      this.xy(dim.text, 11);
+      this.pair(70, 4);
+      this.xy(dim.p2, 15);
+      this.pair(40, 0);
+      return;
+    }
+    this.xy(dim.on);
+    this.xy(dim.text, 11);
+    this.pair(70, dim.kind === 'aligned' ? 1 : 0);
+    this.xy(dim.p1, 13);
+    this.xy(dim.p2, 14);
+    if (dim.kind === 'linear') this.pair(50, dim.angleDeg ?? 0);
+  }
+
+  /** A dimension line's end mark (a tick, an arrow or a dot) at p, the line running along u. */
+  endMark(layer: Layer, p: Point, u: Point, n: Point, inward: 1 | -1, size: number) {
+    const m = endMark(this.look.ends, p, u, n, inward, size);
+    if (m.kind === 'line') this.line(layer, m.a, m.b);
+    else if (m.kind === 'fill') this.solid(layer, [m.pts[0], m.pts[1], m.pts[2], m.pts[0]]);
+    else this.disc(layer, m.c, m.r);
+  }
+
+  /** A small filled dot: a donut-like ring drawn as a wide polyline round it. */
+  disc(layer: Layer, c: Point, r: number) {
+    const half = r / 2;
+    this.pair(0, 'POLYLINE');
+    this.pair(8, layer);
+    this.pair(66, 1);
+    this.pair(10, 0);
+    this.pair(20, 0);
+    this.pair(30, 0);
+    this.pair(70, 1);
+    this.pair(40, r * this.scale);
+    this.pair(41, r * this.scale);
+    for (const x of [-half, half]) {
+      this.pair(0, 'VERTEX');
+      this.pair(8, layer);
+      this.xy({ x: c.x + x, y: c.y });
+      this.pair(42, 1);
+    }
+    this.pair(0, 'SEQEND');
+    this.pair(8, layer);
+  }
 
   private pair(code: number, value: string | number) {
     this.lines.push(String(code), typeof value === 'number' ? String(Math.round(value * 1e4) / 1e4) : value);
@@ -300,6 +407,11 @@ class Dxf {
     p(30, 0);
     p(9, '$LTSCALE');
     p(40, 20);
+    // Dimensions measure in feet and inches (architectural) or in millimetres.
+    p(9, '$LUNITS');
+    p(70, this.units === 'imperial' ? 4 : 2);
+    p(9, '$DIMSTYLE');
+    p(2, 'MIMAR');
     p(0, 'ENDSEC');
     p(0, 'SECTION');
     p(2, 'TABLES');
@@ -334,6 +446,58 @@ class Dxf {
       p(6, ltype);
     }
     p(0, 'ENDTAB');
+    // The dimension style: text size and ends as on the plan, in drawing millimetres.
+    const text = TEXT_MM * 0.8 * DIM_TEXT_SCALE[this.look.text];
+    p(0, 'TABLE');
+    p(2, 'DIMSTYLE');
+    p(70, 1);
+    p(0, 'DIMSTYLE');
+    p(2, 'MIMAR');
+    p(70, 0);
+    p(3, '');
+    p(4, '');
+    p(5, this.look.ends === 'dot' ? 'DOT' : '');
+    p(6, '');
+    p(7, '');
+    p(40, 1); // DIMSCALE
+    p(41, 150); // DIMASZ
+    p(42, 50); // DIMEXO
+    p(43, 400); // DIMDLI
+    p(44, 100); // DIMEXE
+    p(45, 0); // DIMRND
+    p(46, 0); // DIMDLE
+    p(47, 0);
+    p(48, 0);
+    p(140, text); // DIMTXT
+    p(141, 0);
+    p(142, this.look.ends === 'tick' ? 100 : 0); // DIMTSZ: ticks instead of arrows
+    p(143, 25.4);
+    p(144, this.units === 'imperial' ? 1 / 25.4 : 1); // DIMLFAC: millimetres to inches
+    p(145, 0);
+    p(146, 1);
+    p(147, 50); // DIMGAP
+    p(71, 0);
+    p(72, 0);
+    p(73, 0); // DIMTIH: text along the line
+    p(74, 0); // DIMTOH
+    p(75, 0);
+    p(76, 0);
+    p(77, 1); // DIMTAD: text above the line
+    p(78, 0);
+    p(170, 0);
+    p(171, 2);
+    p(172, 0);
+    p(173, 0);
+    p(174, 0);
+    p(175, 0);
+    p(176, 0);
+    p(177, 0);
+    p(178, 0);
+    p(0, 'ENDTAB');
+    p(0, 'ENDSEC');
+    p(0, 'SECTION');
+    p(2, 'BLOCKS');
+    for (const block of this.blocks) for (const line of block) out.push(line);
     p(0, 'ENDSEC');
     p(0, 'SECTION');
     p(2, 'ENTITIES');
@@ -347,7 +511,7 @@ class Dxf {
 
 /** The floor plan as an AutoCAD DXF (R12, millimetres), one layer per kind of thing. */
 export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
-  const dxf = new Dxf(MM_PER_UNIT);
+  const dxf = new Dxf(MM_PER_UNIT, dimStyleOf(doc), opts.units);
   const walls = wallsOf(doc.elements);
   // Shapes only drawn on a wall's face don't cut it (and aren't built), so they're left out.
   const openings = doc.elements.filter((el): el is Opening => (el.type === 'door' || el.type === 'window') && !el.flat);
@@ -376,6 +540,19 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       });
     }
 
+  // Floors, lawns, paths and levelled areas hatched by their finish.
+  if (doc.drawing?.floorHatch !== false) {
+    const floor = (material: string | undefined, outline: Point[]) => {
+      const hatch = surfaceHatchOf(material, doc.materials);
+      if (hatch) hatchToDxf(dxf, 'A-FLOR-PATT', hatch, outline);
+    };
+    for (const el of doc.elements) {
+      if (el.type === 'plot') floor(el.material, outlinePoints(el));
+      if (el.type === 'pad' || el.type === 'block') floor(el.material, el.points);
+    }
+    for (const r of doc.rooms) floor(r.material, r.points);
+  }
+
   // The plinth where it stands out past the ground floor's walls.
   for (const { points } of plinthOutlines(doc)) dxf.poly('A-WALL-PLIN', points);
 
@@ -398,6 +575,8 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
         );
       }
     }
+    const hatch = doc.drawing?.planHatch !== false && !curtain ? hatchOf(wall, doc.materials) : null;
+    if (hatch) hatchToDxf(dxf, 'A-WALL-PATT', hatch, wallPolygon(wall, walls));
     // A curved wall's faces are true arcs.
     if (isArc(wall))
       for (const piece of arcWallOutlines(wall, walls, own)) dxf.poly(layer, piece.points, true, piece.bulges);
@@ -470,6 +649,17 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       case 'column':
         if (el.shape === 'round') dxf.circle('S-COLS', { x: el.x, y: el.y }, el.w / 2);
         else dxf.poly('S-COLS', elementOutline(el));
+        if (doc.drawing?.planHatch !== false) {
+          const hatch = hatchOf(el, doc.materials);
+          const outline =
+            el.shape === 'round'
+              ? Array.from({ length: 24 }, (_, i) => ({
+                  x: el.x + (el.w / 2) * Math.cos((i * Math.PI) / 12),
+                  y: el.y + (el.w / 2) * Math.sin((i * Math.PI) / 12),
+                }))
+              : elementOutline(el);
+          if (hatch) hatchToDxf(dxf, 'A-WALL-PATT', hatch, outline);
+        }
         break;
       case 'beam': {
         const len = Math.hypot(el.x2 - el.x1, el.y2 - el.y1) || 1;
@@ -489,7 +679,17 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
         break;
       case 'roof': {
         // The eaves dashed (above the cut); ridges, hips and valleys, and the pitch.
-        dxf.poly('A-ROOF-OTLN', el.points);
+        dxf.poly('A-ROOF-OTLN', roofEaves(el));
+        for (const sk of el.skylights ?? []) {
+          const p = skylightParts(el, sk);
+          if (p) dxf.poly('A-ROOF', p.hole);
+        }
+        for (const d of el.dormers ?? []) {
+          const p = dormerParts(el, d);
+          if (!p) continue;
+          dxf.poly('A-ROOF', p.footprint);
+          if (p.ridge) dxf.line('A-ROOF', p.ridge[0], p.ridge[1]);
+        }
         if (el.shape === 'flat') break;
         for (const l of roofShape(el).lines)
           if (l.kind === 'ridge' || l.kind === 'hip' || l.kind === 'valley') dxf.line('A-ROOF', l.a, l.b);
@@ -537,7 +737,7 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
         break;
       }
       case 'dimension':
-        dimensionToDxf(dxf, el, opts.units);
+        dimensionToDxf(dxf, el, opts.units, DIM_TEXT_SCALE[dimStyleOf(doc).text]);
         break;
       case 'stair': {
         const layout = stairLayout(el);
@@ -553,6 +753,21 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
 
   drawGround(dxf, doc, opts);
 
+  // The north arrow, 600 mm across the circle's radius on the ground.
+  if (doc.northArrow) {
+    const c = doc.northArrow;
+    const r = 600 / MM_PER_UNIT;
+    const t = ((doc.northDeg ?? 0) * Math.PI) / 180;
+    const at = (x: number, y: number) => ({
+      x: c.x + (x * Math.cos(t) - y * Math.sin(t)) * r,
+      y: c.y + (x * Math.sin(t) + y * Math.cos(t)) * r,
+    });
+    dxf.circle('A-ANNO-SYMB', c, r);
+    dxf.solid('A-ANNO-SYMB', [at(0, -1), at(-0.4, 0.6), at(0, 0.25), at(0, 0.25)]);
+    dxf.poly('A-ANNO-SYMB', [at(0, -1), at(0.4, 0.6), at(0, 0.25)], false);
+    dxf.text('A-ANNO-SYMB', at(0, -1.45), 'N', -(doc.northDeg ?? 0), 250);
+  }
+
   for (const r of doc.rooms) {
     dxf.poly('A-AREA', r.points);
     if (!opts.showRoomLabels) continue;
@@ -562,7 +777,7 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
     dxf.text(
       'A-AREA-IDEN',
       { x: c.x, y: c.y + (TEXT_MM * 0.9) / MM_PER_UNIT },
-      `${formatArea(area, opts.units)} · ${formatMarla(area, opts.marlaSqFt)}`,
+      roomAreaText(area, opts.units, opts.marlaSqFt, opts.areaIn),
       0,
       TEXT_MM * 0.7,
     );
@@ -574,6 +789,7 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
     const centre = bounds ? { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 } : { x: 0, y: 0 };
     const off = 600 / MM_PER_UNIT; // dimension line 600 mm off the wall face
     const tick = 100 / MM_PER_UNIT;
+    const textScale = DIM_TEXT_SCALE[dimStyleOf(doc).text];
     for (const w of walls) {
       const { side, exterior } = placeWallDimension(w, faces, centre);
       if (!exterior) continue;
@@ -601,27 +817,29 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
       const d = thicknessOf(w) / 2 + off;
       const a = { x: w.x1 + nx * d, y: w.y1 + ny * d };
       const b = { x: w.x2 + nx * d, y: w.y2 + ny * d };
-      dxf.line('A-ANNO-DIMS', a, b);
-      for (const [p, q] of [
-        [{ x: w.x1, y: w.y1 }, a],
-        [{ x: w.x2, y: w.y2 }, b],
-      ]) {
-        dxf.line(
-          'A-ANNO-DIMS',
-          { x: p.x + nx * (thicknessOf(w) / 2 + tick), y: p.y + ny * (thicknessOf(w) / 2 + tick) },
-          { x: q.x + nx * tick, y: q.y + ny * tick },
-        );
-        dxf.line(
-          'A-ANNO-DIMS',
-          { x: q.x - (ux + nx) * tick, y: q.y - (uy + ny) * tick },
-          { x: q.x + (ux + nx) * tick, y: q.y + (uy + ny) * tick },
-        );
-      }
       // Text reads along the line, never upside down (angles on the drawing, where y is up).
       let angle = (-Math.atan2(uy, ux) * 180) / Math.PI;
       if (angle > 90 || angle <= -90) angle += 180;
       const mid = { x: (a.x + b.x) / 2 + nx * tick * 1.5, y: (a.y + b.y) / 2 + ny * tick * 1.5 };
-      dxf.text('A-ANNO-DIMS', mid, formatLength(len * MM_PER_UNIT, opts.units), angle, TEXT_MM * 0.8);
+      const p1 = { x: w.x1, y: w.y1 };
+      const p2 = { x: w.x2, y: w.y2 };
+      dxf.dimension('A-ANNO-DIMS', { kind: 'aligned', p1, p2, on: b, text: mid }, (pic) => {
+        pic.line('A-ANNO-DIMS', a, b);
+        for (const [p, q] of [
+          [p1, a],
+          [p2, b],
+        ])
+          pic.line(
+            'A-ANNO-DIMS',
+            { x: p.x + nx * (thicknessOf(w) / 2 + tick), y: p.y + ny * (thicknessOf(w) / 2 + tick) },
+            { x: q.x + nx * tick, y: q.y + ny * tick },
+          );
+        const u = { x: ux, y: uy };
+        const n = { x: -nx, y: -ny };
+        pic.endMark('A-ANNO-DIMS', a, u, n, 1, tick);
+        pic.endMark('A-ANNO-DIMS', b, u, n, -1, tick);
+        pic.text('A-ANNO-DIMS', mid, formatLength(len * MM_PER_UNIT, opts.units), angle, TEXT_MM * 0.8 * textScale);
+      });
     }
   }
 
@@ -636,10 +854,11 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
  * A placed dimension: extension lines, the dimension line with a slash at each end, and its length
  * above the line, never upside down; a radius as a line from the centre with an arrow on the curve.
  */
-function dimensionToDxf(dxf: Dxf, el: Dimension, units: Units) {
+function dimensionToDxf(dxf: Dxf, el: Dimension, units: Units, textScale = 1) {
   const { p1, p2, a, b, u, n, value } = dimLine(el);
   const mm = (v: number) => v / MM_PER_UNIT;
   const text = formatLength(value * MM_PER_UNIT, units);
+  const size = TEXT_MM * 0.8 * textScale;
   // Text angles on the drawing, where y is up.
   const readable = (d: Point) => {
     let angle = (-Math.atan2(d.y, d.x) * 180) / Math.PI;
@@ -652,35 +871,48 @@ function dimensionToDxf(dxf: Dxf, el: Dimension, units: Units) {
     const arrow = mm(150);
     const base = { x: p2.x - d.x * arrow, y: p2.y - d.y * arrow };
     const w = { x: -d.y * arrow * 0.3, y: d.x * arrow * 0.3 };
-    dxf.line('A-ANNO-DIMS', p1, base);
-    dxf.solid('A-ANNO-DIMS', [p2, { x: base.x + w.x, y: base.y + w.y }, { x: base.x - w.x, y: base.y - w.y }, p2]);
     const mid = { x: (p1.x + p2.x) / 2 - d.y * mm(150), y: (p1.y + p2.y) / 2 + d.x * mm(150) };
-    dxf.text('A-ANNO-DIMS', mid, `R ${text}`, readable(d), TEXT_MM * 0.8);
+    dxf.dimension('A-ANNO-DIMS', { kind: 'radius', p1, p2, on: p2, text: mid }, (pic) => {
+      pic.line('A-ANNO-DIMS', p1, base);
+      pic.solid('A-ANNO-DIMS', [p2, { x: base.x + w.x, y: base.y + w.y }, { x: base.x - w.x, y: base.y - w.y }, p2]);
+      pic.text('A-ANNO-DIMS', mid, `R ${text}`, readable(d), size);
+    });
     return;
   }
   const gap = mm(50);
   const past = mm(100);
   const tick = mm(100);
-  for (const [p, q] of [
-    [p1, a],
-    [p2, b],
-  ]) {
-    const len = Math.hypot(q.x - p.x, q.y - p.y);
-    if (len < gap) continue;
-    const e = { x: (q.x - p.x) / len, y: (q.y - p.y) / len };
-    dxf.line('A-ANNO-DIMS', { x: p.x + e.x * gap, y: p.y + e.y * gap }, { x: q.x + e.x * past, y: q.y + e.y * past });
-  }
-  dxf.line('A-ANNO-DIMS', a, b);
-  for (const q of [a, b])
-    dxf.line(
-      'A-ANNO-DIMS',
-      { x: q.x - (u.x - n.x) * tick, y: q.y - (u.y - n.y) * tick },
-      { x: q.x + (u.x - n.x) * tick, y: q.y + (u.y - n.y) * tick },
-    );
   // Above the line as it reads: up the drawing (away from n, which points down the page for a line read left to right).
   const flip = Math.abs(readable(u) - (-Math.atan2(u.y, u.x) * 180) / Math.PI) < 1e-6 ? 1 : -1;
   const mid = { x: (a.x + b.x) / 2 - n.x * mm(150) * flip, y: (a.y + b.y) / 2 - n.y * mm(150) * flip };
-  dxf.text('A-ANNO-DIMS', mid, text, readable(u), TEXT_MM * 0.8);
+  // Aligned with what it measures, or turned to its own direction (a linear dimension).
+  const measured = { x: p2.x - p1.x, y: p2.y - p1.y };
+  const along = Math.abs(measured.x * u.y - measured.y * u.x) < 1e-6 * (Math.hypot(measured.x, measured.y) || 1);
+  const angleDeg = (-Math.atan2(u.y, u.x) * 180) / Math.PI;
+  dxf.dimension('A-ANNO-DIMS', { kind: along ? 'aligned' : 'linear', p1, p2, on: b, text: mid, angleDeg }, (pic) => {
+    for (const [p, q] of [
+      [p1, a],
+      [p2, b],
+    ]) {
+      const len = Math.hypot(q.x - p.x, q.y - p.y);
+      if (len < gap) continue;
+      const e = { x: (q.x - p.x) / len, y: (q.y - p.y) / len };
+      pic.line('A-ANNO-DIMS', { x: p.x + e.x * gap, y: p.y + e.y * gap }, { x: q.x + e.x * past, y: q.y + e.y * past });
+    }
+    pic.line('A-ANNO-DIMS', a, b);
+    pic.endMark('A-ANNO-DIMS', a, u, n, 1, tick);
+    pic.endMark('A-ANNO-DIMS', b, u, n, -1, tick);
+    pic.text('A-ANNO-DIMS', mid, text, readable(u), size);
+  });
+}
+
+/** Paper millimetres of hatch at 1:100, in plan units. */
+const HATCH_SCALE = 100 / MM_PER_UNIT;
+
+/** A hatch's lines inside an outline (R12 has no HATCH entity, so they are lines on their own layer). */
+function hatchToDxf(dxf: Dxf, layer: Layer, hatch: Hatch, outline: Point[], scale = HATCH_SCALE) {
+  const ring = outline.map((p): [number, number] => [p.x, p.y]);
+  for (const [a, b] of hatchSegments(hatch, [ring], scale)) dxf.line(layer, { x: a[0], y: a[1] }, { x: b[0], y: b[1] });
 }
 
 /** A line's middle point along its length (for its label). */
@@ -759,9 +991,11 @@ const DRAWING_GAP_MM = 4000;
  * what is cut filled solid, the lines beyond, outlines, the ground, the level marks and each
  * drawing's name underneath.
  */
-export function sideDrawingsToDxf(drawings: SideDrawing[]): string {
+export function sideDrawingsToDxf(drawings: SideDrawing[], style?: DrawingStyle): string {
   // Drawing millimetres, with y given downward as the writer expects of a plan.
-  const dxf = new Dxf(1);
+  const look = dimStyleOf({ drawing: style });
+  const dxf = new Dxf(1, look, drawings.find((d) => d.dims)?.dims?.units ?? 'imperial');
+  const textMm = TEXT_MM * 0.8 * DIM_TEXT_SCALE[look.text];
   const P = (x: number, v: number): Point => ({ x, y: -v });
   let x0 = 0;
   let minV = 0;
@@ -770,20 +1004,34 @@ export function sideDrawingsToDxf(drawings: SideDrawing[]): string {
     const b = d.bounds ?? { minU: -1, maxU: 1, minV: 0, maxV: 1 };
     const left = Math.min(b.minU, d.ground.u0);
     const at = (u: number, v: number) => P(x0 + (u - left) * 1000, v * 1000);
-    for (const poly of d.cut) {
+    d.cut.forEach((poly, j) => {
       for (const ring of poly)
         dxf.poly(
           'A-SECT-CUT',
           ring.map(([u, v]) => at(u, v)),
         );
-      // Fill rectangles (most of a cut); other shapes keep just their outline.
-      if (poly.length === 1 && poly[0].length === 4)
+      // Hatched by what it is made of (at 1:100), or filled: rectangles (most of a cut); other shapes keep just
+      // their outline.
+      const hatch = style?.solidCuts ? null : (d.cutHatch?.[j] ?? null);
+      if (hatch) {
+        const rings = poly.map((ring) => ring.map(([u, v]): [number, number] => [at(u, v).x, at(u, v).y]));
+        for (const [a, b] of hatchSegments(hatch, rings, 100))
+          dxf.line('A-SECT-PATT', { x: a[0], y: a[1] }, { x: b[0], y: b[1] });
+      } else if (poly.length === 1 && poly[0].length === 4)
         dxf.solid(
           'A-SECT-CUT',
           poly[0].map(([u, v]) => at(u, v)),
         );
-    }
+    });
     for (const l of d.lines) dxf.line(l.heavy ? 'A-SECT-OUTL' : 'A-SECT-BYND', at(...l.a), at(...l.b));
+    if (d.iso) {
+      // A 3D view: just the building, and its name under it.
+      dxf.text('A-ANNO-TTLB', at((b.minU + b.maxU) / 2, b.minV - 0.9), d.title.toUpperCase(), 0, 300);
+      minV = Math.min(minV, b.minV - 0.9);
+      maxV = Math.max(maxV, b.maxV);
+      x0 += (b.maxU + 3.5 - left) * 1000 + DRAWING_GAP_MM;
+      continue;
+    }
     // The ground: the finished ground solid, and the natural ground dashed where it differs.
     if (d.profile?.finished.length)
       dxf.poly(
@@ -805,7 +1053,51 @@ export function sideDrawingsToDxf(drawings: SideDrawing[]): string {
       dxf.text('A-ANNO-LEVL', { x: p.x + 1800, y: p.y - 150 }, `${m.label} ${m.name}`, 0, 150);
     }
     const groundVs = d.profile ? [...d.profile.finished, ...d.profile.natural.flat()].map((p) => p[1]) : [];
-    const bottom = Math.min(b.minV, 0, ...groundVs) - 0.9;
+    const low = Math.min(b.minV, 0, ...groundVs);
+    // Dimension strings: heights up the left side, the cut walls and spaces (or the width) underneath.
+    let below = 0;
+    if (d.dims && style?.sideDims !== false) {
+      const len = (m: number) => formatLength(m * 1000, d.dims!.units);
+      const chain = (stops: Point[], vertical: boolean, label: (i: number) => string) => {
+        const tick = 100;
+        for (let i = 0; i + 1 < stops.length; i++) {
+          const [p1, p2] = [stops[i], stops[i + 1]];
+          const text = vertical ? { x: p1.x - 150, y: (p1.y + p2.y) / 2 } : { x: (p1.x + p2.x) / 2, y: p1.y - 150 };
+          dxf.dimension('A-ANNO-DIMS', { kind: 'linear', p1, p2, on: p2, text, angleDeg: vertical ? 90 : 0 }, (pic) => {
+            pic.line('A-ANNO-DIMS', p1, p2);
+            const u = vertical ? { x: 0, y: -1 } : { x: 1, y: 0 };
+            const n = vertical ? { x: 1, y: 0 } : { x: 0, y: 1 };
+            pic.endMark('A-ANNO-DIMS', p1, u, n, 1, tick);
+            pic.endMark('A-ANNO-DIMS', p2, u, n, -1, tick);
+            pic.text('A-ANNO-DIMS', text, label(i), vertical ? 90 : 0, textMm);
+          });
+        }
+      };
+      const hs = d.dims.heights;
+      if (hs.length >= 2) {
+        chain(
+          hs.map((v) => at(left - 0.6, v)),
+          true,
+          (i) => len(hs[i + 1] - hs[i]),
+        );
+        if (hs.length > 2)
+          chain([at(left - 1.3, hs[0]), at(left - 1.3, hs[hs.length - 1])], true, () => len(hs[hs.length - 1] - hs[0]));
+      }
+      const xs = d.dims.across;
+      if (xs.length >= 2) {
+        chain(
+          xs.map((u) => at(u, low - 0.6)),
+          false,
+          (i) => len(xs[i + 1] - xs[i]),
+        );
+        below = 0.7;
+        if (xs.length > 2) {
+          chain([at(xs[0], low - 1.3), at(xs[xs.length - 1], low - 1.3)], false, () => len(xs[xs.length - 1] - xs[0]));
+          below = 1.4;
+        }
+      }
+    }
+    const bottom = low - 0.9 - below;
     dxf.text('A-ANNO-TTLB', at((left + right) / 2, bottom), d.title.toUpperCase(), 0, 300);
     minV = Math.min(minV, bottom);
     maxV = Math.max(maxV, b.maxV, ...groundVs);

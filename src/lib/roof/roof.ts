@@ -83,25 +83,77 @@ export function lowEdgeOf(roof: Pick<Roof, 'points' | 'lowEdge'>): number {
   return best;
 }
 
-const shapes = new WeakMap<Roof, RoofShape>();
+/** A side's own pitch can't be gentler than this (a near-flat side would reach out for ever). */
+export const MIN_SIDE_PITCH_DEG = 5;
 
-/** The roof's faces and lines, heights in plan units above its eaves. */
-export function roofShape(roof: Roof): RoofShape {
-  let shape = shapes.get(roof);
-  if (shape) return shape;
+/**
+ * Each side's pitch in degrees: its own where it has one (hip and gable roofs), else the roof's. Gable ends
+ * and every side of a shed or flat roof take the roof's.
+ */
+export function sidePitchesOf(roof: Roof): number[] {
+  const own = roof.shape === 'hip' || roof.shape === 'gable' ? (roof.sidePitches ?? []) : [];
+  const ends = roof.shape === 'gable' ? new Set(gableEdges(roof)) : new Set<number>();
+  return roof.points.map((_, i) => {
+    const p = own[i];
+    return p === null || p === undefined || ends.has(i) || !Number.isFinite(p)
+      ? roof.pitchDeg
+      : Math.min(MAX_PITCH_DEG, Math.max(MIN_SIDE_PITCH_DEG, p));
+  });
+}
+
+const shapes = new WeakMap<Roof, { shape: RoofShape; eaves: Point[] }>();
+
+/**
+ * The shape and its eaves' line. With a pitch per side, each eave is moved in (steeper) or out (gentler) so
+ * every side's slope passes over the walls' line at the same height as the roof's pitch would, with the eaves
+ * level all round: the roof's weighted skeleton is built on that outline.
+ */
+function built(roof: Roof): { shape: RoofShape; eaves: Point[] } {
+  const done = shapes.get(roof);
+  if (done) return done;
   const slope = slopeOf(roof);
-  if (roof.shape === 'shed') shape = shedRoof(roof.points, slope, lowEdgeOf(roof));
-  else if (roof.shape === 'gable') {
-    const ends = new Set(gableEdges(roof));
-    shape = skeletonRoof(
+  const ends = roof.shape === 'gable' ? new Set(gableEdges(roof)) : new Set<number>();
+  let out: { shape: RoofShape; eaves: Point[] } | null = null;
+  if (roof.shape === 'shed') out = { shape: shedRoof(roof.points, slope, lowEdgeOf(roof)), eaves: roof.points };
+  else if (slope > 0) {
+    const slopes = sidePitchesOf(roof).map((deg) => Math.tan((deg * Math.PI) / 180));
+    if (slopes.some((s) => Math.abs(s - slope) > 1e-6)) {
+      const over = roof.overhangMm / MM_PER_UNIT;
+      const moved = insetPolygon(
+        roof.points,
+        slopes.map((s) => over * (1 - slope / s)),
+      );
+      // Every side still there, or it isn't the roof that was asked for: fall back to one pitch.
+      if (moved.points.length === roof.points.length && new Set(moved.edges).size === roof.points.length) {
+        const shape = skeletonRoof(
+          moved.points,
+          slope,
+          moved.edges.map((e) => ends.has(e)),
+          moved.edges.map((e) => slope / slopes[e]),
+        );
+        const faces = shape.faces.map((f) => ({ ...f, edge: moved.edges[f.edge] ?? f.edge }));
+        faces.sort((a, b) => a.edge - b.edge);
+        out = { shape: { ...shape, faces }, eaves: moved.points };
+      }
+    }
+  }
+  out ??= {
+    shape: skeletonRoof(
       roof.points,
       slope,
       roof.points.map((_, i) => ends.has(i)),
-    );
-  } else shape = skeletonRoof(roof.points, slope);
-  shapes.set(roof, shape);
-  return shape;
+    ),
+    eaves: roof.points,
+  };
+  shapes.set(roof, out);
+  return out;
 }
+
+/** The roof's faces and lines, heights in plan units above its eaves. */
+export const roofShape = (roof: Roof): RoofShape => built(roof).shape;
+
+/** The eaves' line in plan: the roof's outline, or where a pitch per side has moved it. */
+export const roofEaves = (roof: Roof): Point[] => built(roof).eaves;
 
 /** How far (mm) the eaves are below the top of the walls: the slope carried on over the overhang. */
 export const eaveDropMm = (roof: Roof) => roof.overhangMm * slopeOf(roof);
@@ -253,6 +305,95 @@ export function triangulate(pts: { x: number; y: number }[]): [number, number, n
 }
 
 /**
+ * Triangles for a polygon with holes (in plan x, y): each hole is joined to the outline by a cut to a corner
+ * it can see, then the one outline that makes is ear-clipped. Indices run over the outline's points, then each
+ * hole's in turn. Holes must lie inside the outline and apart from each other.
+ */
+export function triangulateHoles(outer: Point[], holes: Point[][]): [number, number, number][] {
+  if (!holes.length) return triangulate(outer);
+  const all = [...outer, ...holes.flat()];
+  const sign = signedArea(outer) >= 0 ? 1 : -1;
+  // The outline as indices; each hole goes the other way round.
+  let ring = outer.map((_, i) => i);
+  let base = outer.length;
+  const starts = holes.map((h) => {
+    const ids = h.map((_, i) => base + i);
+    base += h.length;
+    return signedArea(h) * sign > 0 ? ids.reverse() : ids;
+  });
+  const cross = (a: Point, b: Point, c: Point, d: Point) => {
+    const o = (p: Point, q: Point, r: Point) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+    return o(a, b, c) * o(a, b, d) < -1e-12 && o(c, d, a) * o(c, d, b) < -1e-12;
+  };
+  const edgesOf = (ids: number[]) => ids.map((id, k): [number, number] => [id, ids[(k + 1) % ids.length]]);
+  // The hole furthest right first, as earcut does, so later cuts don't have to cross earlier ones.
+  const order = starts
+    .map((ids) => ({ ids, x: Math.max(...ids.map((i) => all[i].x)) }))
+    .sort((a, b) => b.x - a.x)
+    .map((h) => h.ids);
+  for (let h = 0; h < order.length; h++) {
+    const hole = order[h];
+    const others = [...edgesOf(ring), ...order.slice(h).flatMap(edgesOf)];
+    let best: { k: number; m: number; d: number } | null = null;
+    for (let m = 0; m < hole.length; m++)
+      for (let k = 0; k < ring.length; k++) {
+        const [p, q] = [all[hole[m]], all[ring[k]]];
+        const d = Math.hypot(p.x - q.x, p.y - q.y);
+        if (best && d >= best.d) continue;
+        const blocked = others.some(
+          ([i, j]) => i !== hole[m] && j !== hole[m] && i !== ring[k] && j !== ring[k] && cross(p, q, all[i], all[j]),
+        );
+        if (!blocked) best = { k, m, d };
+      }
+    if (!best) continue;
+    const { k, m } = best;
+    const turned = [...hole.slice(m), ...hole.slice(0, m)];
+    ring = [...ring.slice(0, k + 1), ...turned, turned[0], ...ring.slice(k)];
+  }
+  // Ear-clip, leaving out of the "anything inside" test the corners that sit where a cut doubles back.
+  const pts = ring.map((i) => all[i]);
+  const tris = earClip(pts);
+  return tris.map(([a, b, c]) => [ring[a], ring[b], ring[c]]);
+}
+
+/** triangulate, but a corner at the same place as the ear's own corners never blocks it (for cut outlines). */
+function earClip(pts: Point[]): [number, number, number][] {
+  const n = pts.length;
+  if (n < 3) return [];
+  const sign = signedArea(pts) >= 0 ? 1 : -1;
+  const idx = pts.map((_, i) => i);
+  const cross = (o: number, a: number, b: number) =>
+    (pts[a].x - pts[o].x) * (pts[b].y - pts[o].y) - (pts[a].y - pts[o].y) * (pts[b].x - pts[o].x);
+  const same = (p: number, q: number) => Math.abs(pts[p].x - pts[q].x) < 1e-9 && Math.abs(pts[p].y - pts[q].y) < 1e-9;
+  const inTri = (p: number, a: number, b: number, c: number) =>
+    cross(a, b, p) * sign >= 0 && cross(b, c, p) * sign >= 0 && cross(c, a, p) * sign >= 0;
+  const out: [number, number, number][] = [];
+  let guard = n * n;
+  while (idx.length > 3 && guard-- > 0) {
+    let cut = false;
+    for (let k = 0; k < idx.length; k++) {
+      const a = idx[(k + idx.length - 1) % idx.length];
+      const b = idx[k];
+      const c = idx[(k + 1) % idx.length];
+      const turn = cross(a, b, c) * sign;
+      if (turn < 0) continue;
+      if (
+        turn > 0 &&
+        idx.some((p) => p !== a && p !== b && p !== c && !same(p, a) && !same(p, b) && !same(p, c) && inTri(p, a, b, c))
+      )
+        continue;
+      if (turn > 0) out.push([a, b, c]);
+      idx.splice(k, 1);
+      cut = true;
+      break;
+    }
+    if (!cut) break;
+  }
+  if (idx.length === 3) out.push([idx[0], idx[1], idx[2]]);
+  return out;
+}
+
+/**
  * A pitch typed in: degrees ("30", "30°", "22.5 deg") or a rise in a run ("6 in 12", "6/12", "6:12").
  * Null when it isn't one, or is steeper than a roof takes.
  */
@@ -289,6 +430,7 @@ export function withOverhang(roof: Roof, overhangMm: number): Roof | null {
   const from = grown.edges;
   const next: Roof = { ...roof, points: grown.points, overhangMm };
   if (roof.gables) next.gables = from.flatMap((orig, k) => (roof.gables!.includes(orig) ? [k] : []));
+  if (roof.sidePitches) next.sidePitches = from.map((orig) => roof.sidePitches![orig] ?? null);
   if (roof.lowEdge !== undefined) {
     const k = from.indexOf(roof.lowEdge);
     if (k >= 0) next.lowEdge = k;

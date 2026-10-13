@@ -1,5 +1,5 @@
 import { DEFAULT_THEME, isThemeId, type ThemeId } from '../theme/themes';
-import type { MarlaSqFt, PaperSize, Units } from '../types';
+import type { AreaIn, MarlaSqFt, PaperSize, Units } from '../types';
 import { clampGap, DEFAULT_OPENING_GAP_MM } from './openingPlace';
 import { browserStorage } from './storage';
 import { GRID_MM } from './units';
@@ -69,6 +69,8 @@ export interface Prefs {
   /** Gap kept between doors and windows and wall corners (and each other), in millimetres. */
   openingGapMm: number;
   marlaSqFt: MarlaSqFt;
+  /** What room areas are shown in on the plan: sq ft (or m²), marla, or both. */
+  areaIn: AreaIn;
   paper: PaperSize;
   /** Wall height in the 3D view, in millimetres. */
   wallHeightMm: number;
@@ -102,6 +104,7 @@ export const DEFAULT_PREFS: Prefs = {
   wallThicknessMm: 228.6,
   openingGapMm: DEFAULT_OPENING_GAP_MM,
   marlaSqFt: 225,
+  areaIn: 'units',
   paper: 'A4',
   wallHeightMm: 3048,
   theme: DEFAULT_THEME,
@@ -176,6 +179,7 @@ export function loadPrefs(storage = browserStorage()): Prefs {
       wallThicknessMm: thickness >= 25 && thickness <= 1000 ? thickness : DEFAULT_PREFS.wallThicknessMm,
       openingGapMm: clampGap(raw?.openingGapMm),
       marlaSqFt: raw?.marlaSqFt === 272.25 ? 272.25 : 225,
+      areaIn: raw?.areaIn === 'marla' || raw?.areaIn === 'both' ? raw.areaIn : 'units',
       paper: raw?.paper === 'A3' ? 'A3' : 'A4',
       wallHeightMm:
         Number(raw?.wallHeightMm) >= 2000 && Number(raw?.wallHeightMm) <= 6000

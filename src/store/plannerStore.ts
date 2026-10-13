@@ -75,6 +75,19 @@ import { outsideOutline } from '../lib/outline';
 import { CURTAIN_MM, hasPlinth, isBuildingWall } from '../walls';
 import { wallPath, type WallLine } from '../lib/arc';
 import { pathOutline, roundedRect, type CurveMode } from '../lib/curves';
+import { splitSolidsByLine } from '../lib/splitSolids';
+import { DEFAULT_SUN } from '../lib/sun';
+import { divideWall } from '../lib/modify';
+import {
+  DORMER_W_MM,
+  DORMER_WALL_MM,
+  dormerFrontAt,
+  dormerParts,
+  faceUnder,
+  SKYLIGHT_L_MM,
+  SKYLIGHT_W_MM,
+  skylightParts,
+} from '../lib/roof/roofOpenings';
 import { groundOf, roundLevel } from '../lib/terrain/ground';
 import type { Built } from '../lib/layoutBuild';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
@@ -87,6 +100,10 @@ import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SITE_LEVEL } from '../types'
 import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
 import type {
   RoofKind,
+  Roof,
+  Skylight,
+  Dormer,
+  SunSettings,
   Block,
   ContextItem,
   GroundSettings,
@@ -106,10 +123,12 @@ import type {
   Stair,
   Draft,
   Id,
+  AreaIn,
   MarlaSqFt,
   Material,
   PaperSize,
   PlanDoc,
+  DrawingStyle,
   PlanElement,
   Point,
   Room,
@@ -355,13 +374,18 @@ export interface PlannerState {
   setPlinthMm: (mm: number) => void;
   /** Which way north points on the plan, in degrees clockwise from up. */
   setNorthDeg: (deg: number) => void;
+  /** Change how dimensions and drawings look (one undo step); a default value is dropped. */
+  setDrawingStyle: (patch: Partial<DrawingStyle>) => void;
   /** Sizes for new columns, beams and slabs, in plan units. */
   structure: StructureSpec;
   setStructure: (patch: Partial<StructureSpec>) => void;
   addColumn: (p: Point) => void;
   addBeam: (a: Point, b: Point) => void;
   /** A layout (drafting) line on the floor being drawn. */
+  /** A layout line; a straight one drawn right across blocks and slabs splits them (see splitSolids.ts). */
   addLine: (a: Point, b: Point, bow?: number) => void;
+  /** Cut a wall or layout line into equal parts, or into pieces of a length (mm). */
+  divideItem: (id: Id, how: { parts: number } | { everyMm: number }) => void;
   /** A dimension on the floor being drawn (its id is made here); returns the id. */
   addDimension: (dim: Omit<Dimension, 'id'>) => Id;
   /**
@@ -385,6 +409,14 @@ export interface PlannerState {
   padUnderHouse: () => boolean;
   /** A roof over an outline drawn round the walls, reaching past it by the overhang, with the Roof tool's settings. */
   addRoof: (points: Point[]) => boolean;
+  /** Change the 3D view's sun (one undo step). */
+  setSun: (patch: Partial<SunSettings>) => void;
+  /** Put the north arrow at a point, turned to north (degrees clockwise from up), as one undo step; null takes it away. */
+  placeNorth: (at: Point | null, deg?: number) => void;
+  /** A skylight on the roof slope under p (on this floor); false, with a warning, when it can't go there. */
+  addSkylight: (p: Point) => boolean;
+  /** A dormer on the roof slope under p, its front 600 mm in from the eaves. */
+  addDormer: (p: Point) => boolean;
   /** A roof over the outside of the walls on the floor being viewed. */
   roofOverHouse: () => boolean;
   /** How the ground is finished and drawn. */
@@ -485,6 +517,9 @@ export interface PlannerState {
   exportLines: boolean;
   wallThicknessMm: number;
   marlaSqFt: MarlaSqFt;
+  /** What room areas are shown in on the plan (a preference). */
+  areaIn: AreaIn;
+  setAreaIn: (areaIn: AreaIn) => void;
   paper: PaperSize;
   wallHeightMm: number;
   /**
@@ -791,6 +826,7 @@ export function createPlannerStore(
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
       const { showHints, pdfHints, pdfZones, accessibleZones, selectionBar, belowOpacity, checks, snaps } = get();
+      const { areaIn } = get();
       const { wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } = get();
       savePrefs({
         units,
@@ -809,6 +845,7 @@ export function createPlannerStore(
         wallThicknessMm,
         openingGapMm,
         marlaSqFt,
+        areaIn,
         paper,
         wallHeightMm,
         theme,
@@ -860,6 +897,16 @@ export function createPlannerStore(
         return !!it && !('type' in it && it.type === 'furniture' && !showFurniture);
       };
       const ids = selectedIds.filter(visible);
+      // Undo can take away the floor being shown (a floor just added or duplicated): show the top floor left.
+      if (!doc.levels.some((l) => l.id === get().activeLevel)) {
+        const floors = doc.levels.filter((l) => !l.site);
+        set({
+          activeLevel: floors[floors.length - 1]?.id ?? GROUND_LEVEL,
+          draft: null,
+          inference: null,
+          lastCopy: null,
+        });
+      }
       const open = get().openGroupId;
       const plinth = get().selectedPlinth;
       set({
@@ -947,6 +994,7 @@ export function createPlannerStore(
       setOpeningStamp: (openingStamp, queue = false) =>
         set({ openingStamp, stampQueue: queue && openingStamp.length > 0 }),
       marlaSqFt: prefs.marlaSqFt,
+      areaIn: prefs.areaIn,
       paper: prefs.paper,
       wallHeightMm: initial.project?.wallHeightMm ?? prefs.wallHeightMm,
       view3d: false,
@@ -1984,7 +2032,20 @@ export function createPlannerStore(
           y2: b.y,
           ...(bow && Math.abs(bow) > 0.05 && { bow }),
         };
-        updateElements((els) => [...els, onActive(line)]);
+        const placed = onActive(line) as SketchLine;
+        updateElements((els) => splitSolidsByLine([...els, placed], placed));
+      },
+      divideItem: (id, how) => {
+        const openings = (doc: PlanDoc) =>
+          doc.elements.filter((el) => el.type === 'door' || el.type === 'window').length;
+        const before = openings(get().doc);
+        get().commit((doc) => divideWall(doc, id, 'parts' in how ? how : { every: how.everyMm / MM_PER_UNIT }));
+        const lost = before - openings(get().doc);
+        get().setWarning(
+          lost > 0
+            ? `A division went through ${lost === 1 ? 'a door or window' : `${lost} doors or windows`}, so ${lost === 1 ? 'it was' : 'they were'} removed. Undo (Ctrl+Z) to bring ${lost === 1 ? 'it' : 'them'} back.`
+            : null,
+        );
       },
       addDimension: (dim) => {
         const id = newId();
@@ -2140,6 +2201,64 @@ export function createPlannerStore(
         };
         updateElements((els) => [...els, onActive(roof)]);
         get().select(roof.id);
+        return true;
+      },
+      setSun: (patch) =>
+        get().commit((doc) => {
+          const sun: SunSettings = { ...DEFAULT_SUN, ...doc.sun, ...patch };
+          return JSON.stringify(sun) === JSON.stringify(doc.sun) ? doc : { ...doc, sun };
+        }),
+      placeNorth: (at, deg) =>
+        get().commit((doc) => {
+          const next: PlanDoc = { ...doc };
+          if (at) next.northArrow = { x: at.x, y: at.y };
+          else delete next.northArrow;
+          if (deg !== undefined) {
+            const north = ((Math.round(deg) % 360) + 360) % 360;
+            if (north) next.northDeg = north;
+            else delete next.northDeg;
+          }
+          return JSON.stringify(next.northArrow) === JSON.stringify(doc.northArrow) && next.northDeg === doc.northDeg
+            ? doc
+            : next;
+        }),
+      addSkylight: (p) => {
+        const roof = get()
+          .pickableElements()
+          .find((el): el is Roof => el.type === 'roof' && !!faceUnder(el, p));
+        if (!roof) {
+          get().setWarning('Click on a roof (draw one with the Roof tool, Shift+H, on this floor).');
+          return false;
+        }
+        const sk: Skylight = { id: newId(), x: p.x, y: p.y, wMm: SKYLIGHT_W_MM, lMm: SKYLIGHT_L_MM };
+        if (!skylightParts(roof, sk)) {
+          get().setWarning(
+            'A skylight doesn’t fit there: keep it inside one slope, clear of the hips, ridge and valleys.',
+          );
+          return false;
+        }
+        get().setWarning(null);
+        get().updateElement({ ...roof, skylights: [...(roof.skylights ?? []), sk] });
+        return true;
+      },
+      addDormer: (p) => {
+        const roof = get()
+          .pickableElements()
+          .find((el): el is Roof => el.type === 'roof' && !!faceUnder(el, p));
+        const front = roof && dormerFrontAt(roof, p);
+        if (!roof || !front) {
+          get().setWarning('Click on a sloping roof (draw one with the Roof tool, Shift+H, on this floor).');
+          return false;
+        }
+        const d: Dormer = { id: newId(), ...front, wMm: DORMER_W_MM, kind: 'gable', wallMm: DORMER_WALL_MM };
+        if (!dormerParts(roof, d)) {
+          get().setWarning(
+            'A dormer doesn’t fit on that slope: it needs a slope of 15° or more and room to run back up to the roof. Try a steeper roof, or a narrower or lower dormer.',
+          );
+          return false;
+        }
+        get().setWarning(null);
+        get().updateElement({ ...roof, dormers: [...(roof.dormers ?? []), d] });
         return true;
       },
       roofOverHouse: () => {
@@ -2516,6 +2635,22 @@ export function createPlannerStore(
         get().endBatch();
         get().setActiveLevel(roofId);
       },
+      setDrawingStyle: (patch) =>
+        get().commit((doc) => {
+          const next: DrawingStyle = { ...doc.drawing, ...patch };
+          if (next.dimText === 'medium') delete next.dimText;
+          if (next.dimEnds === 'tick') delete next.dimEnds;
+          if (next.sideDims !== false) delete next.sideDims;
+          if (next.solidCuts !== true) delete next.solidCuts;
+          if (next.planHatch !== false) delete next.planHatch;
+          if (next.floorHatch !== false) delete next.floorHatch;
+          const was: DrawingStyle = doc.drawing ?? {};
+          const keys = new Set([...Object.keys(next), ...Object.keys(was)]) as Set<keyof DrawingStyle>;
+          if ([...keys].every((key) => next[key] === was[key])) return doc;
+          const out: PlanDoc = { ...doc, drawing: next };
+          if (!Object.keys(next).length) delete out.drawing;
+          return out;
+        }),
       setNorthDeg: (deg) => {
         const north = ((deg % 360) + 360) % 360;
         get().commit((doc) => {
@@ -2537,6 +2672,10 @@ export function createPlannerStore(
       },
       setMarlaSqFt: (marlaSqFt) => {
         set({ marlaSqFt });
+        persistPrefs();
+      },
+      setAreaIn: (areaIn) => {
+        set({ areaIn });
         persistPrefs();
       },
       setPaper: (paper) => {

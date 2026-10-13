@@ -11,6 +11,7 @@ import {
   type PlanElement,
   type Point,
   type PointsElement,
+  type Roof,
   type Slab,
   type Wall,
 } from './types';
@@ -76,6 +77,16 @@ export function centroid(points: Point[]): Point {
  */
 export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Point, reverse = false): T {
   const map = (pts: Point[]) => (reverse ? pts.map(f).reverse() : pts.map(f));
+  // A roof's skylights and dormers move with it.
+  if (el.type === 'roof' && (el.skylights || el.dormers)) {
+    const { skylights, dormers, ...bare } = el;
+    const moved = mapOutline(bare as T, f, reverse) as Roof;
+    return {
+      ...moved,
+      ...(skylights && { skylights: skylights.map((k) => ({ ...k, ...f(k) })) }),
+      ...(dormers && { dormers: dormers.map((d) => ({ ...d, ...f(d) })) }),
+    } as T;
+  }
   // Curved edges move with their corners, and the outline is worked out again from them.
   if ((el.type === 'slab' || el.type === 'pad') && el.curve) {
     const curve = curveOf(el);
@@ -104,6 +115,7 @@ export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Poin
       points: map(el.points),
       ...(el.gables && { gables: el.gables.map(edge) }),
       ...(el.lowEdge !== undefined && { lowEdge: edge(el.lowEdge) }),
+      ...(el.sidePitches && { sidePitches: el.points.map((_, i) => el.sidePitches![edge(i)] ?? null) }),
     };
   }
   return { ...el, points: map(el.points) };

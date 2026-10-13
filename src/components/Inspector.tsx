@@ -48,6 +48,7 @@ import { PlotSidesPanel } from './PlotSides';
 import { SelectionPanel } from './SelectionPanel';
 import { GroundPlace } from './GroundPlace';
 import { PlinthPanel, WallPlinth } from './PlinthPanel';
+import { DividePanel } from './DividePanel';
 
 /** Common room names in Pakistani homes, offered as suggestions. */
 const ROOM_NAMES = [
@@ -847,6 +848,9 @@ export function Inspector() {
                 />
               )}
             {!isAnnotation(el) && !isSiteItem(el) && <div>Material: {materialName(el.material) ?? '—'}</div>}
+            {((el.type === 'wall' && !el.plotId) || el.type === 'line') && !el.locked && (
+              <DividePanel id={el.id} units={units} />
+            )}
             {el.type === 'wall' && <WallSides wall={el} materialName={materialName} />}
             {el.type === 'wall' && <WallPlinth wall={el} />}
             <div className="flex flex-wrap gap-2">

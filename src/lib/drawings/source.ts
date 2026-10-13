@@ -28,6 +28,7 @@ export function levelContent(
     | 'doc'
     | 'units'
     | 'marlaSqFt'
+    | 'areaIn'
     | 'showDimensions'
     | 'showFurniture'
     | 'showRoomLabels'
@@ -42,9 +43,9 @@ export function levelContent(
     (el) => (onLevel(el) || el.type === 'section') && (s.exportLines || el.type !== 'line'),
   );
   const doc = { ...shown, elements, rooms: shown.rooms.filter(onLevel) };
-  const { units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills } = s;
+  const { units, marlaSqFt, areaIn, showDimensions, showFurniture, showRoomLabels, showRoomFills } = s;
   // The ground is worked out from the whole plan (hidden levels still shape it), on the ground floor.
   const ground = levelId === GROUND_LEVEL ? groundOnPlan({ ...s.doc, layers: shown.layers }, units === 'metric') : null;
   const voids = floorVoids(shown, levelId);
-  return { doc, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, ground, voids };
+  return { doc, units, marlaSqFt, areaIn, showDimensions, showFurniture, showRoomLabels, showRoomFills, ground, voids };
 }

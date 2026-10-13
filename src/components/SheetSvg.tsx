@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { PlanDrawing } from './PlanDrawing';
 import type { PlanImageContent } from '../lib/planImage';
 import { PLAN_FONT } from '../lib/planImage';
@@ -11,7 +12,16 @@ const ANCHOR = { left: 'start', center: 'middle', right: 'end' } as const;
  * Drawing instructions on paper (millimetres) as SVG: the Drawings view shows sections,
  * elevations and whole sheets with this, exactly as they print.
  */
-export function PrimsSvg({ prims, plan }: { prims: Prim[]; plan?: (levelId: string) => PlanImageContent }) {
+export function PrimsSvg({
+  prims,
+  plan,
+  picture,
+}: {
+  prims: Prim[];
+  plan?: (levelId: string) => PlanImageContent;
+  /** Draws the coloured 3D picture at a size in pixels. */
+  picture?: (width: number, height: number) => Promise<string | null>;
+}) {
   return (
     <g fontFamily={PLAN_FONT}>
       {prims.map((p, i) => {
@@ -56,11 +66,14 @@ export function PrimsSvg({ prims, plan }: { prims: Prim[]; plan?: (levelId: stri
                 fontSize={p.size}
                 fontWeight={p.bold ? 700 : 400}
                 textAnchor={ANCHOR[p.align ?? 'left']}
+                transform={p.angle ? `rotate(${-p.angle} ${p.x} ${p.y})` : undefined}
                 fill="#111"
               >
                 {p.text}
               </text>
             );
+          case 'picture':
+            return <Picture key={i} box={p} make={picture} />;
           case 'plan': {
             const content = plan?.(p.levelId);
             if (!content) return null;
@@ -85,5 +98,49 @@ export function PrimsSvg({ prims, plan }: { prims: Prim[]; plan?: (levelId: stri
         }
       })}
     </g>
+  );
+}
+
+/** The coloured 3D picture on a sheet: drawn once it is ready (a note while it is, or when it can't be). */
+function Picture({
+  box,
+  make,
+}: {
+  box: { x: number; y: number; w: number; h: number };
+  make?: (width: number, height: number) => Promise<string | null>;
+}) {
+  const [url, setUrl] = useState<string | null | undefined>(undefined);
+  const px = (mm: number) => Math.max(2, Math.round((mm / 25.4) * 110));
+  const [w, h] = [px(box.w), px(box.h)];
+  useEffect(() => {
+    let live = true;
+    // Drawn after the sheet shows, so the page doesn't wait for it.
+    const t = setTimeout(() => {
+      (make?.(w, h) ?? Promise.resolve(null)).then(
+        (u) => live && setUrl(u),
+        () => live && setUrl(null),
+      );
+    }, 50);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [make, w, h]);
+  if (url)
+    return (
+      <image
+        href={url}
+        x={box.x}
+        y={box.y}
+        width={box.w}
+        height={box.h}
+        preserveAspectRatio="xMidYMid meet"
+        data-testid="sheet-picture"
+      />
+    );
+  return (
+    <text x={box.x + box.w / 2} y={box.y + box.h / 2} fontSize={3} textAnchor="middle" fill="#777">
+      {url === null ? 'The 3D picture needs 3D graphics on this computer' : 'Drawing the 3D picture…'}
+    </text>
   );
 }

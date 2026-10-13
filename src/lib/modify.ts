@@ -166,6 +166,33 @@ export function breakWall(doc: PlanDoc, wallId: Id, t1: number, t2 = t1): PlanDo
 }
 
 /**
+ * Divide: cut a wall or layout line into equal parts, or into lengths of `every` plan units from its
+ * start (the last piece takes what is left). The new ends snap like any other, to mark the divisions.
+ */
+export function divideWall(doc: PlanDoc, wallId: Id, how: { parts: number } | { every: number }): PlanDoc {
+  const wall = wallsOf(doc).find((w) => w.id === wallId);
+  if (!wall) return doc;
+  const total = runLength(wall);
+  let cuts: number[];
+  if ('parts' in how) {
+    const n = Math.max(1, Math.min(200, Math.floor(how.parts)));
+    cuts = Array.from({ length: n - 1 }, (_, i) => (i + 1) / n);
+  } else {
+    if (!(how.every > 0) || total <= 0) return doc;
+    const n = Math.min(200, Math.ceil(total / how.every - 1e-9));
+    // A sliver under a hundredth of the length joins the last full piece.
+    cuts = Array.from({ length: n - 1 }, (_, i) => ((i + 1) * how.every) / total).filter((t) => t < 1 - 0.01);
+  }
+  if (!cuts.length) return doc;
+  const marks = [0, ...cuts, 1];
+  return keepPieces(
+    doc,
+    wallId,
+    marks.slice(1).map((t, i): [number, number] => [marks[i], t]),
+  );
+}
+
+/**
  * Extend: lengthen a wall from its end nearest p until it meets another wall (a curved wall carries
  * on round its circle). Null if nothing is in the way.
  */

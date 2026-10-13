@@ -25,7 +25,19 @@ interface Store {
   getState: () => PlannerState;
 }
 
-export const STRUCTURE_TOOLS: Tool[] = ['column', 'beam', 'slab', 'roof', 'plot', 'stairs', 'section', ...GROUND_TOOLS];
+export const STRUCTURE_TOOLS: Tool[] = [
+  'column',
+  'beam',
+  'slab',
+  'roof',
+  'skylight',
+  'dormer',
+  'plot',
+  'stairs',
+  'section',
+  'north',
+  ...GROUND_TOOLS,
+];
 
 /** Default wall half-thickness (4½"), how far a slab reaches past a room's inner faces to the wall centres. */
 const SLAB_OVERHANG = (4.5 * 25.4) / MM_PER_UNIT;
@@ -112,6 +124,12 @@ export function structurePress(store: Store, inf: Inference) {
       return;
     case 'roof':
       return roofCorner(store, p, true);
+    case 'skylight':
+      s.addSkylight(p);
+      return;
+    case 'dormer':
+      s.addDormer(p);
+      return;
     case 'section':
       if (d?.type !== 'section')
         return s.setDraft({ type: 'section', x1: p.x, y1: p.y, x2: p.x, y2: p.y, placed: false, flip: false });
@@ -121,8 +139,17 @@ export function structurePress(store: Store, inf: Inference) {
       }
       s.addSection({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 }, d.flip);
       return s.setDraft(null);
+    case 'north':
+      if (d?.type !== 'north') return s.setDraft({ type: 'north', at: p, cursor: p });
+      // A click on the spot keeps north as it was; anywhere else turns north towards it.
+      s.placeNorth(d.at, dist(d.at, p) > 1 ? northTowards(d.at, p) : undefined);
+      return s.setDraft(null);
   }
 }
+
+/** Degrees clockwise from up the page, from a to b. */
+export const northTowards = (a: Point, b: Point) =>
+  ((((Math.atan2(b.x - a.x, -(b.y - a.y)) * 180) / Math.PI) % 360) + 360) % 360;
 
 /** Whether a point is on the left of a section line going from its start to its end (it then looks left). */
 function onLeft(d: { x1: number; y1: number; x2: number; y2: number }, p: Point): boolean {
@@ -137,6 +164,7 @@ export function structureHover(store: Store, inf: Inference) {
   if (d?.type === 'beam' || d?.type === 'slab' || d?.type === 'plot')
     s.setDraft({ ...d, x2: inf.point.x, y2: inf.point.y });
   if (d?.type === 'plotPoly' || d?.type === 'roof' || d?.type === 'slabPoly') s.setDraft({ ...d, cursor: inf.point });
+  if (d?.type === 'north') s.setDraft({ ...d, cursor: inf.point });
   if (d?.type === 'section') {
     if (!d.placed) s.setDraft({ ...d, x2: inf.point.x, y2: inf.point.y });
     else if (onLeft(d, inf.point) !== d.flip) s.setDraft({ ...d, flip: !d.flip });
@@ -551,6 +579,14 @@ export function structureHint(s: PlannerState): string {
           ? 'Click the next corner round the walls, or type the side’s length.'
           : 'Click the next corner, or click the first corner (or press Enter) to put the roof on. Ctrl+Z takes back a corner.';
       return 'Click the corners round the outside of the walls (a drag makes a rectangle); the eaves reach past them by the overhang. Or use Roof over the house on the right.';
+    case 'skylight':
+      return 'Click on a roof slope to put a skylight there (780 × 980 mm). Select the roof to change its size or take it out.';
+    case 'dormer':
+      return 'Click on a roof slope where the dormer goes: its front stands 600 mm in from the eaves. Select the roof to change it.';
+    case 'north':
+      return d?.type === 'north'
+        ? 'Click the way north lies (or click the arrow again to keep north as it is).'
+        : 'Click where the north arrow goes, then click the way north lies. North also turns the sun in 3D.';
     case 'stairs':
       return 'Click to place a stair. Pick straight, L, U or a ramp on the right; risers are worked out for you.';
     case 'section':

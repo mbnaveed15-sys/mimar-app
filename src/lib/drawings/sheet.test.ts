@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PREFS } from '../prefs';
-import { emptyDoc } from '../storage';
+import { emptyDoc, normaliseDoc } from '../storage';
 import { createPlannerStore } from '../../store/plannerStore';
 import {
   layoutSheet,
   NATURAL_DASH,
   PEN,
   planArea,
+  sheetScaleOf,
   sheetsOf,
   sidePrims,
   suggestedSheets,
@@ -42,16 +43,36 @@ const source = (doc: PlanDoc): SheetSource => ({
 const texts = (prims: Prim[]) => prims.flatMap((p) => (p.t === 'text' ? [p.text] : []));
 
 describe('sheets', () => {
-  it('suggests a sheet per floor plan, one for the sections and one for the elevations', () => {
+  it('suggests a sheet per floor plan, one for the sections, one for the elevations and one for 3D views', () => {
     const src = source(house());
     expect(planArea(src.doc, src.doc.levels[2].id)).toBeNull();
     const sheets = suggestedSheets(src);
-    expect(sheets.map((s) => s.name)).toEqual(['Ground floor plan', 'First floor plan', 'Sections', 'Elevations']);
-    expect(sheets.map((s) => s.id)).toEqual(['suggested-1', 'suggested-2', 'suggested-3', 'suggested-4']);
+    expect(sheets.map((s) => s.name)).toEqual([
+      'Ground floor plan',
+      'First floor plan',
+      'Sections',
+      'Elevations',
+      '3D views',
+    ]);
+    expect(sheets.map((s) => s.id)).toEqual([
+      'suggested-1',
+      'suggested-2',
+      'suggested-3',
+      'suggested-4',
+      'suggested-5',
+    ]);
     expect(sheets.every((s) => s.paper === 'A3')).toBe(true);
     // A small house fits at the most detailed scale.
     expect(sheets[0].items).toEqual([{ drawing: { kind: 'plan', levelId: src.doc.levels[0].id }, scale: 50 }]);
     expect(sheets[3].items).toHaveLength(4);
+    // An isometric line drawing and the coloured 3D picture.
+    expect(sheets[4].items.map((i) => i.drawing)).toEqual([
+      { kind: 'view3d', style: 'iso' },
+      { kind: 'view3d', style: 'picture' },
+    ]);
+    const l3d = layoutSheet(src, sheets[4], 5, 5);
+    expect(l3d.prims.filter((p) => p.t === 'picture')).toHaveLength(1);
+    expect(texts(l3d.prims)).toEqual(expect.arrayContaining(['ISOMETRIC VIEW', '3D VIEW']));
     expect(sheetsOf(src)).toEqual(sheets);
     // Once the plan has its own sheets (even none), those are used.
     expect(sheetsOf(source({ ...src.doc, sheets: [] }))).toEqual([]);
@@ -95,8 +116,15 @@ describe('sheets', () => {
         'Drawn with Mimar 1.35.0',
       ]),
     );
-    // The section is filled where it is cut.
-    expect(l.prims.some((p) => p.t === 'fill')).toBe(true);
+    // The section is hatched where it is cut (brick walls, concrete slabs: thin lines), or filled solid.
+    const fine = (prims: typeof l.prims) => prims.filter((p) => p.t === 'line' && p.w === PEN.fine).length;
+    const solid = layoutSheet({ ...src, doc: { ...src.doc, drawing: { solidCuts: true } } }, sheet, 1, 3);
+    expect(fine(l.prims)).toBeGreaterThan(fine(solid.prims) + 20);
+    expect(solid.prims.some((p) => p.t === 'fill')).toBe(true);
+    // Its dimensions: the heights and the cut walls, in feet and inches.
+    expect(texts(l.prims).some((t) => /^\d+' \d+"$/.test(t))).toBe(true);
+    const plain = layoutSheet({ ...src, doc: { ...src.doc, drawing: { sideDims: false } } }, sheet, 1, 3);
+    expect(texts(plain.prims).length).toBeLessThan(texts(l.prims).length);
   });
 
   it('warns when the drawings do not fit', () => {
@@ -158,5 +186,34 @@ describe('sheets', () => {
     expect(groundLines.some((p) => Math.abs(p.a[1] - p.b[1]) > 0.1)).toBe(true);
     expect(lines.some((p) => p.dash === NATURAL_DASH)).toBe(true);
     expect(texts(prims)).toEqual(expect.arrayContaining([`±0'-0"`, 'Road level (datum)']));
+  });
+});
+
+describe('custom scales', () => {
+  it('takes any whole 1:n from 1 to 10000', () => {
+    expect(sheetScaleOf('75')).toBe(75);
+    expect(sheetScaleOf(62.6)).toBe(63);
+    expect(sheetScaleOf('0')).toBeNull();
+    expect(sheetScaleOf('abc')).toBeNull();
+    expect(sheetScaleOf(20000)).toBeNull();
+  });
+
+  it('keeps a typed scale when the plan is opened again', () => {
+    const ref = { kind: 'plan', levelId: 'ground' };
+    const doc = normaliseDoc({
+      ...emptyDoc(),
+      sheets: [
+        {
+          id: 's1',
+          name: 'A',
+          paper: 'A3',
+          items: [
+            { drawing: ref, scale: 75 },
+            { drawing: ref, scale: -3 },
+          ],
+        },
+      ],
+    });
+    expect(doc.sheets?.[0].items.map((i) => i.scale)).toEqual([75, 100]);
   });
 });

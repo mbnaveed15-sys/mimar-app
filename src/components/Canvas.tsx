@@ -22,6 +22,7 @@ import { pointAlong } from '../lib/arc';
 import { edgeMiddles, holeEdgeMiddles } from '../lib/curvedEdges';
 import { sideMiddle } from '../lib/plot';
 import { floorVoids } from '../lib/voids';
+import { dimStyleOf } from '../lib/dimStyle';
 import { DrawingOverlay } from './DrawingOverlay';
 import { FurnitureShape } from './shapes/FurnitureShape';
 import { furnitureAt } from '../tools/furnitureTool';
@@ -68,6 +69,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
       below
         ? {
             ...below,
+            northArrow: undefined,
             rooms: [],
             elements: below.elements.filter((el) => el.type !== 'furniture' && el.type !== 'section'),
           }
@@ -122,6 +124,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   // The ghost's item follows the library pick and the turn.
   usePlanner((s) => s.furnitureKind);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
+  const areaIn = usePlanner((s) => s.areaIn);
   const touchInput = usePlanner((s) => s.touchInput);
   const input = usePlanInput((e) => (svgRef.current ? toPlanPoint(svgRef.current, e) : { x: 0, y: 0 }), onContextMenu);
 
@@ -276,6 +279,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         selectedIds={selectedIds}
         units={units}
         marlaSqFt={marlaSqFt}
+        areaIn={areaIn}
         showDimensions={showDimensions}
         showFurniture={showFurniture}
         showRoomLabels={showRoomLabels}
@@ -448,6 +452,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         k={k}
         hoverEdge={hoverEdge}
         dimMode={dimMode}
+        dimLook={dimStyleOf(doc)}
       />
       <CameraEyeMark k={k} />
     </svg>

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { listRecent } from '../lib/recent';
 import { buildSamplePlan } from '../lib/samplePlan';
 import { markSeen } from '../lib/welcome';
 import { plannerStore } from '../store/plannerStore';
@@ -109,15 +110,26 @@ export function Welcome({
   onClose,
   confirmReplace,
   onNewProject,
+  onRecent,
 }: {
   onClose: () => void;
   confirmReplace: (then: () => void) => void;
   /** Start a new project (a house, a free project or a building), after asking about unsaved changes. */
   onNewProject?: () => void;
+  /** Show the plans opened or saved lately. */
+  onRecent?: () => void;
 }) {
   const [step, setStep] = useState<number | null>(null);
   const STEPS = useCoarsePointer() ? TOUCH_STEPS : DESK_STEPS;
   const hasPlan = plannerStore.getState().doc.elements.length > 0;
+  const [hasRecent, setHasRecent] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void listRecent().then((l) => live && setHasRecent(l.length > 0));
+    return () => {
+      live = false;
+    };
+  }, []);
   const rect = useTargetRect(step === null ? null : STEPS[step].target);
   const ref = useRef<HTMLDivElement>(null);
   const isTop = useFocusTrap(ref, step === null);
@@ -187,6 +199,17 @@ export function Welcome({
                 }}
               >
                 Start a new project…
+              </button>
+            )}
+            {onRecent && hasRecent && (
+              <button
+                className="m-btn justify-center py-2"
+                onClick={() => {
+                  markSeen();
+                  onRecent();
+                }}
+              >
+                Open a recent plan…
               </button>
             )}
             <button className="m-btn justify-center py-2" onClick={finish}>

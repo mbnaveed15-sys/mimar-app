@@ -44,10 +44,14 @@ stairwells, Push/Pull snapping, setback marks by the visible shape, and Snap/Che
 room, stair and furniture corner grips, beam width grips, furniture lining up with furniture, shared settings for a
 selection, Mirror keeping groups, the plinth on the plan and per wall, rooms on Ground's floor and lawn together, door
 swings in use zones, room minimums, use zones in 3D and exports, a touch tour, the twist round the fingers and narrower
-phone buttons (1.49).
+phone buttons (1.49); dimension strings and hatching on sections, plan hatches for every material, DIMENSION entities
+in DXF, dimension text size and ends, 3D views on sheets, any sheet scale, a pitch per roof side, skylights, dormers,
+layout lines splitting solids, Divide, Open recent, the sun by date and time with shadows on or off, a North arrow
+tool, room areas in sq ft, marla or both, and Properties on picking a tool (1.50).
 
-Planned next: 1.50 = drawings (dimension strings and material hatching on sections, DIMENSION entities in DXF, text size
-and arrow style for dimensions) and roofs (skylights, dormers, a pitch per side), as agreed with the owner on 13 Oct 2026.
+Left from 1.50 (for later): mansards, domes and vaults; roofs cutting the walls under them; eyebrow or curved dormers
+and dormers on flat roofs; stepped section lines; hovering a roof side in the panel doesn't light it up on the plan;
+the sun uses solar time (no time zone or longitude correction).
 
 Planned next (plan each with the owner first): DHA Lahore and Bahria building figures (their buildings still say
 "check with the authority" until the owner sends the schedules). Left from 1.45: Mimar can't tell a veranda, an

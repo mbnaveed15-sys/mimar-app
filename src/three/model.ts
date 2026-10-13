@@ -28,7 +28,8 @@ import { isBuildingWall, plinthId, thicknessOf, wallReach, wallsOf } from '../wa
 import { plinthMaterialOf, plinthWalls } from '../lib/plinth';
 import { bendPath, openingBend, paramAlong, pointAlong, straightPieces, type Bend } from '../lib/arc';
 import { FRAME_MM, isCurtain, metricProject, mullionStops, transomMm } from '../lib/curtain';
-import { eaveMm, gableWalls, GABLE_WALL_MM, slopedFaces, thicknessUpMm, triangulate } from '../lib/roof/roof';
+import { eaveMm, gableWalls, GABLE_WALL_MM, slopedFaces, thicknessUpMm, triangulateHoles } from '../lib/roof/roof';
+import { DORMER_WALL_THICK_MM, dormerParts, skylightParts } from '../lib/roof/roofOpenings';
 import { groundBeside, lowestAlong, lowestUnder, siteOf, stepOnGround, type TerrainMesh } from './terrain3d';
 
 export type { TerrainKind, TerrainMesh } from './terrain3d';
@@ -140,8 +141,13 @@ export interface Slab3D {
 /** A roof: its sloped faces (the underside, as [x, y, z] points in metres), thickened straight up by h. */
 export interface Roof3D {
   faces: [number, number, number][][];
+  /** Holes through each face (skylights, dormers), in the same order as `faces`. */
+  holes?: [number, number, number][][][];
   h: number;
   color: string;
+  opacity?: number;
+  /** A skylight's glass (no shadow, see-through). */
+  role?: 'glass';
   finish?: Finish;
   id?: string;
   level?: string;
@@ -1292,7 +1298,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       }
       if (el.type === 'roof') {
         const built = roofParts(el, base, levelMm, colorOf(el.material) ?? ROOF_COLOR, finishOf(el.material));
-        roofs.push({ ...built.roof, level: level.id });
+        roofs.push({ ...built.roof, level: level.id }, ...built.extra.map((r) => ({ ...r, level: level.id })));
         panels.push(...built.gables.map((g) => ({ ...g, level: level.id })));
       }
       if (el.type === 'block') {
@@ -1354,18 +1360,84 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
 
 const ROOF_COLOR = '#9a4a3a';
 
-/** A roof's sloped faces over its floor (base, m) and the gable walls rising from the top of the walls to it. */
+/**
+ * A roof's sloped faces over its floor (base, m) and the gable walls rising from the top of the walls to it;
+ * its skylights (frame and glass) and dormers (walls, window and their own roof) cut through it.
+ */
 function roofParts(
   roof: Roof,
   base: number,
   wallTopMm: number,
   color: string,
   finish?: Finish,
-): { roof: Roof3D; gables: Panel[] } {
+): { roof: Roof3D; extra: Roof3D[]; gables: Panel[] } {
   const eave = base + mmToM(eaveMm(roof, wallTopMm));
-  const faces = slopedFaces(roof).map((f) =>
-    f.points.map((p): [number, number, number] => [m(p.x), eave + m(p.z), m(p.y)]),
-  );
+  const xyz = (p: { x: number; y: number; z: number }, up = 0): [number, number, number] => [
+    m(p.x),
+    eave + m(p.z + up),
+    m(p.y),
+  ];
+  const sloped = slopedFaces(roof);
+  const faces = sloped.map((f) => f.points.map((p) => xyz(p)));
+  const holes: [number, number, number][][][] = sloped.map(() => []);
+  const hostOf = (edge: number) => sloped.findIndex((f) => f.edge === edge);
+  const h = mmToM(thicknessUpMm(roof));
+  const extra: Roof3D[] = [];
+  const panel = (w: { at: Point; dir: Point; outline: [number, number][]; holes: [number, number][][] }) => ({
+    outline: w.outline.map(([s, z]): [number, number] => [m(s), m(z)]),
+    ...(w.holes.length && { holes: w.holes.map((hole) => hole.map(([s, z]): [number, number] => [m(s), m(z)])) }),
+    x: m(w.at.x),
+    z: m(w.at.y),
+    y0: eave,
+    rotY: Math.atan2(-w.dir.y, w.dir.x),
+  });
+  const dormerWalls: Panel[] = [];
+  for (const sk of roof.skylights ?? []) {
+    const p = skylightParts(roof, sk);
+    const i = p ? hostOf(p.edge) : -1;
+    if (!p || i < 0) continue;
+    holes[i].push(p.hole.map((q) => xyz(q)));
+    // The frame: the hole's ring round the glass, from the underside up past the roof's top.
+    extra.push({
+      faces: [p.hole.map((q) => xyz(q))],
+      holes: [[p.glass.map((q) => xyz(q))]],
+      h: m(p.frameUp),
+      color: '#3f3f46',
+      id: roof.id,
+    });
+    extra.push({
+      faces: [p.glass.map((q) => xyz(q, p.glassUp))],
+      h: 0.012,
+      color: GLASS_COLOR,
+      opacity: 0.55,
+      role: 'glass',
+      id: roof.id,
+    });
+  }
+  for (const d of roof.dormers ?? []) {
+    const p = dormerParts(roof, d);
+    const i = p ? hostOf(p.edge) : -1;
+    if (!p || i < 0) continue;
+    holes[i].push(p.hole.map((q) => xyz(q)));
+    extra.push({ faces: p.roof.map((f) => f.map((q) => xyz(q))), h, color, ...(finish && { finish }), id: roof.id });
+    for (const w of p.walls)
+      dormerWalls.push({
+        ...panel(w),
+        depth: mmToM(DORMER_WALL_THICK_MM),
+        color: WALL_COLOR,
+        id: roof.id,
+        role: 'wall',
+      });
+    if (p.window.length)
+      dormerWalls.push({
+        ...panel({ ...p.front, outline: p.window, holes: [] }),
+        depth: 0.02,
+        color: GLASS_COLOR,
+        opacity: 0.45,
+        id: roof.id,
+        role: 'glass',
+      });
+  }
   const gables = gableWalls(roof).map((g): Panel => ({
     outline: g.outline.map(([s, z]) => [m(s), m(z)]),
     x: m(g.at.x),
@@ -1377,7 +1449,18 @@ function roofParts(
     id: roof.id,
     role: 'wall',
   }));
-  return { roof: { faces, h: mmToM(thicknessUpMm(roof)), color, ...(finish && { finish }), id: roof.id }, gables };
+  return {
+    roof: {
+      faces,
+      ...(holes.some((x) => x.length) && { holes }),
+      h,
+      color,
+      ...(finish && { finish }),
+      id: roof.id,
+    },
+    extra,
+    gables: [...gables, ...dormerWalls],
+  };
 }
 
 /**
@@ -1394,16 +1477,20 @@ export function roofMesh(r: Roof3D): { positions: number[]; indices: number[] } 
   };
   const normalY = (a: V, b: V, c: V) => (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
   const key = (v: V) => `${v[0].toFixed(4)},${v[1].toFixed(4)},${v[2].toFixed(4)}`;
+  // For each edge, how many faces have it and which way is outside it (away from `centre`).
   const uses = new Map<string, { a: V; b: V; centre: V; n: number }>();
-  for (const face of r.faces) {
-    if (face.length < 3) continue;
-    const up = face.map((p): V => [p[0], p[1] + r.h, p[2]]);
-    const tris = triangulate(face.map(([x, , z]) => ({ x, y: z })));
-    const centre = face
-      .reduce((s, p) => [s[0] + p[0], s[1] + p[1], s[2] + p[2]] as V, [0, 0, 0] as V)
-      .map((c) => c / face.length) as V;
+  const mid = (pts: V[]) =>
+    pts.reduce((s, p) => [s[0] + p[0], s[1] + p[1], s[2] + p[2]] as V, [0, 0, 0] as V).map((c) => c / pts.length) as V;
+  r.faces.forEach((face, fi) => {
+    if (face.length < 3) return;
+    const holes = (r.holes?.[fi] ?? []).filter((h) => h.length >= 3);
+    const corners = [...face, ...holes.flat()];
+    const up = corners.map((p): V => [p[0], p[1] + r.h, p[2]]);
+    const flat = (pts: V[]) => pts.map(([x, , z]) => ({ x, y: z }));
+    const tris = triangulateHoles(flat(face), holes.map(flat));
+    const centre = mid(face);
     for (const [surface, facing] of [
-      [face, -1],
+      [corners, -1],
       [up, 1],
     ] as const) {
       const ids = surface.map(add);
@@ -1420,7 +1507,16 @@ export function roofMesh(r: Roof3D): { positions: number[]; indices: number[] } 
       if (seen) seen.n++;
       else uses.set(k, { a, b, centre, n: 1 });
     });
-  }
+    // A hole's sides face into it: outside them is away from a point mirrored across each side.
+    for (const hole of holes) {
+      const hc = mid(hole);
+      hole.forEach((a, i) => {
+        const b = hole[(i + 1) % hole.length];
+        const m2: V = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+        uses.set(`hole|${fi}|${key(a)}|${key(b)}`, { a, b, centre: [2 * m2[0] - hc[0], 0, 2 * m2[2] - hc[2]], n: 1 });
+      });
+    }
+  });
   // Edges only one face has are the roof's edges: close them with an upright strip facing out.
   for (const { a, b, centre, n } of uses.values()) {
     if (n !== 1) continue;

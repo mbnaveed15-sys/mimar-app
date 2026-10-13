@@ -1,3 +1,4 @@
+import type { Hatch } from './lib/hatch';
 import type { LayerState } from './lib/layers';
 import type { FurnitureKind } from './furniture/catalog';
 import type { AuthorityId } from './lib/bylaws';
@@ -37,6 +38,11 @@ export interface Material {
   pattern?: Pattern;
   /** Size of one repeat (a tile, a brick, a plank's width), in millimetres. */
   sizeMm?: number;
+  /**
+   * The hatch on 2D drawings (plans, sections, sheets): one of the hatches, 'none', or worked out from the
+   * name and pattern when missing. 3D always shows the material itself.
+   */
+  hatch?: Hatch | 'none';
 }
 
 /** Membership of a group or component copy, and the floor (level) an item is on. */
@@ -247,11 +253,62 @@ export interface Roof extends Grouped {
   gables?: number[];
   /** A shed roof's low side (an edge index); the longest edge when missing. */
   lowEdge?: number;
+  /**
+   * Hip and gable roofs: each side's own pitch in degrees (points[i] to points[i+1]); the roof's pitch where
+   * null or missing. The eaves stay level all round, so a steeper side reaches out less past the walls.
+   */
+  sidePitches?: (number | null)[];
+  /** Roof windows in its slopes (see roofOpenings.ts). */
+  skylights?: Skylight[];
+  /** Dormers standing up out of its slopes. */
+  dormers?: Dormer[];
   /** How far the eaves reach past the walls, mm. */
   overhangMm: number;
   /** The roof's thickness (deck, insulation and covering), mm. */
   thicknessMm: number;
   material?: Id;
+}
+
+/**
+ * A roof window: it lies in the slope of the roof face its middle (x, y, plan units) is over, or on a small
+ * upstand on a flat roof. Its width runs along the eaves, its length up the slope (true length).
+ */
+export interface Skylight {
+  id: Id;
+  x: number;
+  y: number;
+  wMm: number;
+  lMm: number;
+}
+
+/** A dormer's own little roof: two slopes and a gable at the front, or one slope back up to the main roof. */
+export type DormerKind = 'gable' | 'shed';
+
+/**
+ * A dormer: a small box standing up out of a sloping roof face, with a window in its front. (x, y) is the
+ * middle of its front, in plan; it runs back up the slope until its roof meets the main roof.
+ */
+export interface Dormer {
+  id: Id;
+  x: number;
+  y: number;
+  wMm: number;
+  kind: DormerKind;
+  /** How high its front wall stands above the roof, to the underside of its own roof, mm. */
+  wallMm: number;
+}
+
+export interface SunSettings {
+  /** The real sun for the date and time below; the usual fixed sun when false or missing. */
+  timed?: boolean;
+  month: number;
+  day: number;
+  /** Solar time, hours (12 is noon). */
+  hour: number;
+  /** Degrees north; the site's own (from its map location) or Lahore's when missing. */
+  latitude?: number;
+  /** Shadows in the 3D view (on when missing). */
+  shadows?: boolean;
 }
 
 /** The plot: its outline, which edge faces the road, and the setbacks (in mm) from each side. */
@@ -603,6 +660,33 @@ export interface PlanDoc {
   ground?: GroundSettings;
   /** Where the site is on the map, for the surroundings and satellite levels. */
   location?: { lat: number; lon: number };
+  /** How dimensions and drawings look (the defaults when missing). */
+  drawing?: DrawingStyle;
+  /** Where the north arrow stands on the plan (its centre); it points the way northDeg says. None: no arrow. */
+  northArrow?: Point;
+  /** The 3D view's sun: shadows, and the real sun for a date and time (see sun.ts). */
+  sun?: SunSettings;
+}
+
+/** Dimension text sizes: about 2.5, 3.5 and 5 mm on paper. */
+export type DimText = 'small' | 'medium' | 'large';
+/** How a dimension line ends: a slash, an arrowhead or a dot. */
+export type DimEnds = 'tick' | 'arrow' | 'dot';
+
+/** How dimensions and the sections and elevations look; only what differs from the defaults is kept. */
+export interface DrawingStyle {
+  /** Medium when missing. */
+  dimText?: DimText;
+  /** A tick when missing. */
+  dimEnds?: DimEnds;
+  /** Dimension strings drawn on sections and elevations (on when missing). */
+  sideDims?: boolean;
+  /** What a section cuts is hatched by its material (when missing), or filled solid black. */
+  solidCuts?: boolean;
+  /** Walls and columns on the plan are hatched by their material (on when missing). */
+  planHatch?: boolean;
+  /** Floors, lawns, paths and levelled areas on the plan are hatched by their material (on when missing). */
+  floorHatch?: boolean;
 }
 
 /** The finished ground and how the ground is drawn. */
@@ -622,10 +706,16 @@ export type ElevationSide = 'front' | 'back' | 'left' | 'right';
 
 /** A drawing that can go on a sheet: a floor plan, a section or an elevation. */
 export type DrawingRef =
-  { kind: 'plan'; levelId: Id } | { kind: 'section'; id: Id } | { kind: 'elevation'; side: ElevationSide };
+  | { kind: 'plan'; levelId: Id }
+  | { kind: 'section'; id: Id }
+  | { kind: 'elevation'; side: ElevationSide }
+  | { kind: 'view3d'; style: View3dStyle };
 
-/** The scales a drawing can be printed at on a sheet (1:50, 1:100, 1:200). */
-export type SheetScale = 50 | 100 | 200;
+/** A 3D view on a sheet: an isometric line drawing, or a coloured picture with the materials. */
+export type View3dStyle = 'iso' | 'picture';
+
+/** A drawing's scale on a sheet, 1:n: the usual ones (1:50, 1:100…) or any whole number from 1 to 10000. */
+export type SheetScale = number;
 
 export interface SheetItem {
   drawing: DrawingRef;
@@ -715,6 +805,9 @@ export type Tool =
   | 'contour'
   | 'pad'
   | 'roof'
+  | 'skylight'
+  | 'dormer'
+  | 'north'
   | 'dimension';
 
 /** Every tool, in tool-rail order. */
@@ -732,6 +825,8 @@ export const TOOLS: Tool[] = [
   'beam',
   'slab',
   'roof',
+  'skylight',
+  'dormer',
   'plot',
   'stairs',
   'door',
@@ -740,6 +835,7 @@ export const TOOLS: Tool[] = [
   'shape',
   'pushpull',
   'section',
+  'north',
   'level',
   'contour',
   'pad',
@@ -800,6 +896,8 @@ export type Draft =
   /** A section line: its two ends, then (once both are down) the side it looks to, from the pointer. */
   | { type: 'section'; x1: number; y1: number; x2: number; y2: number; placed: boolean; flip: boolean }
   | { type: 'slab'; x1: number; y1: number; x2: number; y2: number }
+  /** The north arrow: where it stands, then the pointer turns it (north points at the pointer). */
+  | { type: 'north'; at: Point; cursor: Point }
   | { type: 'plot'; x1: number; y1: number; x2: number; y2: number }
   /** A plot drawn corner by corner: the corners so far, and where the pointer is. */
   | { type: 'plotPoly'; points: Point[]; cursor: Point }
@@ -965,3 +1063,5 @@ export type PaperSize = 'A4' | 'A3' | 'A1';
 
 /** Size of one marla in square feet: 225 (LDA and most societies) or 272.25 (traditional). */
 export type MarlaSqFt = 225 | 272.25;
+/** What a room's area is shown in: the plan's units (sq ft or m²), marla, or both. */
+export type AreaIn = 'units' | 'marla' | 'both';

@@ -3,6 +3,7 @@ import { COLLECTIONS, PATTERNS, searchLibrary } from '../lib/materials';
 import { swatchUrl } from '../lib/patterns';
 import { usePlanner } from '../store/plannerStore';
 import type { Material, Pattern } from '../types';
+import { HATCHES, hatchOfMaterial, type Hatch } from '../lib/hatch';
 
 function Swatch({ mat, size = 'h-4 w-6' }: { mat: Pick<Material, 'color' | 'pattern'>; size?: string }) {
   return (
@@ -64,6 +65,35 @@ function CustomEditor({ mat }: { mat: Material }) {
   );
 }
 
+/** The hatch a material shows on 2D drawings: automatic (from its name and pattern), one picked, or none. */
+function HatchPicker({ mat }: { mat: Material }) {
+  const updateMaterial = usePlanner((s) => s.updateMaterial);
+  const auto = hatchOfMaterial({ ...mat, hatch: undefined });
+  const autoLabel = HATCHES.find((h) => h.id === auto)?.label ?? 'by what it is used for';
+  return (
+    <label className="flex items-center gap-2 text-xs">
+      <span className="text-muted">2D hatch</span>
+      <select
+        aria-label="Material hatch"
+        value={mat.hatch ?? 'auto'}
+        onChange={(e) => {
+          const v = e.target.value;
+          updateMaterial(mat.id, { hatch: v === 'auto' ? undefined : (v as Hatch | 'none') });
+        }}
+        className="flex-1 rounded-sm border p-1"
+      >
+        <option value="auto">Automatic ({autoLabel})</option>
+        {HATCHES.map((h) => (
+          <option key={h.id} value={h.id}>
+            {h.label}
+          </option>
+        ))}
+        <option value="none">None (solid)</option>
+      </select>
+    </label>
+  );
+}
+
 /** Materials in the plan, then the built-in library by collection, with a search box. */
 export function MaterialsPanel() {
   const materials = usePlanner((s) => s.doc.materials);
@@ -93,6 +123,7 @@ export function MaterialsPanel() {
       <div className="text-xs font-medium text-muted">In this plan</div>
       <div className="flex flex-wrap gap-1.5">{materials.map(button)}</div>
       {active?.id.startsWith('mat_custom_') && <CustomEditor mat={active} />}
+      {active && <HatchPicker mat={active} />}
       <button onClick={addMaterial} className="m-btn self-start text-xs">
         New colour…
       </button>

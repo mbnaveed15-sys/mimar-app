@@ -9,6 +9,7 @@ import { directionAlong, pointAlong } from './arc';
 import { openRooms, slabVoids, within } from './voids';
 import { isCurtain } from './curtain';
 import { gableArea, GABLE_WALL_MM, slopedArea } from './roof/roof';
+import { dormerParts, skylightParts } from './roof/roofOpenings';
 import { polygonArea } from '../rooms';
 import { outsideOutline } from './outline';
 import { DOOR_HEAD_MM, WINDOW_HEAD_MM, WINDOW_SILL_MM } from '../three/model';
@@ -286,6 +287,20 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
           const sqft = el.shape === 'flat' ? areaSqft(el.points) : slopedArea(el) * FT * FT;
           q.slabCft += sqft * mmFt(el.thicknessMm);
           if (el.shape !== 'flat') q.roofSqft += sqft;
+          // Skylights and dormer windows count with the windows; a skylight leaves no covering where it is.
+          for (const sk of el.skylights ?? []) {
+            if (!skylightParts(el, sk)) continue;
+            const glass = mmFt(sk.wMm) * mmFt(sk.lMm);
+            q.windows += 1;
+            q.windowSqft += glass;
+            if (el.shape !== 'flat') q.roofSqft = Math.max(0, q.roofSqft - glass);
+          }
+          for (const d of el.dormers ?? []) {
+            const w = dormerParts(el, d)?.window;
+            if (!w?.length) continue;
+            q.windows += 1;
+            q.windowSqft += (w[1][0] - w[0][0]) * (w[2][1] - w[1][1]) * FT * FT;
+          }
           // The gable walls up to it, plastered both sides.
           const gable = gableArea(el) * FT * FT;
           q.brickworkCft += gable * mmFt(GABLE_WALL_MM);

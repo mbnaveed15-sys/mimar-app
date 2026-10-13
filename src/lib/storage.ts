@@ -31,9 +31,13 @@ import {
   type PaperSize,
   type Sheet,
   type SheetItem,
-  type SheetScale,
   type GroundSettings,
+  type DrawingStyle,
+  type Dormer,
+  type Roof,
   type RoofKind,
+  type Skylight,
+  type SunSettings,
   type DimTie,
   type PlinthSpec,
 } from '../types';
@@ -42,6 +46,7 @@ import { authorityById, type AuthorityId } from './bylaws';
 import { LAYERS, type LayerState } from './layers';
 import { defaultMaterials, PATTERNS } from './materials';
 import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
+import { parseHatch } from './hatch';
 import { MAX_PITCH_DEG, ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from './roof/roof';
 
 const ROOF_SHAPES: RoofKind[] = ['hip', 'gable', 'shed', 'flat'];
@@ -54,9 +59,10 @@ export const STORAGE_KEY = 'mimar.plan';
  * every kind of building, and more building uses; 15 dimensions and curved slab voids; 16 a plot's
  * bylaw area and road width, and LDA's built-up and open areas; 17 the Ground (site) level and your own
  * plinth; 18 furniture heights, items on the lawn of the one Ground level, and the plinth's own settings;
- * 19 the plinth's own projection and material under single walls.
+ * 19 the plinth's own projection and material under single walls; 20 dimension text size and ends,
+ * drawing options, a pitch per roof side, skylights and dormers.
  */
-export const CURRENT_VERSION = 19;
+export const CURRENT_VERSION = 20;
 
 /** The automatic plinth's projection (0 to 1 m) and material; nothing when neither is set. */
 function normalisePlinth(raw: unknown): PlinthSpec | undefined {
@@ -130,6 +136,27 @@ const nameOf = (v: unknown, fallback: string) => (typeof v === 'string' ? cleanT
 
 const inRange = (v: unknown, lo: number, hi: number): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+/** A roof's skylights and dormers, each kept only when it is whole and sensible. */
+function roofOpeningsOf(raw: Record<string, unknown>): Pick<Roof, 'skylights' | 'dormers'> {
+  const list = (v: unknown) =>
+    Array.isArray(v) ? (v.filter((x) => x && typeof x === 'object') as Record<string, unknown>[]) : [];
+  const where = (x: Record<string, unknown>) =>
+    typeof x.id === 'string' && x.id && Number.isFinite(x.x) && Number.isFinite(x.y)
+      ? { id: x.id, x: x.x as number, y: x.y as number }
+      : null;
+  const skylights = list(raw.skylights).flatMap((x): Skylight[] => {
+    const at = where(x);
+    return at && inRange(x.wMm, 200, 5000) && inRange(x.lMm, 200, 5000) ? [{ ...at, wMm: x.wMm, lMm: x.lMm }] : [];
+  });
+  const dormers = list(raw.dormers).flatMap((x): Dormer[] => {
+    const at = where(x);
+    return at && inRange(x.wMm, 500, 10000) && inRange(x.wallMm, 300, 5000)
+      ? [{ ...at, wMm: x.wMm, wallMm: x.wallMm, kind: x.kind === 'shed' ? 'shed' : 'gable' }]
+      : [];
+  });
+  return { ...(skylights.length && { skylights }), ...(dormers.length && { dormers }) };
+}
+
 /** Height above the floor and window sill, kept only when set and sensible. */
 const heightsOf = (raw: Record<string, unknown>) => ({
   ...(inRange(raw.elevMm, -5000, 30000) && raw.elevMm !== 0 ? { elevMm: raw.elevMm } : {}),
@@ -385,6 +412,14 @@ function normaliseElement(raw: unknown): PlanElement | null {
         pitchDeg: inRange(raw.pitchDeg, 0, MAX_PITCH_DEG) ? raw.pitchDeg : ROOF_PITCH_DEG,
         ...(gables && { gables }),
         ...(edge(raw.lowEdge) && { lowEdge: raw.lowEdge as number }),
+        ...(Array.isArray(raw.sidePitches) &&
+          raw.sidePitches.some((v) => inRange(v, 0, MAX_PITCH_DEG)) && {
+            sidePitches: points.map((_, i) => {
+              const v = (raw.sidePitches as unknown[])[i];
+              return inRange(v, 0, MAX_PITCH_DEG) ? (v as number) : null;
+            }),
+          }),
+        ...roofOpeningsOf(raw),
         overhangMm: inRange(raw.overhangMm, 0, 5000) ? raw.overhangMm : ROOF_OVERHANG_MM.imperial,
         thicknessMm: inRange(raw.thicknessMm, 10, 1000) ? raw.thicknessMm : ROOF_THICKNESS_MM,
       };
@@ -668,6 +703,7 @@ function normaliseMaterial(raw: unknown): Material | null {
       ? { pattern: raw.pattern as Pattern }
       : {}),
     ...(typeof raw.sizeMm === 'number' && raw.sizeMm > 0 ? { sizeMm: raw.sizeMm } : {}),
+    ...(parseHatch(raw.hatch) ? { hatch: parseHatch(raw.hatch) } : {}),
   };
 }
 
@@ -707,6 +743,11 @@ export function normaliseDoc(raw: unknown): PlanDoc {
       : {}),
     ...(Array.isArray(obj.sheets) ? { sheets: normaliseSheets(obj.sheets) } : {}),
     ...(normaliseGround(obj.ground) ? { ground: normaliseGround(obj.ground) } : {}),
+    ...(normaliseDrawing(obj.drawing) ? { drawing: normaliseDrawing(obj.drawing) } : {}),
+    ...(isObject(obj.northArrow) && Number.isFinite(obj.northArrow.x) && Number.isFinite(obj.northArrow.y)
+      ? { northArrow: { x: obj.northArrow.x as number, y: obj.northArrow.y as number } }
+      : {}),
+    ...(normaliseSun(obj.sun) ? { sun: normaliseSun(obj.sun) } : {}),
     ...(isObject(obj.location) && inRange(obj.location.lat, -90, 90) && inRange(obj.location.lon, -180, 180)
       ? { location: { lat: obj.location.lat, lon: obj.location.lon } }
       : {}),
@@ -725,8 +766,36 @@ function normaliseGround(raw: unknown): GroundSettings | undefined {
   return Object.keys(out).length ? out : undefined;
 }
 
+/** The 3D view's sun, or nothing when it isn't usable. */
+function normaliseSun(raw: unknown): SunSettings | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  if (!inRange(r.month, 1, 12) || !inRange(r.day, 1, 31) || !inRange(r.hour, 0, 24)) return undefined;
+  return {
+    ...(r.timed === true && { timed: true }),
+    month: Math.round(r.month),
+    day: Math.round(r.day),
+    hour: r.hour,
+    ...(inRange(r.latitude, -90, 90) && { latitude: r.latitude }),
+    ...(r.shadows === false && { shadows: false }),
+  };
+}
+
+/** How dimensions and drawings look, keeping only what differs from the defaults. */
+function normaliseDrawing(raw: unknown): DrawingStyle | undefined {
+  if (!isObject(raw)) return undefined;
+  const out: DrawingStyle = {
+    ...(raw.dimText === 'small' || raw.dimText === 'large' ? { dimText: raw.dimText } : {}),
+    ...(raw.dimEnds === 'arrow' || raw.dimEnds === 'dot' ? { dimEnds: raw.dimEnds } : {}),
+    ...(raw.sideDims === false ? { sideDims: false } : {}),
+    ...(raw.solidCuts === true ? { solidCuts: true } : {}),
+    ...(raw.planHatch === false ? { planHatch: false } : {}),
+    ...(raw.floorHatch === false ? { floorHatch: false } : {}),
+  };
+  return Object.keys(out).length ? out : undefined;
+}
+
 const PAPERS: PaperSize[] = ['A4', 'A3', 'A1'];
-const SCALES: SheetScale[] = [50, 100, 200];
 const SIDES: ElevationSide[] = ['front', 'back', 'left', 'right'];
 
 function normaliseDrawingRef(raw: unknown): DrawingRef | null {
@@ -735,6 +804,8 @@ function normaliseDrawingRef(raw: unknown): DrawingRef | null {
   if (raw.kind === 'section' && raw.id !== undefined) return { kind: 'section', id: String(raw.id) };
   if (raw.kind === 'elevation' && SIDES.includes(raw.side as ElevationSide))
     return { kind: 'elevation', side: raw.side as ElevationSide };
+  if (raw.kind === 'view3d' && (raw.style === 'iso' || raw.style === 'picture'))
+    return { kind: 'view3d', style: raw.style };
   return null;
 }
 
@@ -749,9 +820,9 @@ function normaliseSheets(raw: unknown[]): Sheet[] {
       items: (Array.isArray(s.items) ? s.items : []).flatMap((item): SheetItem[] => {
         const drawing = isObject(item) ? normaliseDrawingRef(item.drawing) : null;
         if (!drawing) return [];
-        const scale = SCALES.includes((item as Record<string, unknown>).scale as SheetScale)
-          ? ((item as Record<string, unknown>).scale as SheetScale)
-          : 100;
+        // Any whole 1:n from 1:1 to 1:10000 (as sheet.ts's sheetScaleOf).
+        const n = Math.round(Number((item as Record<string, unknown>).scale));
+        const scale = Number.isFinite(n) && n >= 1 && n <= 10000 ? n : 100;
         return [{ drawing, scale }];
       }),
     }));

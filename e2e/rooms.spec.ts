@@ -50,6 +50,13 @@ test('rooms show their area in sq ft and marla, and the covered area adds up', a
 
   await (await openSection(page, 'Settings'), page.getByLabel('Marla size')).selectOption('272.25');
   await expect(page.getByTestId('area-summary')).toContainText('2.20 marla');
+
+  // On the plan a room shows sq ft only, unless marla (or both) is picked.
+  await expect(page.getByTestId('room-area').first()).toHaveText('240 sq ft');
+  await page.getByLabel('Room areas in').selectOption('both');
+  await expect(page.getByTestId('room-area').first()).toHaveText('240 sq ft · 0.88 marla');
+  await page.getByLabel('Room areas in').selectOption('marla');
+  await expect(page.getByTestId('room-area').first()).toHaveText('0.88 marla');
 });
 
 test('clicking outside closed walls explains what to do', async ({ page }) => {

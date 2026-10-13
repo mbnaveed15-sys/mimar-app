@@ -1,8 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { exportDrawingsDxf, exportSheetsPdf } from '../lib/exportActions';
 import { newId } from '../lib/ids';
 import { levelContent, drawingSource } from '../lib/drawings/source';
-import { layoutSheet, planArea, sheetsOf, sidePrims, SHEET_SCALES, type Prim } from '../lib/drawings/sheet';
+import {
+  layoutSheet,
+  MAX_SHEET_SCALE,
+  MIN_SHEET_SCALE,
+  planArea,
+  sheetScaleOf,
+  sheetsOf,
+  sidePrims,
+  SHEET_SCALES,
+  type Prim,
+} from '../lib/drawings/sheet';
 import {
   drawingFromKey,
   drawingKey,
@@ -12,6 +22,7 @@ import {
   sectionLines,
   sectionTitle,
 } from '../lib/drawings/views';
+import { VIEW3D_NAMES, VIEW3D_STYLES } from '../lib/drawings/refs';
 import { withoutHidden } from '../lib/layers';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import type { DrawingRef, PaperSize, Sheet, SheetScale } from '../types';
@@ -34,6 +45,7 @@ export function DrawingsView() {
   const current = usePlanner((s) => s.drawing);
   const showDrawing = usePlanner((s) => s.showDrawing);
   const setSheets = usePlanner((s) => s.setSheets);
+  const setDrawingStyle = usePlanner((s) => s.setDrawingStyle);
   const [zoom, setZoom] = useState(1);
 
   const shown = useMemo(() => withoutHidden(doc, { layers: doc.layers, showFurniture }), [doc, showFurniture]);
@@ -59,9 +71,16 @@ export function DrawingsView() {
       return { w: l.paper.w, h: l.paper.h, prims: l.prims, overflow: l.overflow };
     }
     if (!ref || ref.kind === 'plan') return null;
-    const d = src.side(ref);
+    const d = src.side(ref.kind === 'view3d' ? { kind: 'view3d', style: 'iso' } : ref);
     if (!d?.bounds) return null;
-    const prims = sidePrims(d, VIEW_SCALE, 10, 10);
+    if (ref.kind === 'view3d' && ref.style === 'picture') {
+      // The picture in the isometric's box, at 1:100.
+      const k = 1000 / VIEW_SCALE;
+      const w = (d.bounds.maxU - d.bounds.minU + 0.6) * k;
+      const h = (d.bounds.maxV - d.bounds.minV + 0.6) * k;
+      return { w: w + 20, h: h + 20, prims: [{ t: 'picture', x: 10, y: 10, w, h }] };
+    }
+    const prims = sidePrims(d, VIEW_SCALE, 10, 10, src.doc.drawing);
     const xs = prims.flatMap((p) => (p.t === 'line' ? [p.a[0], p.b[0]] : p.t === 'text' ? [p.x + 40] : []));
     const ys = prims.flatMap((p) => (p.t === 'line' ? [p.a[1], p.b[1]] : p.t === 'text' ? [p.y] : []));
     return { w: Math.max(...xs) + 10, h: Math.max(...ys) + 10, prims };
@@ -80,7 +99,13 @@ export function DrawingsView() {
     ...doc.levels.filter((l) => planArea(shown, l.id)).map((l): DrawingRef => ({ kind: 'plan', levelId: l.id })),
     ...sections.map((s): DrawingRef => ({ kind: 'section', id: s.id })),
     ...ELEVATION_SIDES.map((side): DrawingRef => ({ kind: 'elevation', side })),
+    ...VIEW3D_STYLES.map((style): DrawingRef => ({ kind: 'view3d', style })),
   ];
+  const picture = useCallback(
+    (w: number, h: number) =>
+      import('../three/picture').then((m) => m.renderPicture(shown, { wallHeightMm, showFurniture }, w, h)),
+    [shown, wallHeightMm, showFurniture],
+  );
 
   const item = (key: string, label: string, testId?: string) => (
     <button
@@ -115,6 +140,10 @@ export function DrawingsView() {
           {ELEVATION_SIDES.map((side) => item(`elevation:${side}`, ELEVATION_NAMES[side], `drawing-${side}`))}
         </div>
         <div>
+          <div className="m-heading px-2">3D views</div>
+          {VIEW3D_STYLES.map((style) => item(`view3d:${style}`, VIEW3D_NAMES[style], `drawing-view3d-${style}`))}
+        </div>
+        <div>
           <div className="m-heading px-2">Sheets</div>
           {sheets.map((s, i) => item(`sheet:${s.id}`, `${i + 1}. ${s.name} (${s.paper})`, `sheet-${i + 1}`))}
           <div className="mt-1 flex flex-wrap gap-1 px-2">
@@ -146,7 +175,35 @@ export function DrawingsView() {
           />
         )}
 
-        <div className="mt-auto flex flex-col gap-1 border-t border-line pt-2">
+        <div className="mt-auto flex flex-col gap-1.5 border-t border-line pt-2">
+          <label className="flex items-center gap-2 px-1">
+            <input
+              type="checkbox"
+              data-testid="side-dims"
+              checked={doc.drawing?.sideDims !== false}
+              onChange={(e) => setDrawingStyle({ sideDims: e.target.checked })}
+            />
+            Dimensions on sections and elevations
+          </label>
+          <div className="flex items-center gap-2 px-1">
+            <span className="text-muted">Cut parts</span>
+            <div role="radiogroup" aria-label="Cut parts" className="m-seg">
+              <button
+                role="radio"
+                aria-checked={!doc.drawing?.solidCuts}
+                onClick={() => setDrawingStyle({ solidCuts: false })}
+              >
+                Hatched
+              </button>
+              <button
+                role="radio"
+                aria-checked={!!doc.drawing?.solidCuts}
+                onClick={() => setDrawingStyle({ solidCuts: true })}
+              >
+                Solid black
+              </button>
+            </div>
+          </div>
           <button className="m-btn m-btn-primary justify-center" onClick={() => exportSheetsPdf()}>
             <Icon name="sheet" size={15} />
             Export sheets (PDF)
@@ -178,6 +235,7 @@ export function DrawingsView() {
                 >
                   <rect width={page.w} height={page.h} fill="#fff" />
                   <PrimsSvg
+                    picture={picture}
                     prims={page.prims}
                     plan={(levelId) => levelContent(plannerStore.getState(), shown, levelId)}
                   />
@@ -251,24 +309,11 @@ function SheetEditor({
         {sheet.items.map((it, i) => (
           <div key={drawingKey(it.drawing)} className="flex items-center gap-1">
             <span className="min-w-0 flex-1 truncate">{title(it.drawing) || 'Deleted drawing'}</span>
-            <select
-              aria-label={`Scale of ${title(it.drawing)}`}
-              value={it.scale}
-              onChange={(e) =>
-                onChange({
-                  items: sheet.items.map((x, j) =>
-                    j === i ? { ...x, scale: Number(e.target.value) as SheetScale } : x,
-                  ),
-                })
-              }
-              className="rounded-sm border p-0.5"
-            >
-              {SHEET_SCALES.map((s) => (
-                <option key={s} value={s}>
-                  1:{s}
-                </option>
-              ))}
-            </select>
+            <ScalePicker
+              label={`Scale of ${title(it.drawing)}`}
+              scale={it.scale}
+              onChange={(scale) => onChange({ items: sheet.items.map((x, j) => (j === i ? { ...x, scale } : x)) })}
+            />
             <button
               className="grid h-6 w-6 place-items-center rounded-sm hover:bg-sunken"
               aria-label={`Take ${title(it.drawing)} off the sheet`}
@@ -302,5 +347,69 @@ function SheetEditor({
         Delete sheet
       </button>
     </div>
+  );
+}
+
+/** A drawing's scale: one of the usual ones, or Custom… to type any 1:n. */
+function ScalePicker({
+  label,
+  scale,
+  onChange,
+}: {
+  label: string;
+  scale: SheetScale;
+  onChange: (scale: SheetScale) => void;
+}) {
+  const usual = SHEET_SCALES.includes(scale);
+  const [custom, setCustom] = useState(!usual);
+  const [typed, setTyped] = useState(String(scale));
+  const commit = () => {
+    const n = sheetScaleOf(typed);
+    if (n) onChange(n);
+    else setTyped(String(scale));
+  };
+  return (
+    <>
+      <select
+        aria-label={label}
+        value={custom ? 'custom' : scale}
+        onChange={(e) => {
+          if (e.target.value === 'custom') {
+            setCustom(true);
+            setTyped(String(scale));
+            return;
+          }
+          setCustom(false);
+          onChange(Number(e.target.value));
+        }}
+        className="rounded-sm border p-0.5"
+      >
+        {SHEET_SCALES.map((s) => (
+          <option key={s} value={s}>
+            1:{s}
+          </option>
+        ))}
+        <option value="custom">{custom && !usual ? `1:${scale}` : 'Custom…'}</option>
+      </select>
+      {custom && (
+        <span className="flex items-center">
+          1:
+          <input
+            aria-label={`Custom ${label.charAt(0).toLowerCase()}${label.slice(1)}`}
+            type="number"
+            min={MIN_SHEET_SCALE}
+            max={MAX_SHEET_SCALE}
+            step={1}
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit();
+            }}
+            className="w-14 rounded-sm border p-0.5 tabular-nums"
+          />
+        </span>
+      )}
+    </>
   );
 }

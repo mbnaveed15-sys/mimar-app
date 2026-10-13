@@ -507,12 +507,15 @@ interface Clean {
   pts: Point[];
   runs: number[][];
   gable: boolean[];
+  /** Each eave's speed (see skeletonRoof's `weight`). */
+  weight: number[];
 }
 
-function cleanOutline(outline: Point[], gable: boolean[], tol: number): Clean {
+function cleanOutline(outline: Point[], gable: boolean[], tol: number, weight: number[] = []): Clean {
   const pts = outline.map((p) => ({ x: p.x, y: p.y }));
   const runs = outline.map((_, i) => [i]);
   const gab = outline.map((_, i) => !!gable[i]);
+  const wt = outline.map((_, i) => (weight[i] > 0 && Number.isFinite(weight[i]) ? weight[i] : 1));
   for (let changed = true; changed && pts.length >= 3;) {
     changed = false;
     const m = pts.length;
@@ -527,15 +530,17 @@ function cleanOutline(outline: Point[], gable: boolean[], tol: number): Clean {
       if (la > tol && lb > tol && !inLine) continue;
       // Merge edge h (p to q) with edge i (q to r). A zero-length edge takes the other's gable flag.
       gab[h] = la <= tol ? gab[i] : lb <= tol ? gab[h] : gab[h] && gab[i];
+      if (la <= tol) wt[h] = wt[i];
       runs[h] = runs[h].concat(runs[i]);
       pts.splice(i, 1);
       runs.splice(i, 1);
       gab.splice(i, 1);
+      wt.splice(i, 1);
       changed = true;
       break;
     }
   }
-  return { pts, runs, gable: gab };
+  return { pts, runs, gable: gab, weight: wt };
 }
 
 const p3 = (x: number, y: number, z: number): Point3 => ({ x, y, z });
@@ -627,11 +632,16 @@ function skeletonLines(edges: Edge[], nodes: Node3[], cycles: number[][], slope:
       const [s, o] = sloped;
       const E = edges[s.f];
       const G = edges[o.f];
-      if (Math.abs(E.nx - G.nx) + Math.abs(E.ny - G.ny) <= 1e-9 && Math.abs(E.c - G.c) <= eps) continue;
+      // Planes rise along n / w (a slow edge is a steep side).
+      if (
+        Math.abs(E.nx / E.w - G.nx / G.w) + Math.abs(E.ny / E.w - G.ny / G.w) <= 1e-9 &&
+        Math.abs(E.c / E.w - G.c / G.w) <= eps
+      )
+        continue;
       // Face s lies to the left of its own a→b; the roof is convex there if s's plane dips below o's.
       const ex = nodes[s.b][0] - nodes[s.a][0];
       const ey = nodes[s.b][1] - nodes[s.a][1];
-      kind = level ? 'ridge' : (E.nx - G.nx) * -ey + (E.ny - G.ny) * ex < 0 ? 'hip' : 'valley';
+      kind = level ? 'ridge' : (E.nx / E.w - G.nx / G.w) * -ey + (E.ny / E.w - G.ny / G.w) * ex < 0 ? 'hip' : 'valley';
     } else if (sloped.length === 1) {
       kind = sides.length >= 2 ? 'verge' : level ? 'ridge' : 'hip';
     } else if (sides.length === 1) {
@@ -647,33 +657,35 @@ function skeletonLines(edges: Edge[], nodes: Node3[], cycles: number[][], slope:
 
 /**
  * A hipped (all weights 1), gabled (some weights 0) or mixed roof by the weighted straight skeleton. `gable[i]`
- * true makes edge i a gable: it stays put and its face is a vertical wall up to the roof. Works for any simple
+ * true makes edge i a gable: it stays put and its face is a vertical wall up to the roof. `weight[i]` (1 when
+ * missing) is how fast eave i moves in: its side rises at slope / weight, so a slower edge makes a steeper side.
+ * Works for any simple
  * outline in either winding; points in line are dropped first (a run of edges in line becomes one face, filed
  * under the run's first edge, and is a gable only if every edge in it is). With slope 0 the roof is flat and
  * gable faces are left out. A gable meeting a reflex corner carries on as a wall into the plan (the roof steps
  * there, as the weighted skeleton has it). Never throws: if the skeleton can't be built (say gables wall in a pocket no eave
  * reaches) the roof is hipped all round instead, and if that fails too, or every edge is a gable, it is flat.
  */
-export function skeletonRoof(outline: Point[], slope: number, gable: boolean[] = []): RoofShape {
+export function skeletonRoof(outline: Point[], slope: number, gable: boolean[] = [], weight: number[] = []): RoofShape {
   const rise = Number.isFinite(slope) && slope > 0 ? slope : 0;
   const scale = extent(outline);
   if (!(scale > 0) || outline.length < 3) return emptyShape();
   const tol = 1e-9 * scale;
-  const clean = cleanOutline(outline, gable, tol);
+  const clean = cleanOutline(outline, gable, tol, weight);
   const m = clean.pts.length;
   if (m < 3 || Math.abs(signedArea(clean.pts)) <= tol * scale) return emptyShape();
   // Work counter-clockwise (y up): q-edge j is clean edge cEdge(j).
   const flip = signedArea(clean.pts) < 0;
   const q = flip ? clean.pts.slice().reverse() : clean.pts;
   const cEdge = (j: number) => (flip ? (2 * m - 2 - j) % m : j);
-  const edges = q.map((a, j) => makeEdge(a, q[(j + 1) % m], clean.gable[cEdge(j)] ? 0 : 1));
+  const edges = q.map((a, j) => makeEdge(a, q[(j + 1) % m], clean.gable[cEdge(j)] ? 0 : clean.weight[cEdge(j)]));
   const eps = 1e-7 * scale;
   const sk = wavefront(q, edges, eps);
   const cycles = sk && assemble(q, edges, sk, eps);
   if (!sk || !cycles) {
     // A pocket walled in by gables alone can't be roofed: hip it all instead (or lie flat if nothing is an eave).
     const some = clean.gable.some(Boolean) && !clean.gable.every(Boolean);
-    return some ? skeletonRoof(outline, slope) : flatShape(outline, clean, tol);
+    return some ? skeletonRoof(outline, slope, [], weight) : flatShape(outline, clean, tol);
   }
 
   const { nodes } = sk;
@@ -707,7 +719,7 @@ export function skeletonRoof(outline: Point[], slope: number, gable: boolean[] =
       if (d < bestD) [best, bestD] = [e, d];
     }
     if (!best) return 0;
-    return Math.min(peak, Math.max(0, (best.nx * p.x + best.ny * p.y - best.c) * rise));
+    return Math.min(peak, Math.max(0, ((best.nx * p.x + best.ny * p.y - best.c) / best.w) * rise));
   };
   return {
     faces,

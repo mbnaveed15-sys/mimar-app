@@ -5,14 +5,16 @@
 import { buildModel, levelBaseM, M_PER_UNIT, type Model3D } from '../../three/model';
 import { buildingLevels, levelWallMm, slabMm } from '../levels';
 import { outsideOutline } from '../outline';
-import { isBuildingWall } from '../../walls';
+import { isBuildingWall, plinthWallOf } from '../../walls';
 import { floorVoids, slabVoids, within } from '../voids';
 import { roofTopMm } from '../roof/roof';
+import { hatchOf, hatchOfMaterial, type Hatch } from '../hatch';
+import { plinthMaterialOf } from '../plinth';
 import { sideOutward } from '../plot';
 import { groundOf, type Ground } from '../terrain/ground';
 import { profileAlong } from '../terrain/surface';
 import { formatLevel } from './levels';
-import { drawingKey, ELEVATION_NAMES, sectionLines, sectionLook, sectionTitle } from './refs';
+import { drawingKey, ELEVATION_NAMES, sectionLines, sectionLook, sectionTitle, VIEW3D_NAMES } from './refs';
 import {
   GROUND_LEVEL,
   isSiteItem,
@@ -57,6 +59,63 @@ export interface SideDrawing extends Projection {
   /** The ground's shape, when the plan has any (otherwise the ground is a straight line at ±0). */
   profile?: GroundProfile;
   levels: LevelMark[];
+  /** The dimension strings drawn on it (when the plan's drawing style has them on). */
+  dims?: SideDims;
+  /** A 3D view looking down on the building: drawn without the ground line or level marks. */
+  iso?: boolean;
+}
+
+/**
+ * A section's or elevation's dimension strings, in drawing metres: the heights between its level marks (up the
+ * side), and across it the walls and spaces a section cuts (or an elevation's overall width).
+ */
+export interface SideDims {
+  heights: number[];
+  across: number[];
+  units: Units;
+}
+
+/** Where a level line at height v crosses the cut pieces: their [from, to] runs along u, merged and in order. */
+export function cutRunsAt(cut: P2[][][], v: number): [number, number][] {
+  const runs: [number, number][] = [];
+  for (const poly of cut) {
+    const hits: number[] = [];
+    for (const ring of poly)
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i];
+        const b = ring[(i + 1) % ring.length];
+        if (a[1] > v === b[1] > v) continue;
+        hits.push(a[0] + ((b[0] - a[0]) * (v - a[1])) / (b[1] - a[1]));
+      }
+    hits.sort((x, y) => x - y);
+    for (let i = 0; i + 1 < hits.length; i += 2) runs.push([hits[i], hits[i + 1]]);
+  }
+  runs.sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+  for (const r of runs) {
+    const last = merged[merged.length - 1];
+    if (last && r[0] <= last[1] + 1e-4) last[1] = Math.max(last[1], r[1]);
+    else merged.push([...r]);
+  }
+  return merged.filter(([a, b]) => b - a > 1e-3);
+}
+
+/**
+ * The dimension strings: the level marks' heights, and across a section the cut walls and the spaces between them
+ * a metre above the floor that cuts the most of them (an elevation: its overall width).
+ */
+function sideDims(p: Projection, levels: LevelMark[], cutAcross: boolean, units: Units): SideDims {
+  const heights = [...new Set(levels.map((m) => Math.round(m.v * 1000) / 1000))].sort((a, b) => a - b);
+  let across: number[] = [];
+  if (cutAcross && p.cut.length) {
+    let best: [number, number][] = [];
+    for (const m of levels) {
+      const runs = cutRunsAt(p.cut, m.v + 1);
+      if (runs.length > best.length) best = runs;
+    }
+    across = best.flat();
+  } else if (p.bounds) across = [p.bounds.minU, p.bounds.maxU];
+  return { heights: heights.length >= 2 ? heights : [], across, units };
 }
 
 /** The plot whose road side is the front, if there is one. */
@@ -138,18 +197,39 @@ export function impliedSlabList(doc: PlanDoc, wallHeightMm: number): ImpliedSlab
   return out;
 }
 
-/** The implied slabs as prisms. */
+/** The implied slabs as prisms (reinforced concrete). */
 function impliedSlabs(doc: PlanDoc, wallHeightMm: number): Prism[] {
   return impliedSlabList(doc, wallHeightMm).map((s) => {
     const ring = (pts: Point[]): V3[] => pts.map((p) => [p.x * M_PER_UNIT, s.y, p.y * M_PER_UNIT]);
-    return { rings: [ring(s.outline), ...s.holes.map(ring)], extrude: [0, s.h, 0] };
+    return { rings: [ring(s.outline), ...s.holes.map(ring)], extrude: [0, s.h, 0], hatch: 'rcc' as const };
   });
 }
 
-/** The model's pieces as prisms, leaving out any whose id is in `skip`. */
-export function modelPrisms(model: Model3D, skip: Set<Id> = new Set()): Prism[] {
+/** How a model piece is hatched where a section cuts it: glass as glass, frames solid, the rest by its plan item. */
+export type HatchLookup = (id: string | undefined, role?: string) => Hatch | null;
+
+/** The hatch lookup for a plan: each item's material, else what it is; the plinth by its own material, else brick. */
+export function hatchLookup(doc: PlanDoc): HatchLookup {
+  const byId = new Map(doc.elements.map((el) => [el.id, el] as const));
+  return (id, role) => {
+    if (role === 'glass') return 'glass';
+    if (role === 'door') return null;
+    const wallId = id ? plinthWallOf(id) : null;
+    if (wallId) {
+      const wall = byId.get(wallId);
+      const material = wall?.type === 'wall' ? plinthMaterialOf(doc, wall) : undefined;
+      return hatchOfMaterial(doc.materials.find((m) => m.id === material)) ?? 'brick';
+    }
+    return hatchOf(id ? byId.get(id) : undefined, doc.materials);
+  };
+}
+
+/** The model's pieces as prisms, leaving out any whose id is in `skip`, each with its hatch when `hatch` is given. */
+export function modelPrisms(model: Model3D, skip: Set<Id> = new Set(), hatch?: HatchLookup): Prism[] {
   const out: Prism[] = [];
   const keep = (id?: string) => !id || !skip.has(id);
+  const tag = (prism: Prism, id?: string, role?: string): Prism =>
+    hatch ? { ...prism, hatch: hatch(id, role) } : prism;
   for (const s of model.solids) {
     if (s.role === 'furniture' || !keep(s.id) || s.h <= 0) continue;
     const ax = { x: Math.cos(s.rotY), z: -Math.sin(s.rotY) };
@@ -159,7 +239,13 @@ export function modelPrisms(model: Model3D, skip: Set<Id> = new Set()): Prism[] 
       s.y0,
       s.z + ((ax.z * s.w) / 2) * i + ((az.z * s.d) / 2) * j,
     ];
-    out.push({ rings: [[corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)]], extrude: [0, s.h, 0] });
+    out.push(
+      tag(
+        { rings: [[corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)]], extrude: [0, s.h, 0] },
+        s.id,
+        s.role,
+      ),
+    );
   }
   for (const p of model.panels) {
     if (p.role === 'shape' || !keep(p.id) || p.outline.length < 3) continue;
@@ -170,20 +256,29 @@ export function modelPrisms(model: Model3D, skip: Set<Id> = new Set()): Prism[] 
       p.y0 + t,
       p.z + ax.z * s - (az.z * p.depth) / 2,
     ];
-    out.push({
-      rings: [p.outline.map(at), ...(p.holes ?? []).map((h) => h.map(at))],
-      extrude: [az.x * p.depth, 0, az.z * p.depth],
-    });
+    out.push(
+      tag(
+        {
+          rings: [p.outline.map(at), ...(p.holes ?? []).map((h) => h.map(at))],
+          extrude: [az.x * p.depth, 0, az.z * p.depth],
+        },
+        p.id,
+        p.role,
+      ),
+    );
   }
   // A roof: each sloped face pushed straight up through the roof's thickness.
   for (const r of model.roofs ?? []) {
     if (!keep(r.id)) continue;
-    for (const face of r.faces) if (face.length >= 3) out.push({ rings: [face], extrude: [0, r.h, 0] });
+    r.faces.forEach((face, i) => {
+      if (face.length >= 3)
+        out.push(tag({ rings: [face, ...(r.holes?.[i] ?? [])], extrude: [0, r.h, 0] }, r.id, r.role));
+    });
   }
   for (const s of [...model.slabs, ...model.blocks]) {
     if (s.role === 'shape' || s.role === 'furniture' || !keep(s.id) || s.h <= 0 || s.points.length < 3) continue;
     const ring = (pts: [number, number][]) => pts.map(([x, z]): V3 => [x, s.y0, z]);
-    out.push({ rings: [ring(s.points), ...(s.holes ?? []).map(ring)], extrude: [0, s.h, 0] });
+    out.push(tag({ rings: [ring(s.points), ...(s.holes ?? []).map(ring)], extrude: [0, s.h, 0] }, s.id, s.role));
   }
   return out;
 }
@@ -280,12 +375,14 @@ function finish(
   const b = p.bounds;
   const margin = 1;
   const ground = b ? { u0: b.minU - margin, u1: b.maxU + margin } : { u0: -1, u1: 1 };
+  const levels = levelMarks(doc, opts);
   return {
     ...p,
     title,
     ground,
     ...(profile && { profile: trimProfile(profile, ground.u0, ground.u1) }),
-    levels: levelMarks(doc, opts),
+    levels,
+    dims: sideDims(p, levels, p.cut.length > 0, opts.units),
   };
 }
 
@@ -457,7 +554,7 @@ export function sideDrawing(doc: PlanDoc, ref: DrawingRef, opts: DrawingOptions)
     const line = sectionLines(doc).find((s) => s.id === ref.id);
     if (!line || (line.x1 === line.x2 && line.y1 === line.y2)) return null;
     const model = buildModel(doc, { wallHeightMm: opts.wallHeightMm, showFurniture: false, closedDoors: true });
-    const prisms = [...modelPrisms(model, siteIds(doc)), ...impliedSlabs(doc, opts.wallHeightMm)];
+    const prisms = [...modelPrisms(model, siteIds(doc), hatchLookup(doc)), ...impliedSlabs(doc, opts.wallHeightMm)];
     const frame: ViewFrame = {
       origin: { x: line.x1 * M_PER_UNIT, z: line.y1 * M_PER_UNIT },
       look: sectionLook(line),
@@ -473,6 +570,26 @@ export function sideDrawing(doc: PlanDoc, ref: DrawingRef, opts: DrawingOptions)
   }
   const model = buildModel(doc, { wallHeightMm: opts.wallHeightMm, showFurniture: false, closedDoors: true });
   const prisms = [...modelPrisms(model, boundaryIds(doc)), ...impliedSlabs(doc, opts.wallHeightMm)];
+  if (ref.kind === 'view3d') {
+    // From the front-left corner, looking down 30°: the building in lines (no ground, levels or dimensions).
+    const f = frontLook(doc);
+    const r = rightOf(f);
+    const len = Math.SQRT2;
+    const p = project(prisms, {
+      origin: { x: model.centre.x, z: model.centre.z },
+      look: { x: (f.x + r.x) / len, z: (f.z + r.z) / len },
+      cut: false,
+      tilt: Math.PI / 6,
+    });
+    const b = p.bounds;
+    return {
+      ...p,
+      title: VIEW3D_NAMES[ref.style],
+      ground: b ? { u0: b.minU, u1: b.maxU } : { u0: -1, u1: 1 },
+      levels: [],
+      iso: true,
+    };
+  }
   const frame: ViewFrame = {
     origin: { x: model.centre.x, z: model.centre.z },
     look: elevationLook(doc, ref.side),

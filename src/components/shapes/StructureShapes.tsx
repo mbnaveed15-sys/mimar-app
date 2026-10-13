@@ -1,40 +1,57 @@
 import { centroid, fromFurnitureLocal } from '../../geometry';
-import { roofShape, slopedFaces } from '../../lib/roof/roof';
+import { roofEaves, roofShape, slopedFaces } from '../../lib/roof/roof';
+import { dormerParts, skylightParts } from '../../lib/roof/roofOpenings';
 import { PLAN } from '../../theme/plan';
 import type { Beam, Block, Column, Point, Roof, Slab } from '../../types';
+import { ringsPath, type Hatch } from '../../lib/hatch';
+import { HatchArea } from './Hatching';
 
-/** A column: solid, as it is cut by the plan. */
+/** A column's corners on the plan (a square column; a round one is its circle). */
+const columnCorners = (col: Column) =>
+  [
+    { x: -col.w / 2, y: -col.h / 2 },
+    { x: col.w / 2, y: -col.h / 2 },
+    { x: col.w / 2, y: col.h / 2 },
+    { x: -col.w / 2, y: col.h / 2 },
+  ].map((c) => fromFurnitureLocal(col, c));
+
+/** A column: solid as it is cut by the plan, or hatched (by its material) when `hatch` is given. */
 export function ColumnShape({
   col,
   selected,
   color,
   k,
+  hatch,
 }: {
   col: Column;
   selected: boolean;
   color?: string;
   k: number;
+  hatch?: { uid: string; hatch: Hatch };
 }) {
-  const style = { fill: color ?? PLAN.wallEdge, stroke: selected ? PLAN.selection : PLAN.wallEdge };
+  const style = {
+    fill: color ?? (hatch ? PLAN.paper : PLAN.wallEdge),
+    stroke: selected ? PLAN.selection : PLAN.wallEdge,
+  };
+  const r = col.w / 2;
+  const d =
+    col.shape === 'round'
+      ? `M${col.x - r} ${col.y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`
+      : ringsPath([columnCorners(col)]);
   return (
     <g data-type="column" data-id={col.id}>
       {col.shape === 'round' ? (
-        <circle cx={col.x} cy={col.y} r={col.w / 2} style={style} strokeWidth={(selected ? 3 : 1) * k} />
+        <circle cx={col.x} cy={col.y} r={r} style={style} strokeWidth={(selected ? 3 : 1) * k} />
       ) : (
         <polygon
-          points={[
-            { x: -col.w / 2, y: -col.h / 2 },
-            { x: col.w / 2, y: -col.h / 2 },
-            { x: col.w / 2, y: col.h / 2 },
-            { x: -col.w / 2, y: col.h / 2 },
-          ]
-            .map((c) => fromFurnitureLocal(col, c))
+          points={columnCorners(col)
             .map((p) => `${p.x},${p.y}`)
             .join(' ')}
           style={style}
           strokeWidth={(selected ? 3 : 1) * k}
         />
       )}
+      {hatch && <HatchArea uid={hatch.uid} hatch={hatch.hatch} d={d} />}
     </g>
   );
 }
@@ -141,7 +158,7 @@ export function RoofShape({ roof, selected, k }: { roof: Roof; selected: boolean
   return (
     <g data-type="roof" data-id={roof.id} data-shape={roof.shape}>
       <path
-        d={ring(roof.points)}
+        d={ring(roofEaves(roof))}
         style={{ fill: PLAN.selection, ...stroke }}
         fillOpacity={selected ? 0.08 : 0}
         strokeWidth={(selected ? 2.5 : 1.25) * k}
@@ -189,6 +206,26 @@ export function RoofShape({ roof, selected, k }: { roof: Roof; selected: boolean
             </g>
           );
         })}
+      {(roof.skylights ?? []).map((sk) => {
+        const p = skylightParts(roof, sk);
+        if (!p) return null;
+        return (
+          <g key={sk.id} data-testid="roof-skylight-plan" style={stroke} strokeWidth={1 * k} fill="none">
+            <path d={ring(p.hole)} strokeDasharray={`${6 * k} ${3 * k}`} />
+            <path d={ring(p.glass)} strokeDasharray={`${6 * k} ${3 * k}`} />
+          </g>
+        );
+      })}
+      {(roof.dormers ?? []).map((d) => {
+        const p = dormerParts(roof, d);
+        if (!p) return null;
+        return (
+          <g key={d.id} data-testid="roof-dormer-plan" style={stroke} strokeWidth={1 * k} fill="none">
+            <path d={ring(p.footprint)} strokeDasharray={`${10 * k} ${5 * k}`} />
+            {p.ridge && <line x1={p.ridge[0].x} y1={p.ridge[0].y} x2={p.ridge[1].x} y2={p.ridge[1].y} />}
+          </g>
+        );
+      })}
       {selected &&
         roof.points.map((a, i) => {
           const b = roof.points[(i + 1) % n];

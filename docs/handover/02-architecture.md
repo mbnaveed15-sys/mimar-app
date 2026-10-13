@@ -161,6 +161,20 @@ autosaves to local storage on every change.
   `steelRetaining`. Bylaws: `Authority.basement` (`extent`, `clearMm`); plan check rows `basement-extent`,
   `basement-height`, `basement`. Layouts: `Program.basement`/`gym`, `basementOutline`, `buildLayout` options
   `outer`, `noWindows`, `stairAt`; `placeLayout(built, true)` replaces retaining walls too.
+- Drawings, roofs, sun and extras (1.50): dimension look `doc.drawing` (`dimStyle.ts`). Section and elevation
+  dimension strings and hatched cuts in `src/lib/drawings` (`sidePrims` takes the style). Plan hatches `src/lib/hatch.ts`
+  (`hatchOf`, `surfaceHatchOf`, `HatchArea` in `shapes/Hatching.tsx`; `Material.hatch`). DXF DIMENSION entities
+  (`dxf.dimension` with a drawn block) and hatch layers. 3D views on sheets: `view3d` refs, iso lines from
+  `hiddenLines.ts`, the coloured picture from `three/picture.ts` (off screen). `SheetScale` is any whole number
+  (`sheetScaleOf`, `ScalePicker`). Roofs: `Roof.sidePitches` through the weighted skeleton (`skeletonRoof(…, weight)`,
+  `roofEaves`, `built()` cached per roof); `src/lib/roof/roofOpenings.ts` (`skylightParts`, `dormerParts`, `faceUnder`)
+  give holes (`Roof3D.holes`, `triangulateHoles`), frame/glass roofs (`Roof3D.role 'glass'`, IFCWINDOW .SKYLIGHT.) and
+  dormer walls (in `gables`). `src/lib/splitSolids.ts` (`splitSolidsByLine`, called by `addLine`), `divideWall` in
+  `modify.ts` (store `divideItem`). `src/lib/recent.ts` (desktop IPC `mimar:recent-list|open|clear`, `recent.json` in
+  userData; browser localStorage copies `mimar-recent:<name>`). `src/lib/sun.ts` (`sunPosition`, `sunDirection` from
+  `doc.sun` and `doc.northDeg`, used by `Plan3DView` and `picture.ts`); North arrow tool (`doc.northArrow`, store
+  `placeNorth`, `NorthArrowShape`, DXF `A-ANNO-SYMB`). Pref `areaIn` and `roomAreaText` in `units.ts`. `SidePanel`
+  switches to Properties when the tool changes. Format 20.
 - Projects (1.33): `PlanDoc.project` (`ProjectSettings`: `type` house/free/building, `use`, `units`, `wallHeightMm`,
   `slabMm`, `panels`); no `project` means a house. `src/lib/project.ts`: `projectOf`, `shows(doc, panel)` (the
   project's switch, else the type's usual), `unitsFor`, `ROOM_TYPES` per use, `daylightRooms`. `planCheck` returns

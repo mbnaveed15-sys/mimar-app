@@ -37,8 +37,20 @@ test('draws a section, shows it with the elevations and sheets, and exports them
   await expect(view).toBeVisible();
   await view.getByTestId('drawing-section-A').click();
   await expect(view.getByTestId('drawing-section-A')).toHaveAttribute('aria-pressed', 'true');
-  // Walls and slabs cut, filled solid.
-  await expect(page.getByTestId('drawing-svg').locator('path[fill="#111"], path[fill="#000"]').first()).toBeVisible();
+  // Walls and slabs cut, hatched by material, with dimension strings; or filled solid black.
+  const svg = page.getByTestId('drawing-svg');
+  // (Level marks are small solid triangles either way.)
+  const solid = svg.locator('path[fill="#111"], path[fill="#000"]');
+  const marks = await solid.count();
+  expect(await svg.locator('line').count()).toBeGreaterThan(40);
+  await expect(svg).toContainText(`20' 9"`);
+  await view.getByRole('radio', { name: 'Solid black' }).click();
+  await expect.poll(() => solid.count()).toBeGreaterThan(marks);
+  await view.getByRole('radio', { name: 'Hatched' }).click();
+  await expect(solid).toHaveCount(marks);
+  await view.getByTestId('side-dims').uncheck();
+  await expect(svg).not.toContainText(`20' 9"`);
+  await view.getByTestId('side-dims').check();
   await expect(page.getByTestId('drawing-svg')).toContainText('Natural ground');
   await view.getByTestId('drawing-front').click();
   await expect(page.getByTestId('drawing-svg')).toContainText('Ground floor (plinth)');
@@ -47,6 +59,11 @@ test('draws a section, shows it with the elevations and sheets, and exports them
   await expect(view.getByTestId('sheet-1')).toHaveText('1. Ground floor plan (A3)');
   await expect(view.getByTestId('sheet-2')).toHaveText('2. Sections (A3)');
   await expect(view.getByTestId('sheet-3')).toHaveText('3. Elevations (A3)');
+  // And the 3D views: an isometric line drawing and a coloured picture.
+  await expect(view.getByTestId('sheet-4')).toHaveText('4. 3D views (A3)');
+  await view.getByTestId('drawing-view3d-iso').click();
+  await expect(view.getByTestId('drawing-view3d-iso')).toHaveAttribute('aria-pressed', 'true');
+  expect(await svg.locator('line').count()).toBeGreaterThan(6);
   await view.getByTestId('sheet-3').click();
   const editor = view.getByTestId('sheet-editor');
   await editor.getByLabel('Sheet name').fill('Elevations and section');
@@ -54,9 +71,14 @@ test('draws a section, shows it with the elevations and sheets, and exports them
   await editor.getByRole('radio', { name: 'A1' }).click();
   await editor.getByLabel('Add a drawing').selectOption({ label: 'Section A–A' });
   await editor.getByLabel('Scale of Section A–A').selectOption('50');
+  // Any scale can be typed.
+  await editor.getByLabel('Scale of Section A–A').selectOption('custom');
+  await editor.getByLabel('Custom scale of Section A–A').fill('60');
+  await editor.getByLabel('Custom scale of Section A–A').press('Enter');
+  await expect(page.getByTestId('drawing-svg')).toContainText('Scale 1:60');
   await expect(view.getByTestId('sheet-3')).toHaveText('3. Elevations and section (A1)');
   await expect(page.getByTestId('drawing-svg')).toContainText('SECTION A–A');
-  await expect(page.getByTestId('drawing-svg')).toContainText('3 of 3');
+  await expect(page.getByTestId('drawing-svg')).toContainText('3 of 4');
 
   // Sheets are saved with the plan.
   await page.reload();
@@ -76,7 +98,8 @@ test('draws a section, shows it with the elevations and sheets, and exports them
   const dxf = await save(() => menu(page, 'File', 'Export sections and elevations (DXF)'));
   expect(dxf.name).toBe('Untitled - Sections and elevations.dxf');
   const text = dxf.data.toString();
-  for (const layer of ['A-SECT-CUT', 'A-SECT-OUTL', 'A-ANNO-LEVL']) expect(text).toContain(layer);
+  for (const layer of ['A-SECT-CUT', 'A-SECT-OUTL', 'A-ANNO-LEVL', 'A-SECT-PATT']) expect(text).toContain(layer);
+  expect(text).toContain('DIMENSION');
   expect(text).toContain('SECTION A-A');
   expect(text).toContain('RIGHT SIDE ELEVATION');
 
