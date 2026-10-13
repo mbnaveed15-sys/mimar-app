@@ -210,7 +210,14 @@ function nearPolyline(points: Point[], p: Point, reach: number): boolean {
 /** Topmost (last drawn) element near the point, or null. */
 export function findElementNear(elements: PlanElement[], p: Point, threshold: number): PlanElement | null {
   for (let i = elements.length - 1; i >= 0; i--) {
-    if (isNear(elements[i], p, threshold)) return elements[i];
+    const el = elements[i];
+    if (!isNear(el, p, threshold)) continue;
+    // A wire or pipe ends on the middle of its item: a click on the item, not right on the run, takes the item.
+    if (el.type === 'run' && !nearPolyline(el.points, p, threshold / 3)) {
+      for (let j = i - 1; j >= 0; j--)
+        if (elements[j].type === 'furniture' && isNear(elements[j], p, threshold)) return elements[j];
+    }
+    return el;
   }
   return null;
 }

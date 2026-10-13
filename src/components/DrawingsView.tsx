@@ -109,7 +109,7 @@ export function DrawingsView() {
       const k = 1000 / VIEW_SCALE;
       const w = (d.bounds.maxU - d.bounds.minU + 0.6) * k;
       const h = (d.bounds.maxV - d.bounds.minV + 0.6) * k;
-      const v = ref.kind === 'view' ? savedView(doc, ref.id) : null;
+      const v = ref.kind === 'view' ? savedView(src.doc, ref.id) : null;
       const camera = v?.kind === '3d' ? v.camera : undefined;
       return { w: w + 20, h: h + 20, prims: [{ t: 'picture', x: 10, y: 10, w, h, camera }] };
     }

@@ -102,10 +102,10 @@ describe('saved views', () => {
     const l = layoutSheet(source(doc), sheet, 0, 1);
     const plan = l.prims.find((p) => p.t === 'plan');
     // The view's own area, 10' × 8' at 1:50, with no room added round it.
-    expect(plan).toMatchObject({ area: views(base)[0].area, scale: 50 });
+    expect(plan).toMatchObject({ area: { minX: 0, minY: 0, maxX: ft(10), maxY: ft(8) }, scale: 50 });
     expect(plan && plan.t === 'plan' && plan.w).toBeCloseTo((10 * 304.8) / 50, 3);
     const picture = l.prims.find((p) => p.t === 'picture');
-    expect(picture).toMatchObject({ camera: views(base)[1].camera });
+    expect(picture).toMatchObject({ camera: { distance: 25, azimuth: 0.6 } });
     const names = l.prims.flatMap((p) => (p.t === 'text' ? [p.text] : []));
     expect(names).toEqual(expect.arrayContaining(['KITCHEN CORNER', 'FROM THE STREET', 'Scale 1:50']));
     // The 3D view in lines is drawn (lines on the sheet beside the plan).
