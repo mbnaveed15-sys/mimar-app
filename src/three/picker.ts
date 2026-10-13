@@ -29,6 +29,11 @@ export interface Picker3D {
    * metres: their tops and bottoms, or their sides, for Push/Pull to snap to.
    */
   extentsAlong?(axis: 0 | 1 | 2, exceptId: Id): number[];
+  /**
+   * A corner of another item (not `exceptId`) near a screen position, in scene metres, for Push/Pull
+   * to snap a face to (SketchUp style: pull until the face lines up with a corner you point at).
+   */
+  cornerAt?(clientX: number, clientY: number, exceptId: Id): Vec3 | null;
 }
 
 /** Each view on screen registers its picker; in split view both do, and the one in use answers. */

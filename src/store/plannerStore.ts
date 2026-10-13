@@ -22,6 +22,7 @@ import { MM_PER_UNIT } from '../lib/scale';
 import { DEFAULT_AREA, fitView, MAX_ZOOM, VIEW_HISTORY, VIEW_STEP_MS, zoomAt, type Size } from '../lib/view';
 import { syncDimensions } from '../lib/dimensions';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
+import { resetElementSize, type ScaleAxis } from '../lib/resize';
 import { detectRoom, openWallEnds } from '../rooms';
 import type { Inference } from '../lib/inference';
 import {
@@ -585,7 +586,8 @@ export interface PlannerState {
   openingStamp: Opening[];
   stampQueue: boolean;
   setOpeningStamp: (stamp: Opening[], queue?: boolean) => void;
-  addFurniture: (p: Point) => void;
+  /** Place the chosen library item centred at `p`, turned `rotation` (the Furniture tool's angle when missing). */
+  addFurniture: (p: Point, rotation?: number) => void;
   /**
    * Give an item the chosen material. For a wall, `side` paints just one side (1 is side A, -1
    * side B) or, with 0, just the top and ends; without it the whole wall, both sides included.
@@ -636,6 +638,23 @@ export interface PlannerState {
   /** Library item placed by the Furniture tool. */
   furnitureKind: FurnitureKind;
   setFurnitureKind: (kind: FurnitureKind) => void;
+  /** How far the Furniture tool turns the next item placed (degrees, clockwise on the plan, as Rotation). */
+  furnitureAngle: number;
+  setFurnitureAngle: (deg: number) => void;
+  /** Where the Furniture tool would put the item at the pointer (its centre), shown see-through. */
+  furnitureGhost: (Point & { rotation: number }) | null;
+  setFurnitureGhost: (at: (Point & { rotation: number }) | null) => void;
+  /** Which way the Scale tool stretches: both ways, or only across (x) or only up and down (y). */
+  scaleAxis: ScaleAxis;
+  setScaleAxis: (axis: ScaleAxis) => void;
+  /** Alt is held: snapping works the other way round (off while it is on, on while it is off). */
+  snapFlip: boolean;
+  setSnapFlip: (flip: boolean) => void;
+  /** The side grip last dragged, so a length typed next sets that size exactly. */
+  lastResize: { id: Id; grip: string } | null;
+  setLastResize: (r: { id: Id; grip: string } | null) => void;
+  /** Put the selected furniture back to its library size, and columns to the Structure size. */
+  resetSize: (ids?: Id[]) => number;
   /** Elements that can be clicked: hidden furniture is left out. */
   /** Items on the floor being drawn that are shown (not hidden, nor on a hidden layer). */
   visibleElements: () => PlanElement[];
@@ -882,6 +901,11 @@ export function createPlannerStore(
       accessibleZones: prefs.accessibleZones,
       selectionBar: prefs.selectionBar,
       furnitureKind: DEFAULT_FURNITURE_KIND,
+      furnitureAngle: 0,
+      furnitureGhost: null,
+      scaleAxis: 'both',
+      lastResize: null,
+      snapFlip: false,
       wallThicknessMm: prefs.wallThicknessMm,
       openingGapMm: prefs.openingGapMm,
       openingStamp: [],
@@ -1044,6 +1068,8 @@ export function createPlannerStore(
           axisLock: null,
           shiftLock: null,
           lastCopy: null,
+          lastResize: null,
+          furnitureGhost: null,
           hoverEdge: null,
           // Picking a tool goes back to the plan from the Drawings view (Select, Pan and Zoom work there).
           ...(!['select', 'pan', 'zoom'].includes(tool) && { drawing: null }),
@@ -1331,7 +1357,7 @@ export function createPlannerStore(
         }
         return true;
       },
-      addFurniture: (p) => {
+      addFurniture: (p, rotation = get().furnitureAngle) => {
         const kind = get().furnitureKind;
         const size = FURNITURE_CATALOG[kind];
         const el: PlanElement = {
@@ -1342,6 +1368,7 @@ export function createPlannerStore(
           y: p.y,
           w: mmToPx(size.w),
           h: mmToPx(size.d),
+          ...(rotation ? { rotation } : {}),
         };
         updateElements((els) => [...els, onActive(el)]);
         // Show the new item so it is visible even if the furniture layer was hidden.
@@ -1536,6 +1563,27 @@ export function createPlannerStore(
         persistPrefs();
       },
       setFurnitureKind: (furnitureKind) => set({ furnitureKind }),
+      setFurnitureAngle: (deg) => set({ furnitureAngle: (((Math.round(deg * 100) / 100) % 360) + 360) % 360 }),
+      setFurnitureGhost: (furnitureGhost) => set({ furnitureGhost }),
+      setScaleAxis: (scaleAxis) => set({ scaleAxis }),
+      setLastResize: (lastResize) => set({ lastResize }),
+      setSnapFlip: (snapFlip) => {
+        if (get().snapFlip !== snapFlip) set({ snapFlip });
+      },
+      resetSize: (ids) => {
+        const picked = new Set(ids ?? get().selectedIds);
+        const c = get().structure;
+        let count = 0;
+        updateElements((els) =>
+          els.map((el) => {
+            if (!picked.has(el.id) || el.locked) return el;
+            const next = resetElementSize(el, c);
+            if (next !== el) count++;
+            return next;
+          }),
+        );
+        return count;
+      },
       visibleElements: () => {
         const { doc, showFurniture } = get();
         const v = { layers: doc.layers, showFurniture };

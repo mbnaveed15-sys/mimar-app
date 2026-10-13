@@ -6,7 +6,7 @@ import { buildModel, levelBaseM, M_PER_UNIT, type Model3D } from '../../three/mo
 import { buildingLevels, levelWallMm, slabMm } from '../levels';
 import { outsideOutline } from '../outline';
 import { isBuildingWall } from '../../walls';
-import { openRooms, voidsOver, within } from '../voids';
+import { floorVoids, slabVoids, within } from '../voids';
 import { roofTopMm } from '../roof/roof';
 import { sideOutward } from '../plot';
 import { groundOf, type Ground } from '../terrain/ground';
@@ -122,16 +122,16 @@ export function impliedSlabList(doc: PlanDoc, wallHeightMm: number): ImpliedSlab
     const outline = outsideOutline(buildingWalls(doc, level.id));
     if (!outline) return;
     const base = levelBaseM(doc, level.id, wallHeightMm);
-    // Double-height rooms leave the slab over them open.
+    // Double-height rooms and stairwells leave the slab over them open.
     const voids = (pts: Point[][]) => pts.filter((v) => within(v, outline));
     const below = levels[i - 1];
     if (!below || !drawn(below.id)) {
-      const holes = voids(voidsOver(doc, level.id).map((r) => r.points));
+      const holes = voids(floorVoids(doc, level.id).map((r) => r.points));
       out.push({ level: level.id, kind: 'floor', outline, holes, y: base - slab, h: slab });
     }
     if (!drawn(level.id) && !roofed(level.id)) {
       const top = base + levelWallMm(doc, level.id, wallHeightMm) / 1000;
-      const holes = voids(openRooms(doc, level.id).map((r) => r.points));
+      const holes = voids(slabVoids(doc, level.id).map((r) => r.points));
       out.push({ level: level.id, kind: 'roof', outline, holes, y: top, h: slab });
     }
   });

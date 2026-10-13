@@ -12,7 +12,8 @@ import {
 import { FurnitureSymbol } from '../furniture/FurnitureSymbol';
 import { projectOf } from '../lib/project';
 import { formatLength } from '../lib/units';
-import { usePlanner } from '../store/plannerStore';
+import { plannerStore, usePlanner } from '../store/plannerStore';
+import { turnFurniture } from '../tools/furnitureTool';
 
 const RECENT_KEY = 'mimar.furniture.recent';
 const RECENT_MAX = 6;
@@ -71,6 +72,38 @@ function Items({ kinds, onPick }: { kinds: FurnitureKind[]; onPick: (kind: Furni
   );
 }
 
+/** Turn the next item before it is placed: a quarter turn either way, or any angle typed. */
+function TurnRow() {
+  const angle = usePlanner((s) => s.furnitureAngle);
+  const turn = (deg: number) => turnFurniture(plannerStore, deg);
+  return (
+    <div className="flex items-center gap-1" role="group" aria-label="Turn before placing">
+      <button className="m-btn px-2 py-0.5" title="Turn left 90°" aria-label="Turn left" onClick={() => turn(-90)}>
+        ↺
+      </button>
+      <button className="m-btn px-2 py-0.5" title="Turn right 90° (V)" aria-label="Turn right" onClick={() => turn(90)}>
+        ↻
+      </button>
+      <label htmlFor="furniture-angle" className="ml-1 text-muted">
+        Angle (°)
+      </label>
+      <input
+        key={angle}
+        id="furniture-angle"
+        type="number"
+        step={15}
+        defaultValue={Math.round(angle)}
+        onBlur={(e) => {
+          const deg = Number(e.currentTarget.value);
+          if (Number.isFinite(deg)) turn(deg - angle);
+        }}
+        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        className="w-14 rounded-sm border p-1 tabular-nums"
+      />
+    </div>
+  );
+}
+
 /**
  * Pick which furniture the Furniture tool places. Shown while that tool is active. Items sit in groups
  * (Home, Office…), the project's own group open first, with folding categories, a search across all of
@@ -107,6 +140,7 @@ export function FurnitureLibrary() {
       aria-label="Furniture library"
     >
       <div className="font-medium">Furniture library</div>
+      <TurnRow />
       <input
         type="search"
         value={query}

@@ -8,7 +8,7 @@ import { buildableArea, stairLayout } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
 import { basementOf, buildingLevels, groundIndex, isSiteLevel, lawnMm, levelWallMm, slabMm } from '../lib/levels';
 import { outsideOutline } from '../lib/outline';
-import { openRooms, voidsOver, within } from '../lib/voids';
+import { floorVoids, slabVoids, within } from '../lib/voids';
 import {
   GROUND_LEVEL,
   levelOf,
@@ -926,6 +926,20 @@ function circleOutline(x: number, z: number, r: number): [number, number][] {
   });
 }
 
+/** How tall a furniture item is in the library, mm (its tallest part): what its Height box starts at. */
+export function furnitureLibraryHeightMm(f: Furniture): number {
+  const plain = { ...f, heightMm: undefined };
+  const tops = [...furnitureSolids(plain), ...furnitureRounds(plain)].map((p) => p.y0 + p.h);
+  return Math.round(Math.max(0, ...tops) * 1000);
+}
+
+/** Its parts made taller or shorter to the height set for it (the library's own when none is). */
+function furnitureStretch(f: Furniture): <T extends { y0: number; h: number }>(p: T) => T {
+  const own = f.heightMm ? furnitureLibraryHeightMm(f) : 0;
+  const k = own > 0 && f.heightMm ? f.heightMm / own : 1;
+  return (p) => (k === 1 ? p : { ...p, y0: p.y0 * k, h: p.h * k });
+}
+
 /** A library item's round parts (basins, bins, WC pans…) as upright cylinders. */
 function furnitureRounds(f: Furniture, color?: string): Slab3D[] {
   const shaped = f.kind && SHAPES[f.kind];
@@ -1157,8 +1171,10 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
     }
     for (const el of els) {
       if (el.type === 'furniture' && options.showFurniture) {
+        const tall = furnitureStretch(el);
         solids.push(
           ...furnitureSolids(el, colorOf(el.material))
+            .map(tall)
             .map(withFinish(el.material))
             .map(lift)
             .map(raise(el))
@@ -1166,6 +1182,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         );
         blocks.push(
           ...furnitureRounds(el, colorOf(el.material))
+            .map(tall)
             .map(withFinish(el.material))
             .map(lift)
             .map(raise(el))
@@ -1247,8 +1264,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           level: level.id,
         });
       if (el.type === 'slab') {
-        // Double-height rooms under it leave it open over them.
-        const open = openRooms(doc, level.id)
+        // Double-height rooms and stairwells under it leave it open over them.
+        const open = slabVoids(doc, level.id)
           .map((r) => r.points)
           .filter((pts) => within(pts, el.points));
         const holes = [...(el.holes ?? []), ...open];
@@ -1293,7 +1310,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         });
       }
     }
-    const voids = voidsOver(doc, level.id).map((v) => v.points);
+    const voids = floorVoids(doc, level.id).map((v) => v.points);
     for (const r of doc.rooms.filter((room) => levelOf(room) === level.id)) {
       // No floor over a double-height room below.
       if (voids.some((v) => within(r.points, v))) continue;

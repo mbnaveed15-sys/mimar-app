@@ -1,3 +1,4 @@
+import { snapsOn } from '../lib/checks';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import * as THREE from 'three';
 import type { ContextTarget } from '../components/usePlanInput';
@@ -640,7 +641,7 @@ function drawOverlay(stage: Stage, s: PlannerState, pxMetres: number, hitY: numb
     const ghost = buildMeshes(
       buildModel(
         { ...s.doc, elements: temps, rooms: [], masks: [] },
-        { wallHeightMm: s.wallHeightMm, showFurniture: false, terrain: false },
+        { wallHeightMm: s.wallHeightMm, showFurniture: true, terrain: false },
       ),
     );
     ghost.traverse((obj) => {
@@ -942,6 +943,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       if (
         s.draft !== prev.draft ||
         s.inference !== prev.inference ||
+        s.furnitureGhost !== prev.furnitureGhost ||
         s.tool !== prev.tool ||
         s.activeLevel !== prev.activeLevel
       ) {
@@ -1116,6 +1118,21 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         if (denom < 1e-4) return null; // looking straight along the line
         return (w0.dot(n) - b * w0.dot(d)) / denom;
       },
+      cornerAt(clientX, clientY, exceptId) {
+        const stage = aim(clientX, clientY);
+        if (!stage) return null;
+        const s = plannerStore.getState();
+        const rect = stage.renderer.domElement.getBoundingClientRect();
+        const hit = stage.raycaster
+          .intersectObjects(stage.model.children, false)
+          .find((h) => pickable(h) && idOf(h) !== exceptId);
+        if (!hit) return null;
+        const at = cornerNear(hit, stage.rig.active, rect, clientX, clientY, 10 * s.reach(), {
+          occluders: solidMeshes(stage.model),
+          onCurve: curveTestFor(s),
+        });
+        return at ? [at.x, at.y, at.z] : null;
+      },
       extentsAlong(axis, exceptId) {
         const stage = stageRef.current;
         if (!stage) return [];
@@ -1165,7 +1182,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     if (hit && (hit.object.userData.level ?? 'ground') === s.activeLevel) {
       // Close to a corner of what is under the pointer (on screen), take the corner itself, at its height.
       const corner =
-        s.snaps.on && !LOOK_TOOLS.has(s.tool)
+        snapsOn(s) && !LOOK_TOOLS.has(s.tool)
           ? cornerNear(hit, stage.rig.active, rect, clientX, clientY, 10 * s.reach(), {
               occluders: solidMeshes(stage.model),
               onCurve: curveTestFor(s),

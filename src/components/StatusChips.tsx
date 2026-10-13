@@ -10,18 +10,12 @@ const chip = 'flex h-5 items-center gap-1 rounded-sm border px-1.5 text-[11px] p
 const chipLook = (on: boolean) => (on ? 'border-line-strong text-ink' : 'border-line text-muted');
 
 /**
- * A bottom-bar chip whose click does its main job, with a menu that opens while the pointer rests
- * on it (or from the small arrow beside it, for touch and keyboard).
+ * A bottom-bar chip whose click does its main job, with a menu that opens only from the small arrow
+ * beside it (a click on the chip just switches it).
  */
 function ChipMenu({ label, children, chipButton }: { label: string; children: ReactNode; chipButton: ReactNode }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const timer = useRef<number | undefined>(undefined);
-  const later = (next: boolean, ms: number) => {
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setOpen(next), ms);
-  };
-  useEffect(() => () => window.clearTimeout(timer.current), []);
   useEffect(() => {
     if (!open) return;
     const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
@@ -32,8 +26,6 @@ function ChipMenu({ label, children, chipButton }: { label: string; children: Re
     <div
       ref={ref}
       className="relative flex flex-none items-center"
-      onPointerEnter={(e) => e.pointerType === 'mouse' && later(true, 350)}
-      onPointerLeave={(e) => e.pointerType === 'mouse' && later(false, 300)}
       onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
     >
       {chipButton}
@@ -104,7 +96,7 @@ export function SnapChip() {
         <button
           className={`${chip} ${chipLook(snaps.on)}`}
           aria-pressed={snaps.on}
-          title="Snapping on or off (F3). Rest the pointer here to pick the snap points."
+          title="Snapping on or off (F3; hold Alt to flip it for a moment). The arrow beside it picks the snap points."
           onClick={() => setSnaps({ on: !snaps.on })}
         >
           <Icon name="snap" size={12} /> <span className="phone:sr-only">Snap</span>
@@ -160,7 +152,7 @@ export function ChecksChip() {
         <button
           className={`${chip} ${chipLook(checks.on)}`}
           aria-pressed={checks.on}
-          title="Checks on or off: bylaws, hints and the red and amber marks (F4). Rest the pointer here to pick which."
+          title="Checks on or off: bylaws, hints and the red and amber marks (F4). The arrow beside it picks which."
           onClick={() => setChecks({ on: !checks.on })}
           data-testid="checks-chip"
         >

@@ -5,7 +5,7 @@ import { appliedRule, appliedSetbacks } from './buildingCheck';
 import { fullCheck } from './fullCheck';
 import { planCheck } from './planCheck';
 import { emptyDoc } from './storage';
-import { plotRect } from './site';
+import { buildableArea, plotRect } from './site';
 import type { BuildingUse, PlanDoc, PlanElement, Plot, Room } from '../types';
 
 const FT = 30.48; // plan units per foot
@@ -326,5 +326,29 @@ describe('building check', () => {
     expect(r.measures.roadFt).toBeCloseTo(100);
     expect(r.measures.depthFt).toBeCloseTo(100);
     expect(r.picked).toBe(false);
+  });
+});
+
+describe('items in the setbacks', () => {
+  it('counts only what an item shows, not the box round it', () => {
+    const plot = plotOf(60, 100, undefined, {}, [10, 10, 5, 5]);
+    const left = Math.min(...buildableArea(plot).map((p) => p.x));
+    // A round column 2' across, turned 45°: the box round it reaches 1.41' from its centre, the column 1'.
+    const column = (x: number): PlanElement => ({
+      id: 'c',
+      type: 'column',
+      shape: 'round',
+      x: left + x * FT,
+      y: 50 * FT,
+      w: 2 * FT,
+      h: 2 * FT,
+      rotation: 45,
+    });
+    const items = (x: number) =>
+      planCheck({ ...emptyDoc(), plinthMm: 0, elements: [plot, ...box(10, 15, 40, 70), column(x)] }, ctx)!.rows.find(
+        (r) => r.id === 'setback-items',
+      );
+    expect(items(1.2)).toBeUndefined();
+    expect(items(0.8)?.ids).toEqual(['c']);
   });
 });

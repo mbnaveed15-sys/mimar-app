@@ -154,6 +154,8 @@ export interface Furniture extends Grouped {
   rotation?: number;
   /** Library item this is (bed, sofa, ...); plain boxes from older plans have none. */
   kind?: FurnitureKind;
+  /** How tall it is, mm, when changed from the library's own height (3D). */
+  heightMm?: number;
   label?: string;
   material?: Id;
 }

@@ -6,6 +6,7 @@ import type { PlannerState } from '../store/plannerStore';
 import type { PlanElement, Point } from '../types';
 
 import { curvePreview } from '../tools/curveTool';
+import { furnitureAt } from '../tools/furnitureTool';
 
 const DRAFT = 'draft';
 
@@ -116,6 +117,10 @@ export function draftElements(s: PlannerState): PlanElement[] {
         ...at,
       },
     ];
+  }
+  if (!d && s.tool === 'furniture' && s.furnitureGhost) {
+    const g = s.furnitureGhost;
+    return [{ ...furnitureAt(s, g), id: `${DRAFT}-furniture`, rotation: g.rotation || undefined }];
   }
   if (!d && p && s.tool === 'stairs') {
     const { site } = s;

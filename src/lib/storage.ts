@@ -52,9 +52,9 @@ export const STORAGE_KEY = 'mimar.plan';
  * 13 curved and spiral stairs, and curved edges on slabs, levelled areas and plots; 14 furniture for
  * every kind of building, and more building uses; 15 dimensions and curved slab voids; 16 a plot's
  * bylaw area and road width, and LDA's built-up and open areas; 17 the Ground (site) level and your own
- * plinth.
+ * plinth; 18 furniture heights, items on the lawn of the one Ground level, and the plinth's own settings.
  */
-export const CURRENT_VERSION = 17;
+export const CURRENT_VERSION = 18;
 const CORRUPT_BACKUP_KEY = 'mimar.plan.corrupt';
 
 // Version 1 (Mimar 1.1–1.3) stored each part under its own key with numeric ids.
@@ -239,6 +239,10 @@ function normaliseElement(raw: unknown): PlanElement | null {
         h: num('h'),
         rotation: typeof raw.rotation === 'number' && Number.isFinite(raw.rotation) ? raw.rotation : undefined,
         kind: isFurnitureKind(raw.kind) ? raw.kind : undefined,
+        heightMm:
+          typeof raw.heightMm === 'number' && Number.isFinite(raw.heightMm) && raw.heightMm > 0
+            ? Math.min(raw.heightMm, 20000)
+            : undefined,
         label: typeof raw.label === 'string' ? cleanText(raw.label) : undefined,
       };
       return [el.x, el.y, el.w, el.h].every(Number.isFinite) && el.w > 0 && el.h > 0 ? el : null;

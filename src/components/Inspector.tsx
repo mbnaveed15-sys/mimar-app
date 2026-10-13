@@ -3,7 +3,7 @@ import { FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { sideName, USE_ZONES, zoneOf } from '../furniture/useZones';
 import { CURVED_INNER_MM, SPIRAL_HEADROOM_MM, spiralTurnRiseMm, STAIR_SHAPE_NAMES, stairLayout } from '../lib/site';
 import { TurnPicker } from './SiteOptions';
-import { WINDOW_SILL_MM } from '../three/model';
+import { furnitureLibraryHeightMm, WINDOW_SILL_MM } from '../three/model';
 import { levelWallMm, slabMm } from '../lib/levels';
 import { formatArea, formatLength, formatMarla } from '../lib/units';
 import { WINDOW_HEIGHT_MM } from '../lib/shapes';
@@ -509,6 +509,9 @@ export function Inspector() {
                 onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 30000) })}
               />
             )}
+            {el.type === 'column' && !el.locked && (
+              <ResetSize ids={[el.id]} title="Back to the column size in Structure options" />
+            )}
             {el.type === 'beam' && (
               <div className="grid grid-cols-2 gap-2">
                 <LengthField
@@ -708,6 +711,14 @@ export function Inspector() {
                     onCommit={(mm) => updateElement({ ...el, h: toUnits(mm) })}
                   />
                 </div>
+                <LengthField
+                  id="furniture-height"
+                  label="Height"
+                  mm={el.heightMm ?? furnitureLibraryHeightMm(el)}
+                  units={units}
+                  min={10}
+                  onCommit={(mm) => updateElement({ ...el, heightMm: Math.min(mm, 20000) })}
+                />
                 <div className="flex flex-col gap-0.5">
                   <label htmlFor="furniture-rotation" className="text-muted">
                     Rotation (°)
@@ -727,7 +738,10 @@ export function Inspector() {
                   />
                 </div>
                 {el.kind && <UseZoneNote kind={el.kind} units={units} />}
-                <div className="text-muted">Drag the corner handle to resize, the top handle to rotate.</div>
+                {el.kind && !el.locked && <ResetSize ids={[el.id]} title="Back to its size in the library" />}
+                <div className="text-muted">
+                  Drag the corner grip to resize, a square side grip to move one side, the top grip to rotate.
+                </div>
               </>
             )}
 
@@ -994,5 +1008,14 @@ function CurvedEdges({ el }: { el: Slab | Pad }) {
         Make edges straight
       </button>
     </div>
+  );
+}
+
+/** Put furniture back to its library size (and columns to the Structure size), keeping its place and angle. */
+export function ResetSize({ ids, title }: { ids: string[]; title: string }) {
+  return (
+    <button className="m-btn self-start" title={title} onClick={() => plannerStore.getState().resetSize(ids)}>
+      Reset size
+    </button>
   );
 }

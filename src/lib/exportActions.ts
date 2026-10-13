@@ -1,6 +1,6 @@
 import { GROUND_LEVEL, levelOf } from '../types';
 import { groundOnPlan } from './terrain/groundView';
-import { voidsOver } from './voids';
+import { floorVoids } from './voids';
 import { planBounds } from '../geometry';
 import { plannerStore } from '../store/plannerStore';
 import { exportPdf } from './exportPdf';
@@ -41,7 +41,7 @@ function exportContent() {
   const doc = { ...shown, elements, rooms: shown.rooms.filter(onLevel) };
   const { units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills } = s;
   const ground = s.activeLevel === GROUND_LEVEL ? groundOnPlan(s.doc, units === 'metric') : null;
-  const voids = voidsOver(shown, s.activeLevel);
+  const voids = floorVoids(shown, s.activeLevel);
   return { doc, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, ground, voids };
 }
 

@@ -5,7 +5,7 @@
  */
 import { pointInPolygon, wallLength } from '../geometry';
 import { directionAlong, pointAlong } from './arc';
-import { openRooms, within } from './voids';
+import { openRooms, slabVoids, within } from './voids';
 import { isCurtain } from './curtain';
 import { gableArea, GABLE_WALL_MM, slopedArea } from './roof/roof';
 import { polygonArea } from '../rooms';
@@ -177,7 +177,9 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
     const wallById = new Map(walls.map((w) => [w.id, w]));
     // Double-height rooms: no slab over them, and the walls beside them rise through the slab's depth.
     const open = openRooms(doc, level.id);
-    const openSqft = open.reduce((s, r) => s + areaSqft(r.points), 0);
+    // Stairwells take slab out too (the walls beside them don't rise through it).
+    const holesOver = slabVoids(doc, level.id);
+    const openSqft = holesOver.reduce((s, r) => s + areaSqft(r.points), 0);
     const slabFt = mmFt(slabMm(doc));
 
     for (const wall of walls) {
@@ -248,7 +250,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       switch (el.type) {
         case 'slab': {
           // Less the double-height rooms under it.
-          const voids = open.map((r) => r.points).filter((v) => within(v, el.points));
+          const voids = holesOver.map((r) => r.points).filter((v) => within(v, el.points));
           q.slabCft += areaSqft(el.points, [...(el.holes ?? []), ...voids]) * el.thickness * FT;
           break;
         }
