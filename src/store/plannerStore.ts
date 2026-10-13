@@ -123,6 +123,7 @@ import type {
   Stair,
   Draft,
   Id,
+  AreaIn,
   MarlaSqFt,
   Material,
   PaperSize,
@@ -516,6 +517,9 @@ export interface PlannerState {
   exportLines: boolean;
   wallThicknessMm: number;
   marlaSqFt: MarlaSqFt;
+  /** What room areas are shown in on the plan (a preference). */
+  areaIn: AreaIn;
+  setAreaIn: (areaIn: AreaIn) => void;
   paper: PaperSize;
   wallHeightMm: number;
   /**
@@ -822,6 +826,7 @@ export function createPlannerStore(
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
       const { showHints, pdfHints, pdfZones, accessibleZones, selectionBar, belowOpacity, checks, snaps } = get();
+      const { areaIn } = get();
       const { wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } = get();
       savePrefs({
         units,
@@ -840,6 +845,7 @@ export function createPlannerStore(
         wallThicknessMm,
         openingGapMm,
         marlaSqFt,
+        areaIn,
         paper,
         wallHeightMm,
         theme,
@@ -988,6 +994,7 @@ export function createPlannerStore(
       setOpeningStamp: (openingStamp, queue = false) =>
         set({ openingStamp, stampQueue: queue && openingStamp.length > 0 }),
       marlaSqFt: prefs.marlaSqFt,
+      areaIn: prefs.areaIn,
       paper: prefs.paper,
       wallHeightMm: initial.project?.wallHeightMm ?? prefs.wallHeightMm,
       view3d: false,
@@ -2665,6 +2672,10 @@ export function createPlannerStore(
       },
       setMarlaSqFt: (marlaSqFt) => {
         set({ marlaSqFt });
+        persistPrefs();
+      },
+      setAreaIn: (areaIn) => {
+        set({ areaIn });
         persistPrefs();
       },
       setPaper: (paper) => {

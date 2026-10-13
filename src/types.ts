@@ -714,8 +714,8 @@ export type DrawingRef =
 /** A 3D view on a sheet: an isometric line drawing, or a coloured picture with the materials. */
 export type View3dStyle = 'iso' | 'picture';
 
-/** The scales a drawing can be printed at on a sheet (1:50, 1:100, 1:200). */
-export type SheetScale = 50 | 100 | 200;
+/** A drawing's scale on a sheet, 1:n: the usual ones (1:50, 1:100…) or any whole number from 1 to 10000. */
+export type SheetScale = number;
 
 export interface SheetItem {
   drawing: DrawingRef;
@@ -1063,3 +1063,5 @@ export type PaperSize = 'A4' | 'A3' | 'A1';
 
 /** Size of one marla in square feet: 225 (LDA and most societies) or 272.25 (traditional). */
 export type MarlaSqFt = 225 | 272.25;
+/** What a room's area is shown in: the plan's units (sq ft or m²), marla, or both. */
+export type AreaIn = 'units' | 'marla' | 'both';

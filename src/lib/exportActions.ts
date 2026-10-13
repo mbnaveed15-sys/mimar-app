@@ -39,13 +39,14 @@ function exportContent() {
     (el) => (onLevel(el) || el.type === 'section') && (s.exportLines || el.type !== 'line'),
   );
   const doc = { ...shown, elements, rooms: shown.rooms.filter(onLevel) };
-  const { units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, pdfZones } = s;
+  const { units, marlaSqFt, areaIn, showDimensions, showFurniture, showRoomLabels, showRoomFills, pdfZones } = s;
   const ground = s.activeLevel === GROUND_LEVEL ? groundOnPlan(s.doc, units === 'metric') : null;
   const voids = floorVoids(shown, s.activeLevel);
   return {
     doc,
     units,
     marlaSqFt,
+    areaIn,
     showDimensions,
     showFurniture,
     showRoomLabels,
@@ -223,6 +224,7 @@ export function exportPlanDxf() {
       voids,
       units: s.units,
       marlaSqFt: s.marlaSqFt,
+      areaIn: s.areaIn,
       showDimensions: s.showDimensions,
       showFurniture: s.showFurniture,
       showRoomLabels: s.showRoomLabels,

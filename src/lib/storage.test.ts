@@ -323,7 +323,7 @@ describe('storage', () => {
           items: [
             { drawing: { kind: 'section', id: 's' }, scale: 50 },
             { drawing: { kind: 'elevation', side: 'up' }, scale: 100 },
-            { drawing: { kind: 'plan', levelId: 'ground' }, scale: 75 },
+            { drawing: { kind: 'plan', levelId: 'ground' }, scale: 0 },
           ],
         },
         'nonsense',

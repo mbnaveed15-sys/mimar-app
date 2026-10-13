@@ -5,7 +5,7 @@ import { projectOf } from '../lib/project';
 import { elementOutline, planBounds } from '../geometry';
 import { formatLength } from '../lib/units';
 import { PLAN } from '../theme/plan';
-import type { EdgeCurve, MarlaSqFt, PlanDoc, PlanElement, Point, Room, Units, Wall } from '../types';
+import type { AreaIn, EdgeCurve, MarlaSqFt, PlanDoc, PlanElement, Point, Room, Units, Wall } from '../types';
 import { labelPoint, wallFaces } from '../rooms';
 import { metricProject } from '../lib/curtain';
 import { plinthOutlines } from '../lib/plinth';
@@ -35,6 +35,8 @@ export interface PlanDrawingProps {
   selectedIds: readonly string[];
   units: Units;
   marlaSqFt: MarlaSqFt;
+  /** What room areas are shown in (the units when missing). */
+  areaIn?: AreaIn;
   showDimensions: boolean;
   showFurniture: boolean;
   showRoomLabels: boolean;
@@ -58,7 +60,18 @@ export interface PlanDrawingProps {
  * exports. Memoised: moving the pointer or panning doesn't redraw it, only a change to what it shows.
  */
 export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
-  const { doc, selectedIds, units, marlaSqFt, showDimensions, showFurniture, showRoomLabels, showRoomFills, k } = props;
+  const {
+    doc,
+    selectedIds,
+    units,
+    marlaSqFt,
+    areaIn,
+    showDimensions,
+    showFurniture,
+    showRoomLabels,
+    showRoomFills,
+    k,
+  } = props;
   const marla = projectOf(doc).type === 'house' ? marlaSqFt : undefined;
   const look = dimStyleOf(doc);
   const walls = wallsOf(doc.elements);
@@ -138,6 +151,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
           selected={selected.has(r.id)}
           units={units}
           marlaSqFt={marla}
+          areaIn={areaIn}
           showLabel={showRoomLabels}
           showFill={showRoomFills}
           k={k}
@@ -269,6 +283,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
           selected={selected.has(r.id)}
           units={units}
           marlaSqFt={marla}
+          areaIn={areaIn}
           showLabel={showRoomLabels}
           showFill={showRoomFills}
           k={k}

@@ -31,7 +31,6 @@ import {
   type PaperSize,
   type Sheet,
   type SheetItem,
-  type SheetScale,
   type GroundSettings,
   type DrawingStyle,
   type Dormer,
@@ -797,7 +796,6 @@ function normaliseDrawing(raw: unknown): DrawingStyle | undefined {
 }
 
 const PAPERS: PaperSize[] = ['A4', 'A3', 'A1'];
-const SCALES: SheetScale[] = [50, 100, 200];
 const SIDES: ElevationSide[] = ['front', 'back', 'left', 'right'];
 
 function normaliseDrawingRef(raw: unknown): DrawingRef | null {
@@ -822,9 +820,9 @@ function normaliseSheets(raw: unknown[]): Sheet[] {
       items: (Array.isArray(s.items) ? s.items : []).flatMap((item): SheetItem[] => {
         const drawing = isObject(item) ? normaliseDrawingRef(item.drawing) : null;
         if (!drawing) return [];
-        const scale = SCALES.includes((item as Record<string, unknown>).scale as SheetScale)
-          ? ((item as Record<string, unknown>).scale as SheetScale)
-          : 100;
+        // Any whole 1:n from 1:1 to 1:10000 (as sheet.ts's sheetScaleOf).
+        const n = Math.round(Number((item as Record<string, unknown>).scale));
+        const scale = Number.isFinite(n) && n >= 1 && n <= 10000 ? n : 100;
         return [{ drawing, scale }];
       }),
     }));

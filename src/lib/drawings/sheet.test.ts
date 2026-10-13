@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PREFS } from '../prefs';
-import { emptyDoc } from '../storage';
+import { emptyDoc, normaliseDoc } from '../storage';
 import { createPlannerStore } from '../../store/plannerStore';
 import {
   layoutSheet,
   NATURAL_DASH,
   PEN,
   planArea,
+  sheetScaleOf,
   sheetsOf,
   sidePrims,
   suggestedSheets,
@@ -185,5 +186,34 @@ describe('sheets', () => {
     expect(groundLines.some((p) => Math.abs(p.a[1] - p.b[1]) > 0.1)).toBe(true);
     expect(lines.some((p) => p.dash === NATURAL_DASH)).toBe(true);
     expect(texts(prims)).toEqual(expect.arrayContaining([`±0'-0"`, 'Road level (datum)']));
+  });
+});
+
+describe('custom scales', () => {
+  it('takes any whole 1:n from 1 to 10000', () => {
+    expect(sheetScaleOf('75')).toBe(75);
+    expect(sheetScaleOf(62.6)).toBe(63);
+    expect(sheetScaleOf('0')).toBeNull();
+    expect(sheetScaleOf('abc')).toBeNull();
+    expect(sheetScaleOf(20000)).toBeNull();
+  });
+
+  it('keeps a typed scale when the plan is opened again', () => {
+    const ref = { kind: 'plan', levelId: 'ground' };
+    const doc = normaliseDoc({
+      ...emptyDoc(),
+      sheets: [
+        {
+          id: 's1',
+          name: 'A',
+          paper: 'A3',
+          items: [
+            { drawing: ref, scale: 75 },
+            { drawing: ref, scale: -3 },
+          ],
+        },
+      ],
+    });
+    expect(doc.sheets?.[0].items.map((i) => i.scale)).toEqual([75, 100]);
   });
 });

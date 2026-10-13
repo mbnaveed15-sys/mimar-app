@@ -1,6 +1,6 @@
-import { formatArea, formatMarla } from '../../lib/units';
+import { roomAreaText } from '../../lib/units';
 import { labelPoint, roomAreaSqMm } from '../../rooms';
-import type { MarlaSqFt, Room, Units } from '../../types';
+import type { AreaIn, MarlaSqFt, Room, Units } from '../../types';
 import { PLAN } from '../../theme/plan';
 
 interface Props {
@@ -10,6 +10,8 @@ interface Props {
   units: Units;
   /** Marla shows only for a house. */
   marlaSqFt?: MarlaSqFt;
+  /** Sq ft (or m²), marla or both; the units when missing. */
+  areaIn?: AreaIn;
   showLabel: boolean;
   showFill: boolean;
   k: number;
@@ -17,7 +19,7 @@ interface Props {
   part?: 'area' | 'label';
 }
 
-export function RoomShape({ room, color, selected, units, marlaSqFt, showLabel, showFill, k, part }: Props) {
+export function RoomShape({ room, color, selected, units, marlaSqFt, areaIn, showLabel, showFill, k, part }: Props) {
   const label = labelPoint(room.points);
   const area = roomAreaSqMm(room);
   const text = { textAnchor: 'middle' as const, strokeWidth: 3 * k, paintOrder: 'stroke' as const };
@@ -56,8 +58,7 @@ export function RoomShape({ room, color, selected, units, marlaSqFt, showLabel, 
             {...text}
             data-testid="room-area"
           >
-            {formatArea(area, units)}
-            {marlaSqFt && ` · ${formatMarla(area, marlaSqFt)}`}
+            {roomAreaText(area, units, marlaSqFt, areaIn)}
           </text>
         </>
       )}

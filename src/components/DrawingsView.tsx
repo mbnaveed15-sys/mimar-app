@@ -2,7 +2,17 @@ import { useCallback, useMemo, useState } from 'react';
 import { exportDrawingsDxf, exportSheetsPdf } from '../lib/exportActions';
 import { newId } from '../lib/ids';
 import { levelContent, drawingSource } from '../lib/drawings/source';
-import { layoutSheet, planArea, sheetsOf, sidePrims, SHEET_SCALES, type Prim } from '../lib/drawings/sheet';
+import {
+  layoutSheet,
+  MAX_SHEET_SCALE,
+  MIN_SHEET_SCALE,
+  planArea,
+  sheetScaleOf,
+  sheetsOf,
+  sidePrims,
+  SHEET_SCALES,
+  type Prim,
+} from '../lib/drawings/sheet';
 import {
   drawingFromKey,
   drawingKey,
@@ -299,24 +309,11 @@ function SheetEditor({
         {sheet.items.map((it, i) => (
           <div key={drawingKey(it.drawing)} className="flex items-center gap-1">
             <span className="min-w-0 flex-1 truncate">{title(it.drawing) || 'Deleted drawing'}</span>
-            <select
-              aria-label={`Scale of ${title(it.drawing)}`}
-              value={it.scale}
-              onChange={(e) =>
-                onChange({
-                  items: sheet.items.map((x, j) =>
-                    j === i ? { ...x, scale: Number(e.target.value) as SheetScale } : x,
-                  ),
-                })
-              }
-              className="rounded-sm border p-0.5"
-            >
-              {SHEET_SCALES.map((s) => (
-                <option key={s} value={s}>
-                  1:{s}
-                </option>
-              ))}
-            </select>
+            <ScalePicker
+              label={`Scale of ${title(it.drawing)}`}
+              scale={it.scale}
+              onChange={(scale) => onChange({ items: sheet.items.map((x, j) => (j === i ? { ...x, scale } : x)) })}
+            />
             <button
               className="grid h-6 w-6 place-items-center rounded-sm hover:bg-sunken"
               aria-label={`Take ${title(it.drawing)} off the sheet`}
@@ -350,5 +347,69 @@ function SheetEditor({
         Delete sheet
       </button>
     </div>
+  );
+}
+
+/** A drawing's scale: one of the usual ones, or Custom… to type any 1:n. */
+function ScalePicker({
+  label,
+  scale,
+  onChange,
+}: {
+  label: string;
+  scale: SheetScale;
+  onChange: (scale: SheetScale) => void;
+}) {
+  const usual = SHEET_SCALES.includes(scale);
+  const [custom, setCustom] = useState(!usual);
+  const [typed, setTyped] = useState(String(scale));
+  const commit = () => {
+    const n = sheetScaleOf(typed);
+    if (n) onChange(n);
+    else setTyped(String(scale));
+  };
+  return (
+    <>
+      <select
+        aria-label={label}
+        value={custom ? 'custom' : scale}
+        onChange={(e) => {
+          if (e.target.value === 'custom') {
+            setCustom(true);
+            setTyped(String(scale));
+            return;
+          }
+          setCustom(false);
+          onChange(Number(e.target.value));
+        }}
+        className="rounded-sm border p-0.5"
+      >
+        {SHEET_SCALES.map((s) => (
+          <option key={s} value={s}>
+            1:{s}
+          </option>
+        ))}
+        <option value="custom">{custom && !usual ? `1:${scale}` : 'Custom…'}</option>
+      </select>
+      {custom && (
+        <span className="flex items-center">
+          1:
+          <input
+            aria-label={`Custom ${label.charAt(0).toLowerCase()}${label.slice(1)}`}
+            type="number"
+            min={MIN_SHEET_SCALE}
+            max={MAX_SHEET_SCALE}
+            step={1}
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit();
+            }}
+            className="w-14 rounded-sm border p-0.5 tabular-nums"
+          />
+        </span>
+      )}
+    </>
   );
 }

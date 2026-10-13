@@ -28,7 +28,17 @@ export const SHEET_PAPER: Record<PaperSize, { w: number; h: number }> = {
   A1: { w: 841, h: 594 },
 };
 
-export const SHEET_SCALES: SheetScale[] = [50, 100, 200];
+/** The usual scales, offered in the scale lists; any other whole number can be typed. */
+export const SHEET_SCALES: SheetScale[] = [20, 25, 50, 75, 100, 125, 150, 200, 250, 500];
+/** The scales suggested sheets are tried at, most detailed first. */
+const FIT_SCALES: SheetScale[] = [50, 100, 200];
+export const MIN_SHEET_SCALE = 1;
+export const MAX_SHEET_SCALE = 10000;
+/** A typed scale (the n of 1:n), or null when it isn't one. */
+export function sheetScaleOf(n: unknown): SheetScale | null {
+  const v = Math.round(Number(n));
+  return Number.isFinite(v) && v >= MIN_SHEET_SCALE && v <= MAX_SHEET_SCALE ? v : null;
+}
 
 export type XY = [number, number];
 
@@ -461,7 +471,7 @@ function frame(src: SheetSource, sheet: Sheet, index: number, count: number): Pr
 /** Try the scales from most detailed to least, then bigger paper, until the drawings fit. */
 function fitting(src: SheetSource, refs: DrawingRef[]): { paper: PaperSize; scale: SheetScale } {
   for (const paper of ['A3', 'A1'] as PaperSize[])
-    for (const scale of SHEET_SCALES)
+    for (const scale of FIT_SCALES)
       if (
         pack(
           src,

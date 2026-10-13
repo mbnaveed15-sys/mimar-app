@@ -4,7 +4,7 @@ import { dormerParts, skylightParts } from './roof/roofOpenings';
 import { bentSymbol, openingSymbol } from './openingKinds';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { labelPoint, roomAreaSqMm, wallFaces } from '../rooms';
-import type { Dimension, DrawingStyle, MarlaSqFt, Opening, PlanDoc, Point, Room, Units, Wall } from '../types';
+import type { AreaIn, Dimension, DrawingStyle, MarlaSqFt, Opening, PlanDoc, Point, Room, Units, Wall } from '../types';
 import { dimLine } from './dimLine';
 import { DEFAULT_DIM_STYLE, DIM_TEXT_SCALE, dimStyleOf, endMark, type DimStyle } from './dimStyle';
 import { hatchOf, hatchSegments, surfaceHatchOf, type Hatch } from './hatch';
@@ -15,7 +15,7 @@ import { isCurtain, metricProject, mullionStops } from './curtain';
 import { MM_PER_UNIT } from './scale';
 import { outlinePoints, plotSides, sideMiddle, sideOutward } from './plot';
 import { buildableArea, partOutline, stairLayout } from './site';
-import { formatArea, formatLength, formatMarla } from './units';
+import { formatLength, roomAreaText } from './units';
 import { sectionLook } from './drawings/refs';
 import { formatLevel } from './drawings/levels';
 import type { SideDrawing } from './drawings/views';
@@ -69,6 +69,8 @@ type Layer = keyof typeof LAYERS;
 export interface DxfOptions {
   units: Units;
   marlaSqFt: MarlaSqFt;
+  /** What room areas are shown in (the units when missing). */
+  areaIn?: AreaIn;
   showDimensions: boolean;
   showFurniture: boolean;
   showRoomLabels: boolean;
@@ -775,7 +777,7 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
     dxf.text(
       'A-AREA-IDEN',
       { x: c.x, y: c.y + (TEXT_MM * 0.9) / MM_PER_UNIT },
-      `${formatArea(area, opts.units)} · ${formatMarla(area, opts.marlaSqFt)}`,
+      roomAreaText(area, opts.units, opts.marlaSqFt, opts.areaIn),
       0,
       TEXT_MM * 0.7,
     );

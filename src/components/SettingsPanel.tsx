@@ -1,6 +1,6 @@
 import { MARLA_OPTIONS, UNIT_LABELS } from '../lib/units';
 import { usePlanner } from '../store/plannerStore';
-import type { DimEnds, DimText, MarlaSqFt, PaperSize, Units } from '../types';
+import type { AreaIn, DimEnds, DimText, MarlaSqFt, PaperSize, Units } from '../types';
 import { LengthField } from './LengthField';
 import { MIN_OPENING_GAP_MM } from '../lib/openingPlace';
 import { DIM_END_LABELS, DIM_TEXT_LABELS, dimStyleOf } from '../lib/dimStyle';
@@ -29,6 +29,8 @@ export function SettingsPanel() {
   const units = usePlanner((s) => s.units);
   const setUnits = usePlanner((s) => s.setUnits);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
+  const areaIn = usePlanner((s) => s.areaIn);
+  const setAreaIn = usePlanner((s) => s.setAreaIn);
   const setMarlaSqFt = usePlanner((s) => s.setMarlaSqFt);
   const paper = usePlanner((s) => s.paper);
   const setPaper = usePlanner((s) => s.setPaper);
@@ -74,6 +76,19 @@ export function SettingsPanel() {
             {o.label}
           </option>
         ))}
+      </select>
+      <label htmlFor="area-in" className="font-medium">
+        Room areas in
+      </label>
+      <select
+        id="area-in"
+        value={areaIn}
+        onChange={(e) => setAreaIn(e.target.value as AreaIn)}
+        className="rounded-sm border p-1"
+      >
+        <option value="units">{units === 'metric' ? 'm²' : 'Sq ft'}</option>
+        <option value="marla">Marla</option>
+        <option value="both">Both</option>
       </select>
       <LengthField
         id="plinth-height"

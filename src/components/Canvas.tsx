@@ -124,6 +124,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
   // The ghost's item follows the library pick and the turn.
   usePlanner((s) => s.furnitureKind);
   const marlaSqFt = usePlanner((s) => s.marlaSqFt);
+  const areaIn = usePlanner((s) => s.areaIn);
   const touchInput = usePlanner((s) => s.touchInput);
   const input = usePlanInput((e) => (svgRef.current ? toPlanPoint(svgRef.current, e) : { x: 0, y: 0 }), onContextMenu);
 
@@ -278,6 +279,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         selectedIds={selectedIds}
         units={units}
         marlaSqFt={marlaSqFt}
+        areaIn={areaIn}
         showDimensions={showDimensions}
         showFurniture={showFurniture}
         showRoomLabels={showRoomLabels}

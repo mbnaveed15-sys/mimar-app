@@ -71,6 +71,11 @@ test('draws a section, shows it with the elevations and sheets, and exports them
   await editor.getByRole('radio', { name: 'A1' }).click();
   await editor.getByLabel('Add a drawing').selectOption({ label: 'Section A–A' });
   await editor.getByLabel('Scale of Section A–A').selectOption('50');
+  // Any scale can be typed.
+  await editor.getByLabel('Scale of Section A–A').selectOption('custom');
+  await editor.getByLabel('Custom scale of Section A–A').fill('60');
+  await editor.getByLabel('Custom scale of Section A–A').press('Enter');
+  await expect(page.getByTestId('drawing-svg')).toContainText('Scale 1:60');
   await expect(view.getByTestId('sheet-3')).toHaveText('3. Elevations and section (A1)');
   await expect(page.getByTestId('drawing-svg')).toContainText('SECTION A–A');
   await expect(page.getByTestId('drawing-svg')).toContainText('3 of 4');
