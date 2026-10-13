@@ -41,6 +41,8 @@ export interface PlanDrawingProps {
   ground?: GroundOnPlan | null;
   /** Double-height rooms on the floor below: the floor is open over them. */
   voids?: Room[];
+  /** Show every furniture item's use zone (exports), not only the selected ones'. */
+  showZones?: boolean;
   /** The wall whose automatic plinth is selected (it shows highlighted where it stands out). */
   selectedPlinth?: string | null;
 }
@@ -149,6 +151,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
                 selected={isSelected}
                 k={k}
                 accessible={props.accessibleZones}
+                showZone={props.showZones}
               />
             );
           case 'column':

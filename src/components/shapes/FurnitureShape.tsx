@@ -17,13 +17,15 @@ interface Props {
   accessible?: boolean;
   /** The see-through copy that follows the pointer before placing (not a plan item). */
   ghost?: boolean;
+  /** Show its use zone even when it isn't selected (exports with use zones on). */
+  showZone?: boolean;
 }
 
-export function FurnitureShape({ item, color, selected, k, accessible, ghost }: Props) {
+export function FurnitureShape({ item, color, selected, k, accessible, ghost, showZone }: Props) {
   const { w, h } = item;
   const showLabel = item.label !== undefined || !item.kind;
-  // The free space it needs to be used, shown while it is selected.
-  const zone = selected ? zoneOf(item.kind, accessible) : null;
+  // The free space it needs to be used, shown while it is selected or being placed.
+  const zone = selected || ghost || showZone ? zoneOf(item.kind, accessible) : null;
   return (
     <g
       data-type={ghost ? 'furniture-ghost' : 'furniture'}

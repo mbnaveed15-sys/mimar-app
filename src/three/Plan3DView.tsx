@@ -13,7 +13,8 @@ import { formatLength } from '../lib/units';
 import { plannerStore, usePlanner, type PlannerState } from '../store/plannerStore';
 import { themeColor } from '../theme/themes';
 import { drawPattern } from '../lib/patterns';
-import type { Bounds, Pattern, PlanDoc, Point } from '../types';
+import { levelOf, type Bounds, type Furniture, type Pattern, type PlanDoc, type Point } from '../types';
+import { toPlan, zoneOf, zoneRects } from '../furniture/useZones';
 import { setCameraEye } from './cameraEye';
 import { CameraRig, ORBIT_SPEED } from './cameraRig';
 import { draftElements, draftLines } from './draft3d';
@@ -690,6 +691,44 @@ function drawOverlay(stage: Stage, s: PlannerState, pxMetres: number, hitY: numb
     lines.renderOrder = 10;
     overlay.add(lines);
   }
+  // Use zones: the free space furniture needs, as a light tint on the floor round the selected
+  // items and the one being placed.
+  const zoned = [
+    ...s.selectedIds
+      .map((id) => s.doc.elements.find((el) => el.id === id))
+      .filter((el): el is Furniture => el?.type === 'furniture'),
+    ...draftElements(s).filter((el): el is Furniture => el.type === 'furniture'),
+  ];
+  for (const f of zoned) {
+    const zone = zoneOf(f.kind, s.accessibleZones);
+    if (!zone) continue;
+    const y = levelBaseM(s.doc, levelOf(f), s.wallHeightMm) + (f.elevMm ?? 0) / 1000 + 0.015;
+    const quads = zoneRects(zone, f.w, f.h).flatMap((r) => {
+      const c = [
+        { x: r.x, y: r.y },
+        { x: r.x + r.w, y: r.y },
+        { x: r.x + r.w, y: r.y + r.h },
+        { x: r.x, y: r.y + r.h },
+      ].map((p) => toPlan(f, p));
+      return [c[0], c[1], c[2], c[0], c[2], c[3]];
+    });
+    if (!quads.length) continue;
+    const geometry = new THREE.BufferGeometry().setFromPoints(
+      quads.map((p) => new THREE.Vector3(p.x * M_PER_UNIT, y, p.y * M_PER_UNIT)),
+    );
+    const tint = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({
+        color: '#2563eb',
+        transparent: true,
+        opacity: 0.18,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    tint.userData.useZone = true;
+    overlay.add(tint);
+  }
   const outline = shapeDraftScene(s);
   if (outline.length >= 2) {
     const closed = d?.type === 'shape' && d.kind !== 'polygon';
@@ -947,6 +986,9 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
         s.draft !== prev.draft ||
         s.inference !== prev.inference ||
         s.furnitureGhost !== prev.furnitureGhost ||
+        s.selectedIds !== prev.selectedIds ||
+        (s.doc !== prev.doc && s.selectedIds.length > 0) ||
+        s.accessibleZones !== prev.accessibleZones ||
         s.tool !== prev.tool ||
         s.activeLevel !== prev.activeLevel
       ) {

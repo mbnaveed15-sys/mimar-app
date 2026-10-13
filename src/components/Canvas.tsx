@@ -423,6 +423,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
               selected={false}
               k={k}
               ghost
+              accessible={accessibleZones}
             />
           </g>
         )}

@@ -642,6 +642,7 @@ export interface PlannerState {
       | 'pdfCheck'
       | 'showHints'
       | 'pdfHints'
+      | 'pdfZones'
       | 'accessibleZones'
       | 'selectionBar',
     show: boolean,
@@ -652,6 +653,8 @@ export interface PlannerState {
   showHints: boolean;
   /** Add the plan hints to the PDF's plan check page. */
   pdfHints: boolean;
+  /** Show every furniture item's use zone in PDF and PNG exports of the plan. */
+  pdfZones: boolean;
   /** Furniture use zones sized for a wheelchair user (ADA), where they differ. */
   accessibleZones: boolean;
   /** Show the selection bar with a mouse (touch screens always show it). */
@@ -787,7 +790,7 @@ export function createPlannerStore(
     const mmToPx = (mm: number) => mm / get().scaleMMperPx;
     const persistPrefs = () => {
       const { units, showDimensions, showFurniture, showRoomLabels, showRoomFills, exportLines, pdfCheck } = get();
-      const { showHints, pdfHints, accessibleZones, selectionBar, belowOpacity, checks, snaps } = get();
+      const { showHints, pdfHints, pdfZones, accessibleZones, selectionBar, belowOpacity, checks, snaps } = get();
       const { wallThicknessMm, marlaSqFt, paper, wallHeightMm, theme, grid, toolbars, openingGapMm, panels } = get();
       savePrefs({
         units,
@@ -799,6 +802,7 @@ export function createPlannerStore(
         pdfCheck,
         showHints,
         pdfHints,
+        pdfZones,
         accessibleZones,
         selectionBar,
         belowOpacity,
@@ -927,6 +931,7 @@ export function createPlannerStore(
       pdfCheck: prefs.pdfCheck,
       showHints: prefs.showHints,
       pdfHints: prefs.pdfHints,
+      pdfZones: prefs.pdfZones,
       accessibleZones: prefs.accessibleZones,
       selectionBar: prefs.selectionBar,
       furnitureKind: DEFAULT_FURNITURE_KIND,
