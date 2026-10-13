@@ -62,7 +62,10 @@ test('a room corner grip moves the walls that meet there', async ({ page }) => {
   await expect
     .poll(async () => {
       const doc = await saved(page);
-      return doc?.elements?.filter((w: { x1: number; y1: number }) => w.x1 < -2 * FT && w.y1 < -2 * FT).length;
+      // Either end of each wall that met at the corner.
+      const moved = (w: { x1: number; y1: number; x2: number; y2: number }) =>
+        (w.x1 < -2 * FT && w.y1 < -2 * FT) || (w.x2 < -2 * FT && w.y2 < -2 * FT);
+      return doc?.elements?.filter(moved).length;
     })
     .toBe(2);
 });
@@ -87,6 +90,7 @@ test('several walls change thickness together, and the plinth shows on the plan'
     .toBe(2);
 
   // The plinth standing out 12" past the walls is outlined on the plan, and a click there picks it.
+  await page.mouse.click(...(await at(page, 20, 10)));
   await page.mouse.click(...(await at(page, 20, 0)));
   await page.getByTestId('wall-plinth').getByRole('button', { name: 'Plinth settings' }).click();
   const out = page.getByTestId('plinth-panel').getByLabel('Stands out past the wall faces');
