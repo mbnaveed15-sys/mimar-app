@@ -26,6 +26,7 @@ const NAMES: Record<PlanElement['type'] | 'room', [string, string]> = {
   context: ['surrounding', 'surroundings'],
   roof: ['roof', 'roofs'],
   dimension: ['dimension', 'dimensions'],
+  run: ['wire or pipe run', 'wire and pipe runs'],
   room: ['room', 'rooms'],
 };
 

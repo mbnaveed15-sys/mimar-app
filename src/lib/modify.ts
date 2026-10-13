@@ -2,6 +2,7 @@
  * AutoCAD-style editing of walls: trim, extend, break, join, fillet, chamfer and offset, plus
  * mirror, scale and stretch for any selection. Everything here is pure: plan in, plan out.
  */
+import { remapJoins } from './services';
 import { scaledSize, stretchPlaced } from './resize';
 import { mapOutline, placeOnWall, wallParam } from '../geometry';
 import {
@@ -567,7 +568,7 @@ export function mirrorItems(
         (p) => reflect(p, a, b),
         (deg) => 2 * lineDeg - deg,
       );
-      mirrored.set(el.id, remapTies({ ...out, ...fresh, id }, idMap));
+      mirrored.set(el.id, remapJoins(remapTies({ ...out, ...fresh, id }, idMap), idMap));
     } else if (el.type === 'stair' && (el.shape === 'curved' || el.shape === 'spiral')) {
       // A curved stair turns the other way: its own frame turned half round and flipped across.
       const p = reflect(el, a, b);

@@ -3,6 +3,7 @@ import type { Furniture } from '../../types';
 import { PLAN } from '../../theme/plan';
 import { isPlant } from '../../furniture/catalog';
 import { zoneOf, zoneRects } from '../../furniture/useZones';
+import { serviceOf, TRADE_COLORS } from '../../lib/services';
 
 /** Plants and garden greenery on the plan, unless painted. */
 const PLANT_FILL = '#cfe3c1';
@@ -24,6 +25,7 @@ interface Props {
 export function FurnitureShape({ item, color, selected, k, accessible, ghost, showZone }: Props) {
   const { w, h } = item;
   const showLabel = item.label !== undefined || !item.kind;
+  const service = serviceOf(item);
   // The free space it needs to be used, shown while it is selected or being placed.
   const zone = selected || ghost || showZone ? zoneOf(item.kind, accessible) : null;
   return (
@@ -38,8 +40,9 @@ export function FurnitureShape({ item, color, selected, k, accessible, ghost, sh
           w={w}
           h={h}
           fill={color ?? (isPlant(item.kind) ? PLANT_FILL : PLAN.furniture)}
-          stroke={PLAN.furnitureEdge}
-          sw={1.2 * k}
+          // Services are drawn in their trade's colour (red for electrical, blue for water…).
+          stroke={service ? TRADE_COLORS[service.trade] : PLAN.furnitureEdge}
+          sw={(service ? 1.4 : 1.2) * k}
         />
       ) : (
         <rect

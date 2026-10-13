@@ -34,8 +34,9 @@ import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { sideName, toPlan, zoneOf, zoneRects, zoneSamples, type ZoneSide } from '../furniture/useZones';
 import { daylightRooms, projectOf, shows } from './project';
 import { buildingUseHints, type FloorInfo } from './buildingUse';
+import { servicesHints } from './servicesHints';
 
-export type HintKind = 'reach' | 'daylight' | 'size' | 'layout' | 'use';
+export type HintKind = 'reach' | 'daylight' | 'size' | 'layout' | 'use' | 'services';
 
 export interface Hint {
   id: string;
@@ -578,5 +579,6 @@ export function planHints(
   });
   // Offices, schools, clinics, shops and mosques: exits, stairs, corridors, doors, toilets and access.
   if (type === 'building') hints.push(...buildingUseHints(doc, projectOf(doc).use ?? 'other', floors, len));
+  hints.push(...servicesHints(doc, (id) => levelNames.get(id) ?? ''));
   return hints;
 }

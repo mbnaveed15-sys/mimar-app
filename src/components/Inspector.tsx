@@ -49,6 +49,8 @@ import { SelectionPanel } from './SelectionPanel';
 import { GroundPlace } from './GroundPlace';
 import { PlinthPanel, WallPlinth } from './PlinthPanel';
 import { DividePanel } from './DividePanel';
+import { RunFields } from './RunFields';
+import { RUN_SYSTEMS, serviceOf } from '../lib/services';
 
 /** Common room names in Pakistani homes, offered as suggestions. */
 const ROOM_NAMES = [
@@ -98,6 +100,8 @@ function itemName(el: PlanElement): string {
             ? 'vertical dimension'
             : 'dimension';
   if (el.type === 'level') return el.approx ? 'approximate level' : 'spot level';
+  if (el.type === 'run')
+    return `${RUN_SYSTEMS[el.system].label.toLowerCase()} ${RUN_SYSTEMS[el.system].wire ? 'wiring' : 'pipe'}`;
   if (el.type === 'contour') return 'contour line';
   if (el.type === 'pad') return 'levelled area';
   if (el.type === 'roof') return `${el.shape} roof`;
@@ -106,7 +110,7 @@ function itemName(el: PlanElement): string {
 }
 
 /** Section lines and dimensions: drawn on the plan, with no height or material. */
-const isAnnotation = (el: PlanElement) => el.type === 'section' || el.type === 'dimension';
+const isAnnotation = (el: PlanElement) => el.type === 'section' || el.type === 'dimension' || el.type === 'run';
 
 /** A dimension: what it measures, whether it follows the plan, and a switch to stop it following. */
 function DimensionFields({
@@ -782,6 +786,7 @@ export function Inspector() {
                 </div>
               </>
             )}
+            {el.type === 'run' && <RunFields run={el} units={units} onChange={updateElement} />}
             {el.type === 'dimension' && <DimensionFields dim={el} units={units} onChange={updateElement} />}
             {(el.type === 'level' || el.type === 'contour' || el.type === 'pad') && (
               <>
@@ -837,7 +842,8 @@ export function Inspector() {
               el.type !== 'window' &&
               el.type !== 'plot' &&
               !isAnnotation(el) &&
-              !isSiteItem(el) && (
+              !isSiteItem(el) &&
+              !(el.type === 'furniture' && serviceOf(el)) && (
                 <LengthField
                   id="elevation"
                   label="Height above floor"
@@ -847,6 +853,18 @@ export function Inspector() {
                   onCommit={(mm) => updateElement({ ...el, elevMm: Math.min(mm, 30000) || undefined })}
                 />
               )}
+            {el.type === 'furniture' && serviceOf(el) && serviceOf(el)!.mount !== 'ceiling' && (
+              <LengthField
+                id="service-height"
+                label={serviceOf(el)!.mount === 'wall' ? 'Mounting height (to its middle)' : 'Height above floor'}
+                mm={el.elevMm ?? serviceOf(el)!.heightMm}
+                units={units}
+                min={0}
+                onCommit={(mm) =>
+                  updateElement({ ...el, elevMm: mm === serviceOf(el)!.heightMm ? undefined : Math.min(mm, 30000) })
+                }
+              />
+            )}
             {!isAnnotation(el) && !isSiteItem(el) && <div>Material: {materialName(el.material) ?? '—'}</div>}
             {((el.type === 'wall' && !el.plotId) || el.type === 'line') && !el.locked && (
               <DividePanel id={el.id} units={units} />

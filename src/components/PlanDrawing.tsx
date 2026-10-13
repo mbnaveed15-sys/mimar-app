@@ -16,6 +16,7 @@ import { OpeningShape } from './shapes/OpeningShape';
 import { RoomShape } from './shapes/RoomShape';
 import { PlotShape, StairShape } from './shapes/SiteShapes';
 import { SectionShape } from './shapes/SectionShape';
+import { RunShape } from './shapes/RunShape';
 import { DimensionShape } from './shapes/DimensionShape';
 import { dimStyleOf } from '../lib/dimStyle';
 import { SketchLineShape } from './shapes/SketchLineShape';
@@ -252,6 +253,11 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
         ) : el.type === 'roof' ? (
           <RoofShape key={el.id} roof={el} selected={selected.has(el.id)} k={k} />
         ) : null,
+      )}
+
+      {/* Wires and pipes over the furniture they join. */}
+      {doc.elements.map((el) =>
+        el.type === 'run' ? <RunShape key={el.id} run={el} selected={selected.has(el.id)} k={k} /> : null,
       )}
 
       {doc.elements.map((el) =>

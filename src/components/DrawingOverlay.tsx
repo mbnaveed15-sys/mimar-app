@@ -1,4 +1,5 @@
 import { SectionShape } from './shapes/SectionShape';
+import { RunShape } from './shapes/RunShape';
 import { NorthArrowShape } from './shapes/NorthArrowShape';
 import { northTowards } from '../tools/structureTools';
 import { SNAP_LABELS, type Inference } from '../lib/inference';
@@ -360,6 +361,16 @@ export function DrawingOverlay({ draft: d, inference, axisLock, units, k, hoverE
             {len({ x: 0, y: d.y1 }, { x: 0, y: d.y2 })}
           </Label>
         </>
+      )}
+
+      {d?.type === 'run' && (
+        <g data-testid="run-draft" opacity={0.8}>
+          <RunShape
+            run={{ id: 'draft', type: 'run', system: d.system, points: [...d.points, d.cursor] }}
+            selected={false}
+            k={k}
+          />
+        </g>
       )}
 
       {d?.type === 'contour' && (

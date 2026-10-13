@@ -22,6 +22,7 @@ import { MM_PER_UNIT } from '../lib/scale';
 import { DEFAULT_AREA, fitView, MAX_ZOOM, VIEW_HISTORY, VIEW_STEP_MS, zoomAt, type Size } from '../lib/view';
 import { syncDimensions } from '../lib/dimensions';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
+import { DEFAULT_SERVICE_KIND, isService, kindPlaced, syncRuns } from '../lib/services';
 import { resetElementSize, type ScaleAxis } from '../lib/resize';
 import { detectRoom, openWallEnds } from '../rooms';
 import type { Inference } from '../lib/inference';
@@ -103,6 +104,7 @@ import type {
   Roof,
   Skylight,
   Dormer,
+  RunSystem,
   SunSettings,
   Block,
   ContextItem,
@@ -697,6 +699,14 @@ export interface PlannerState {
   /** Library item placed by the Furniture tool. */
   furnitureKind: FurnitureKind;
   setFurnitureKind: (kind: FurnitureKind) => void;
+  /** The Services tool's item (a light, socket, tap…). */
+  serviceKind: FurnitureKind;
+  setServiceKind: (kind: FurnitureKind) => void;
+  /** What the Wire or pipe tool draws. */
+  runSystem: RunSystem;
+  setRunSystem: (system: RunSystem) => void;
+  /** A wire or pipe run through `points`, its ends joined to the items given (one undo step). */
+  addRun: (points: Point[], from?: Id, to?: Id) => void;
   /** How far the Furniture tool turns the next item placed (degrees, clockwise on the plan, as Rotation). */
   furnitureAngle: number;
   setFurnitureAngle: (deg: number) => void;
@@ -941,7 +951,7 @@ export function createPlannerStore(
       set({ viewBack: [...viewBack, view].slice(-VIEW_HISTORY) });
     };
     // Every change: a plot's boundary walls follow it, then dimensions follow what they measure.
-    const settle = (prev: PlanDoc, next: PlanDoc) => syncDimensions(prev, syncPlotWalls(prev, next));
+    const settle = (prev: PlanDoc, next: PlanDoc) => syncDimensions(prev, syncRuns(syncPlotWalls(prev, next)));
     const updateElements = (fn: (els: PlanElement[]) => PlanElement[]) =>
       get().commit((doc) => {
         const elements = fn(doc.elements);
@@ -982,6 +992,8 @@ export function createPlannerStore(
       accessibleZones: prefs.accessibleZones,
       selectionBar: prefs.selectionBar,
       furnitureKind: DEFAULT_FURNITURE_KIND,
+      serviceKind: DEFAULT_SERVICE_KIND,
+      runSystem: 'lighting',
       furnitureAngle: 0,
       furnitureGhost: null,
       scaleAxis: 'both',
@@ -1082,7 +1094,8 @@ export function createPlannerStore(
           drawing?.type === 'plotPoly' ||
           drawing?.type === 'contour' ||
           drawing?.type === 'roof' ||
-          drawing?.type === 'slabPoly'
+          drawing?.type === 'slabPoly' ||
+          drawing?.type === 'run'
         ) {
           const points = drawing.points.slice(0, -1);
           set({ draft: points.length ? { ...drawing, points } : null });
@@ -1452,7 +1465,7 @@ export function createPlannerStore(
         return true;
       },
       addFurniture: (p, rotation = get().furnitureAngle) => {
-        const kind = get().furnitureKind;
+        const kind = kindPlaced(get());
         const size = FURNITURE_CATALOG[kind];
         const el: PlanElement = {
           id: newId(),
@@ -1466,7 +1479,7 @@ export function createPlannerStore(
         };
         updateElements((els) => [...els, onActive(el)]);
         // Show the new item so it is visible even if the furniture layer was hidden.
-        if (!get().showFurniture) get().setLayer('showFurniture', true);
+        if (!get().showFurniture && !isService(kind)) get().setLayer('showFurniture', true);
       },
       applyMaterial: (id, side) => {
         const mat = activeMat();
@@ -1657,6 +1670,21 @@ export function createPlannerStore(
         persistPrefs();
       },
       setFurnitureKind: (furnitureKind) => set({ furnitureKind }),
+      setServiceKind: (serviceKind) => set({ serviceKind }),
+      setRunSystem: (runSystem) =>
+        set((st) => ({ runSystem, draft: st.draft?.type === 'run' ? { ...st.draft, system: runSystem } : st.draft })),
+      addRun: (points, from, to) => {
+        if (points.length < 2) return;
+        const el: PlanElement = {
+          id: newId(),
+          type: 'run',
+          system: get().runSystem,
+          points,
+          ...(from && { from }),
+          ...(to && { to }),
+        };
+        updateElements((els) => [...els, onActive(el)]);
+      },
       setFurnitureAngle: (deg) => set({ furnitureAngle: (((Math.round(deg * 100) / 100) % 360) + 360) % 360 }),
       setFurnitureGhost: (furnitureGhost) => set({ furnitureGhost }),
       setScaleAxis: (scaleAxis) => set({ scaleAxis }),

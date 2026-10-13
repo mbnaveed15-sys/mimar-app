@@ -1,4 +1,5 @@
 import { findElementNear, translateElement } from '../geometry';
+import { PLACING_TOOLS } from '../lib/services';
 import { snapAllowed, snapsOn } from '../lib/checks';
 import { copyOpeningTo, loneOpenings, slideOpening } from '../store/openingAt';
 import { newId } from '../lib/ids';
@@ -65,7 +66,14 @@ import {
   curveRelease,
 } from './curveTool';
 import { setSideSize, sideSize } from '../lib/resize';
-import { FURNITURE_HINT, furnitureHover, furnitureMeasure, furniturePress, furnitureReadout } from './furnitureTool';
+import {
+  FURNITURE_HINT,
+  SERVICES_HINT,
+  furnitureHover,
+  furnitureMeasure,
+  furniturePress,
+  furnitureReadout,
+} from './furnitureTool';
 import { DIM_TOOLS, dimAnchor, dimHint, dimHover, dimMeasure, dimPress, dimReadout, dimRelease } from './dimensionTool';
 
 /** The bits of a zustand store the controller needs. */
@@ -84,6 +92,8 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   move: 'move',
   rotate: 'angle',
   furniture: 'angle',
+  services: 'angle',
+  run: 'length',
   offset: 'length',
   mirror: 'none',
   trim: 'none',
@@ -277,7 +287,7 @@ export function anchorOf(s: PlannerState): Point | null {
   if (!d) return null;
   if (MODIFY_TOOLS.includes(s.tool)) return modifyAnchor(s);
   if (d.type === 'beam' || d.type === 'slab' || d.type === 'plot' || d.type === 'pad') return { x: d.x1, y: d.y1 };
-  if (d.type === 'plotPoly' || d.type === 'contour' || d.type === 'roof' || d.type === 'slabPoly')
+  if (d.type === 'plotPoly' || d.type === 'contour' || d.type === 'roof' || d.type === 'slabPoly' || d.type === 'run')
     return d.points[d.points.length - 1];
   switch (d.type) {
     case 'wall':
@@ -309,7 +319,14 @@ export function currentDirection(s: PlannerState): Point | null {
     return sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 });
   if (d.type === 'tape') return sub(d.b, d.a);
   if (d.type === 'move') return sub(d.to, d.base);
-  if (d.type === 'plotPoly' || d.type === 'contour' || d.type === 'roof' || d.type === 'slabPoly' || d.type === 'curve')
+  if (
+    d.type === 'plotPoly' ||
+    d.type === 'contour' ||
+    d.type === 'roof' ||
+    d.type === 'slabPoly' ||
+    d.type === 'curve' ||
+    d.type === 'run'
+  )
     return sub(d.cursor, d.points[d.points.length - 1]);
   if (d.type === 'dimension' && d.points.length) return sub(d.cursor, d.points[d.points.length - 1]);
   return null;
@@ -365,7 +382,7 @@ export function hover(store: Store, raw: Point, shift = false, screenY?: number)
   const s = store.getState();
   const d = s.draft;
   if (!(s.tool in MEASURE_TOOLS)) return;
-  if (s.tool === 'furniture') return furnitureHover(store, raw);
+  if (PLACING_TOOLS.includes(s.tool)) return furnitureHover(store, raw);
   if (s.tool === 'pushpull') {
     s.setInference(null);
     return shapeHover(store, null);
@@ -605,7 +622,7 @@ export function press(
     openingPress(store, raw, opts);
     return true;
   }
-  if (s.tool === 'furniture') {
+  if (PLACING_TOOLS.includes(s.tool)) {
     furniturePress(store, raw);
     return true;
   }
@@ -850,7 +867,7 @@ export function applyMeasure(store: Store, text: string): boolean {
     s.setWarning(null);
     return true;
   }
-  if (s.tool === 'furniture') {
+  if (PLACING_TOOLS.includes(s.tool)) {
     const error = furnitureMeasure(store, m);
     if (error) return fail(error);
     s.setWarning(null);
@@ -1084,6 +1101,7 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
       if (d?.type === 'move' && s.axisLock === 'z') return { label: 'Height', value: formatLength(d.dz ?? 0, s.units) };
       return { label: 'Distance', value: d?.type === 'move' ? len(sub(d.to, d.base)) : '' };
     case 'furniture':
+    case 'services':
       return furnitureReadout(s);
     case 'rotate':
       // Counter-clockwise positive, as typed.
@@ -1144,6 +1162,8 @@ export function toolHint(s: PlannerState): string {
       return openingHint(s);
     case 'furniture':
       return FURNITURE_HINT;
+    case 'services':
+      return SERVICES_HINT;
     case 'move':
       if (d?.type === 'move' && s.axisLock === 'z')
         return 'Move the pointer up or down to raise or lower, or type a height. Arrow up/down again to move across.';

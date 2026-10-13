@@ -4,6 +4,7 @@ import { aliasesFor } from './lib/aliases';
 import { shows } from './lib/project';
 import {
   exportCostCsv,
+  exportServicesCsv,
   exportDrawingsDxf,
   exportIfc,
   exportModel,
@@ -152,6 +153,13 @@ export function buildCommands(ctx: CommandContext): Command[] {
     { id: 'file.png', label: 'Export PNG', menu: 'file', group: 2, run: exportPlanPng },
     { id: 'file.dxf', label: 'Export DXF (AutoCAD)', menu: 'file', group: 2, run: exportPlanDxf },
     { id: 'file.cost', label: 'Export quantities and cost (CSV)', menu: 'file', group: 2, run: () => exportCostCsv() },
+    {
+      id: 'file.services',
+      label: 'Export services schedule (CSV)',
+      menu: 'file',
+      group: 2,
+      run: exportServicesCsv,
+    },
     {
       id: 'file.glb',
       label: 'Export 3D: GLB (Twinmotion)',

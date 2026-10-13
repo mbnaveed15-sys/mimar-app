@@ -347,7 +347,7 @@ describe('storage', () => {
     // A plan with no sheets of its own gets the suggested ones; an emptied list stays empty.
     expect(normaliseDoc(emptyDoc()).sheets).toBeUndefined();
     expect(normaliseDoc({ ...emptyDoc(), sheets: [] }).sheets).toEqual([]);
-    expect(CURRENT_VERSION).toBe(20);
+    expect(CURRENT_VERSION).toBe(21);
   });
 });
 

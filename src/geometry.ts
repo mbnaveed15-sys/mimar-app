@@ -104,6 +104,13 @@ export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Poin
       return withHole(s, j, c ? withCurve({ points: s.holes![j] }, mapCurve(c, f, reverse)) : { points: s.holes![j] });
     }, moved) as T;
   }
+  // A run's ends stay joined to the same items when its points are turned round.
+  if (el.type === 'run' && reverse) {
+    const out = { ...el, points: map(el.points), from: el.to, to: el.from };
+    if (!out.from) delete out.from;
+    if (!out.to) delete out.to;
+    return out;
+  }
   // A plot's road and sides stay on the same edges as its corners turn round.
   if (el.type === 'plot' && reverse) return { ...el, points: map(el.points), ...reversedSides(el) };
   // A roof's gable ends and low side stay on the same edges too.
@@ -175,6 +182,7 @@ export function isNear(el: PlanElement, p: Point, threshold: number): boolean {
     case 'level':
       return Math.hypot(p.x - el.x, p.y - el.y) < threshold * 1.5;
     case 'contour':
+    case 'run':
       return nearPolyline(el.points, p, threshold);
     case 'pad':
     case 'roof':
@@ -362,6 +370,7 @@ function elementPoints(el: PlanElement): Point[] {
     case 'pad':
     case 'context':
     case 'roof':
+    case 'run':
       return el.points;
     case 'level':
       return [{ x: el.x, y: el.y }];

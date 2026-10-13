@@ -2,6 +2,7 @@ import type { PlannerState } from '../store/plannerStore';
 import { modifyEnter } from './modifyTools';
 import { shapeEnter } from './shapeTools';
 import { finishContour } from './groundTools';
+import { finishRun } from './runTool';
 import { finishPlotPoly, finishRoof, finishSlab } from './structureTools';
 import { finishArcWall } from './controller';
 import { curveEnter } from './curveTool';
@@ -22,7 +23,8 @@ export function finishStep(store: Store): boolean {
     finishPlotPoly(store) ||
     finishRoof(store) ||
     finishSlab(store) ||
-    finishContour(store)
+    finishContour(store) ||
+    finishRun(store)
   )
     return true;
   const s = store.getState();

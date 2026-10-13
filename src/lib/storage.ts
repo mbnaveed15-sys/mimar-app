@@ -1,4 +1,5 @@
 import { cleanText } from './text';
+import { isRunSystem } from './services';
 import { curveOf } from './curvedEdges';
 import { MAX_RISE_MM } from './site';
 import {
@@ -60,9 +61,10 @@ export const STORAGE_KEY = 'mimar.plan';
  * bylaw area and road width, and LDA's built-up and open areas; 17 the Ground (site) level and your own
  * plinth; 18 furniture heights, items on the lawn of the one Ground level, and the plinth's own settings;
  * 19 the plinth's own projection and material under single walls; 20 dimension text size and ends,
- * drawing options, a pitch per roof side, skylights and dormers.
+ * drawing options, a pitch per roof side, skylights and dormers; 21 services (electrical, plumbing and
+ * the rest) and their wire and pipe runs.
  */
-export const CURRENT_VERSION = 20;
+export const CURRENT_VERSION = 21;
 
 /** The automatic plinth's projection (0 to 1 m) and material; nothing when neither is set. */
 function normalisePlinth(raw: unknown): PlinthSpec | undefined {
@@ -315,6 +317,20 @@ function normaliseElement(raw: unknown): PlanElement | null {
         ...(Math.abs(num('bow')) > 0.05 && { bow: num('bow') }),
       };
       return [el.x1, el.y1, el.x2, el.y2].every(Number.isFinite) ? el : null;
+    }
+    case 'run': {
+      const points = readPoints(raw.points);
+      if (points.length < 2 || !isRunSystem(raw.system)) return null;
+      return {
+        ...base,
+        type: 'run' as const,
+        system: raw.system,
+        points,
+        ...(typeof raw.from === 'string' && raw.from && { from: raw.from }),
+        ...(typeof raw.to === 'string' && raw.to && { to: raw.to }),
+        ...(inRange(raw.sizeMm, 0.5, 1000) && { sizeMm: raw.sizeMm }),
+        ...(raw.straight === true && { straight: true }),
+      };
     }
     case 'section': {
       const el = {

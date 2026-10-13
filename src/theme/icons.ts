@@ -10,6 +10,9 @@ export const ICONS = {
   room: "<rect x='4' y='4' width='16' height='16' rx='0.5'/><path d='M4 11.5 11.5 4M4 18 18 4M9.5 20 20 9.5M16 20l4-4'/>",
   door: "<path d='M3 20h5M16 20h5M8 20V8'/><path d='M8 8a12 12 0 0 1 12 12' stroke-dasharray='2 2.2'/>",
   window: "<path d='M2.5 12H6M18 12h3.5'/><rect x='6' y='8.5' width='12' height='7' rx='0.5'/><path d='M6 12h12'/>",
+  services:
+    "<circle cx='9' cy='9' r='5.5'/><path d='M5.1 5.1l7.8 7.8M12.9 5.1l-7.8 7.8'/><path d='M14 21v-3.5a3 3 0 0 1 3-3h0a3 3 0 0 1 3 3V21'/><path d='M16 14.5V12M18 14.5V12'/>",
+  run: "<circle cx='4' cy='18' r='2' fill='currentColor'/><circle cx='20' cy='6' r='2' fill='currentColor'/><path d='M6 17c4-1 4-9 8-10s4 0 4 0' stroke-dasharray='3 2'/>",
   furniture:
     "<path d='M5 11V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3'/><path d='M3 18.5v-5a2 2 0 0 1 4 0v1.5h10v-1.5a2 2 0 0 1 4 0v5z'/><path d='M5.5 18.5v2M18.5 18.5v2'/>",
   paint:

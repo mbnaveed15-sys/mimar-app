@@ -118,7 +118,7 @@ export function draftElements(s: PlannerState): PlanElement[] {
       },
     ];
   }
-  if (!d && s.tool === 'furniture' && s.furnitureGhost) {
+  if (!d && (s.tool === 'furniture' || s.tool === 'services') && s.furnitureGhost) {
     const g = s.furnitureGhost;
     return [{ ...furnitureAt(s, g), id: `${DRAFT}-furniture`, rotation: g.rotation || undefined }];
   }

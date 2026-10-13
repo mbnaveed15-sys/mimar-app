@@ -1,3 +1,5 @@
+import { servicesCsv } from './servicesSchedule';
+import { isService } from './services';
 import { GROUND_LEVEL, levelOf, type DrawingRef } from '../types';
 import { groundOnPlan } from './terrain/groundView';
 import { floorVoids } from './voids';
@@ -245,6 +247,19 @@ export function exportCostCsv(floor = 'all') {
   const report = costReport(s.doc, s.wallHeightMm, floor, costStore.getState());
   // A byte-order mark so Excel reads the text as UTF-8.
   saveBlob('\ufeff' + costCsv(baseName(s.fileName), report), 'text/csv', `${baseName(s.fileName)} quantities.csv`);
+}
+
+/** Download the services schedule: items counted and wire and pipe lengths, floor by floor. */
+export function exportServicesCsv() {
+  const s = plannerStore.getState();
+  if (!s.doc.elements.some((el) => el.type === 'run' || (el.type === 'furniture' && isService(el.kind)))) {
+    s.setWarning(
+      'There are no services yet. Place some with Services (Shift+Q) and join them with Wire or pipe (Shift+U).',
+    );
+    return;
+  }
+  const name = baseName(s.fileName);
+  saveBlob('\ufeff' + servicesCsv(s.doc, `${name} services schedule`, s.units), 'text/csv', `${name} services.csv`);
 }
 
 export type ModelFormat = 'glb' | 'dae' | 'obj';
