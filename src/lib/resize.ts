@@ -97,6 +97,52 @@ export function sideGrips(el: PlanElement): SideGrip[] {
 /** Whether `name` is a side grip's handle name. */
 export const isSideGrip = (name: string) => name in SIDES || name.startsWith('side-edge-');
 
+/** Corner grips of furniture and straight stairs: the two sides each one moves. */
+const CORNERS = {
+  'corner-rb': ['side-r', 'side-b'],
+  'corner-rt': ['side-r', 'side-t'],
+  'corner-lb': ['side-l', 'side-b'],
+  'corner-lt': ['side-l', 'side-t'],
+} as const;
+type CornerName = keyof typeof CORNERS;
+
+/** Whether `name` is a corner grip's handle name. */
+export const isCornerGrip = (name: string) => name in CORNERS;
+
+/**
+ * The corner grips a selected item shows: furniture and straight stairs, whose corners can be
+ * dragged with the opposite corner staying put. Columns keep their own size grip.
+ */
+export function cornerGrips(el: PlanElement): { name: string; at: Point }[] {
+  if (el.locked || (el.type !== 'furniture' && el.type !== 'stair')) return [];
+  const sides = placedSides(el);
+  return (Object.keys(CORNERS) as CornerName[])
+    .filter((name) => CORNERS[name].every((side) => sides.includes(side)))
+    .map((name) => {
+      const [x, y] = CORNERS[name];
+      return {
+        name,
+        at: fromFurnitureLocal(el, { x: (SIDES[x][1] * el.w) / 2, y: (SIDES[y][1] * el.h) / 2 }),
+      };
+    });
+}
+
+/**
+ * Drag the corner grip `name` of a furniture item or straight stair to `p`: the two sides at that
+ * corner follow the pointer and the opposite corner stays. `round` rounds the new sizes.
+ */
+export function dragCorner(
+  el: PlanElement,
+  name: string,
+  p: Point,
+  round?: (size: number) => number,
+): PlanElement | null {
+  if (!(name in CORNERS) || !cornerGrips(el).some((g) => g.name === name)) return null;
+  const [x, y] = CORNERS[name as CornerName];
+  const across = dragSide(el, x, p, round);
+  return across && dragSide(across, y, p, round);
+}
+
 /** A placed item made `size` across the axis of `name`, its opposite side where it was. */
 function resizePlaced<T extends Placed>(el: T, name: SideName, size: number): T {
   const [axis, sign] = SIDES[name];

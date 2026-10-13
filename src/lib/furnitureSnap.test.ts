@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { snapToWalls } from './furnitureSnap';
+import { snapToWalls, snapToFurniture } from './furnitureSnap';
 import type { Wall } from '../types';
 
 const T = 22.86;
@@ -43,5 +43,34 @@ describe('furniture snapping to walls', () => {
     expect(corner.x).toBeCloseTo(T / 2 + 68.5);
     expect(corner.y).toBeCloseTo(T / 2 + 97.5);
     expect(snapToWalls({ w: 60, h: 60 }, { x: 250, y: 250 }, walls)).toBeNull();
+  });
+});
+
+describe('furniture lines up beside other furniture', () => {
+  const bed = { id: 'b', type: 'furniture', x: 100, y: 100, w: 40, h: 60 } as const;
+  const table = { w: 10, h: 10 };
+
+  it('sits flush beside an item and lines up with its back', () => {
+    // Just right of the bed, a little below its top (back) edge.
+    const at = snapToFurniture(table, { x: 127, y: 77 }, [bed]);
+    expect(at).toEqual({ x: 125, y: 75 });
+  });
+
+  it('sits in front of an item, lined up with its middle', () => {
+    const at = snapToFurniture(table, { x: 101, y: 138 }, [bed]);
+    expect(at).toEqual({ x: 100, y: 135 });
+  });
+
+  it('works for items turned a quarter turn', () => {
+    const turned = { ...bed, rotation: 90 };
+    // Turned, the bed runs 60 across and 40 up and down.
+    const at = snapToFurniture({ ...table, rotation: 90 }, { x: 137, y: 100 }, [turned]);
+    expect(at!.x).toBeCloseTo(135);
+    expect(at!.y).toBeCloseTo(100);
+  });
+
+  it('leaves items far away or at odd angles alone', () => {
+    expect(snapToFurniture(table, { x: 200, y: 100 }, [bed])).toBeNull();
+    expect(snapToFurniture({ ...table, rotation: 30 }, { x: 127, y: 100 }, [bed])).toBeNull();
   });
 });

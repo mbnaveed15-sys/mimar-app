@@ -5,7 +5,7 @@
  */
 import { snapsOn } from '../lib/checks';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
-import { snapToWalls } from '../lib/furnitureSnap';
+import { snapToFurniture, snapToWalls } from '../lib/furnitureSnap';
 import type { Measure } from '../lib/measure';
 import { snap } from '../geometry';
 import { MM_PER_UNIT, type PlannerState } from '../store/plannerStore';
@@ -46,7 +46,7 @@ export function placeFurniture(s: PlannerState, item: Furniture, raw: Point): Fu
     s.setInference(null);
     return { ...item, x: raw.x, y: raw.y };
   }
-  const walled = againstWall(s, item, raw, s.furnitureAngle);
+  const walled = snapFurniture(s, item, raw, s.furnitureAngle);
   if (walled) {
     s.setInference(null);
     return walled;
@@ -66,6 +66,28 @@ export function placeFurniture(s: PlannerState, item: Furniture, raw: Point): Fu
 export function againstWall(s: PlannerState, item: Furniture, p: Point, extra = 0): Furniture | null {
   const walled = snapToWalls(item, p, wallsShown(s), extra);
   return walled && { ...item, ...walled, rotation: walled.rotation || undefined };
+}
+
+/**
+ * The item centred near `p` against a wall (as `againstWall`) and lined up beside other furniture
+ * near it: along the wall only, when it is against one. Null when neither is near.
+ */
+export function snapFurniture(s: PlannerState, item: Furniture, p: Point, extra = 0): Furniture | null {
+  const walled = againstWall(s, item, p, extra);
+  const base = walled ?? { ...item, x: p.x, y: p.y };
+  const others = s
+    .visibleElements()
+    .filter((el): el is Furniture => el.type === 'furniture' && el.id !== item.id && !el.hidden);
+  const beside = snapToFurniture(base, { x: base.x, y: base.y }, others);
+  if (beside) {
+    if (!walled) return { ...base, x: beside.x, y: beside.y };
+    // Against a wall it only slides along it: its back stays on the wall.
+    const a = ((walled.rotation ?? 0) * Math.PI) / 180;
+    const back = { x: -Math.sin(a), y: Math.cos(a) };
+    const off = (beside.x - walled.x) * back.x + (beside.y - walled.y) * back.y;
+    if (Math.abs(off) < 0.5) return { ...walled, x: beside.x, y: beside.y };
+  }
+  return walled;
 }
 
 /** Pointer moved with the Furniture tool: move the see-through item. */

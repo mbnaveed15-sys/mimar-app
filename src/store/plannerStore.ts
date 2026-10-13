@@ -739,6 +739,8 @@ export interface PlannerState {
 
   /** Replace an element; doors and windows follow their wall if it changed. */
   updateElement: (next: PlanElement) => void;
+  /** Change several items together, as one undo step (shared settings of a selection). */
+  editElements: (ids: Id[], fn: (el: PlanElement) => PlanElement) => void;
   flipOpening: (id: Id, which: 'side' | 'hinge') => void;
   /**
    * Change doors and windows together, as one undo step: `patch` gives each its new fields. A new
@@ -2726,6 +2728,27 @@ export function createPlannerStore(
         const el = get().doc.elements.find((e) => e.id === id);
         if (!el || (el.type !== 'door' && el.type !== 'window')) return;
         get().updateElement(which === 'side' ? { ...el, flipSide: !el.flipSide } : { ...el, flipHinge: !el.flipHinge });
+      },
+      editElements: (ids, fn) => {
+        const picked = new Set(ids);
+        get().commit((doc) => {
+          const changed = new Map<Id, { prev: PlanElement; next: PlanElement }>();
+          for (const el of doc.elements) {
+            if (!picked.has(el.id) || el.locked) continue;
+            const next = fn(el);
+            if (next !== el) changed.set(el.id, { prev: el, next });
+          }
+          if (!changed.size) return doc;
+          const elements = doc.elements.map((el) => {
+            const hit = changed.get(el.id);
+            if (hit) return hit.next;
+            const host = 'wallId' in el && el.wallId ? changed.get(el.wallId) : undefined;
+            if (host && host.prev.type === 'wall' && host.next.type === 'wall')
+              return reattachOpening(el as Opening, host.prev, host.next);
+            return el;
+          });
+          return { ...doc, elements };
+        });
       },
       editOpenings: (ids, patch) => {
         let misfits: Opening[] = [];

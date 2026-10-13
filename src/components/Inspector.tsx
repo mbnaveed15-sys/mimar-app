@@ -746,7 +746,8 @@ export function Inspector() {
                 {el.kind && <UseZoneNote kind={el.kind} units={units} />}
                 {el.kind && !el.locked && <ResetSize ids={[el.id]} title="Back to its size in the library" />}
                 <div className="text-muted">
-                  Drag the corner grip to resize, a square side grip to move one side, the top grip to rotate.
+                  Drag a corner grip to resize (the opposite corner stays; Shift: about the middle), a square side grip
+                  to move one side, the top grip to rotate.
                 </div>
               </>
             )}
