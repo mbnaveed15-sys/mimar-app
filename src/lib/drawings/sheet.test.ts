@@ -95,6 +95,12 @@ describe('sheets', () => {
     expect(l.paper).toEqual({ w: 420, h: 297 });
     const plan = l.prims.find((p) => p.t === 'plan');
     expect(plan).toMatchObject({ levelId: src.doc.levels[0].id, scale: 100 });
+    // A drawing moved on the sheet: 10 mm right and 5 mm up, and kept on save.
+    const moved: Sheet = { ...sheet, items: [{ ...sheet.items[0], offsetMm: { x: 10, y: -5 } }, sheet.items[1]] };
+    const shifted = layoutSheet(src, moved, 1, 3).prims.find((p) => p.t === 'plan');
+    expect(shifted).toMatchObject({ x: (plan as { x: number }).x + 10, y: (plan as { y: number }).y - 5 });
+    const saved = normaliseDoc(JSON.parse(JSON.stringify({ ...src.doc, sheets: [moved] })));
+    expect(saved.sheets?.[0].items[0].offsetMm).toEqual({ x: 10, y: -5 });
     // Everything stays on the paper.
     for (const p of l.prims)
       if (p.t === 'line')

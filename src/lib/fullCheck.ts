@@ -7,11 +7,26 @@ import { buildingCheckRows } from './buildingCheck';
 import { buildingPeople, buildingUseRows, rowsNotNeeded } from './buildingUse';
 import { planCheck, type CheckRow, type PlanCheck } from './planCheck';
 import { planHints } from './planHints';
+import { checkedPlot, onPlot, plotsOf } from './plotScope';
 import { projectOf } from './project';
-import type { PlanDoc, Units } from '../types';
+import type { Id, PlanDoc, Units } from '../types';
 
-export function fullCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Units }): PlanCheck | null {
-  const check = planCheck(doc, ctx);
+export function fullCheck(
+  whole: PlanDoc,
+  ctx: { wallHeightMm: number; units: Units; plotId?: Id | null },
+): PlanCheck | null {
+  // With several plots, the one being worked on and what stands on it.
+  const doc = onPlot(whole, ctx.plotId);
+  const plots = plotsOf(whole);
+  const found = planCheck(doc, ctx);
+  const plot = checkedPlot(whole, ctx.plotId);
+  const check =
+    found && plot && plots.length > 1
+      ? {
+          ...found,
+          note: `Plot ${plots.indexOf(plot) + 1} of ${plots.length} (select something on another plot to check it). ${found.note}`,
+        }
+      : found;
   const project = projectOf(doc);
   if (!check || project.type !== 'building') return check;
   const use = project.use ?? 'other';

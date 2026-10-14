@@ -266,7 +266,11 @@ export interface SheetLayout {
 export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count: number): SheetLayout {
   const paper = paperMm(sheet);
   const prims: Prim[] = [];
-  const { placed, fits } = pack(src, sheet.items, sheet);
+  const { placed: packed, fits } = pack(src, sheet.items, sheet);
+  // Each drawing where the sheet places it, moved by its own offset.
+  const placed = packed.map((p) =>
+    p.item.offsetMm ? { ...p, x: p.x + p.item.offsetMm.x, y: p.y + p.item.offsetMm.y } : p,
+  );
   for (const p of placed) {
     const ref = p.item.drawing;
     const plan = planOf(src.doc, ref);

@@ -144,3 +144,20 @@ test('a mixed selection in 2D names every kind of item', async ({ page }) => {
   await expect(page.getByText(/1 column, 1 beam, 1 stair/)).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('clicking an item on another floor in 3D goes to that floor and selects it', async ({ page }) => {
+  test.slow();
+  await page.keyboard.press('Control+2');
+  await expect(page.getByTestId('plan-3d-canvas')).toBeVisible();
+  await page.keyboard.press('r');
+  await clickAt(page, 0.35, 0.4);
+  await page.mouse.move(...(await spot(page, 0.6, 0.62)), { steps: 5 });
+  await clickAt(page, 0.6, 0.62);
+  await page.keyboard.press('Escape');
+  await menu(page, 'View', 'Add floor above');
+  await expect(page.getByRole('button', { name: 'Floor: First floor' })).toBeVisible();
+  await page.keyboard.press('Space');
+  await clickAt(page, 0.35, 0.4);
+  await expect(page.getByRole('button', { name: 'Floor: Ground floor' })).toBeVisible();
+  await expect(page.getByText('Selected: wall')).toBeVisible();
+});

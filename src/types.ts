@@ -764,6 +764,8 @@ export type SheetScale = number;
 export interface SheetItem {
   drawing: DrawingRef;
   scale: SheetScale;
+  /** Moved from where the sheet places it: mm right (x) and down (y) on the paper. */
+  offsetMm?: { x: number; y: number };
 }
 
 /** A printed sheet: its paper, the drawings on it, and its name in the title block. */

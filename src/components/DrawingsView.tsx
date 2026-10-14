@@ -387,6 +387,20 @@ function SheetEditor({
               scale={it.scale}
               onChange={(scale) => onChange({ items: sheet.items.map((x, j) => (j === i ? { ...x, scale } : x)) })}
             />
+            <NudgeButtons
+              name={title(it.drawing)}
+              offset={it.offsetMm}
+              onChange={(offsetMm) =>
+                onChange({
+                  items: sheet.items.map((x, j) => {
+                    if (j !== i) return x;
+                    const rest = { ...x };
+                    delete rest.offsetMm;
+                    return offsetMm ? { ...rest, offsetMm } : rest;
+                  }),
+                })
+              }
+            />
             <button
               className="grid h-6 w-6 place-items-center rounded-sm hover:bg-sunken"
               aria-label={`Take ${title(it.drawing)} off the sheet`}
@@ -419,6 +433,58 @@ function SheetEditor({
       <button className="m-btn m-btn-danger self-start" onClick={onDelete}>
         Delete sheet
       </button>
+    </div>
+  );
+}
+
+/** How far a nudge moves a drawing on its sheet (Shift: a fine step). */
+const NUDGE_MM = 5;
+const NUDGES = [
+  { label: 'left', icon: '←', x: -1, y: 0 },
+  { label: 'up', icon: '↑', x: 0, y: -1 },
+  { label: 'down', icon: '↓', x: 0, y: 1 },
+  { label: 'right', icon: '→', x: 1, y: 0 },
+] as const;
+
+/** Move a drawing on its sheet left, right, up or down, 5 mm a click (1 mm with Shift), or put it back. */
+function NudgeButtons({
+  name,
+  offset,
+  onChange,
+}: {
+  name: string;
+  offset?: { x: number; y: number };
+  onChange: (offset: { x: number; y: number } | undefined) => void;
+}) {
+  const btn = 'grid h-6 w-5 place-items-center rounded-sm text-xs hover:bg-sunken';
+  return (
+    <div className="flex flex-none items-center" role="group" aria-label={`Move ${name} on the sheet`}>
+      {NUDGES.map((n) => (
+        <button
+          key={n.label}
+          className={btn}
+          aria-label={`Move ${name} ${n.label}`}
+          title={`Move ${n.label} ${NUDGE_MM} mm (Shift: 1 mm)`}
+          onClick={(e) => {
+            const step = e.shiftKey ? 1 : NUDGE_MM;
+            const x = (offset?.x ?? 0) + n.x * step;
+            const y = (offset?.y ?? 0) + n.y * step;
+            onChange(x || y ? { x, y } : undefined);
+          }}
+        >
+          {n.icon}
+        </button>
+      ))}
+      {offset && (
+        <button
+          className={btn}
+          aria-label={`Put ${name} back where the sheet places it`}
+          title="Put it back where the sheet places it"
+          onClick={() => onChange(undefined)}
+        >
+          ⟲
+        </button>
+      )}
     </div>
   );
 }

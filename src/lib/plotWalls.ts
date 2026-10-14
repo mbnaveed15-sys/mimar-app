@@ -18,7 +18,7 @@ function linkOf(plot: Plot, key: SideKey): Id | undefined {
 }
 
 /** Every link the plot has. */
-function linksOf(plot: Plot): { key: SideKey; id: Id }[] {
+export function linksOf(plot: Plot): { key: SideKey; id: Id }[] {
   const out: { key: SideKey; id: Id }[] = [];
   plot.sideList?.forEach((s, i) => s.wallId && out.push({ key: i, id: s.wallId }));
   if (plot.splay?.wallId) out.push({ key: 'splay', id: plot.splay.wallId });
