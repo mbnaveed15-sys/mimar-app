@@ -5,6 +5,7 @@ import { groundOnPlan } from './terrain/groundView';
 import { floorVoids } from './voids';
 import { planBounds } from '../geometry';
 import { plannerStore } from '../store/plannerStore';
+import { workingPlotId } from '../store/usePlanCheck';
 import { exportPdf } from './exportPdf';
 import { builtAreaSqFt } from './planCheck';
 import { fullCheck } from './fullCheck';
@@ -99,7 +100,7 @@ export function exportPlanPng() {
 function pdfExtras() {
   const { units, pdfCheck, doc, wallHeightMm, fileName } = plannerStore.getState();
   const { showHints, pdfHints, openingGapMm: gapMm, accessibleZones: accessible, checks } = plannerStore.getState();
-  const check = fullCheck(doc, { wallHeightMm, units });
+  const check = fullCheck(doc, { wallHeightMm, units, plotId: workingPlotId(plannerStore.getState()) });
   const skipSizes = new Set(check?.rows.find((r) => r.id === 'rooms')?.ids ?? []);
   // Checks paused with the Checks button are left out of the PDF too.
   const hints =

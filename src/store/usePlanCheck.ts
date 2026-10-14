@@ -1,12 +1,19 @@
 import { fullCheck } from '../lib/fullCheck';
 import type { PlanCheck } from '../lib/planCheck';
 import { planHints, type Hint } from '../lib/planHints';
-import type { PlanDoc, Units } from '../types';
+import { plotOfItems } from '../lib/plotScope';
+import type { Id, PlanDoc, Units } from '../types';
 import { usePlanner } from './plannerStore';
 import { filterCheck, filterHints, type ChecksPrefs } from '../lib/checks';
 
 // One result shared by every part of the screen (the panel and the marks), worked out once per change.
-let lastCheck: { doc: PlanDoc; wallHeightMm: number; units: Units; result: PlanCheck | null } | null = null;
+let lastCheck: {
+  doc: PlanDoc;
+  wallHeightMm: number;
+  units: Units;
+  plotId: Id | null;
+  result: PlanCheck | null;
+} | null = null;
 let lastHints: {
   doc: PlanDoc;
   units: Units;
@@ -16,9 +23,25 @@ let lastHints: {
   result: Hint[];
 } | null = null;
 
-function checkFor(doc: PlanDoc, wallHeightMm: number, units: Units): PlanCheck | null {
-  if (lastCheck?.doc !== doc || lastCheck.wallHeightMm !== wallHeightMm || lastCheck.units !== units)
-    lastCheck = { doc, wallHeightMm, units, result: fullCheck(doc, { wallHeightMm, units }) };
+let workingPlot: Id | null = null;
+/**
+ * The plot being worked on, which the plan check looks at when there are several: the plot picked, or
+ * the one under what is picked; with nothing on a plot picked, the last one.
+ */
+export function workingPlotId(s: { doc: PlanDoc; selectedIds: Id[] }): Id | null {
+  const id = plotOfItems(s.doc, s.selectedIds);
+  if (id) workingPlot = id;
+  return workingPlot;
+}
+
+function checkFor(doc: PlanDoc, wallHeightMm: number, units: Units, plotId: Id | null): PlanCheck | null {
+  if (
+    lastCheck?.doc !== doc ||
+    lastCheck.wallHeightMm !== wallHeightMm ||
+    lastCheck.units !== units ||
+    lastCheck.plotId !== plotId
+  )
+    lastCheck = { doc, wallHeightMm, units, plotId, result: fullCheck(doc, { wallHeightMm, units, plotId }) };
   return lastCheck.result;
 }
 
@@ -64,7 +87,8 @@ export function useFullCheck() {
   const doc = usePlanner(settledDoc);
   const wallHeightMm = usePlanner((s) => s.wallHeightMm);
   const units = usePlanner((s) => s.units);
-  return checkFor(doc, wallHeightMm, units);
+  const plotId = usePlanner(workingPlotId);
+  return checkFor(doc, wallHeightMm, units, plotId);
 }
 
 // Filtered results are kept too, so the same object comes back while nothing changes.

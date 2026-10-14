@@ -891,7 +891,10 @@ function normaliseSheets(raw: unknown[]): Sheet[] {
         // Any whole 1:n from 1:1 to 1:10000 (as sheet.ts's sheetScaleOf).
         const n = Math.round(Number((item as Record<string, unknown>).scale));
         const scale = Number.isFinite(n) && n >= 1 && n <= 10000 ? n : 100;
-        return [{ drawing, scale }];
+        const off = (item as Record<string, unknown>).offsetMm;
+        const moved =
+          isObject(off) && inRange(off.x, -2000, 2000) && inRange(off.y, -2000, 2000) && (off.x !== 0 || off.y !== 0);
+        return [{ drawing, scale, ...(moved && { offsetMm: { x: off.x as number, y: off.y as number } }) }];
       }),
     }));
 }

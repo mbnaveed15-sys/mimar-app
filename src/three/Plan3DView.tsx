@@ -92,7 +92,7 @@ interface Stage {
   fittedEmpty: boolean;
   /** A standard view asked for before the building was first built. */
   pendingView: StandardView | null;
-  /** Materials made for faded floors and highlighted items (by look, then base material), kept for the session. */
+  /** Materials made for highlighted items (by look, then base material), kept for the session. */
   extras: Map<string, Map<THREE.Material, THREE.Material>>;
   render: () => void;
 }
@@ -135,12 +135,10 @@ const levelIndex = (s: PlannerState, id: string | undefined) =>
   );
 
 /**
- * Show floors above the one being drawn faintly (and out of the way of clicks), and tint the
- * selected items.
+ * Tint the selected items (and those being erased). Every floor shows solid and can be picked: picking
+ * an item on another floor moves drawing to that floor.
  */
 function styleMeshes(stage: Stage, s: PlannerState) {
-  // On Ground, its lawn and its floor are both the floor shown.
-  const active = Math.max(...sharedLevelIds(s.doc, s.activeLevel).map((id) => levelIndex(s, id)));
   const selected = new Set(s.selectedPlinth ? [...s.selectedIds, plinthId(s.selectedPlinth)] : s.selectedIds);
   const erasing = new Set(s.draft?.type === 'erase' ? s.draft.ids : []);
   const cache = (look: string) => {
@@ -148,7 +146,6 @@ function styleMeshes(stage: Stage, s: PlannerState) {
     if (!m) stage.extras.set(look, (m = new Map()));
     return m;
   };
-  const faded = cache('faded');
   const lit = cache('lit');
   const red = cache('red');
   const variant = (
@@ -165,11 +162,6 @@ function styleMeshes(stage: Stage, s: PlannerState) {
     }
     return m;
   };
-  const fade = (m: THREE.MeshStandardMaterial) => {
-    m.transparent = true;
-    m.opacity = 0.12;
-    m.depthWrite = false;
-  };
   const redden = (m: THREE.MeshStandardMaterial) => {
     m.emissive = new THREE.Color('#dc2626');
     m.emissiveIntensity = 0.6;
@@ -179,28 +171,20 @@ function styleMeshes(stage: Stage, s: PlannerState) {
     m.emissiveIntensity = 0.45;
   };
   stage.model.traverse((obj) => {
-    const above = levelIndex(s, obj.userData.level) > active;
-    if (obj instanceof THREE.LineSegments) {
-      obj.visible = !above;
-      return;
-    }
+    if (obj instanceof THREE.LineSegments) return;
     if (!(obj instanceof THREE.Mesh)) return;
     const ranges: PartRange[] | undefined = obj.userData.ranges;
     if (ranges) {
       // Merged parts: the selected and erased ones are drawn in their own look through the mesh's groups.
       const base = obj.userData.base as THREE.Material;
       const geometry = obj.geometry as THREE.BufferGeometry;
-      obj.userData.pickable = !above && ranges.some((r) => r.id);
-      obj.castShadow = !above && obj.userData.cast;
+      obj.userData.pickable = ranges.some((r) => r.id);
       geometry.clearGroups();
-      if (above) obj.material = variant(faded, base, fade);
+      const runs = lookRuns(ranges, (id) => (id && erasing.has(id) ? 2 : id && selected.has(id) ? 1 : 0));
+      if (runs.length === 1 && runs[0].look === 0) obj.material = base;
       else {
-        const runs = lookRuns(ranges, (id) => (id && erasing.has(id) ? 2 : id && selected.has(id) ? 1 : 0));
-        if (runs.length === 1 && runs[0].look === 0) obj.material = base;
-        else {
-          obj.material = [base, variant(lit, base, light), variant(red, base, redden)];
-          for (const r of runs) geometry.addGroup(r.start, r.count, r.look);
-        }
+        obj.material = [base, variant(lit, base, light), variant(red, base, redden)];
+        for (const r of runs) geometry.addGroup(r.start, r.count, r.look);
       }
       return;
     }
@@ -208,12 +192,10 @@ function styleMeshes(stage: Stage, s: PlannerState) {
     // A wall with a material per side has a list of them: each gets the look.
     const each = (looks: Map<THREE.Material, THREE.Material>, make: (m: THREE.MeshStandardMaterial) => void) =>
       Array.isArray(base) ? base.map((b) => variant(looks, b, make)) : variant(looks, base, make);
-    obj.userData.pickable = !!obj.userData.id && !above;
-    if (above) obj.material = each(faded, fade);
-    else if (obj.userData.id && erasing.has(obj.userData.id)) obj.material = each(red, redden);
+    obj.userData.pickable = !!obj.userData.id;
+    if (obj.userData.id && erasing.has(obj.userData.id)) obj.material = each(red, redden);
     else if (obj.userData.id && selected.has(obj.userData.id)) obj.material = each(lit, light);
     else obj.material = base;
-    obj.castShadow = !above;
   });
 }
 
@@ -294,7 +276,7 @@ const solidMeshes = (group: THREE.Object3D) =>
       o instanceof THREE.Mesh && !(Array.isArray(o.material) ? o.material : [o.material]).some((m) => m.transparent),
   );
 
-/** A hit on something that can be picked: an item (not a part with no item) on a floor that isn't faded. */
+/** A hit on something that can be picked: an item (not a part with no item). */
 const pickable = (hit: THREE.Intersection) =>
   hit.object instanceof THREE.Mesh && !!hit.object.userData.pickable && (!hit.object.userData.ranges || !!idOf(hit));
 
@@ -1063,6 +1045,24 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     return null;
   }
 
+  /** Selecting an item on another floor moves drawing to that floor first, so it can be picked. */
+  function followFloor(clientX: number, clientY: number) {
+    const stage = stageRef.current;
+    const s = plannerStore.getState();
+    if (!stage || s.tool !== 'select') return;
+    const rect = stage.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    stage.raycaster.setFromCamera(
+      new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1),
+      stage.rig.active,
+    );
+    const hit = stage.raycaster.intersectObjects(stage.model.children, false).find(pickable);
+    const level: string = hit?.object.userData.level ?? 'ground';
+    if (!hit || sharedLevelIds(s.doc, s.activeLevel).includes(level)) return;
+    s.setActiveLevel(level);
+    pickRef.current = null;
+  }
+
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {
     const mode = cameraMode(e);
     if (mode) {
@@ -1075,6 +1075,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
       camRef.current = { mode, x: e.clientX, y: e.clientY, id: e.pointerId };
       return;
     }
+    if (e.button === 0) followFloor(e.clientX, e.clientY);
     touch.onPointerDown(e);
   }
 
