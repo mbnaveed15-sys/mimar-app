@@ -1,11 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PREFS } from '../lib/prefs';
+import { withoutHiddenFloors } from '../lib/layers';
 import { emptyDoc, normaliseDoc } from '../lib/storage';
 import { createPlannerStore } from './plannerStore';
 
 const setup = () => createPlannerStore(emptyDoc(), undefined, DEFAULT_PREFS);
 
 describe('floors', () => {
+  it('hides a floor from 3D with the floor menu eye, keeps it on save, and shows it again', () => {
+    const store = setup();
+    const s = () => store.getState();
+    s().addWall({ x: 0, y: 0 }, { x: 100, y: 0 });
+    s().addLevel();
+    s().addWall({ x: 0, y: 50 }, { x: 100, y: 50 });
+    const first = s().activeLevel;
+    s().setLevelHidden(first, true);
+    const shown = withoutHiddenFloors(s().doc);
+    expect(shown.elements.filter((el) => el.type === 'wall')).toHaveLength(1);
+    expect(shown.levels).toHaveLength(2);
+    // The floor being drawn still shows on the plan.
+    expect(s().levelElements()).toHaveLength(1);
+    expect(normaliseDoc(JSON.parse(JSON.stringify(s().doc))).levels[1].hidden).toBe(true);
+    s().undo();
+    expect(s().doc.levels[1].hidden).toBeUndefined();
+    s().redo();
+    s().showAllHidden();
+    expect(s().doc.levels.some((l) => l.hidden)).toBe(false);
+  });
+
   it('puts new items on the floor being drawn and shows only that floor', () => {
     const store = setup();
     const s = () => store.getState();

@@ -601,6 +601,8 @@ export interface Level {
    * project's usual height (a basement's `BASEMENT_HEIGHT_MM`) when missing.
    */
   heightMm?: number;
+  /** Hidden from the 3D view (and as the faint floor below on the plan) by the eye in the floor menu. */
+  hidden?: boolean;
 }
 
 /** A basement's usual clear height: 10'. */

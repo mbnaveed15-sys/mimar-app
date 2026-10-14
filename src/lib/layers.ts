@@ -1,4 +1,4 @@
-import type { Id, PlanDoc, PlanElement, Room } from '../types';
+import { levelOf, type Id, type PlanDoc, type PlanElement, type Room } from '../types';
 import { RUN_SYSTEMS, SERVICES } from './services';
 
 /** Every item goes on the layer for its kind, automatically. */
@@ -96,6 +96,14 @@ export function withoutHidden(doc: PlanDoc, v: Visibility): PlanDoc {
     elements: doc.elements.filter((el) => !isHidden(el, v) && !('wallId' in el && hiddenWalls.has(el.wallId))),
     rooms: doc.rooms.filter((r) => !isHidden(r, v)),
   };
+}
+
+/** The plan without the floors hidden in the floor menu (the levels stay, so the floors above keep their heights). */
+export function withoutHiddenFloors(doc: PlanDoc): PlanDoc {
+  const hidden = new Set(doc.levels.filter((l) => l.hidden).map((l) => l.id));
+  if (!hidden.size) return doc;
+  const shown = (it: { levelId?: Id }) => !hidden.has(levelOf(it));
+  return { ...doc, elements: doc.elements.filter(shown), rooms: doc.rooms.filter(shown) };
 }
 
 /** How many items each layer holds. */

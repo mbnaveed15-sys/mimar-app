@@ -634,6 +634,7 @@ function normaliseLevels(raw: unknown): Level[] {
         name: nameOf(l.name, 'Floor'),
         ...(l.basement === true && l.id !== GROUND_LEVEL ? { basement: true } : {}),
         ...(inRange(l.heightMm, 1800, 9000) ? { heightMm: l.heightMm } : {}),
+        ...(l.hidden === true ? { hidden: true } : {}),
       };
     });
   // The ground floor always exists; one basement (if any) comes before it, then the Ground (site)
