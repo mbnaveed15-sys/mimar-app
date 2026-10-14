@@ -17,7 +17,7 @@ import { toPlan, zoneOf, zoneRects } from '../furniture/useZones';
 import { setCameraEye } from './cameraEye';
 import { CameraRig, ORBIT_SPEED } from './cameraRig';
 import { draftElements, draftLines } from './draft3d';
-import { withoutHidden } from '../lib/layers';
+import { withoutHidden, withoutHiddenFloors } from '../lib/layers';
 import { shapeDraftScene } from '../tools/shapeTools';
 import { clearPicker, getPointer, setPicker, type FaceHit, type Picker3D } from './picker';
 import type { StandardView } from './cameraRig';
@@ -774,7 +774,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     const host = hostRef.current;
     if (!stage || !host) return;
     const started = performance.now();
-    const shown = withoutHidden(doc, { layers: doc.layers, showFurniture });
+    const shown = withoutHiddenFloors(withoutHidden(doc, { layers: doc.layers, showFurniture }));
     const model = buildModel(shown, { wallHeightMm, showFurniture });
     clearHighlight(stage);
     stage.scene.remove(stage.model);

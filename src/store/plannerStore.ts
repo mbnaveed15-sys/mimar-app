@@ -370,6 +370,8 @@ export interface PlannerState {
    */
   addRetainingWalls: (mode: 'house' | 'building') => boolean;
   renameLevel: (id: Id, name: string) => void;
+  /** Hide a floor from the 3D view (and as the floor below), or show it again. */
+  setLevelHidden: (id: Id, hidden: boolean) => void;
   /** Remove a floor (not the ground floor, nor the Ground (site) level while it has items) and everything on it. */
   deleteLevel: (id: Id) => void;
   /** Elements and rooms on the active floor. */
@@ -1789,6 +1791,7 @@ export function createPlannerStore(
             ...doc,
             elements: doc.elements.map(clear),
             rooms: doc.rooms.map(clear),
+            levels: doc.levels.map(clear),
             layers: Object.keys(layers).length ? layers : undefined,
           };
         });
@@ -2025,6 +2028,15 @@ export function createPlannerStore(
         get().commit((doc) =>
           cleanText(name).trim() && doc.levels.some((l) => l.id === id && l.name !== name)
             ? { ...doc, levels: doc.levels.map((l) => (l.id === id ? { ...l, name: cleanText(name).trim() } : l)) }
+            : doc,
+        ),
+      setLevelHidden: (id, hidden) =>
+        get().commit((doc) =>
+          doc.levels.some((l) => l.id === id && !!l.hidden !== hidden)
+            ? {
+                ...doc,
+                levels: doc.levels.map((l) => (l.id === id ? (hidden ? { ...l, hidden } : omit(l, 'hidden')) : l)),
+              }
             : doc,
         ),
       deleteLevel: (id) => {

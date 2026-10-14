@@ -66,20 +66,35 @@ export function LevelSwitcher() {
           {[...buildingLevels({ levels })].reverse().map((l) => {
             const here = l.id === active || (l.id === GROUND_LEVEL && onGround);
             return (
-              <button
-                key={l.id}
-                role="menuitemradio"
-                aria-checked={here}
-                className={item}
-                onClick={() => {
-                  // Ground opens on its floor, unless its lawn is already being drawn on.
-                  if (!(l.id === GROUND_LEVEL && onGround)) s.setActiveLevel(l.id);
-                  setOpen(false);
-                }}
-              >
-                <span className="w-3 text-accent-ink">{here ? '•' : ''}</span>
-                {l.name}
-              </button>
+              <div key={l.id} role="none" className="flex items-center">
+                <button
+                  role="menuitemradio"
+                  aria-checked={here}
+                  className={`${item} min-w-0 flex-1 ${l.hidden ? 'text-muted' : ''}`}
+                  onClick={() => {
+                    // Ground opens on its floor, unless its lawn is already being drawn on.
+                    if (!(l.id === GROUND_LEVEL && onGround)) s.setActiveLevel(l.id);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="w-3 text-accent-ink">{here ? '•' : ''}</span>
+                  <span className="truncate">{l.name}</span>
+                </button>
+                <button
+                  role="menuitemcheckbox"
+                  aria-checked={!l.hidden}
+                  aria-label={`Show ${l.name}`}
+                  title={
+                    l.hidden
+                      ? `Show ${l.name} in 3D again`
+                      : `Hide ${l.name} in 3D (the floor you draw on still shows on the plan)`
+                  }
+                  className="flex-none rounded-sm p-1.5 text-muted hover:bg-accent-soft hover:text-ink"
+                  onClick={() => s.setLevelHidden(l.id, !l.hidden)}
+                >
+                  <Icon name={l.hidden ? 'eye-off' : 'eye'} size={15} />
+                </button>
+              </div>
             );
           })}
           {onGround && (

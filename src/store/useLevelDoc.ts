@@ -19,7 +19,8 @@ export function useLevelDoc(offset = 0): PlanDoc | null {
     const shared = sharedLevelIds(doc, activeLevel);
     const at = doc.levels.findIndex((l) => l.id === shared[offset > 0 ? shared.length - 1 : 0]);
     const level = offset ? doc.levels[at + offset] : doc.levels.find((l) => l.id === activeLevel);
-    if (!level) return null;
+    // A floor hidden in the floor menu doesn't show as the floor below (the one being drawn always shows).
+    if (!level || (offset && level.hidden)) return null;
     const on = offset ? (it: { levelId?: string }) => levelOf(it) === level.id : onSharedLevel(doc, activeLevel);
     return { ...doc, elements: doc.elements.filter(on), rooms: doc.rooms.filter(on) };
   }, [doc, activeLevel, offset]);
