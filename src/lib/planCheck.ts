@@ -44,7 +44,7 @@ import { isBuildingWall, thicknessOf, wallsOf } from '../walls';
 import { visibleShapes } from './itemShape';
 import { isHidden } from './layers';
 import { directionAlong, pointAlong, runLength } from './arc';
-import { voidsOver } from './voids';
+import { voidsOver, within } from './voids';
 
 export type CheckStatus = 'ok' | 'fail' | 'check';
 
@@ -146,6 +146,18 @@ export function builtAreaSqFt(doc: PlanDoc, levelId: string): number {
   // A double-height room below leaves this floor open over it: counted once, on its own floor.
   for (const v of voidsOver(doc, levelId)) if (inCovered(labelPoint(v.points))) units2 -= polygonArea(v.points);
   return (Math.max(0, units2) * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
+}
+
+/** How far past a porch's outline its columns and slab may reach (a column's half width): 9". */
+const PORCH_SLACK = 228.6 / MM_PER_UNIT;
+
+/** An outline pushed out by `d` from its middle (enough for a porch's columns at its corners). */
+function grow(pts: Point[], d: number): Point[] {
+  const c = labelPoint(pts);
+  return pts.map((p) => {
+    const l = Math.hypot(p.x - c.x, p.y - c.y) || 1;
+    return { x: p.x + ((p.x - c.x) / l) * d * Math.SQRT2, y: p.y + ((p.y - c.y) / l) * d * Math.SQRT2 };
+  });
 }
 
 /** Rooms that are car porches (or garages). */
@@ -301,10 +313,15 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
     const hard: Id[] = [];
     const soft: Id[] = [];
     const walls = wallsOf(doc.elements);
+    // A car porch may stand in the side setback: its columns, roof slab and beams are allowed there.
+    const porches = doc.rooms.filter((r) => !r.hidden && PORCH_ROOM.test(r.name)).map((r) => r.points);
+    const porchPart = (el: PlanElement, pts: Point[]) =>
+      (el.type === 'column' || el.type === 'slab' || el.type === 'beam') &&
+      porches.some((outline) => within(pts, grow(outline, PORCH_SLACK)));
     for (const el of doc.elements) {
       if (isHidden(el, { layers: doc.layers, showFurniture: true })) continue;
       const pts = itemOutline(el, walls);
-      if (!pts || !outside(pts)) continue;
+      if (!pts || !outside(pts) || porchPart(el, pts)) continue;
       if (el.type === 'wall' || (el.type === 'block' && el.heightMm > 0)) hard.push(el.id);
       else soft.push(el.id);
     }

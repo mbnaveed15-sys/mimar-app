@@ -74,7 +74,8 @@ import {
 import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
 import { CURTAIN_MM, hasPlinth, isBuildingWall } from '../walls';
-import { wallPath, type WallLine } from '../lib/arc';
+import { distanceToWall, wallPath, type WallLine } from '../lib/arc';
+import { PORCH_ROOM } from '../lib/planCheck';
 import { pathOutline, roundedRect, type CurveMode } from '../lib/curves';
 import { splitSolidsByLine } from '../lib/splitSolids';
 import { DEFAULT_SUN } from '../lib/sun';
@@ -190,6 +191,8 @@ export interface SiteSpec {
   pathWidthMm: number;
   /** The Rectangle tool rounds its corners to this radius (mm); 0 for square corners. */
   rectRadiusMm: number;
+  /** The Rectangle tool makes a car porch (a room open on its sides, a roof slab and columns), not walls. */
+  rectPorch?: boolean;
   /** Door tool places a door or a gate. */
   gate: boolean;
   gateWidthMm: number;
@@ -642,6 +645,12 @@ export interface PlannerState {
   /** A new wall from a to b on the active floor; with a bow, curved (see Wall.bow). */
   /** `makeRooms`: as the Wall tool draws, an area the wall closes becomes a room (same undo step). */
   addWall: (a: Point, b: Point, bow?: number, makeRooms?: boolean) => void;
+  /**
+   * A car porch over these corners (over a driveway, say), on the ground floor: a room named Car porch
+   * with no walls, a roof slab over it at the floor's ceiling, and a column at each corner the house's
+   * walls don't already hold up. One undo step.
+   */
+  addCarPorch: (corners: Point[]) => void;
   /** After a move on Ground: these items go to the floor or the lawn by where they now stand. */
   settleGround: (ids: Id[]) => void;
   /**
@@ -1370,6 +1379,10 @@ export function createPlannerStore(
           return;
         }
         const corners = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
+        if (get().site.rectPorch) {
+          get().addCarPorch(corners);
+          return;
+        }
         const radius = get().site.rectRadiusMm / MM_PER_UNIT;
         get().beginBatch();
         if (radius > 0)
@@ -1457,6 +1470,43 @@ export function createPlannerStore(
         get().setSelection(copies);
       },
 
+      addCarPorch: (corners) => {
+        const { doc, structure, activeLevel } = get();
+        // On Ground (its floor or lawn) the porch belongs to the ground floor; elsewhere to the floor shown.
+        const on = activeLevel === SITE_LEVEL ? GROUND_LEVEL : activeLevel;
+        const at = <T extends { levelId?: Id }>(it: T): T => (on === GROUND_LEVEL ? it : { ...it, levelId: on });
+        const walls = doc.elements.filter((el): el is Wall => el.type === 'wall' && levelOf(el) === on);
+        const c = {
+          x: corners.reduce((t, p) => t + p.x, 0) / corners.length,
+          y: corners.reduce((t, p) => t + p.y, 0) / corners.length,
+        };
+        const half = structure.columnW / 2;
+        const columns = corners
+          .filter((p) => !walls.some((w) => distanceToWall(w, p) < (w.thickness ?? 0) / 2 + half * 2))
+          .map((p) =>
+            at<PlanElement>({
+              id: newId(),
+              type: 'column',
+              // Just inside the corner.
+              x: p.x + Math.sign(c.x - p.x) * half,
+              y: p.y + Math.sign(c.y - p.y) * (structure.columnShape === 'round' ? half : structure.columnH / 2),
+              w: structure.columnW,
+              h: structure.columnShape === 'round' ? structure.columnW : structure.columnH,
+              shape: structure.columnShape,
+            }),
+          );
+        const slab = at<PlanElement>({
+          id: newId(),
+          type: 'slab',
+          points: corners,
+          thickness: structure.slabThickness,
+        });
+        const n = doc.rooms.filter((r) => levelOf(r) === on && PORCH_ROOM.test(r.name)).length;
+        const room = at<Room>({ id: newId(), name: n ? `Car porch ${n + 1}` : 'Car porch', points: corners });
+        get().commit((d) => ({ ...d, elements: [...d.elements, slab, ...columns], rooms: [...d.rooms, room] }));
+        get().select(room.id);
+        set({ warnings: [] });
+      },
       settleGround: (ids) => {
         const { activeLevel } = get();
         if (activeLevel !== GROUND_LEVEL && activeLevel !== SITE_LEVEL) return;
