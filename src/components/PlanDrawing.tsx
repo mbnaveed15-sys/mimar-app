@@ -221,8 +221,8 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
             );
           }
           case 'furniture':
-            // Services keep to their own layers, whatever the furniture switch.
-            if (!showFurniture && !isService(el.kind)) return null;
+            // Services are drawn later, over the furniture and their wires.
+            if (!showFurniture || isService(el.kind)) return null;
             return (
               <FurnitureShape
                 key={el.id}
@@ -262,6 +262,21 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
       {/* Wires and pipes over the furniture they join. */}
       {doc.elements.map((el) =>
         el.type === 'run' ? <RunShape key={el.id} run={el} selected={selected.has(el.id)} k={k} /> : null,
+      )}
+
+      {/* Service points over the furniture, whatever the furniture switch (they keep to their own layers). */}
+      {doc.elements.map((el) =>
+        el.type === 'furniture' && isService(el.kind) ? (
+          <FurnitureShape
+            key={el.id}
+            item={el}
+            color={colorOf(el.material)}
+            selected={selected.has(el.id)}
+            k={k}
+            accessible={props.accessibleZones}
+            showZone={props.showZones}
+          />
+        ) : null,
       )}
 
       {doc.elements.map((el) =>

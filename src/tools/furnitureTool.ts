@@ -80,7 +80,11 @@ export function snapFurniture(s: PlannerState, item: Furniture, p: Point, extra 
   const base = walled ?? { ...item, x: p.x, y: p.y };
   const others = s
     .visibleElements()
-    .filter((el): el is Furniture => el.type === 'furniture' && el.id !== item.id && !el.hidden);
+    // Furniture lines up with furniture, and service points with service points.
+    .filter(
+      (el): el is Furniture =>
+        el.type === 'furniture' && el.id !== item.id && !el.hidden && !serviceOf(el) === !serviceOf(item),
+    );
   const beside = snapToFurniture(base, { x: base.x, y: base.y }, others);
   if (beside) {
     if (!walled) return { ...base, x: beside.x, y: beside.y };

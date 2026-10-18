@@ -141,6 +141,15 @@ export const SERVICES: Record<string, ServiceInfo> = {
 export const isService = (kind?: string): boolean => !!kind && kind in SERVICES;
 export const serviceOf = (f: Pick<Furniture, 'kind'>): ServiceInfo | null => (f.kind && SERVICES[f.kind]) || null;
 
+/**
+ * Whether a service point stands in the way on the floor, as furniture does (a tank, a pump, an outdoor
+ * AC unit): ceiling and wall points, and traps, manholes and the like flush with the floor, don't.
+ */
+export function standsOnFloor(f: Pick<Furniture, 'kind' | 'elevMm'>): boolean {
+  const info = serviceOf(f);
+  return !info || (info.mount === 'floor' && (f.elevMm ?? info.heightMm) >= 0 && info.size3d[2] >= 300);
+}
+
 /** The trade of a service point or run (null for anything else). */
 export function tradeOf(el: PlanElement): ServiceTrade | null {
   if (el.type === 'run') return RUN_SYSTEMS[el.system]?.trade ?? null;
