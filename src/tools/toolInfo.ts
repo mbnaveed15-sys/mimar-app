@@ -43,6 +43,7 @@ export const TOOL_INFO: Record<Tool, { label: string; icon: IconName; key: strin
   mask: { label: 'Mask', icon: 'mask', key: 'Shift+M' },
   offset: { label: 'Offset', icon: 'offset', key: 'F' },
   mirror: { label: 'Mirror', icon: 'mirror', key: 'I' },
+  array: { label: 'Array', icon: 'array', key: 'Shift+I' },
   trim: { label: 'Trim', icon: 'trim', key: 'X' },
   extend: { label: 'Extend', icon: 'extend', key: 'Shift+X' },
   breakWall: { label: 'Break', icon: 'break', key: 'Shift+J' },

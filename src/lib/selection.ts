@@ -1,5 +1,5 @@
 import { boxOf } from './spatial';
-import { remapJoins } from './services';
+import { remapJoins, serviceOf } from './services';
 import { elementOutline, rotateElement, rotatePoint, translateElement } from '../geometry';
 import type { Bounds, ComponentDef, Group, Id, PlanDoc, PlanElement, Point, Room, Wall } from '../types';
 import { WINDOW_SILL_MM } from '../three/model';
@@ -163,8 +163,12 @@ export function raiseItems(doc: PlanDoc, ids: Id[], dz: number): PlanDoc {
     elements: doc.elements.map((el) => {
       if (!set.has(el.id) || el.type === 'door' || el.type === 'plot') return el;
       if (el.type === 'window') return { ...el, sillMm: clamp((el.sillMm ?? WINDOW_SILL_MM) + dz, 0, 3000) };
-      const elevMm = clamp((el.elevMm ?? 0) + dz, ELEV_RANGE_MM.min, ELEV_RANGE_MM.max) || undefined;
-      return { ...el, elevMm };
+      // A service point goes up from its own mounting height (its default when it has none set).
+      const service = el.type === 'furniture' ? serviceOf(el) : null;
+      if (service?.mount === 'ceiling') return el;
+      const from = el.elevMm ?? service?.heightMm ?? 0;
+      const elevMm = clamp(from + dz, ELEV_RANGE_MM.min, ELEV_RANGE_MM.max);
+      return { ...el, elevMm: service ? (elevMm === service.heightMm ? undefined : elevMm) : elevMm || undefined };
     }),
   };
 }

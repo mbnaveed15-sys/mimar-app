@@ -838,6 +838,7 @@ export type Tool =
   | 'mask'
   | 'offset'
   | 'mirror'
+  | 'array'
   | 'trim'
   | 'extend'
   | 'breakWall'
@@ -907,6 +908,7 @@ export const TOOLS: Tool[] = [
   'mask',
   'offset',
   'mirror',
+  'array',
   'trim',
   'extend',
   'breakWall',
@@ -997,6 +999,8 @@ export type Draft =
       pasted?: boolean;
       /** Copying a door or window on its own: the copy's id. */
       copyId?: Id;
+      /** Copy (CO), as in AutoCAD: after each copy the next starts from the same base, until Esc. */
+      repeat?: boolean;
     }
   | { type: 'rotate'; ids: Id[]; center: Point; start?: Point; angle: number }
   /**
@@ -1027,6 +1031,8 @@ export type Draft =
     }
   /** Mirror line from a to b; flip turns the originals over instead of copying them. */
   | { type: 'mirror'; ids: Id[]; a: Point; b: Point; flip: boolean }
+  /** Array: rows and columns from base to `to` (one cell or gap), or round `base` as the centre. */
+  | { type: 'array'; ids: Id[]; base: Point; to: Point }
   /** The first wall picked by Join, Fillet, Chamfer or Break, and where it was clicked. */
   | { type: 'pick'; wallId: Id; point: Point }
   /** Stretch: the box, then a move from base to `to`. */
@@ -1105,10 +1111,24 @@ export interface Bounds {
   maxY: number;
 }
 
+/** How the Array tool lays out its copies: in rows and columns, round a centre, or along a path. */
+export interface ArraySettings {
+  mode: 'grid' | 'polar' | 'path';
+  cols: number;
+  rows: number;
+  /** Round a centre or along a path: how many in all. */
+  count: number;
+  /** Round a centre: the angle filled, degrees counter-clockwise (360 for a full circle). */
+  fillDeg: number;
+  /** The copies turn with the circle or the path. */
+  turn: boolean;
+}
+
 /** The AutoCAD-style editing tools. */
 export const MODIFY_TOOLS: Tool[] = [
   'offset',
   'mirror',
+  'array',
   'trim',
   'extend',
   'breakWall',

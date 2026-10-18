@@ -250,7 +250,7 @@ export function Inspector() {
           <PlinthPanel wallId={plinth} />
         ) : el ? (
           <div className="mb-3 flex flex-col gap-2 rounded-md border border-line bg-raised p-2 text-xs">
-            <div className="font-medium">Selected: {itemName(el)}</div>
+            <div className="font-medium">Selected: {itemName(el).replace(/^\w/, (c) => c.toUpperCase())}</div>
             {el.type !== 'door' && el.type !== 'window' && <GroundPlace ids={[el.id]} />}
             {el.type === 'wall' && el.plotId && (
               <div className="text-muted" data-testid="plot-wall-note">
@@ -859,7 +859,7 @@ export function Inspector() {
                 label={serviceOf(el)!.mount === 'wall' ? 'Mounting height (to its middle)' : 'Height above floor'}
                 mm={el.elevMm ?? serviceOf(el)!.heightMm}
                 units={units}
-                min={0}
+                min={serviceOf(el)!.heightMm < 0 ? -5000 : 0}
                 onCommit={(mm) =>
                   updateElement({ ...el, elevMm: mm === serviceOf(el)!.heightMm ? undefined : Math.min(mm, 30000) })
                 }
@@ -884,7 +884,7 @@ export function Inspector() {
           </div>
         ) : room ? (
           <div className="mb-3 flex flex-col gap-2 rounded-md border border-line bg-raised p-2 text-xs">
-            <div className="font-medium">Selected: room</div>
+            <div className="font-medium">Selected: Room</div>
             <div className="flex flex-col gap-0.5">
               <label htmlFor="room-name" className="text-muted">
                 Name

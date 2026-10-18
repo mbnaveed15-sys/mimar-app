@@ -21,6 +21,9 @@ import {
 import { servicesCsv, servicesSchedule } from './servicesSchedule';
 import { emptyDoc, normaliseDoc } from './storage';
 import { buildModel } from '../three/model';
+import { findElementNear } from '../geometry';
+import { mirrorItems } from './modify';
+import { raiseItems } from './selection';
 import type { Furniture, PlanDoc, PlanElement, Room, ServiceRun } from '../types';
 
 const FT = 30.48;
@@ -349,6 +352,42 @@ describe('services', () => {
     expect(ifc).toContain('IFCOUTLET(');
     expect(ifc).toContain('IFCDISTRIBUTIONCHAMBERELEMENT(');
     expect(ifc).toContain('IFCPIPESEGMENT(');
+  });
+
+  it('mirrors a run with its items, joined to the copies and still flowing the same way', () => {
+    const doc = docOf([
+      item('a', 'wc', 0, 0),
+      item('b', 'manhole', 10, 0),
+      run(
+        'r',
+        'drain',
+        [
+          [0, 0],
+          [10, 0],
+        ],
+        'a',
+        'b',
+      ),
+    ]);
+    const copy = mirrorItems(doc, ['a', 'b', 'r'], { x: 0, y: 5 * FT }, { x: 1, y: 5 * FT }, false);
+    const r2 = copy.doc.elements.find((e) => e.type === 'run' && e.id !== 'r') as ServiceRun;
+    const [a2, b2] = ['a', 'b'].map((k) => copy.ids[['a', 'b', 'r'].indexOf(k)]);
+    expect([r2.from, r2.to]).toEqual([a2, b2]);
+    expect(r2.points.map((p) => Math.round(p.y / FT))).toEqual([10, 10]);
+    const flipped = mirrorItems(doc, ['r'], { x: 5 * FT, y: 0 }, { x: 5 * FT, y: 1 }, true).doc;
+    const r3 = flipped.elements.find((e) => e.id === 'r') as ServiceRun;
+    expect([r3.from, r3.to, Math.round(r3.points[0].x / FT)]).toEqual(['a', 'b', 10]);
+  });
+
+  it('raises a service from its own mounting height, keeps a height of 0, and picks it over furniture', () => {
+    const doc = docOf([item('s', 'switch-1', 0, 0), item('c', 'fan-ceiling', 5, 5)]);
+    const up = raiseItems(doc, ['s', 'c'], 300).elements;
+    expect((up[0] as Furniture).elevMm).toBe(SERVICES['switch-1'].heightMm + 300);
+    expect((up[1] as Furniture).elevMm).toBeUndefined();
+    const floor = normaliseDoc(JSON.parse(JSON.stringify(docOf([{ ...item('s', 'socket', 0, 0), elevMm: 0 }]))));
+    expect((floor.elements[0] as Furniture).elevMm).toBe(0);
+    const bed: Furniture = { id: 'bed', type: 'furniture', kind: 'bed-double', x: 0, y: 0, w: 152, h: 198 };
+    expect(findElementNear([item('l', 'light-ceiling', 0, 0), bed], { x: 2, y: 2 }, 10)?.id).toBe('l');
   });
 
   it('lists every run system once', () => {

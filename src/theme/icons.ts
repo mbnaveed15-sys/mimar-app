@@ -68,6 +68,8 @@ export const ICONS = {
     "<circle cx='12' cy='12' r='8.5'/><path d='M12 3.5v17a8.5 8.5 0 0 0 0-17z' fill='currentColor' stroke='none'/>",
   offset: "<path d='M4 7.5h16M4 16.5h16'/><path d='M12 9.5v5M10 12.5l2 2 2-2'/>",
   mirror: "<path d='M12 3v18' stroke-dasharray='2 2'/><path d='M9 7 4 17h5zM15 7l5 10h-5z'/>",
+  array:
+    "<rect x='3' y='3' width='5' height='5' rx='1'/><rect x='10' y='3' width='5' height='5' rx='1' stroke-dasharray='2 1.5'/><rect x='17' y='3' width='4' height='5' rx='1' stroke-dasharray='2 1.5'/><rect x='3' y='10' width='5' height='5' rx='1' stroke-dasharray='2 1.5'/><rect x='10' y='10' width='5' height='5' rx='1' stroke-dasharray='2 1.5'/><path d='M5.5 21h13M16 19l2.5 2-2.5 2'/>",
   trim: "<path d='M3 12h7M12 4v16'/><path d='M14 12h7' stroke-dasharray='2 2.2'/>",
   extend: "<path d='M3 12h9M20 5v14'/><path d='M12 12h5' stroke-dasharray='2 2'/><path d='m15 9 3 3-3 3'/>",
   break: "<path d='M3 12h6M15 12h6M9 8.5v7M15 8.5v7'/>",

@@ -96,6 +96,7 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   run: 'length',
   offset: 'length',
   mirror: 'none',
+  array: 'move',
   trim: 'none',
   extend: 'none',
   breakWall: 'length',
@@ -215,7 +216,7 @@ export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreI
   // While Stretch, Scale, Rotate or Mirror shows its result, snap to the plan as it was before (as
   // AutoCAD does), not to the moving preview.
   const shown = s.visibleElements();
-  const previewing = !!s.batchBase && ['stretch', 'scale', 'rotate', 'mirror'].includes(s.draft?.type ?? '');
+  const previewing = !!s.batchBase && ['stretch', 'scale', 'rotate', 'mirror', 'array'].includes(s.draft?.type ?? '');
   const ids = previewing ? new Set(shown.map((el) => el.id)) : null;
   const elements = previewing && ids ? s.batchBase!.elements.filter((el) => ids.has(el.id)) : shown;
   const allow = snapAllowed({ ...s.snaps, on: snapsOn(s) }, s.checks);
@@ -319,6 +320,7 @@ export function currentDirection(s: PlannerState): Point | null {
     return sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 });
   if (d.type === 'tape') return sub(d.b, d.a);
   if (d.type === 'move') return sub(d.to, d.base);
+  if (d.type === 'array') return sub(d.to, d.base);
   if (
     d.type === 'plotPoly' ||
     d.type === 'contour' ||
@@ -609,6 +611,11 @@ function finishMove(store: Store) {
   s.setDraft(null);
   s.setSelection(selection);
   s.setLastCopy(lastCopy);
+  // Copy (CO) carries on: the next copy hangs on the pointer from the same base.
+  if (d.repeat && d.copy && (dx || dy)) {
+    s.beginBatch();
+    s.setDraft({ type: 'move', ids: d.ids, base: d.base, to: d.base, copy: true, repeat: true });
+  }
 }
 
 /** Pointer pressed on the plan with a measuring tool. Returns true if the tool used it. */
@@ -707,7 +714,11 @@ export function press(
       s.setLastCopy(null);
       s.beginBatch();
       s.setDraft({ type: 'move', ids: store.getState().selectedIds, base: p, to: p, copy: false });
-      if (!!opts.ctrl !== takeCopyNext()) toggleCopy(store);
+      const viaCopy = takeCopyNext();
+      if (!!opts.ctrl !== viaCopy) toggleCopy(store);
+      const started = store.getState().draft;
+      if (viaCopy && started?.type === 'move' && started.copy && !loneOpening(s, started))
+        s.setDraft({ ...started, repeat: true });
       return true;
     }
     case 'rotate': {
@@ -944,6 +955,11 @@ export function applyMeasure(store: Store, text: string): boolean {
     }
     case 'move': {
       if (m.kind === 'copies') {
+        // Typed while Copy (CO) waits for the next copy: that one is dropped, and the last one repeats.
+        if (d?.type === 'move' && d.repeat) {
+          s.cancelBatch();
+          s.setDraft(null);
+        }
         if (!s.lastCopy) return fail('Move with Ctrl to make a copy first, then type 3x or /3.');
         const { ids, dx, dy, copyIds } = s.lastCopy;
         const step = m.spread ? { x: dx / m.n, y: dy / m.n } : { x: dx, y: dy };
@@ -1043,7 +1059,7 @@ export function cancel(store: Store): boolean {
     else s.setOpeningStamp([]);
     return true;
   }
-  if (['move', 'rotate', 'mirror', 'stretch', 'scale', 'push'].includes(d.type)) s.cancelBatch();
+  if (['move', 'rotate', 'mirror', 'array', 'stretch', 'scale', 'push'].includes(d.type)) s.cancelBatch();
   // Esc while placing a paste takes the paste back too.
   if (d.type === 'move' && d.pasted) s.discardLastStep();
   if (d.type === 'brush') s.endBatch();
@@ -1171,19 +1187,25 @@ export function toolHint(s: PlannerState): string {
         return 'Pasted: click where it goes (it hangs by its bottom-left corner and snaps), or type a distance. Esc takes the paste back.';
       if (d?.type === 'move')
         return d.copy
-          ? 'Copying: click where the copy goes, or type a distance. Then type 3x or /3 for more copies.'
+          ? d.repeat
+            ? 'Copying: click where each copy goes, or type a distance. Esc when done; 3x or /3 repeats the last one.'
+            : 'Copying: click where the copy goes, or type a distance. Then type 3x or /3 for more copies.'
           : s.view3d
             ? 'Click where it goes, or type a distance. Arrow up/down moves it up and down; Ctrl copies.'
             : 'Click where it goes, or type a distance. Press Ctrl to make a copy instead.';
       return s.lastCopy
         ? 'Type 3x for three copies in a row, or /3 to spread them across the distance.'
-        : 'Click a point on the item to move from (or select it first). Hold Ctrl to copy.';
+        : s.selectedIds.length
+          ? 'Click the base point to move the selection from. Hold Ctrl to copy.'
+          : 'Click a point on the item to move from (or select it first). Hold Ctrl to copy.';
     case 'rotate':
       if (d?.type === 'rotate')
         return d.start
           ? 'Click to set the angle (it snaps to 15°; hold Shift for any angle), or type one.'
           : 'Click to set the start direction, or type an angle such as 90 and press Enter.';
-      return 'Click the item to rotate (it turns about the point you click), or select it first.';
+      return s.selectedIds.length
+        ? 'Click the point to turn the selection about.'
+        : 'Click the item to rotate (it turns about the point you click), or select it first.';
     case 'tape':
       return d?.type === 'tape' && !d.done
         ? s.view3d

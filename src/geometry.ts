@@ -2,6 +2,7 @@ import { arcOf, distanceToWall, isArc, paramAlong, placeOnArc, pointAlong, runLe
 import { boxOf } from './lib/spatial';
 import { outlinePoints, reversedSides } from './lib/plot';
 import { MM_PER_UNIT } from './lib/scale';
+import { isService } from './lib/services';
 import {
   hasPoints,
   type Bounds,
@@ -104,13 +105,8 @@ export function mapOutline<T extends PointsElement>(el: T, f: (p: Point) => Poin
       return withHole(s, j, c ? withCurve({ points: s.holes![j] }, mapCurve(c, f, reverse)) : { points: s.holes![j] });
     }, moved) as T;
   }
-  // A run's ends stay joined to the same items when its points are turned round.
-  if (el.type === 'run' && reverse) {
-    const out = { ...el, points: map(el.points), from: el.to, to: el.from };
-    if (!out.from) delete out.from;
-    if (!out.to) delete out.to;
-    return out;
-  }
+  // A run has no way round to keep: it still flows from its first point (a drain's fall) to its last.
+  if (el.type === 'run') return { ...el, points: el.points.map(f) };
   // A plot's road and sides stay on the same edges as its corners turn round.
   if (el.type === 'plot' && reverse) return { ...el, points: map(el.points), ...reversedSides(el) };
   // A roof's gable ends and low side stay on the same edges too.
@@ -209,6 +205,11 @@ function nearPolyline(points: Point[], p: Point, reach: number): boolean {
 
 /** Topmost (last drawn) element near the point, or null. */
 export function findElementNear(elements: PlanElement[], p: Point, threshold: number): PlanElement | null {
+  // Service points are drawn over everything else on the plan, so they are picked first.
+  for (let i = elements.length - 1; i >= 0; i--) {
+    const el = elements[i];
+    if (el.type === 'furniture' && isService(el.kind) && isNear(el, p, threshold)) return el;
+  }
   for (let i = elements.length - 1; i >= 0; i--) {
     const el = elements[i];
     if (!isNear(el, p, threshold)) continue;

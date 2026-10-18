@@ -100,7 +100,9 @@ import { getViewControls, requestCamera } from '../three/viewControls';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SITE_LEVEL } from '../types';
 import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
+import { DEFAULT_ARRAY } from '../lib/array';
 import type {
+  ArraySettings,
   RoofKind,
   Roof,
   Skylight,
@@ -726,6 +728,9 @@ export interface PlannerState {
   /** Which way the Scale tool stretches: both ways, or only across (x) or only up and down (y). */
   scaleAxis: ScaleAxis;
   setScaleAxis: (axis: ScaleAxis) => void;
+  /** How the Array tool lays out its copies. */
+  arraySettings: ArraySettings;
+  setArraySettings: (patch: Partial<ArraySettings>) => void;
   /** Alt is held: snapping works the other way round (off while it is on, on while it is off). */
   snapFlip: boolean;
   setSnapFlip: (flip: boolean) => void;
@@ -1007,6 +1012,7 @@ export function createPlannerStore(
       furnitureAngle: 0,
       furnitureGhost: null,
       scaleAxis: 'both',
+      arraySettings: DEFAULT_ARRAY,
       lastResize: null,
       snapFlip: false,
       wallThicknessMm: prefs.wallThicknessMm,
@@ -1159,7 +1165,7 @@ export function createPlannerStore(
       setTool: (tool) => {
         abandonDraft();
         // Tools that work on the selection keep it.
-        const keep = ['select', 'move', 'rotate', 'mirror', 'scale'].includes(tool);
+        const keep = ['select', 'move', 'rotate', 'mirror', 'array', 'scale'].includes(tool);
         set((s) => ({
           tool,
           draft: null,
@@ -1569,8 +1575,23 @@ export function createPlannerStore(
             ? doc.elements.filter((el) => !gone.has(el.id) && !('wallId' in el && gone.has(el.wallId)))
             : doc.elements;
           const masks = doc.masks.filter((m) => !pointInPolygon(p, m.points));
-          // Rooms are only erased by clicking inside them away from walls and furniture.
-          const rooms = gone.size
+          // Rooms are only erased by clicking inside them away from walls and furniture (locked ones too).
+          const covered =
+            gone.size ||
+            get()
+              .visibleElements()
+              .some((el) => el.type !== 'plot' && isNear(el, p, tol));
+          if (
+            !gone.size &&
+            covered &&
+            get()
+              .visibleElements()
+              .some(
+                (el) => isNear(el, p, tol) && isLocked(el, { layers: doc.layers, showFurniture: get().showFurniture }),
+              )
+          )
+            get().setWarning('That item is locked (on its own or by its layer): unlock it to erase it.');
+          const rooms = covered
             ? doc.rooms
             : doc.rooms.filter((r) => !(pickRooms.has(r.id) && pointInPolygon(p, r.points)));
           if (elements === doc.elements && masks.length === doc.masks.length && rooms.length === doc.rooms.length) {
@@ -1698,6 +1719,7 @@ export function createPlannerStore(
       setFurnitureAngle: (deg) => set({ furnitureAngle: (((Math.round(deg * 100) / 100) % 360) + 360) % 360 }),
       setFurnitureGhost: (furnitureGhost) => set({ furnitureGhost }),
       setScaleAxis: (scaleAxis) => set({ scaleAxis }),
+      setArraySettings: (patch) => set((s) => ({ arraySettings: { ...s.arraySettings, ...patch } })),
       setLastResize: (lastResize) => set({ lastResize }),
       setSnapFlip: (snapFlip) => {
         if (get().snapFlip !== snapFlip) set({ snapFlip });

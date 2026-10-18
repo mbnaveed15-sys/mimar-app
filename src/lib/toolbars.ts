@@ -18,7 +18,19 @@ export const TOOLBARS = [
   {
     id: 'modify',
     label: 'Modify',
-    tools: ['offset', 'mirror', 'trim', 'extend', 'breakWall', 'join', 'fillet', 'chamfer', 'stretch', 'scale'],
+    tools: [
+      'offset',
+      'mirror',
+      'array',
+      'trim',
+      'extend',
+      'breakWall',
+      'join',
+      'fillet',
+      'chamfer',
+      'stretch',
+      'scale',
+    ],
   },
 ] as const satisfies readonly { id: string; label: string; tools: readonly Tool[] }[];
 
@@ -44,6 +56,7 @@ export const PHONE_GROUPS = [
       'paint',
       'offset',
       'mirror',
+      'array',
       'trim',
       'extend',
       'breakWall',
