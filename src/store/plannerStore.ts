@@ -24,7 +24,7 @@ import { syncDimensions } from '../lib/dimensions';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { DEFAULT_SERVICE_KIND, isService, kindPlaced, syncRuns } from '../lib/services';
 import { resetElementSize, type ScaleAxis } from '../lib/resize';
-import { detectRoom, newlyClosed, openWallEnds } from '../rooms';
+import { detectRoom, openWallEnds, roomsAfterWalls } from '../rooms';
 import type { Inference } from '../lib/inference';
 import {
   boundsCentre,
@@ -1465,19 +1465,21 @@ export function createPlannerStore(
         // A wall that closes a loop makes a room there too, in the same undo step.
         const before = get().levelElements();
         const level = get().activeLevel;
-        const closed = !makeRooms
-          ? []
-          : newlyClosed(
+        const { added, changed } = makeRooms
+          ? roomsAfterWalls(
               before,
               [...before, wall],
               get().doc.rooms.filter((r) => levelOf(r) === level),
-            );
+            )
+          : { added: [], changed: new Map<Id, Point[]>() };
         let n = get().levelRooms().length;
-        const rooms = closed.map((points) => onActive<Room>({ id: newId(), name: `Room ${++n}`, points }));
+        const rooms = added.map((points) => onActive<Room>({ id: newId(), name: `Room ${++n}`, points }));
         get().commit((d) => ({
           ...d,
           elements: [...d.elements, wall],
-          ...(rooms.length && { rooms: [...d.rooms, ...rooms] }),
+          ...((rooms.length || changed.size) && {
+            rooms: [...d.rooms.map((r) => (changed.has(r.id) ? { ...r, points: changed.get(r.id)! } : r)), ...rooms],
+          }),
         }));
       },
       placeOpening: (type, p, typedMm) => {

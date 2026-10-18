@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectRoom, labelPoint, newlyClosed, openWallEnds, polygonArea, wallFaces } from './rooms';
+import { detectRoom, labelPoint, newlyClosed, openWallEnds, polygonArea, roomsAfterWalls, wallFaces } from './rooms';
 import type { Wall } from './types';
 
 let n = 0;
@@ -126,6 +126,17 @@ describe('rooms made when walls close a loop', () => {
     expect(newlyClosed([...sq, last], [...sq, last, wall(500, 0, 600, 0)], [])).toHaveLength(0);
     const room = { id: 'r', name: 'R', points: closed[0] };
     expect(newlyClosed(sq, [...sq, last], [room])).toHaveLength(0);
+  });
+
+  it('splits a room when a new wall crosses it, keeping the part round its middle', () => {
+    const box = [...sq, last];
+    const [face] = wallFaces(box);
+    const room = { id: 'r', name: 'R', points: face };
+    // A partition at x = 100: the room keeps the bigger right-hand part (its middle is at x = 200).
+    const { added, changed } = roomsAfterWalls(box, [...box, wall(100, 0, 100, 300)], [room]);
+    expect(added).toHaveLength(1);
+    expect(Math.min(...changed.get('r')!.map((p) => p.x))).toBeCloseTo(100);
+    expect(Math.max(...added[0].map((p) => p.x))).toBeCloseTo(100);
   });
 
   it('leaves out an area too small to be a room', () => {
