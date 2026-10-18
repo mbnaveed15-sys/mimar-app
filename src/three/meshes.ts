@@ -72,6 +72,30 @@ function metricUVs(geometry: THREE.BufferGeometry) {
 }
 
 /**
+ * Move a piece's texture as its item asks: a whole repeat centred on the piece, then shifted
+ * (across and up, in metres). UVs are in metres, so a shift is just added to them.
+ */
+function placeUVs(geometry: THREE.BufferGeometry, finish?: Finish) {
+  if (!finish || (!finish.centre && !finish.shiftM)) return;
+  const uv = geometry.getAttribute('uv');
+  if (!uv) return;
+  let [du, dv] = finish.shiftM ?? [0, 0];
+  if (finish.centre) {
+    let [u0, v0, u1, v1] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < uv.count; i++) {
+      const [u, v] = [uv.getX(i), uv.getY(i)];
+      [u0, v0, u1, v1] = [Math.min(u0, u), Math.min(v0, v), Math.max(u1, u), Math.max(v1, v)];
+    }
+    du += finish.spanM / 2 - (u0 + u1) / 2;
+    dv += finish.spanM / 2 - (v0 + v1) / 2;
+  }
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) + du, uv.getY(i) + dv);
+  uv.needsUpdate = true;
+}
+/** The finish whose placement a piece follows: its own, else either face's. */
+const placeOf = (s: { finish?: Finish; sides?: Sides }) => s.finish ?? s.sides?.plus?.finish ?? s.sides?.minus?.finish;
+
+/**
  * An upright panel's two caps as their own groups, so each side can have its own material: the
  * front cap (+z, side A) takes material 2 and the back (-z, side B) material 3; the edges keep 1.
  */
@@ -133,6 +157,7 @@ export function buildMeshes(model: Model3D): THREE.Group {
     const geometry = new THREE.BoxGeometry(Math.max(s.w, 0.001), Math.max(s.h, 0.001), Math.max(s.d, 0.001));
     const looks = sideLooks(s);
     if (looks.patterned) metricUVs(geometry);
+    placeUVs(geometry, placeOf(s));
     // A box's faces come in the order +x, -x, +y, -y, +z, -z.
     const mesh = new THREE.Mesh(
       geometry,
@@ -162,6 +187,7 @@ export function buildMeshes(model: Model3D): THREE.Group {
     for (const h of floor.holes ?? []) shape.holes.push(new THREE.Path(h.map(([x, z]) => new THREE.Vector2(x, -z))));
     const geometry = new THREE.ShapeGeometry(shape);
     geometry.rotateX(-Math.PI / 2);
+    placeUVs(geometry, floor.finish);
     const mesh = new THREE.Mesh(geometry, material(floor.color, floor.opacity ?? 1, floor.finish));
     mesh.position.y = floor.y + 0.005;
     mesh.receiveShadow = true;
@@ -233,6 +259,7 @@ export function buildMeshes(model: Model3D): THREE.Group {
       bevelEnabled: false,
     });
     geometry.rotateX(-Math.PI / 2);
+    placeUVs(geometry, slab.finish);
     const flatShape = slab.role === 'shape';
     const mesh = new THREE.Mesh(geometry, material(slab.color, slab.opacity ?? 1, slab.finish));
     mesh.position.y = slab.y0;
@@ -255,6 +282,7 @@ export function buildMeshes(model: Model3D): THREE.Group {
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
+    placeUVs(geometry, roof.finish);
     const mesh = new THREE.Mesh(geometry, material(roof.color, roof.opacity ?? 1, roof.finish));
     mesh.castShadow = roof.role !== 'glass';
     mesh.receiveShadow = roof.role !== 'glass';
@@ -276,6 +304,7 @@ export function buildMeshes(model: Model3D): THREE.Group {
     geometry.translate(0, 0, -panel.depth / 2);
     const looks = sideLooks(panel);
     if (looks.patterned) metricUVs(geometry);
+    placeUVs(geometry, placeOf(panel));
     if (panel.sides) splitCaps(geometry);
     const mesh = new THREE.Mesh(geometry, panel.sides ? [looks.main, looks.main, looks.plus, looks.minus] : looks.main);
     mesh.position.set(panel.x, panel.y0, panel.z);

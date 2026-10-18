@@ -24,6 +24,7 @@ import {
   type Slab,
   type Stair,
   type Wall,
+  type TexturePlace,
 } from '../types';
 import { isBuildingWall, plinthId, thicknessOf, wallReach, wallsOf } from '../walls';
 import { plinthMaterialOf, plinthWalls } from '../lib/plinth';
@@ -55,6 +56,9 @@ export interface Finish {
   spanM: number;
   /** The material's name, when one was chosen (used to name materials in exports). */
   name?: string;
+  /** Lay the texture with a whole repeat centred on the piece, then shift it by `shiftM` (metres, across and up). */
+  centre?: boolean;
+  shiftM?: [number, number];
 }
 
 /** How a surface looks. */
@@ -1138,6 +1142,27 @@ export function levelBaseM(doc: PlanDoc, levelId: string, wallHeightMm: number):
  * Everything needed to draw the plan in 3D, in metres. Floors stack upward from the plinth: each
  * storey is the wall height plus a slab. Ground-floor walls also run down through the plinth.
  */
+/** Give each piece's finish the texture placement its plan item asks for (centred and/or shifted). */
+function placeTextures(doc: PlanDoc, model: Model3D) {
+  const places = new Map<string, TexturePlace>();
+  for (const it of [...doc.elements, ...doc.rooms]) if (it.texPlace) places.set(it.id, it.texPlace);
+  if (!places.size) return;
+  const placed = (f: Finish | undefined, p: TexturePlace): Finish | undefined =>
+    f && { ...f, centre: p.centre, shiftM: [mmToM(p.xMm ?? 0), mmToM(p.yMm ?? 0)] };
+  const visit = (s: { id?: string; finish?: Finish; sides?: Sides }) => {
+    const p = s.id ? places.get(s.id) : undefined;
+    if (!p) return;
+    s.finish = placed(s.finish, p);
+    if (s.sides) {
+      const side = (l?: Look) => l && { ...l, finish: placed(l.finish, p) };
+      s.sides = { plus: side(s.sides.plus), minus: side(s.sides.minus) };
+    }
+  };
+  [...model.solids, ...model.panels, ...model.floors, ...model.slabs, ...model.blocks, ...(model.roofs ?? [])].forEach(
+    visit,
+  );
+}
+
 export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   // Curtain walls' mullions default to 4' in a house, 1.2 m in a metric project.
   const metric = metricProject(doc);
@@ -1465,6 +1490,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const centre = xs.length ? { x: (lo(xs) + hi(xs)) / 2, z: (lo(zs) + hi(zs)) / 2 } : { x: 8, z: 5 };
   const size = xs.length ? Math.max(hi(xs) - lo(xs), hi(zs) - lo(zs), 4) : 16;
   const model: Model3D = { solids, floors, slabs, blocks, panels, roofs, guides, centre, size };
+  placeTextures(doc, model);
   if (!site) return model;
   return { ...model, terrain: site.terrain, context: site.context, groundY: site.groundY };
 }

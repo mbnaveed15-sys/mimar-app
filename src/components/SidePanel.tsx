@@ -267,13 +267,18 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
   }, [hasSelection, tabs, tab, setPanels]);
 
   // Picking a tool shows its settings straight away: the Properties tab, or the top of the stacked panel.
+  // The paint bucket's settings are the materials, so it shows (and stays on) the Materials tab.
   const lastTool = useRef(tool);
   useEffect(() => {
     if (tool === lastTool.current) return;
     lastTool.current = tool;
+    if (tool === 'paint' && order.includes('materials')) {
+      if (tabs && tab !== 'materials') setPanels({ tab: 'materials', folded: false });
+      return;
+    }
     if (tabs && tab !== 'properties') setPanels({ tab: 'properties' });
     else if (!tabs) document.querySelector('[data-testid="panel-content"]')?.scrollTo?.({ top: 0 });
-  }, [tool, tabs, tab, setPanels]);
+  }, [tool, tabs, tab, setPanels, order]);
 
   /** A section's content; the heavier ones are only built while open. */
   const body = (id: SectionId, isOpen: boolean): ReactNode => {

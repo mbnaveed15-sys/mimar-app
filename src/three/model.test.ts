@@ -96,6 +96,31 @@ describe('3D model', () => {
     expect(model.solids[0].sides?.minus).toBeUndefined();
   });
 
+  it("lays an item's texture where it asks: centred and shifted, on every face", () => {
+    const place = { centre: true, xMm: 100, yMm: -50 };
+    const doc: PlanDoc = {
+      ...docWith({ ...wall, material: 'mat_brick', materialA: 'mat_wood', texPlace: place }),
+      rooms: [
+        {
+          id: 'r',
+          name: 'Room',
+          material: 'mat_wood',
+          texPlace: { xMm: 200 },
+          points: [
+            { x: 0, y: 0 },
+            { x: 100, y: 0 },
+            { x: 100, y: 100 },
+          ],
+        },
+      ],
+    };
+    const model = buildModel(doc, opts);
+    expect(model.solids[0].finish).toMatchObject({ pattern: 'brick', centre: true, shiftM: [0.1, -0.05] });
+    expect(model.solids[0].sides?.plus?.finish).toMatchObject({ pattern: 'wood', centre: true });
+    expect(model.floors[0].finish).toMatchObject({ pattern: 'wood', shiftM: [0.2, 0] });
+    expect(buildModel(docWith({ ...wall, material: 'mat_brick' }), opts).solids[0].finish?.shiftM).toBeUndefined();
+  });
+
   it('uses painted colours and turns rooms into floors', () => {
     const doc: PlanDoc = {
       ...docWith({ ...wall, material: 'mat_brick' }),

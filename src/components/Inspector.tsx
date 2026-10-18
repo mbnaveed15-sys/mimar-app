@@ -49,6 +49,7 @@ import { SelectionPanel } from './SelectionPanel';
 import { GroundPlace } from './GroundPlace';
 import { PlinthPanel, WallPlinth } from './PlinthPanel';
 import { DividePanel } from './DividePanel';
+import { TexturePlaceFields } from './TexturePlaceFields';
 import { RunFields } from './RunFields';
 import { RUN_SYSTEMS, serviceOf } from '../lib/services';
 
@@ -229,6 +230,11 @@ export function Inspector() {
   const coveredArea = doc.rooms.reduce((sum, r) => sum + roomAreaSqMm(r), 0);
   const toUnits = (mm: number) => mm / MM_PER_UNIT;
   const materialName = (id?: string) => doc.materials.find((m) => m.id === id)?.name;
+  /** Whether an item shows a texture in 3D (a patterned material, or concrete by default). */
+  const textured = (id: string | undefined, concrete = false) => {
+    const mat = doc.materials.find((m) => m.id === id);
+    return mat ? !!mat.pattern && mat.pattern !== 'plain' : concrete;
+  };
   const btn = 'm-btn';
   /** Cut a shape drawn on a wall right through it, as an open hole. */
   const cutThrough = (w: Opening) => updateElement(withShapeDepth(w, undefined, -Infinity).el);
@@ -866,6 +872,15 @@ export function Inspector() {
               />
             )}
             {!isAnnotation(el) && !isSiteItem(el) && <div>Material: {materialName(el.material) ?? '—'}</div>}
+            {!isAnnotation(el) &&
+              !isSiteItem(el) &&
+              textured(el.material, el.type === 'column' || el.type === 'beam' || el.type === 'stair') && (
+                <TexturePlaceFields
+                  place={el.texPlace}
+                  units={units}
+                  onChange={(texPlace) => updateElement({ ...el, texPlace })}
+                />
+              )}
             {((el.type === 'wall' && !el.plotId) || el.type === 'line') && !el.locked && (
               <DividePanel id={el.id} units={units} />
             )}
@@ -914,6 +929,13 @@ export function Inspector() {
               {house && ` · ${formatMarla(roomAreaSqMm(room), marlaSqFt)}`}
             </div>
             <div>Floor: {materialName(room.material) ?? '—'}</div>
+            {textured(room.material) && (
+              <TexturePlaceFields
+                place={room.texPlace}
+                units={units}
+                onChange={(texPlace) => updateRoom({ ...room, texPlace })}
+              />
+            )}
             {hasFloorAbove && (
               <label className="flex items-center gap-2">
                 <input

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { COLLECTIONS, PATTERNS, searchLibrary } from '../lib/materials';
 import { swatchUrl } from '../lib/patterns';
-import { usePlanner } from '../store/plannerStore';
+import { plannerStore, usePlanner } from '../store/plannerStore';
 import type { Material, Pattern } from '../types';
 import { HATCHES, hatchOfMaterial, type Hatch } from '../lib/hatch';
 
@@ -12,6 +12,13 @@ function Swatch({ mat, size = 'h-4 w-6' }: { mat: Pick<Material, 'color' | 'patt
       style={{ background: `${mat.color} url(${swatchUrl(mat)}) center / cover` }}
     />
   );
+}
+
+/** Picking a material takes up the paint bucket with it (the panel stays on the materials). */
+function paintWith(id: string) {
+  const s = plannerStore.getState();
+  s.pickMaterial(id);
+  if (s.tool !== 'paint') s.setTool('paint');
 }
 
 /** Name, colour and pattern of a material the user made. */
@@ -98,7 +105,6 @@ function HatchPicker({ mat }: { mat: Material }) {
 export function MaterialsPanel() {
   const materials = usePlanner((s) => s.doc.materials);
   const selectedMat = usePlanner((s) => s.selectedMat);
-  const pickMaterial = usePlanner((s) => s.pickMaterial);
   const addMaterial = usePlanner((s) => s.addMaterial);
   const [query, setQuery] = useState('');
   const active = materials.find((m) => m.id === selectedMat) ?? materials[0];
@@ -108,7 +114,7 @@ export function MaterialsPanel() {
   const button = (mat: Material) => (
     <button
       key={mat.id}
-      onClick={() => pickMaterial(mat.id)}
+      onClick={() => paintWith(mat.id)}
       aria-pressed={mat.id === active?.id}
       className="m-btn px-1.5 py-1 text-xs"
       title={mat.name}
@@ -161,16 +167,15 @@ export function MaterialsPanel() {
           </details>
         ))
       )}
-      <div className="text-xs text-muted">Pick a material, then use Paint (B) on the plan.</div>
+      <div className="text-xs text-muted">Pick a material to paint with it: click items on the plan.</div>
     </div>
   );
 }
 
 function LibraryRow({ mat, added, active }: { mat: Material; added: boolean; active: boolean }) {
-  const pickMaterial = usePlanner((s) => s.pickMaterial);
   return (
     <button
-      onClick={() => pickMaterial(mat.id)}
+      onClick={() => paintWith(mat.id)}
       aria-pressed={active}
       className="m-btn flex items-center gap-2 px-1.5 py-1 text-left text-xs"
     >

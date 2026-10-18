@@ -130,6 +130,18 @@ const flagsOf = (raw: Record<string, unknown>) => ({
   ...(raw.locked === true ? { locked: true } : {}),
 });
 
+/** Where a texture sits on an item, kept only when set and sensible. */
+const texPlaceOf = (raw: Record<string, unknown>) => {
+  const t = raw.texPlace;
+  if (!isObject(t)) return {};
+  const place = {
+    ...(t.centre === true && { centre: true }),
+    ...(inRange(t.xMm, -100000, 100000) && t.xMm !== 0 && { xMm: t.xMm }),
+    ...(inRange(t.yMm, -100000, 100000) && t.yMm !== 0 && { yMm: t.yMm }),
+  };
+  return Object.keys(place).length ? { texPlace: place } : {};
+};
+
 /** Ground levels beyond a kilometre above or below the datum are damage, not a survey. */
 const MAX_LEVEL_MM = 1_000_000;
 
@@ -221,6 +233,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
     levelId: idOf(raw.levelId),
     ...flagsOf(raw),
     ...heightsOf(raw),
+    ...texPlaceOf(raw),
   };
   if (!base.id) return null;
   const num = (k: string) => (typeof raw[k] === 'number' && sane(raw[k] as number) ? (raw[k] as number) : NaN);
@@ -682,6 +695,7 @@ function normaliseRoom(raw: unknown, index: number): Room | null {
     levelId: idOf(obj.levelId),
     ...(obj.openAbove === true && { openAbove: true }),
     ...flagsOf(obj),
+    ...texPlaceOf(obj),
   };
 }
 
