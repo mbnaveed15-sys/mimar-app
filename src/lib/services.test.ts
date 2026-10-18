@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FURNITURE_CATALOG } from '../furniture/catalog';
 import { planToDxf } from './exportDxf';
 import { planToIfc } from './exportIfc';
-import { layerOf } from './layers';
+import { isHidden, layerOf, type Visibility } from './layers';
 import { planHints } from './planHints';
 import { plotRect } from './site';
 import {
@@ -10,6 +10,7 @@ import {
   isService,
   remapJoins,
   RUN_ORDER,
+  RUN_SYSTEMS,
   runPath,
   SERVICE_KINDS,
   SERVICES,
@@ -70,6 +71,33 @@ describe('services', () => {
     // Tags are told apart within a trade.
     const tags = SERVICE_KINDS.map((k) => `${SERVICES[k].trade}:${serviceTag(k)}`);
     expect(new Set(tags).size).toBe(tags.length);
+
+    // Each library category of services is one trade, so its items and their wires share one layer.
+    const tradeOf = new Map<string, string>();
+    for (const kind of SERVICE_KINDS) {
+      const { category } = FURNITURE_CATALOG[kind];
+      expect(tradeOf.get(category) ?? SERVICES[kind].trade, kind).toBe(SERVICES[kind].trade);
+      tradeOf.set(category, SERVICES[kind].trade);
+    }
+    expect(SERVICES['fan-ceiling'].trade).toBe('hvac');
+    expect(SERVICES['smoke-detector'].trade).toBe('fire');
+    expect(RUN_SYSTEMS.ac.trade).toBe('hvac');
+  });
+
+  it('keeps services off the furniture layer: turning furniture off leaves them, turning a trade off hides it all', () => {
+    const doc = {
+      elements: [
+        item('s', 'socket', 0, 0),
+        item('b', 'bed-double', 5, 0),
+        run('w', 'power', [
+          [0, 0],
+          [5, 0],
+        ]),
+      ],
+    };
+    const shown = (v: Visibility) => doc.elements.filter((el) => !isHidden(el, v)).map((el) => el.id);
+    expect(shown({ showFurniture: false })).toEqual(['s', 'w']);
+    expect(shown({ showFurniture: true, layers: { electrical: { hidden: true } } })).toEqual(['b']);
   });
 
   it('keeps run ends on the items they are joined to, and lets go of deleted ones', () => {

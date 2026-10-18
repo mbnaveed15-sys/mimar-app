@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { menu, ready } from './helpers';
+import { menu, openSection, ready } from './helpers';
 
 const FT = 30.48; // plan units per foot
 const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('mimar.plan') ?? '{}').doc);
@@ -107,4 +107,61 @@ test('a plan view and its paper go on a sheet', async ({ page }) => {
   const sheet = (await saved(page)).sheets.at(-1);
   expect(sheet).toMatchObject({ paper: 'custom', customMm: { w: 900, h: 297 } });
   expect(sheet.items[0].drawing.kind).toBe('view');
+});
+
+test('service points draw over furniture, keep to their own layers and get their own sheet', async ({ page }) => {
+  // A bed with a ceiling light over it, a socket and a lighting circuit between them.
+  await page.evaluate((FT) => {
+    const stored = { version: 21, doc: { elements: [] as unknown[], rooms: [] } };
+    const item = (id: string, kind: string, x: number, y: number, w: number, h: number) => ({
+      id,
+      type: 'furniture',
+      kind,
+      x: x * FT,
+      y: y * FT,
+      w,
+      h,
+    });
+    stored.doc.elements = [
+      { id: 'wa', type: 'wall', x1: 0, y1: 0, x2: 12 * FT, y2: 0, thickness: 23 },
+      item('bed', 'bed-double', 6, 4, 152, 198),
+      item('light', 'light-ceiling', 6, 4, 30, 30),
+      item('sock', 'socket', 2, 0.6, 30, 25),
+      {
+        id: 'run',
+        type: 'run',
+        system: 'lighting',
+        points: [
+          { x: 2 * FT, y: 0.6 * FT },
+          { x: 6 * FT, y: 4 * FT },
+        ],
+        from: 'sock',
+        to: 'light',
+      },
+    ];
+    localStorage.setItem('mimar.plan', JSON.stringify(stored));
+  }, FT);
+  await page.reload();
+  await ready(page);
+  const canvas = page.getByTestId('plan-canvas');
+  const order = () =>
+    canvas
+      .locator('[data-type="furniture"], [data-type="run"]')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('data-id')));
+  // The light comes after the bed and its wire, so it is drawn on top.
+  expect(await order()).toEqual(['bed', 'run', 'light', 'sock']);
+
+  await openSection(page, 'Layers');
+  await page.getByRole('button', { name: 'Hide Furniture' }).click();
+  await expect.poll(order).toEqual(['run', 'light', 'sock']);
+  await page.getByRole('button', { name: 'Hide Electrical' }).click();
+  await expect.poll(order).toEqual([]);
+  await page.getByRole('button', { name: 'Show Furniture' }).click();
+  await expect.poll(order).toEqual(['bed']);
+  await page.getByRole('button', { name: 'Show Electrical' }).click();
+
+  // Its own sheet in the Drawings view.
+  await page.keyboard.press('Control+4');
+  const view = page.getByTestId('drawings-view');
+  await expect(view.getByText('Electrical layout (A3)')).toBeVisible();
 });

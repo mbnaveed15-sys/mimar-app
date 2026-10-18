@@ -30,6 +30,19 @@ const blocked = (doc: PlanDoc, accessible = false) =>
   blockedZones(doc, accessible).map((b) => [b.item.id, b.sides.join(' ')]);
 
 describe('use zones', () => {
+  it('is not blocked by service points on the ceiling, the wall or flush with the floor, but is by a tank', () => {
+    const w = FURNITURE_CATALOG.wardrobe;
+    const wardrobe = item('w', 'wardrobe', 6 * FT, FACE + w.d / 20);
+    // Each laid wide across the wardrobe's front, half a metre out.
+    const across = (id: string, kind: FurnitureKind): Furniture => ({
+      ...item(id, kind, 6 * FT, FACE + w.d / 10 + 50),
+      w: w.w / 10 + 40,
+    });
+    for (const kind of ['tube-light', 'socket', 'floor-trap', 'manhole'] as FurnitureKind[])
+      expect(blocked(docOf([...ROOM, wardrobe, across('s', kind)])), kind).toEqual([]);
+    expect(blocked(docOf([...ROOM, wardrobe, across('s', 'tank-overhead')]))).toEqual([['w', 'front']]);
+  });
+
   it('are given for library items only, each with a source', () => {
     for (const [kind, z] of Object.entries(USE_ZONES)) {
       expect(isFurnitureKind(kind), kind).toBe(true);

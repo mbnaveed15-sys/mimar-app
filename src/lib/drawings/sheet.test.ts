@@ -15,6 +15,8 @@ import {
   type SheetSource,
 } from './sheet';
 import { sectionLines, sideCache } from './views';
+import { drawingFromKey, drawingKey, drawingTitle } from './refs';
+import { levelContent } from './source';
 import type { PlanDoc, PlanElement, Sheet } from '../../types';
 
 const ft = (f: number) => (f * 304.8) / 10;
@@ -192,6 +194,88 @@ describe('sheets', () => {
     expect(groundLines.some((p) => Math.abs(p.a[1] - p.b[1]) > 0.1)).toBe(true);
     expect(lines.some((p) => p.dash === NATURAL_DASH)).toBe(true);
     expect(texts(prims)).toEqual(expect.arrayContaining([`±0'-0"`, 'Road level (datum)']));
+  });
+});
+
+describe('services layouts', () => {
+  /** The house with a socket, a light wired up, a water meter and a basin on the ground floor, and a fan upstairs. */
+  function serviced(): PlanDoc {
+    const doc = house();
+    const [ground, first] = doc.levels;
+    const at = (id: string, kind: string, levelId: string, x: number): PlanElement =>
+      ({ id, type: 'furniture', kind, x: ft(x), y: ft(5), w: 20, h: 20, levelId }) as PlanElement;
+    return {
+      ...doc,
+      elements: [
+        ...doc.elements,
+        at('s1', 'socket', ground.id, 5),
+        at('l1', 'light-ceiling', ground.id, 10),
+        at('b1', 'water-meter', ground.id, 15),
+        at('h1', 'basin', ground.id, 18),
+        at('f1', 'fan-ceiling', first.id, 10),
+        {
+          id: 'r1',
+          type: 'run',
+          system: 'lighting',
+          points: [
+            { x: ft(5), y: ft(5) },
+            { x: ft(10), y: ft(5) },
+          ],
+          levelId: ground.id,
+        } as PlanElement,
+      ],
+    };
+  }
+
+  it('suggests one sheet per trade, with each floor that has some of it', () => {
+    const src = source(serviced());
+    const [ground, first] = src.doc.levels;
+    const sheets = suggestedSheets(src);
+    expect(sheets.map((s) => s.name)).toEqual([
+      'Ground floor plan',
+      'First floor plan',
+      'Electrical layout',
+      'Fans & AC layout',
+      'Water supply layout',
+      'Sections',
+      'Elevations',
+      '3D views',
+    ]);
+    expect(sheets[2].items.map((i) => i.drawing)).toEqual([
+      { kind: 'plan', levelId: ground.id, services: 'electrical' },
+    ]);
+    expect(sheets[3].items.map((i) => i.drawing)).toEqual([{ kind: 'plan', levelId: first.id, services: 'hvac' }]);
+    // A plain plan draws no services; a layout only its own trade's.
+    const prims = layoutSheet(src, sheets[2], 3, 8).prims.filter((p) => p.t === 'plan');
+    expect(prims.map((p) => p.services)).toEqual(['electrical']);
+    expect(layoutSheet(src, sheets[0], 1, 8).prims.find((p) => p.t === 'plan')?.services).toBe('none');
+    expect(drawingTitle(src.doc, sheets[2].items[0].drawing)).toBe('Ground floor electrical layout');
+    const key = drawingKey(sheets[2].items[0].drawing);
+    expect(drawingFromKey(key)).toEqual(sheets[2].items[0].drawing);
+    expect(drawingFromKey(`plan:${ground.id}`)).toEqual({ kind: 'plan', levelId: ground.id });
+  });
+
+  it('draws a plan with no services, one trade, or all of them', () => {
+    const doc = serviced();
+    const ground = doc.levels[0].id;
+    const s = { ...DEFAULT_PREFS, doc, exportLines: true } as unknown as Parameters<typeof levelContent>[0];
+    const ids = (services?: Parameters<typeof levelContent>[3]) =>
+      levelContent(s, doc, ground, services)
+        .doc.elements.filter((el) => el.type === 'furniture' || el.type === 'run')
+        .map((el) => el.id);
+    // Furniture always shows; services only on their own trade's layout.
+    expect(ids('none')).toEqual(['h1']);
+    expect(ids('electrical')).toEqual(['s1', 'l1', 'h1', 'r1']);
+    expect(ids('plumbing')).toEqual(['b1', 'h1']);
+    expect(ids()).toEqual(['s1', 'l1', 'b1', 'h1', 'r1']);
+  });
+
+  it('keeps a services layout when the plan is opened again', () => {
+    const doc = serviced();
+    const ref = { kind: 'plan' as const, levelId: doc.levels[0].id, services: 'gas' as const };
+    const sheets: Sheet[] = [{ id: 'a', name: 'Gas', paper: 'A3', items: [{ drawing: ref, scale: 100 }] }];
+    const back = normaliseDoc(JSON.parse(JSON.stringify({ ...doc, sheets })));
+    expect(back.sheets?.[0].items[0].drawing).toEqual(ref);
   });
 });
 

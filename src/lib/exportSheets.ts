@@ -4,7 +4,10 @@ import { downloadUrl, renderPlan } from './exportPng';
 import { checkPage, costPage, pdfText, type Pdf, type PdfDetails } from './exportPdf';
 import type { PlanImageContent } from './planImage';
 import { MM_PER_UNIT } from './scale';
-import { layoutSheet, type Prim, type SheetSource } from './drawings/sheet';
+import { layoutSheet, type PlanServices, type Prim, type SheetSource } from './drawings/sheet';
+
+/** A floor's plan content, with none, one trade's or all of its services. */
+type PlanContent = (levelId: string, services?: PlanServices) => PlanImageContent;
 import type { Sheet } from '../types';
 
 /** Resolution plans are printed at on sheets (lower on very big drawings, to keep memory in hand). */
@@ -20,7 +23,7 @@ export type SheetExtras = Pick<PdfDetails, 'check' | 'hints' | 'cost'> & { check
 /** Draws the coloured 3D picture at a size in pixels (a PNG data URL), or null when it can't be drawn. */
 export type PictureMaker = (width: number, height: number, camera?: SavedCamera) => Promise<string | null>;
 
-async function drawPrims(pdf: Pdf, prims: Prim[], plan: (levelId: string) => PlanImageContent, picture?: PictureMaker) {
+async function drawPrims(pdf: Pdf, prims: Prim[], plan: PlanContent, picture?: PictureMaker) {
   pdf.setDrawColor(17, 17, 17);
   pdf.setFillColor(17, 17, 17);
   pdf.setTextColor(17, 17, 17);
@@ -68,7 +71,11 @@ async function drawPrims(pdf: Pdf, prims: Prim[], plan: (levelId: string) => Pla
         const px = (mm: number) => Math.max(1, Math.round((mm / 25.4) * dpi));
         // Text and thin lines sized for paper: 1 "pixel" of the screen design is 0.2 mm on paper.
         const k = (0.2 * p.scale) / MM_PER_UNIT;
-        const canvas = await renderPlan(plan(p.levelId), p.area, px(p.w), px(p.h), { grid: null, k, watermark: false });
+        const canvas = await renderPlan(plan(p.levelId, p.services), p.area, px(p.w), px(p.h), {
+          grid: null,
+          k,
+          watermark: false,
+        });
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', p.x, p.y, p.w, p.h, undefined, 'FAST');
         break;
       }
@@ -91,7 +98,7 @@ async function drawPrims(pdf: Pdf, prims: Prim[], plan: (levelId: string) => Pla
 export async function exportSheets(
   src: SheetSource,
   sheets: Sheet[],
-  plan: (levelId: string) => PlanImageContent,
+  plan: PlanContent,
   extras: SheetExtras,
   filename: string,
   picture?: PictureMaker,

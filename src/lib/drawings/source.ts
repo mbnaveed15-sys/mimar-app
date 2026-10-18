@@ -6,7 +6,8 @@ import { groundOf } from '../terrain/ground';
 import { groundOnPlan } from '../terrain/groundView';
 import { floorVoids } from '../voids';
 import { GROUND_LEVEL, levelOf, type PlanDoc } from '../../types';
-import type { SheetSource } from './sheet';
+import type { PlanServices, SheetSource } from './sheet';
+import { tradeOf } from '../services';
 import { sideCache } from './views';
 
 /** What a sheet or a side drawing is drawn from: the plan without its hidden items. */
@@ -21,7 +22,10 @@ export function drawingSource(s: PlannerState, shown: PlanDoc = s.shownDoc()): S
   };
 }
 
-/** A floor's plan as it is drawn on a sheet: its items, and the section lines of every floor. */
+/**
+ * A floor's plan as it is drawn on a sheet: its items, and the section lines of every floor; with no
+ * services, one trade's only, or all of them when `services` is missing.
+ */
 export function levelContent(
   s: Pick<
     PlannerState,
@@ -37,10 +41,15 @@ export function levelContent(
   >,
   shown: PlanDoc,
   levelId: string,
+  services?: PlanServices,
 ): PlanImageContent {
   const onLevel = <T extends { levelId?: string }>(it: T) => levelOf(it) === levelId;
+  const wanted = (el: PlanDoc['elements'][number]) => {
+    const trade = services && tradeOf(el);
+    return !trade || trade === services;
+  };
   const elements = shown.elements.filter(
-    (el) => (onLevel(el) || el.type === 'section') && (s.exportLines || el.type !== 'line'),
+    (el) => (onLevel(el) || el.type === 'section') && (s.exportLines || el.type !== 'line') && wanted(el),
   );
   const doc = { ...shown, elements, rooms: shown.rooms.filter(onLevel) };
   const { units, marlaSqFt, areaIn, showDimensions, showFurniture, showRoomLabels, showRoomFills } = s;

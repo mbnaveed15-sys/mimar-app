@@ -169,7 +169,7 @@ export function exportSheetsPdf() {
       return exportSheets(
         src,
         sheetsOf(src),
-        (levelId) => levelContent(s, shown, levelId),
+        (levelId, services) => levelContent(s, shown, levelId, services),
         pdfExtras(),
         `${baseName(s.fileName)} - Drawings.pdf`,
         (w, h, camera) =>

@@ -28,6 +28,7 @@ import type { GroundOnPlan } from '../lib/terrain/groundView';
 import { hatchOf, ringsPath, surfaceHatchOf, type Hatch } from '../lib/hatch';
 import { curveOf, facetOutline } from '../lib/curvedEdges';
 import { outlinePoints } from '../lib/plot';
+import { isService } from '../lib/services';
 import { HatchArea, HatchDefs } from './shapes/Hatching';
 
 export interface PlanDrawingProps {
@@ -220,7 +221,8 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
             );
           }
           case 'furniture':
-            if (!showFurniture) return null;
+            // Services are drawn later, over the furniture and their wires.
+            if (!showFurniture || isService(el.kind)) return null;
             return (
               <FurnitureShape
                 key={el.id}
@@ -262,6 +264,21 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
         el.type === 'run' ? <RunShape key={el.id} run={el} selected={selected.has(el.id)} k={k} /> : null,
       )}
 
+      {/* Service points over the furniture, whatever the furniture switch (they keep to their own layers). */}
+      {doc.elements.map((el) =>
+        el.type === 'furniture' && isService(el.kind) ? (
+          <FurnitureShape
+            key={el.id}
+            item={el}
+            color={colorOf(el.material)}
+            selected={selected.has(el.id)}
+            k={k}
+            accessible={props.accessibleZones}
+            showZone={props.showZones}
+          />
+        ) : null,
+      )}
+
       {doc.elements.map((el) =>
         el.type === 'section' ? <SectionShape key={el.id} line={el} selected={selected.has(el.id)} k={k} /> : null,
       )}
@@ -301,7 +318,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
 
       {/* Items raised above (or sunk below) their floor carry their height, e.g. +2' 0". */}
       {doc.elements.map((el) => {
-        if (!el.elevMm || (el.type === 'furniture' && !showFurniture)) return null;
+        if (!el.elevMm || (el.type === 'furniture' && !showFurniture && !isService(el.kind))) return null;
         const pts = elementOutline(el);
         if (!pts.length) return null;
         const at = {

@@ -39,6 +39,7 @@ import { PlanGrid } from './PlanGrid';
 import { usePlanInput, type ContextTarget } from './usePlanInput';
 import { inferAt } from '../tools/controller';
 import { useTouch } from './useTouch';
+import { isService } from '../lib/services';
 
 function toPlanPoint(svg: SVGSVGElement, e: { clientX: number; clientY: number }): Point {
   const ctm = svg.getScreenCTM();
@@ -400,16 +401,16 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
             k={hk}
           />
         )}
-        {tool === 'select' && selected?.type === 'furniture' && showFurniture && (
+        {tool === 'select' && selected?.type === 'furniture' && (showFurniture || isService(selected.kind)) && (
           <FurnitureHandles item={selected} k={hk} />
         )}
         {tool === 'select' &&
           selected &&
-          (selected.type !== 'furniture' || showFurniture) &&
+          (selected.type !== 'furniture' || showFurniture || isService(selected.kind)) &&
           placedCorners(selected).map((g) => <Handle key={g.name} name={g.name} p={g.at} k={hk} />)}
         {tool === 'select' &&
           selected &&
-          (selected.type !== 'furniture' || showFurniture) &&
+          (selected.type !== 'furniture' || showFurniture || isService(selected.kind)) &&
           sideGrips(selected).map((g) => (
             <SideHandle
               key={g.name}

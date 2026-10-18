@@ -35,6 +35,7 @@ import { sideName, toPlan, zoneOf, zoneRects, zoneSamples, type ZoneSide } from 
 import { daylightRooms, projectOf, shows } from './project';
 import { buildingUseHints, type FloorInfo } from './buildingUse';
 import { servicesHints } from './servicesHints';
+import { standsOnFloor } from './services';
 
 export type HintKind = 'reach' | 'daylight' | 'size' | 'layout' | 'use' | 'services';
 
@@ -157,7 +158,8 @@ export function blockedZones(
   const levels = doc.levels.length ? doc.levels.map((l) => l.id) : [GROUND_LEVEL];
   for (const level of levels) {
     const onLevel = doc.elements.filter((el) => !el.hidden && levelOf(el) === level);
-    const items = onLevel.filter((el): el is Furniture => el.type === 'furniture');
+    // Service points on the ceiling or wall, or flush with the floor, are not in the way.
+    const items = onLevel.filter((el): el is Furniture => el.type === 'furniture' && standsOnFloor(el));
     if (!items.some((f) => zoneOf(f.kind, accessible))) continue;
     const levelWalls = onLevel.filter((el): el is Wall => el.type === 'wall');
     const faces = levelWalls.map((w) => wallPolygon(w, levelWalls));

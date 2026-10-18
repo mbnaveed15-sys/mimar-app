@@ -28,8 +28,18 @@ import {
 } from '../lib/drawings/views';
 import { VIEW3D_NAMES, VIEW3D_STYLES } from '../lib/drawings/refs';
 import { withoutHidden } from '../lib/layers';
+import { SERVICE_TRADES, tradeOf } from '../lib/services';
 import { plannerStore, usePlanner } from '../store/plannerStore';
-import type { DrawingRef, PaperSize, SavedCamera, SavedView, Sheet, SheetScale, View3dStyle } from '../types';
+import {
+  levelOf,
+  type DrawingRef,
+  type PaperSize,
+  type SavedCamera,
+  type SavedView,
+  type Sheet,
+  type SheetScale,
+  type View3dStyle,
+} from '../types';
 import { MM_PER_UNIT } from '../lib/scale';
 import {
   DEFAULT_CUSTOM,
@@ -130,6 +140,12 @@ export function DrawingsView() {
   };
   const choices: DrawingRef[] = [
     ...doc.levels.filter((l) => planArea(shown, l.id)).map((l): DrawingRef => ({ kind: 'plan', levelId: l.id })),
+    // Each floor's services layouts, for the trades it has.
+    ...doc.levels.flatMap((l) =>
+      SERVICE_TRADES.filter((t) => shown.elements.some((el) => levelOf(el) === l.id && tradeOf(el) === t)).map(
+        (services): DrawingRef => ({ kind: 'plan', levelId: l.id, services }),
+      ),
+    ),
     ...sections.map((s): DrawingRef => ({ kind: 'section', id: s.id })),
     ...ELEVATION_SIDES.map((side): DrawingRef => ({ kind: 'elevation', side })),
     ...VIEW3D_STYLES.map((style): DrawingRef => ({ kind: 'view3d', style })),
@@ -316,7 +332,7 @@ export function DrawingsView() {
                   <PrimsSvg
                     picture={picture}
                     prims={page.prims}
-                    plan={(levelId) => levelContent(plannerStore.getState(), shown, levelId)}
+                    plan={(levelId, services) => levelContent(plannerStore.getState(), shown, levelId, services)}
                   />
                 </svg>
               </div>

@@ -914,7 +914,7 @@ export function createPlannerStore(
       const { doc, selectedIds, selectedId, showFurniture } = get();
       const visible = (id: Id) => {
         const it = itemById(doc, id);
-        return !!it && !('type' in it && it.type === 'furniture' && !showFurniture);
+        return !!it && !('type' in it && it.type === 'furniture' && !showFurniture && !isService(it.kind));
       };
       const ids = selectedIds.filter(visible);
       // Undo can take away the floor being shown (a floor just added or duplicated): show the top floor left.

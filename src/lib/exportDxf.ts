@@ -85,6 +85,7 @@ const LAYERS = {
   'F-ALRM': { color: 240, ltype: 'CONTINUOUS' },
   'F-ALRM-CABL': { color: 240, ltype: 'DASHED' },
   'M-HVAC': { color: 6, ltype: 'CONTINUOUS' },
+  'M-HVAC-CABL': { color: 6, ltype: 'DASHED' },
   'P-FIXT': { color: 5, ltype: 'CONTINUOUS' },
   'P-DOMW': { color: 5, ltype: 'CONTINUOUS' },
   'P-DOMW-HOT': { color: 30, ltype: 'DASHED' },
@@ -106,7 +107,7 @@ const TRADE_LAYER: Record<ServiceTrade, Layer> = {
 const RUN_LAYER: Record<RunSystem, Layer> = {
   lighting: 'E-LITE',
   power: 'E-POWR',
-  ac: 'E-POWR',
+  ac: 'M-HVAC-CABL',
   data: 'E-COMM-CABL',
   fire: 'F-ALRM-CABL',
   cold: 'P-DOMW',
