@@ -3,7 +3,10 @@ import { PlanDrawing } from './PlanDrawing';
 import type { PlanImageContent } from '../lib/planImage';
 import { PLAN_FONT } from '../lib/planImage';
 import { MM_PER_UNIT } from '../lib/scale';
-import type { Prim } from '../lib/drawings/sheet';
+import type { PlanServices, Prim } from '../lib/drawings/sheet';
+
+/** A floor's plan content, with none, one trade's or all of its services. */
+type PlanContent = (levelId: string, services?: PlanServices) => PlanImageContent;
 import { PRINT_PALETTE } from '../theme/plan';
 import type { SavedCamera } from '../types';
 
@@ -19,7 +22,7 @@ export function PrimsSvg({
   picture,
 }: {
   prims: Prim[];
-  plan?: (levelId: string) => PlanImageContent;
+  plan?: PlanContent;
   /** Draws the coloured 3D picture at a size in pixels. */
   picture?: (width: number, height: number, camera?: SavedCamera) => Promise<string | null>;
 }) {
@@ -76,7 +79,7 @@ export function PrimsSvg({
           case 'picture':
             return <Picture key={i} box={p} make={picture} />;
           case 'plan': {
-            const content = plan?.(p.levelId);
+            const content = plan?.(p.levelId, p.services);
             if (!content) return null;
             const a = p.area;
             // Text and thin lines sized as on paper: 1 "pixel" of the screen design is 0.2 mm.

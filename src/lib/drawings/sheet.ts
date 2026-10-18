@@ -12,6 +12,7 @@ import {
   type PaperSize,
   type PlanDoc,
   type SavedCamera,
+  type ServiceTrade,
   type Sheet,
   type SheetItem,
   type SheetScale,
@@ -22,6 +23,11 @@ import { hatchSegments } from '../hatch';
 import { DIM_TEXT_MM, dimStyleOf, endMark, type DimStyle } from '../dimStyle';
 import { formatLength } from '../units';
 import { drawingKey, drawingTitle, savedView, sideDrawingRefs, type SideDrawing } from './views';
+import { TRADE_LAYOUTS } from './refs';
+import { tradeOf } from '../services';
+
+/** What a plan drawing shows of the services: none, one trade's only, or (missing) all of them. */
+export type PlanServices = ServiceTrade | 'none';
 
 /** The usual scales, offered in the scale lists; any other whole number can be typed. */
 export const SHEET_SCALES: SheetScale[] = [20, 25, 50, 75, 100, 125, 150, 200, 250, 500];
@@ -58,7 +64,17 @@ export type Prim =
   /** A coloured 3D picture of the building (rendered when the sheet is shown or printed), filling the box. */
   | { t: 'picture'; x: number; y: number; w: number; h: number; camera?: SavedCamera }
   /** A floor plan, drawn by the plan renderer: `area` (plan units) fills the box. */
-  | { t: 'plan'; levelId: string; x: number; y: number; w: number; h: number; area: Bounds; scale: number };
+  | {
+      t: 'plan';
+      levelId: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      area: Bounds;
+      scale: number;
+      services?: PlanServices;
+    };
 
 const MARGIN = 10;
 const TITLE_BLOCK = 18;
@@ -103,10 +119,13 @@ export function planArea(doc: PlanDoc, levelId: string): Bounds | null {
  * The floor and the part of it a plan drawing shows: a whole floor (with room round it for its
  * dimensions, `pad` paper mm), or a saved 2D view's own area. Null for other drawings, or an empty floor.
  */
-export function planOf(doc: PlanDoc, ref: DrawingRef): { levelId: string; area: Bounds; pad: number } | null {
+export function planOf(
+  doc: PlanDoc,
+  ref: DrawingRef,
+): { levelId: string; area: Bounds; pad: number; services?: PlanServices } | null {
   if (ref.kind === 'plan') {
     const area = planArea(doc, ref.levelId);
-    return area ? { levelId: ref.levelId, area, pad: PLAN_PAD } : null;
+    return area ? { levelId: ref.levelId, area, pad: PLAN_PAD, services: ref.services ?? 'none' } : null;
   }
   if (ref.kind === 'view') {
     const v = savedView(doc, ref.id);
@@ -286,6 +305,7 @@ export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count
         h: p.h,
         area: { minX: a.minX - pad, minY: a.minY - pad, maxX: a.maxX + pad, maxY: a.maxY + pad },
         scale: p.item.scale,
+        ...(plan.services && { services: plan.services }),
       });
     } else if (isPicture(ref)) {
       const v = ref.kind === 'view' ? savedView(src.doc, ref.id) : null;
@@ -530,6 +550,14 @@ export function suggestedSheets(src: SheetSource): Sheet[] {
   };
   for (const level of doc.levels)
     if (planArea(doc, level.id)) add(`${level.name} plan`, [{ kind: 'plan', levelId: level.id }]);
+  // Each trade's services layout on its own sheet: every floor that has some of its points or runs.
+  for (const trade of Object.keys(TRADE_LAYOUTS) as ServiceTrade[])
+    add(
+      TRADE_LAYOUTS[trade],
+      doc.levels
+        .filter((l) => doc.elements.some((el) => levelOf(el) === l.id && tradeOf(el) === trade))
+        .map((l): DrawingRef => ({ kind: 'plan', levelId: l.id, services: trade })),
+    );
   const sides = sideDrawingRefs(doc).filter((ref) => src.side(ref)?.bounds);
   add(
     'Sections',

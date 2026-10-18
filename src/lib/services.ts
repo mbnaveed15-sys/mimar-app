@@ -3,10 +3,12 @@
  * Services group, and the wire and pipe runs between them. Pure.
  */
 import { FURNITURE_CATALOG, FURNITURE_KINDS, type FurnitureKind } from '../furniture/catalog';
-import type { Furniture, PlanDoc, PlanElement, Point, RunSystem, ServiceRun } from '../types';
+import type { Furniture, PlanDoc, PlanElement, Point, RunSystem, ServiceRun, ServiceTrade } from '../types';
 
-/** Which drawing (and layer) a service belongs to. */
-export type ServiceTrade = 'electrical' | 'plumbing' | 'drainage' | 'gas' | 'hvac' | 'data' | 'fire';
+export type { ServiceTrade };
+
+/** The trades in drawing order, each one layer (its items and its wires or pipes) and one sheet. */
+export const SERVICE_TRADES: ServiceTrade[] = ['electrical', 'hvac', 'plumbing', 'drainage', 'gas', 'data', 'fire'];
 
 /** Each trade's colour on the plan and in the DXF's layers' own colours. */
 export const TRADE_COLORS: Record<ServiceTrade, string> = {
@@ -38,8 +40,8 @@ const LP: RunSystem[] = ['lighting', 'power'];
 const COLD: RunSystem[] = ['cold'];
 const WATER: RunSystem[] = ['cold', 'hot'];
 const DRAIN: RunSystem[] = ['drain'];
-const ci = (h: number, size3d: [number, number, number], runs = L): ServiceInfo => ({
-  trade: E,
+const ci = (h: number, size3d: [number, number, number], runs = L, trade: ServiceTrade = E): ServiceInfo => ({
+  trade,
   mount: 'ceiling',
   heightMm: h,
   size3d,
@@ -79,7 +81,7 @@ export const SERVICES: Record<string, ServiceInfo> = {
   'socket-power': wall(E, 300, [86, 30, 86], P),
   'socket-usb': wall(E, 300, [86, 30, 86], P),
   'socket-outdoor': wall(E, 600, [100, 60, 120], P),
-  'ac-isolator': wall(E, 1800, [100, 50, 100], ['ac']),
+  'ac-isolator': wall('hvac', 1800, [100, 50, 100], ['ac']),
   'cooker-point': wall(E, 1100, [150, 40, 150], P),
   db: wall(E, 1500, [400, 120, 500], ['lighting', 'power', 'ac']),
   meter: wall(E, 1600, [300, 150, 400], P),
@@ -88,14 +90,14 @@ export const SERVICES: Record<string, ServiceInfo> = {
   changeover: wall(E, 1500, [300, 150, 400], P),
   'earth-pit': floor(E, 0, [400, 400, 50], P),
   chime: wall(E, 2100, [150, 60, 150], L),
-  'fan-ceiling': ci(0, [1400, 1400, 350], P),
+  'fan-ceiling': ci(0, [1400, 1400, 350], P, 'hvac'),
   'fan-exhaust': wall('hvac', 2400, [300, 150, 300], P),
   'fan-wall': wall('hvac', 2100, [450, 300, 450], P),
   'ac-split': wall('hvac', 2100, [1000, 250, 320], ['ac', 'drain']),
   'ac-outdoor': floor('hvac', 0, [850, 350, 650], ['ac']),
   'ac-window': wall('hvac', 1500, [650, 700, 450], ['ac']),
-  'ac-cassette': ci(0, [840, 840, 300], ['ac', 'drain']),
-  'cooler-point': wall(E, 1800, [86, 30, 86], P),
+  'ac-cassette': ci(0, [840, 840, 300], ['ac', 'drain'], 'hvac'),
+  'cooler-point': wall('hvac', 1800, [86, 30, 86], P),
   'water-meter': floor('plumbing', 0, [250, 150, 150], COLD),
   'tank-overhead': floor('plumbing', 0, [1300, 1300, 1500], COLD),
   'tank-underground': floor('plumbing', -1800, [2400, 1800, 1800], COLD),
@@ -128,8 +130,8 @@ export const SERVICES: Record<string, ServiceInfo> = {
   cctv: wall('data', 2700, [150, 250, 150], ['data']),
   intercom: wall('data', 1400, [120, 40, 200], ['data']),
   'video-phone': wall('data', 1400, [150, 40, 220], ['data']),
-  'smoke-detector': ci(0, [120, 120, 50], ['fire']),
-  'heat-detector': ci(0, [120, 120, 50], ['fire']),
+  'smoke-detector': ci(0, [120, 120, 50], ['fire'], 'fire'),
+  'heat-detector': ci(0, [120, 120, 50], ['fire'], 'fire'),
   extinguisher: wall('fire', 1000, [180, 180, 500], []),
   'call-point': wall('fire', 1400, [90, 50, 90], ['fire']),
   'fire-bell': wall('fire', 2300, [150, 80, 150], ['fire']),
@@ -138,6 +140,12 @@ export const SERVICES: Record<string, ServiceInfo> = {
 /** A library item that is a service point. */
 export const isService = (kind?: string): boolean => !!kind && kind in SERVICES;
 export const serviceOf = (f: Pick<Furniture, 'kind'>): ServiceInfo | null => (f.kind && SERVICES[f.kind]) || null;
+
+/** The trade of a service point or run (null for anything else). */
+export function tradeOf(el: PlanElement): ServiceTrade | null {
+  if (el.type === 'run') return RUN_SYSTEMS[el.system]?.trade ?? null;
+  return el.type === 'furniture' ? (serviceOf(el)?.trade ?? null) : null;
+}
 export const SERVICE_KINDS = FURNITURE_KINDS.filter((k) => isService(k));
 export const DEFAULT_SERVICE_KIND: FurnitureKind = 'light-ceiling';
 
@@ -148,7 +156,7 @@ export const RUN_SYSTEMS: Record<
 > = {
   lighting: { label: 'Lighting circuit', trade: 'electrical', wire: true, color: '#d97706', dash: [6, 4], sizeMm: 1.5 },
   power: { label: 'Power circuit', trade: 'electrical', wire: true, color: '#dc2626', dash: [6, 4], sizeMm: 4 },
-  ac: { label: 'AC circuit', trade: 'electrical', wire: true, color: '#7c3aed', dash: [10, 3, 2, 3], sizeMm: 6 },
+  ac: { label: 'AC circuit', trade: 'hvac', wire: true, color: '#7c3aed', dash: [10, 3, 2, 3], sizeMm: 6 },
   data: { label: 'Data, TV and phone', trade: 'data', wire: true, color: '#0891b2', dash: [2, 3], sizeMm: 0 },
   fire: { label: 'Fire alarm', trade: 'fire', wire: true, color: '#e11d48', dash: [8, 2, 2, 2], sizeMm: 1.5 },
   cold: { label: 'Cold water', trade: 'plumbing', wire: false, color: '#2563eb', dash: [], sizeMm: 19 },

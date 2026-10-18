@@ -46,6 +46,7 @@ import {
 import { isFurnitureKind } from '../furniture/catalog';
 import { authorityById, type AuthorityId } from './bylaws';
 import { LAYERS, type LayerState } from './layers';
+import { isTrade } from './drawings/refs';
 import { defaultMaterials, PATTERNS } from './materials';
 import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
 import { parseHatch } from './hatch';
@@ -818,7 +819,8 @@ const SIDES: ElevationSide[] = ['front', 'back', 'left', 'right'];
 
 function normaliseDrawingRef(raw: unknown): DrawingRef | null {
   if (!isObject(raw)) return null;
-  if (raw.kind === 'plan' && raw.levelId !== undefined) return { kind: 'plan', levelId: String(raw.levelId) };
+  if (raw.kind === 'plan' && raw.levelId !== undefined)
+    return { kind: 'plan', levelId: String(raw.levelId), ...(isTrade(raw.services) && { services: raw.services }) };
   if (raw.kind === 'section' && raw.id !== undefined) return { kind: 'section', id: String(raw.id) };
   if (raw.kind === 'elevation' && SIDES.includes(raw.side as ElevationSide))
     return { kind: 'elevation', side: raw.side as ElevationSide };

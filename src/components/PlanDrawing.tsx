@@ -28,6 +28,7 @@ import type { GroundOnPlan } from '../lib/terrain/groundView';
 import { hatchOf, ringsPath, surfaceHatchOf, type Hatch } from '../lib/hatch';
 import { curveOf, facetOutline } from '../lib/curvedEdges';
 import { outlinePoints } from '../lib/plot';
+import { isService } from '../lib/services';
 import { HatchArea, HatchDefs } from './shapes/Hatching';
 
 export interface PlanDrawingProps {
@@ -220,7 +221,8 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
             );
           }
           case 'furniture':
-            if (!showFurniture) return null;
+            // Services keep to their own layers, whatever the furniture switch.
+            if (!showFurniture && !isService(el.kind)) return null;
             return (
               <FurnitureShape
                 key={el.id}
@@ -301,7 +303,7 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
 
       {/* Items raised above (or sunk below) their floor carry their height, e.g. +2' 0". */}
       {doc.elements.map((el) => {
-        if (!el.elevMm || (el.type === 'furniture' && !showFurniture)) return null;
+        if (!el.elevMm || (el.type === 'furniture' && !showFurniture && !isService(el.kind))) return null;
         const pts = elementOutline(el);
         if (!pts.length) return null;
         const at = {

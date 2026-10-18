@@ -2,7 +2,15 @@
  * Which sections and elevations a plan has, their names and keys, and which way each section looks.
  * Light (no geometry), so the store and the plan can use it without loading the drawing code.
  */
-import type { DrawingRef, ElevationSide, PlanDoc, SavedView, SectionLine, View3dStyle } from '../../types';
+import type {
+  DrawingRef,
+  ElevationSide,
+  PlanDoc,
+  SavedView,
+  SectionLine,
+  ServiceTrade,
+  View3dStyle,
+} from '../../types';
 
 /** A saved view by its id (null when it has been deleted). */
 export const savedView = (doc: Pick<PlanDoc, 'views'>, id: string): SavedView | null =>
@@ -32,9 +40,22 @@ export const VIEW3D_NAMES: Record<View3dStyle, string> = {
   picture: '3D view',
 };
 
+/** Each trade's services layout, in drawing order (one sheet each). */
+export const TRADE_LAYOUTS: Record<ServiceTrade, string> = {
+  electrical: 'Electrical layout',
+  hvac: 'Fans & AC layout',
+  plumbing: 'Water supply layout',
+  drainage: 'Drainage layout',
+  gas: 'Gas layout',
+  data: 'Data & security layout',
+  fire: 'Fire safety layout',
+};
+
+export const isTrade = (v: unknown): v is ServiceTrade => typeof v === 'string' && v in TRADE_LAYOUTS;
+
 /** A stable key for a drawing, e.g. "section:abc", "elevation:front", "plan:ground" or "view3d:iso". */
 export function drawingKey(ref: DrawingRef): string {
-  if (ref.kind === 'plan') return `plan:${ref.levelId}`;
+  if (ref.kind === 'plan') return ref.services ? `plan:${ref.levelId}:${ref.services}` : `plan:${ref.levelId}`;
   if (ref.kind === 'section') return `section:${ref.id}`;
   if (ref.kind === 'view3d') return `view3d:${ref.style}`;
   if (ref.kind === 'view') return ref.style ? `view:${ref.id}:${ref.style}` : `view:${ref.id}`;
@@ -43,7 +64,10 @@ export function drawingKey(ref: DrawingRef): string {
 
 export function drawingFromKey(key: string): DrawingRef | null {
   const [kind, rest] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
-  if (kind === 'plan' && rest) return { kind: 'plan', levelId: rest };
+  if (kind === 'plan' && rest) {
+    const [levelId, services] = [rest.slice(0, rest.lastIndexOf(':')), rest.slice(rest.lastIndexOf(':') + 1)];
+    return levelId && isTrade(services) ? { kind: 'plan', levelId, services } : { kind: 'plan', levelId: rest };
+  }
   if (kind === 'section' && rest) return { kind: 'section', id: rest };
   if (kind === 'elevation' && ELEVATION_SIDES.includes(rest as ElevationSide))
     return { kind: 'elevation', side: rest as ElevationSide };
@@ -98,7 +122,10 @@ export function sideDrawingRefs(doc: Pick<PlanDoc, 'elements'>): DrawingRef[] {
 export function drawingTitle(doc: PlanDoc, ref: DrawingRef): string | null {
   if (ref.kind === 'plan') {
     const level = doc.levels.find((l) => l.id === ref.levelId);
-    return level ? `${level.name} plan` : null;
+    if (!level) return null;
+    return ref.services
+      ? `${level.name} ${TRADE_LAYOUTS[ref.services].replace(/^\w/, (c) => c.toLowerCase())}`
+      : `${level.name} plan`;
   }
   if (ref.kind === 'section') {
     const line = sectionLines(doc).find((s) => s.id === ref.id);

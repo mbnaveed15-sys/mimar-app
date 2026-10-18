@@ -395,6 +395,9 @@ export interface SketchLine extends Grouped {
 /** What a service run carries: a circuit (wiring) or a pipe. */
 export type RunSystem = 'lighting' | 'power' | 'ac' | 'data' | 'fire' | 'cold' | 'hot' | 'drain' | 'rain' | 'gas';
 
+/** Which services drawing (and layer) a service point or run belongs to. */
+export type ServiceTrade = 'electrical' | 'plumbing' | 'drainage' | 'gas' | 'hvac' | 'data' | 'fire';
+
 /**
  * A wire or pipe run on a services drawing: a line through its points, each end joined to the item it was
  * drawn from or to (`from`, `to`, a Services item or a fixture), so it follows when that item moves.
@@ -733,7 +736,8 @@ export type ElevationSide = 'front' | 'back' | 'left' | 'right';
 
 /** A drawing that can go on a sheet: a floor plan, a section or an elevation. */
 export type DrawingRef =
-  | { kind: 'plan'; levelId: Id }
+  /** A floor plan: without the services, or with one trade's services only (its services layout). */
+  | { kind: 'plan'; levelId: Id; services?: ServiceTrade }
   | { kind: 'section'; id: Id }
   | { kind: 'elevation'; side: ElevationSide }
   | { kind: 'view3d'; style: View3dStyle }
