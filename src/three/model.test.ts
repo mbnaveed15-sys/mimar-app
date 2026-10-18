@@ -208,10 +208,18 @@ describe('3D site', () => {
         { x: 0, y: 100 },
       ],
     };
-    const { solids, floors } = buildModel(docWith(stair, plot), opts);
-    const steps = solids.filter((s) => s.role === 'stair');
-    expect(steps).toHaveLength(17);
-    expect(Math.max(...steps.map((s) => s.h))).toBeCloseTo((17 * 3200) / 18 / 1000);
+    const { solids, floors, panels } = buildModel(docWith(stair, plot), opts);
+    // A stair between floors is one flight: a waist slab with its 17 steps on top, not 17 blocks.
+    expect(solids.filter((s) => s.role === 'stair')).toHaveLength(0);
+    const flight = panels.filter((p) => p.role === 'stair');
+    expect(flight).toHaveLength(1);
+    const heights = flight[0].outline.map(([, t]) => t);
+    expect(Math.max(...heights)).toBeCloseTo((17 * 3200) / 18 / 1000);
+    // Open underneath: at the top end the slab is only its waist deep under the last step.
+    const [end, top] = [flight[0].outline.at(-1)!, flight[0].outline.at(-2)!];
+    expect(end[0]).toBeCloseTo(top[0]);
+    expect(top[1] - end[1]).toBeLessThan(0.4);
+    expect(flight[0].outline).toHaveLength(2 + 2 * 17 + 1);
     expect(floors).toHaveLength(1);
     expect(floors[0].y).toBe(0);
   });

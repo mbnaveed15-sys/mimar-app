@@ -641,6 +641,8 @@ function finishMove(store: Store) {
     selection = copyIds;
   }
   if (s.axisLock === 'z') s.setAxisLock(null);
+  // Moved out into the garden (or in under the roof): onto the lawn or the floor, in the same step.
+  if (dx || dy) s.settleGround(selection);
   const steps = store.getState().past.length;
   s.endBatch();
   // A paste and where it was put down are one step to undo.

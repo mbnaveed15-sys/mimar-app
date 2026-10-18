@@ -22,7 +22,7 @@ export const LAYERS = [
   { id: 'pads', label: 'Levelled areas' },
   { id: 'context', label: 'Surroundings' },
   { id: 'electrical', label: 'Electrical' },
-  { id: 'hvac', label: 'Fans & AC' },
+  { id: 'hvac', label: 'Air conditioning' },
   { id: 'plumbing', label: 'Water supply' },
   { id: 'drainage', label: 'Drainage' },
   { id: 'gas', label: 'Gas' },

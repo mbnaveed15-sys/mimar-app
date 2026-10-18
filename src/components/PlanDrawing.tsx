@@ -357,19 +357,24 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
 /** A double-height space seen from the floor above: its outline dashed, crossed through, marked open to below. */
 function VoidShape({ room, k }: { room: Room; k: number }) {
   const pts = room.points;
-  const n = pts.length;
   const at = labelPoint(pts);
-  // Corner to opposite corner, twice (the two diagonals of a rectangle).
-  const cross = [
-    [pts[0], pts[Math.floor(n / 2)]],
-    [pts[Math.floor(n / 4)], pts[Math.floor((3 * n) / 4)]],
-  ];
+  const outline = pts.map((p) => `${p.x},${p.y}`).join(' ');
+  // Corner to opposite corner of its box, twice, kept inside it: an L-shaped stairwell is crossed
+  // through where it is open, not across the floor beside it.
+  const xs = pts.map((p) => p.x);
+  const ys = pts.map((p) => p.y);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const clip = `void-clip-${room.id}`;
   return (
     <g data-testid="open-to-below" pointerEvents="none" style={{ stroke: PLAN.inkMuted }} strokeWidth={k}>
-      <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" strokeDasharray={`${6 * k} ${4 * k}`} />
-      {cross.map(([a, b], i) => (
-        <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
-      ))}
+      <clipPath id={clip}>
+        <polygon points={outline} />
+      </clipPath>
+      <polygon points={outline} fill="none" strokeDasharray={`${6 * k} ${4 * k}`} />
+      <g clipPath={`url(#${clip})`}>
+        <line x1={x0} y1={y0} x2={x1} y2={y1} />
+        <line x1={x1} y1={y0} x2={x0} y2={y1} />
+      </g>
       <text
         x={at.x}
         y={at.y}

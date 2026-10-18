@@ -198,7 +198,7 @@ describe('sheets', () => {
 });
 
 describe('services layouts', () => {
-  /** The house with a socket, a light wired up, a water meter and a basin on the ground floor, and a fan upstairs. */
+  /** The house with a socket, a light wired up, a water meter and a basin on the ground floor, and a split AC upstairs. */
   function serviced(): PlanDoc {
     const doc = house();
     const [ground, first] = doc.levels;
@@ -212,7 +212,7 @@ describe('services layouts', () => {
         at('l1', 'light-ceiling', ground.id, 10),
         at('b1', 'water-meter', ground.id, 15),
         at('h1', 'basin', ground.id, 18),
-        at('f1', 'fan-ceiling', first.id, 10),
+        at('f1', 'ac-split', first.id, 10),
         {
           id: 'r1',
           type: 'run',
@@ -235,7 +235,7 @@ describe('services layouts', () => {
       'Ground floor plan',
       'First floor plan',
       'Electrical layout',
-      'Fans & AC layout',
+      'Air conditioning layout',
       'Water supply layout',
       'Sections',
       'Elevations',
@@ -265,7 +265,8 @@ describe('services layouts', () => {
         .map((el) => el.id);
     // Furniture always shows; services only on their own trade's layout.
     expect(ids('none')).toEqual(['h1']);
-    expect(ids('electrical')).toEqual(['s1', 'l1', 'h1', 'r1']);
+    // A trade's own layout shows no furniture: the basin only where its pipes go.
+    expect(ids('electrical')).toEqual(['s1', 'l1', 'r1']);
     expect(ids('plumbing')).toEqual(['b1', 'h1']);
     expect(ids()).toEqual(['s1', 'l1', 'b1', 'h1', 'r1']);
   });

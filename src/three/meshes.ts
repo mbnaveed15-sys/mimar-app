@@ -280,7 +280,7 @@ export function buildMeshes(model: Model3D): THREE.Group {
     const mesh = new THREE.Mesh(geometry, panel.sides ? [looks.main, looks.main, looks.plus, looks.minus] : looks.main);
     mesh.position.set(panel.x, panel.y0, panel.z);
     mesh.rotation.y = panel.rotY;
-    mesh.castShadow = panel.role === 'wall';
+    mesh.castShadow = panel.role === 'wall' || panel.role === 'stair';
     mesh.receiveShadow = panel.role !== 'glass';
     mesh.userData = { id: panel.id, level: panel.level };
     addWithEdges(mesh, panel.level, panel.role !== 'glass');

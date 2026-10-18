@@ -7,7 +7,7 @@ import { groundOnPlan } from '../terrain/groundView';
 import { floorVoids } from '../voids';
 import { GROUND_LEVEL, levelOf, type PlanDoc } from '../../types';
 import type { PlanServices, SheetSource } from './sheet';
-import { tradeOf } from '../services';
+import { RUN_SYSTEMS, runsOf, tradeOf } from '../services';
 import { sideCache } from './views';
 
 /** What a sheet or a side drawing is drawn from: the plan without its hidden items. */
@@ -46,7 +46,11 @@ export function levelContent(
   const onLevel = <T extends { levelId?: string }>(it: T) => levelOf(it) === levelId;
   const wanted = (el: PlanDoc['elements'][number]) => {
     const trade = services && tradeOf(el);
-    return !trade || trade === services;
+    if (trade) return trade === services;
+    // A trade's own sheet shows no furniture or decor: only the fixtures its pipes or wires join.
+    if (services && services !== 'none' && el.type === 'furniture')
+      return runsOf(el).some((r) => RUN_SYSTEMS[r].trade === services);
+    return true;
   };
   const elements = shown.elements.filter(
     (el) => (onLevel(el) || el.type === 'section') && (s.exportLines || el.type !== 'line') && wanted(el),

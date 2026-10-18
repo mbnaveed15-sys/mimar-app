@@ -20,7 +20,7 @@ import { MM_PER_UNIT } from './scale';
 import { isCornerPlot, leftRightOf, outlinePoints, plotSides, sideLine, sideSetbacks, SIDE_KIND_NAMES } from './plot';
 import { distanceToWall } from './arc';
 import { buildableArea } from './site';
-import { basementOf, groundIndex, isSiteLevel, levelWallMm, slabMm } from './levels';
+import { basementOf, groundIndex, isSiteLevel, levelWallMm, MUMTY_FLOOR, MUMTY_ROOM, slabMm } from './levels';
 import { outsideOutline } from './outline';
 import { BUILDING_USES, projectOf, shows } from './project';
 import { formatLength, MM_PER_FOOT } from './units';
@@ -148,9 +148,6 @@ export function builtAreaSqFt(doc: PlanDoc, levelId: string): number {
   return (Math.max(0, units2) * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
 }
 
-/** Rooms named as a mumty (stair tower), and floor names that mean the roof. */
-const MUMTY_ROOM = /mumty|mumtee|stair ?tower/i;
-const MUMTY_LEVEL = /mumty|mumtee|stair ?tower|roof/i;
 /** Rooms that are car porches (or garages). */
 export const PORCH_ROOM = /porch|garage/i;
 
@@ -159,7 +156,7 @@ export function mumtyLevelIds(doc: PlanDoc): Set<string> {
   return new Set(
     doc.levels
       .slice(groundIndex(doc) + 1)
-      .filter((l) => MUMTY_LEVEL.test(l.name) || doc.rooms.some((r) => levelOf(r) === l.id && MUMTY_ROOM.test(r.name)))
+      .filter((l) => MUMTY_FLOOR.test(l.name) || doc.rooms.some((r) => levelOf(r) === l.id && MUMTY_ROOM.test(r.name)))
       .map((l) => l.id),
   );
 }

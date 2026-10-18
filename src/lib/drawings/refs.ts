@@ -43,7 +43,7 @@ export const VIEW3D_NAMES: Record<View3dStyle, string> = {
 /** Each trade's services layout, in drawing order (one sheet each). */
 export const TRADE_LAYOUTS: Record<ServiceTrade, string> = {
   electrical: 'Electrical layout',
-  hvac: 'Fans & AC layout',
+  hvac: 'Air conditioning layout',
   plumbing: 'Water supply layout',
   drainage: 'Drainage layout',
   gas: 'Gas layout',

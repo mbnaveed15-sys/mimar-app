@@ -75,8 +75,23 @@ export function levelWallMm(
 ): number {
   const level = doc.levels.find((l) => l.id === id);
   if (level?.site) return level.heightMm ?? siteWallMm({ plinthMm: doc.plinthMm ?? 0, ground: doc.ground });
-  return level?.heightMm ?? (level?.basement ? BASEMENT_HEIGHT_MM : wallHeightMm);
+  if (level?.heightMm != null) return level.heightMm;
+  if (level?.basement) return BASEMENT_HEIGHT_MM;
+  // The mumty (stair tower) floor: low enough that with its roof slab it stays under every
+  // authority's mumty height (8' at the least), unless its height is set.
+  const rooms = (doc as Partial<Pick<PlanDoc, 'rooms'>>).rooms ?? [];
+  const mumty =
+    level &&
+    id !== GROUND_LEVEL &&
+    (MUMTY_FLOOR.test(level.name) || rooms.some((r) => levelOf(r) === id && MUMTY_ROOM.test(r.name)));
+  return mumty ? Math.min(wallHeightMm, MUMTY_WALL_MM) : wallHeightMm;
 }
+
+/** Rooms named as the mumty (stair tower), and floor names that mean it (or the roof). */
+export const MUMTY_ROOM = /mumty|mumtee|stair ?tower/i;
+export const MUMTY_FLOOR = /mumty|mumtee|stair ?tower|roof/i;
+/** A mumty floor's usual wall height: 7'6", 8' with a 6" roof slab. */
+export const MUMTY_WALL_MM = 2286;
 
 /** A floor slab's usual thickness: 6". */
 export const DEFAULT_SLAB_MM = 152.4;

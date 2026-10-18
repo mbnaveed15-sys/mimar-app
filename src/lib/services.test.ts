@@ -82,7 +82,16 @@ describe('services', () => {
       expect(tradeOf.get(category) ?? SERVICES[kind].trade, kind).toBe(SERVICES[kind].trade);
       tradeOf.set(category, SERVICES[kind].trade);
     }
-    expect(SERVICES['fan-ceiling'].trade).toBe('hvac');
+    expect(SERVICES['fan-ceiling'].trade).toBe('electrical');
+    // Every point that takes wires or pipes takes at least one of its own trade's.
+    for (const kind of SERVICE_KINDS) {
+      const { trade, runs } = SERVICES[kind];
+      if (runs.length)
+        expect(
+          runs.some((r) => RUN_SYSTEMS[r].trade === trade),
+          kind,
+        ).toBe(true);
+    }
     expect(SERVICES['smoke-detector'].trade).toBe('fire');
     expect(RUN_SYSTEMS.ac.trade).toBe('hvac');
   });
@@ -302,7 +311,7 @@ describe('services', () => {
     expect(texts).toContain('WC (commode) has no drain pipe joined to it.');
     expect(texts).not.toContain('WC (commode) has no water pipe joined to it.');
     expect(texts.some((t) => t.includes('geyser has no hot water'))).toBe(true);
-    expect(texts.some((t) => t.includes("isn't on any lighting circuit"))).toBe(true);
+    expect(texts.some((t) => /aren't joined to any wire or pipe|isn't joined to any wire or pipe/.test(t))).toBe(true);
     expect(texts.some((t) => t.includes('gas run is joined to Ceiling light'))).toBe(true);
     expect(texts.some((t) => t.includes('distribution board'))).toBe(true);
   });

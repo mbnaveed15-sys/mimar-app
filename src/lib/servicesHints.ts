@@ -104,24 +104,24 @@ export function servicesHints(doc: PlanDoc, levelName: (id: Id) => string): Hint
           });
       }
 
-    // Once some wiring is drawn: lights left off every lighting circuit.
-    const wired = runs.some((r) => levelOf(r) === levelId && r.system === 'lighting');
-    if (wired) {
-      const loose = here.filter(
-        (f) => LIGHTS.has(f.kind!) && !joined.get(f.id)?.has('lighting') && !joined.get(f.id)?.has('power'),
-      );
-      if (loose.length)
-        hints.push({
-          id: `unwired-${levelId}`,
-          kind: 'services',
-          text: on(
-            loose.length === 1
-              ? `${nameOf(loose[0])} isn't on any lighting circuit.`
-              : `${loose.length} lights and fans aren't on any lighting circuit.`,
-          ),
-          ids: loose.map((f) => f.id),
-        });
-    }
+    // Once a floor has some of a point's wires or pipes: points left joined to none of them.
+    const drawn = new Set(runs.filter((r) => levelOf(r) === levelId).map((r) => r.system));
+    const loose = here.filter((f) => {
+      const takes = serviceOf(f)?.runs ?? [];
+      const has = joined.get(f.id);
+      return takes.some((r) => drawn.has(r)) && !takes.some((r) => has?.has(r));
+    });
+    if (loose.length)
+      hints.push({
+        id: `unwired-${levelId}`,
+        kind: 'services',
+        text: on(
+          loose.length === 1
+            ? `${nameOf(loose[0])} isn't joined to any wire or pipe.`
+            : `${loose.length} service points aren't joined to any wire or pipe.`,
+        ),
+        ids: loose.map((f) => f.id),
+      });
   }
 
   // Runs joined to an item that doesn't take them (a gas pipe to a light).

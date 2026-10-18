@@ -5,7 +5,7 @@ import { patternSpanMm } from '../lib/patterns';
 import { MM_PER_UNIT } from '../lib/scale';
 import { doorKindOf, SWING_KINDS } from '../lib/openingKinds';
 import { openingProfileMm } from '../lib/shapes';
-import { buildableArea, stairLayout } from '../lib/site';
+import { buildableArea, stairLayout, type StairPart } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
 import { basementOf, buildingLevels, groundIndex, isSiteLevel, lawnMm, levelWallMm, slabMm } from '../lib/levels';
 import { outsideOutline } from '../lib/outline';
@@ -107,7 +107,7 @@ export interface Panel {
   sides?: Sides;
   id?: string;
   level?: string;
-  role: 'wall' | 'glass' | 'shape';
+  role: 'wall' | 'glass' | 'shape' | 'stair';
 }
 
 /** A flat floor area at height y, as [x, z] points in metres. */
@@ -866,34 +866,123 @@ function furnitureSolids(f: Furniture, color?: string): Solid[] {
 
 const RAMP_SLICES = 12;
 
-/** A stair's treads and landings as solid blocks from the floor up; a ramp as a run of thin slices. */
-function stairSolids(st: Stair, color?: string): Solid[] {
+/** A built stair's waist (the slab under its steps) and its landings, as thick as a floor slab: 150 mm. */
+const STAIR_WAIST_MM = 150;
+
+/**
+ * A stair's 3D parts. Steps on the ground (`solid`: up a plinth, on the site) are solid masonry, each
+ * a block from the ground up. A stair between floors is built as cast stairs are: each flight a
+ * sloping waist slab with the steps on top, seen from the side as a stepped top over a straight
+ * soffit, and each landing a slab; a ramp is a sloping slab. Curved stairs come from stairBlocks.
+ */
+function stairParts(st: Stair, color: string | undefined, solid: boolean): { solids: Solid[]; panels: Panel[] } {
   const layout = stairLayout(st);
   const solids: Solid[] = [];
-  const block = (x: number, y: number, w: number, h: number, topMm: number) =>
+  const panels: Panel[] = [];
+  const rotY = (-(st.rotation ?? 0) * Math.PI) / 180;
+  const block = (x: number, y: number, w: number, h: number, topMm: number, y0Mm = 0) =>
     solids.push({
       ...toScene(st, st.rotation ?? 0, { x: x + w / 2, y: y + h / 2 }),
-      y0: 0,
-      h: Math.max(0.01, mmToM(topMm)),
+      y0: mmToM(y0Mm),
+      h: Math.max(0.01, mmToM(topMm - y0Mm)),
       w: m(w),
       d: m(h),
-      rotY: (-(st.rotation ?? 0) * Math.PI) / 180,
+      rotY,
       color: color ?? CONCRETE,
       role: 'stair',
     });
-  for (const part of layout.parts) {
-    // Wedges of a curved or spiral stair are built as outlines (stairBlocks).
-    if (part.points) continue;
-    if (part.kind !== 'ramp') {
-      block(part.x, part.y, part.w, part.h, part.topMm);
-      continue;
+  /** A side profile (along the climb, height; metres) from `start` heading `dir`, across `width`. */
+  const profile = (start: Point, dir: Point, width: number, outline: [number, number][]) => {
+    const a = fromFurnitureLocal(st, start);
+    const b = fromFurnitureLocal(st, { x: start.x + dir.x, y: start.y + dir.y });
+    panels.push({
+      outline,
+      x: m(a.x),
+      z: m(a.y),
+      y0: 0,
+      rotY: Math.atan2(-(b.y - a.y), b.x - a.x),
+      depth: m(width),
+      color: color ?? CONCRETE,
+      role: 'stair',
+    });
+  };
+  const waist = mmToM(STAIR_WAIST_MM);
+  const parts = layout.parts.filter((p) => !p.points);
+
+  if (solid) {
+    for (const part of parts) {
+      if (part.kind !== 'ramp') {
+        block(part.x, part.y, part.w, part.h, part.topMm);
+        continue;
+      }
+      // The ramp rises from its bottom edge (+y) to its top edge (-y).
+      const slice = part.h / RAMP_SLICES;
+      for (let i = 0; i < RAMP_SLICES; i++)
+        block(part.x, part.y + part.h - (i + 1) * slice, part.w, slice, (part.topMm * (i + 1)) / RAMP_SLICES);
     }
-    // The ramp rises from its bottom edge (+y) to its top edge (-y).
-    const slice = part.h / RAMP_SLICES;
-    for (let i = 0; i < RAMP_SLICES; i++)
-      block(part.x, part.y + part.h - (i + 1) * slice, part.w, slice, (part.topMm * (i + 1)) / RAMP_SLICES);
+    return { solids, panels };
   }
-  return solids;
+
+  for (const part of parts)
+    if (part.kind === 'ramp') {
+      const len = m(part.h);
+      const top = mmToM(part.topMm);
+      const thick = (waist * Math.hypot(len, top)) / len;
+      const toe = Math.min(len, (thick * len) / top);
+      profile({ x: part.x + part.w / 2, y: part.y + part.h }, { x: 0, y: -1 }, part.w, [
+        [0, 0],
+        [len, top],
+        [len, Math.max(0, top - thick)],
+        [toe, 0],
+      ]);
+    } else if (part.kind === 'landing')
+      block(part.x, part.y, part.w, part.h, part.topMm, Math.max(0, part.topMm - STAIR_WAIST_MM));
+
+  // Flights: runs of treads with no landing between, climbing the way their treads follow on.
+  const flights: StairPart[][] = [];
+  let run: StairPart[] = [];
+  for (const part of parts) {
+    if (part.kind === 'tread') run.push(part);
+    else if (run.length) {
+      flights.push(run);
+      run = [];
+    }
+  }
+  if (run.length) flights.push(run);
+  const centre = (p: StairPart) => ({ x: p.x + p.w / 2, y: p.y + p.h / 2 });
+  flights.forEach((treads, i) => {
+    let dir: Point;
+    if (treads.length > 1) {
+      const [p, q] = [centre(treads[0]), centre(treads[1])];
+      const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+      dir = { x: (q.x - p.x) / len, y: (q.y - p.y) / len };
+    } else dir = i === 0 ? { x: 0, y: -1 } : st.shape === 'L' ? { x: 1, y: 0 } : { x: 0, y: 1 };
+    const across = Math.abs(dir.x) > 0.5;
+    const first = treads[0];
+    const T = across ? first.w : first.h;
+    const width = across ? first.h : first.w;
+    // The flight starts at its first riser: the edge of its first tread away from the climb.
+    const c = centre(first);
+    const start = { x: c.x - (dir.x * T) / 2, y: c.y - (dir.y * T) / 2 };
+    const t = m(T);
+    const r = mmToM(layout.riserMm);
+    const b = mmToM(first.topMm - layout.riserMm);
+    const n = treads.length;
+    // The soffit runs under the inner corners of the steps, the waist's depth below them.
+    const drop = (waist * Math.hypot(t, r)) / t;
+    const soffit = (x: number) => b + (x * r) / t - drop;
+    const outline: [number, number][] = [];
+    if (soffit(0) > 0) outline.push([0, soffit(0)]);
+    else outline.push([Math.min(n * t, ((drop - b) * t) / r), 0], [0, 0]);
+    for (let k = 0; k < n; k++) outline.push([k * t, b + (k + 1) * r], [(k + 1) * t, b + (k + 1) * r]);
+    outline.push([n * t, Math.max(0, soffit(n * t))]);
+    // A short flight's soffit never leaves the floor: its last corner is its first.
+    const [x0, y0] = outline[0];
+    const [x1, y1] = outline[outline.length - 1];
+    if (Math.abs(x0 - x1) < 1e-9 && Math.abs(y0 - y1) < 1e-9) outline.pop();
+    profile(start, dir, width, outline);
+  });
+  return { solids, panels };
 }
 
 /** A spiral stair's treads are plates cantilevered from its pole. */
@@ -903,13 +992,28 @@ const SPIRAL_TREAD_M = 0.06;
  * A curved stair's wedge treads, each a block from the floor to its top; a spiral stair's, plates
  * round its pole, which stands the full height.
  */
-function stairBlocks(st: Stair, color?: string): Slab3D[] {
+function stairBlocks(st: Stair, color?: string, solid = true): Slab3D[] {
   const spiral = st.shape === 'spiral';
-  return stairLayout(st)
-    .parts.filter((p) => p.points)
+  const layout = stairLayout(st);
+  return layout.parts
+    .filter((p) => p.points)
     .map((p) => {
       const top = Math.max(0.01, mmToM(p.topMm));
       const plate = spiral && p.kind === 'tread';
+      // Between floors a curved stair's wedges are its steps on a waist: each its riser and the waist deep.
+      if (!solid && !spiral && p.kind === 'tread') {
+        const y0 = Math.max(0, top - mmToM(layout.riserMm + STAIR_WAIST_MM));
+        return {
+          points: p.points!.map((q) => {
+            const w = fromFurnitureLocal(st, q);
+            return [m(w.x), m(w.y)] as [number, number];
+          }),
+          y0,
+          h: top - y0,
+          color: color ?? CONCRETE,
+          role: 'stair' as const,
+        };
+      }
       return {
         points: p.points!.map((q) => {
           const w = fromFurnitureLocal(st, q);
@@ -1236,7 +1340,9 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       if (el.type === 'stair') {
         // Steps up the plinth start from the natural ground; others from the floor they are on.
         const fromGround = ground && Math.abs(el.riseMm - doc.plinthMm) < 1 && !el.elevMm;
-        let parts = stairSolids(el, colorOf(el.material)).map(withFinish(el.material, 'concrete'));
+        const built = stairParts(el, colorOf(el.material), !!(fromGround || siteLevel));
+        panels.push(...built.panels.map(withFinish(el.material, 'concrete')).map(lift).map(raise(el)).map(from(el.id)));
+        let parts = built.solids.map(withFinish(el.material, 'concrete'));
         // Steps on the Ground (site) level start from the lawn.
         if (siteLevel) parts = parts.map(lift);
         // On sloping or levelled ground each step reaches down to (or starts from) the ground under it.
@@ -1249,7 +1355,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         solids.push(...(fromGround || siteLevel ? parts : parts.map(lift)).map(raise(el)).map(from(el.id)));
         const finish = finishOf(el.material, 'concrete');
         blocks.push(
-          ...stairBlocks(el, colorOf(el.material))
+          ...stairBlocks(el, colorOf(el.material), !!(fromGround || siteLevel))
             .map((b) => (finish ? { ...b, finish } : b))
             .map(fromGround ? (b: Slab3D) => b : lift)
             .map(raise(el))
