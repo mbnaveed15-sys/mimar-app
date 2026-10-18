@@ -24,7 +24,7 @@ import { syncDimensions } from '../lib/dimensions';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { DEFAULT_SERVICE_KIND, isService, kindPlaced, syncRuns } from '../lib/services';
 import { resetElementSize, type ScaleAxis } from '../lib/resize';
-import { detectRoom, openWallEnds } from '../rooms';
+import { detectRoom, newlyClosed, openWallEnds } from '../rooms';
 import type { Inference } from '../lib/inference';
 import {
   boundsCentre,
@@ -639,7 +639,8 @@ export interface PlannerState {
   duplicateSelected: () => void;
 
   /** A new wall from a to b on the active floor; with a bow, curved (see Wall.bow). */
-  addWall: (a: Point, b: Point, bow?: number) => void;
+  /** `makeRooms`: as the Wall tool draws, an area the wall closes becomes a room (same undo step). */
+  addWall: (a: Point, b: Point, bow?: number, makeRooms?: boolean) => void;
   /**
    * Place a door or window on the wall near p, or a typed distance from the nearer corner; false
    * (with a warning saying why) when it doesn't fit.
@@ -1447,7 +1448,7 @@ export function createPlannerStore(
         get().setSelection(copies);
       },
 
-      addWall: (a, b, bow) => {
+      addWall: (a, b, bow, makeRooms) => {
         if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
         const wall: PlanElement = onActive({
           id: newId(),
@@ -1461,7 +1462,23 @@ export function createPlannerStore(
           material: activeMat(),
           ...kindFields(get().site.wallKind),
         } as PlanElement);
-        updateElements((els) => [...els, wall]);
+        // A wall that closes a loop makes a room there too, in the same undo step.
+        const before = get().levelElements();
+        const level = get().activeLevel;
+        const closed = !makeRooms
+          ? []
+          : newlyClosed(
+              before,
+              [...before, wall],
+              get().doc.rooms.filter((r) => levelOf(r) === level),
+            );
+        let n = get().levelRooms().length;
+        const rooms = closed.map((points) => onActive<Room>({ id: newId(), name: `Room ${++n}`, points }));
+        get().commit((d) => ({
+          ...d,
+          elements: [...d.elements, wall],
+          ...(rooms.length && { rooms: [...d.rooms, ...rooms] }),
+        }));
       },
       placeOpening: (type, p, typedMm) => {
         const at = openingAt(get(), type, p, typedMm);

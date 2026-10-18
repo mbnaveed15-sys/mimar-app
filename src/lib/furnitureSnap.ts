@@ -73,7 +73,9 @@ export function snapToWalls(
   near = WALL_SNAP,
 ): { x: number; y: number; rotation: number } | null {
   const faces = facesOf(walls);
-  let best: { face: Face; gap: number; rotation: number; depth: number } | null = null;
+  // The wall nearest the pointer wins (not the one the item's edge comes nearest): a bed placed by
+  // the top wall backs onto it, even when a side wall is just as close to its far edge.
+  let best: { face: Face; off: number; rotation: number; depth: number } | null = null;
   for (const face of faces) {
     const { off, along } = measure(face, p);
     if (off <= 0 || along < 0 || along > face.len) continue;
@@ -82,7 +84,7 @@ export function snapToWalls(
     const depth = reach(item.w, item.h, rotation, face.n);
     const gap = off - depth;
     if (gap > near || gap < -depth) continue;
-    if (!best || Math.abs(gap) < Math.abs(best.gap)) best = { face, gap, rotation, depth };
+    if (!best || off < best.off) best = { face, off, rotation, depth };
   }
   if (!best) return null;
   const { face, rotation, depth } = best;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectRoom, labelPoint, openWallEnds, polygonArea, wallFaces } from './rooms';
+import { detectRoom, labelPoint, newlyClosed, openWallEnds, polygonArea, wallFaces } from './rooms';
 import type { Wall } from './types';
 
 let n = 0;
@@ -111,5 +111,25 @@ describe('room detection', () => {
       const walls = [...box(0, 0, 100 * F, 100 * F), ft(10, 50, 60, 50), ft(60, 50.2, 90, 50.2)];
       expect(openWallEnds(walls)).toHaveLength(4);
     });
+  });
+});
+
+describe('rooms made when walls close a loop', () => {
+  const sq = [wall(0, 0, 400, 0), wall(400, 0, 400, 300), wall(400, 300, 0, 300)];
+  const last = wall(0, 300, 0, 0);
+
+  it('finds the area the last wall closes, once', () => {
+    const closed = newlyClosed(sq, [...sq, last], []);
+    expect(closed).toHaveLength(1);
+    expect(polygonArea(closed[0])).toBeGreaterThan(0);
+    // Nothing more closes after it, and an area already a room is left alone.
+    expect(newlyClosed([...sq, last], [...sq, last, wall(500, 0, 600, 0)], [])).toHaveLength(0);
+    const room = { id: 'r', name: 'R', points: closed[0] };
+    expect(newlyClosed(sq, [...sq, last], [room])).toHaveLength(0);
+  });
+
+  it('leaves out an area too small to be a room', () => {
+    const tiny = [wall(0, 0, 20, 0), wall(20, 0, 20, 20), wall(20, 20, 0, 20)];
+    expect(newlyClosed(tiny, [...tiny, wall(0, 20, 0, 0)], [])).toHaveLength(0);
   });
 });

@@ -307,3 +307,24 @@ export function labelPoint(pts: Point[]): Point {
 
 /** Floor area of a room in square millimetres. */
 export const roomAreaSqMm = (room: Room) => polygonArea(room.points) * MM_PER_UNIT * MM_PER_UNIT;
+
+/** Areas smaller than this (1 m²) are shafts or gaps, not rooms. */
+const MIN_AUTO_ROOM_SQ_MM = 1e6;
+
+/**
+ * The areas a change to the walls has just closed: enclosed now but not before, big enough to be a
+ * room and not already inside one of `rooms`. Each is an outline as Room tool clicks make them.
+ */
+export function newlyClosed(before: PlanElement[], after: PlanElement[], rooms: Room[]): Point[][] {
+  const key = (f: Point[]) =>
+    f
+      .map((p) => `${Math.round(p.x)},${Math.round(p.y)}`)
+      .sort()
+      .join(';');
+  const had = new Set(wallFaces(roomWalls(before)).map(key));
+  return wallFaces(roomWalls(after)).filter((f) => {
+    if (had.has(key(f)) || polygonArea(f) * MM_PER_UNIT * MM_PER_UNIT < MIN_AUTO_ROOM_SQ_MM) return false;
+    const at = labelPoint(f);
+    return !rooms.some((r) => pointInPolygon(at, r.points));
+  });
+}

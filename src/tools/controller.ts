@@ -30,6 +30,7 @@ import {
   type Point,
   type SketchLine,
   type Tool,
+  type Wall,
 } from '../types';
 import { MODIFY_TOOLS } from '../types';
 import { wallPolygon, wallsOf } from '../walls';
@@ -66,6 +67,7 @@ import {
   curveRelease,
 } from './curveTool';
 import { setSideSize, sideSize } from '../lib/resize';
+import { dragWallJoints } from '../lib/roomGrips';
 import {
   FURNITURE_HINT,
   SERVICES_HINT,
@@ -339,6 +341,41 @@ function resizedItem(s: PlannerState): PlanElement | null {
   const r = s.lastResize;
   if (!r || s.tool !== 'select' || s.selectedIds.length !== 1 || s.selectedIds[0] !== r.id) return null;
   return s.doc.elements.find((el) => el.id === r.id) ?? null;
+}
+
+/**
+ * Set a wall's, layout line's or beam's length by moving the end whose grip was last used, along the line
+ * from the other end. A wall's joined walls go with that end; a curved one keeps its shape.
+ */
+function setEndLength(store: Store, el: PlanElement, start: boolean, length: number): boolean {
+  if ((el.type !== 'wall' && el.type !== 'line' && el.type !== 'beam') || length <= 0) return false;
+  const fixed = start ? { x: el.x2, y: el.y2 } : { x: el.x1, y: el.y1 };
+  const moving = start ? { x: el.x1, y: el.y1 } : { x: el.x2, y: el.y2 };
+  const was = Math.hypot(moving.x - fixed.x, moving.y - fixed.y);
+  if (!was) return false;
+  const p = {
+    x: fixed.x + ((moving.x - fixed.x) / was) * length,
+    y: fixed.y + ((moving.y - fixed.y) / was) * length,
+  };
+  const s = store.getState();
+  if (el.type === 'wall' && !el.plotId) {
+    const end = start ? 'start' : 'end';
+    s.commit((doc) => {
+      const next = dragWallJoints(doc, el.id, [{ end, dx: p.x - moving.x, dy: p.y - moving.y }]);
+      if (!el.bow) return next;
+      return {
+        ...next,
+        elements: next.elements.map((e) =>
+          e.id === el.id && e.type === 'wall' ? { ...e, bow: (el.bow! * length) / was } : e,
+        ),
+      };
+    });
+    return true;
+  }
+  const next = start ? { ...el, x1: p.x, y1: p.y } : { ...el, x2: p.x, y2: p.y };
+  if ('bow' in el && el.bow) (next as Wall | SketchLine).bow = (el.bow * length) / was;
+  s.updateElement(next);
+  return true;
 }
 
 /** What the active tool takes typed: a plot drawn corner by corner takes lengths, as walls do. */
@@ -759,7 +796,7 @@ function finishWallAt(store: Store, p: Point, tol: number) {
   if (d?.type !== 'wall') return;
   const start = { x: d.x1, y: d.y1 };
   if (same(start, p, 0.01)) return;
-  s.addWall(start, p);
+  s.addWall(start, p, undefined, true);
   s.setAxisLock(null);
   const closed = d.chainStart && same(p, d.chainStart, tol) && !same(start, d.chainStart, 0.01);
   s.setDraft(
@@ -785,7 +822,7 @@ export function finishArcWall(store: Store, bow: number, tol: number, carryOn = 
     { x: d.x1, y: d.y1 },
     { x: d.x2, y: d.y2 },
   ];
-  s.addWall(start, end, bow);
+  s.addWall(start, end, bow, true);
   const closed = d.chainStart && same(end, d.chainStart, tol) && !same(start, d.chainStart, 0.01);
   s.setDraft(
     closed || !carryOn
@@ -827,7 +864,7 @@ export function release(store: Store, dragged: boolean) {
   if (s.tool !== 'wall' || d?.type !== 'wall' || d.chain) return;
   if (dragged && s.site.wallArc) startBend(store, { x: d.x2, y: d.y2 });
   else if (dragged) {
-    s.addWall({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 });
+    s.addWall({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 }, undefined, true);
     s.setDraft(null);
   } else {
     s.setDraft({ ...d, chain: true });
@@ -872,7 +909,14 @@ export function applyMeasure(store: Store, text: string): boolean {
   const resized = resizedItem(s);
   if (resized && s.lastResize) {
     if (m.kind !== 'length' || m.mm <= 0) return fail("Type the new size, e.g. 6'6 or 2m.");
-    const next = setSideSize(resized, s.lastResize.grip, m.mm / MM_PER_UNIT);
+    const grip = s.lastResize.grip;
+    if (grip === 'end-start' || grip === 'end-end') {
+      const ok = setEndLength(store, resized, grip === 'end-start', m.mm / MM_PER_UNIT);
+      if (!ok) return fail("Type the new length, e.g. 12'6 or 4m.");
+      s.setWarning(null);
+      return true;
+    }
+    const next = setSideSize(resized, grip, m.mm / MM_PER_UNIT);
     if (!next) return fail('It can’t be made that size from this side.');
     s.updateElement(next);
     s.setWarning(null);
@@ -1090,6 +1134,8 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
   const len = (v: Point) => formatLength(Math.hypot(v.x, v.y) * MM_PER_UNIT, s.units);
   const resized = resizedItem(s);
   if (resized && s.lastResize) {
+    if (s.lastResize.grip.startsWith('end-') && 'x1' in resized)
+      return { label: 'Length', value: len(sub({ x: resized.x2, y: resized.y2 }, { x: resized.x1, y: resized.y1 })) };
     const size = sideSize(resized, s.lastResize.grip);
     return { label: 'Size', value: size ? formatLength(size * MM_PER_UNIT, s.units) : '' };
   }
@@ -1136,6 +1182,8 @@ export function toolHint(s: PlannerState): string {
   const d = s.draft;
   switch (s.tool) {
     case 'select':
+      if (resizedItem(s) && s.lastResize?.grip.startsWith('end-'))
+        return 'Type the length and press Enter: the end you moved slides along the line; the other end stays.';
       if (resizedItem(s))
         return 'Type the size and press Enter to set it exactly; the opposite side stays where it is.';
       return 'Click to select, drag to move. Square grips move one side. Right-click for more. Space selects from any tool.';

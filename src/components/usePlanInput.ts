@@ -744,6 +744,9 @@ export function usePlanInput(
         s.setInference(null);
         // A length typed next sets that size exactly.
         if (drag.kind === 'side') s.setLastResize({ id: drag.orig.id, grip: drag.grip });
+        // A length typed after moving (or just clicking) a wall's, line's or beam's end sets its length.
+        if (['wall-start', 'wall-end', 'beam-start', 'beam-end'].includes(drag.kind) && 'orig' in drag)
+          s.setLastResize({ id: drag.orig.id, grip: drag.kind.endsWith('start') ? 'end-start' : 'end-end' });
       }
       return;
     }
