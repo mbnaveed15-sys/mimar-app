@@ -1,5 +1,6 @@
 import { snapsOn } from '../lib/checks';
-import { wallParam } from '../geometry';
+import { findElementNear, wallParam } from '../geometry';
+import { gridArray, isArrayPath, pathArray, polarArray } from '../lib/array';
 import { distanceToWall, projectOnWall } from '../lib/arc';
 import type { Inference } from '../lib/inference';
 import type { Measure } from '../lib/measure';
@@ -67,6 +68,7 @@ function selectionFor(store: Store, raw: Point): Id[] | null {
 export function modifyAnchor(s: PlannerState): Point | null {
   const d = s.draft;
   if (d?.type === 'mirror') return d.a;
+  if (d?.type === 'array') return d.base;
   if (d?.type === 'stretch' && d.base) return d.base;
   if (d?.type === 'scale') return d.base;
   return null;
@@ -216,6 +218,8 @@ export function modifyPress(store: Store, raw: Point, inf: Inference, opts: { ct
       s.setDraft({ type: 'mirror', ids, a: p, b: p, flip: !!opts.ctrl });
       return;
     }
+    case 'array':
+      return arrayPress(store, raw, p);
     case 'stretch': {
       if (d?.type !== 'stretch') {
         s.setDraft({ type: 'stretch', x1: raw.x, y1: raw.y, x2: raw.x, y2: raw.y, boxDone: false });
@@ -258,6 +262,11 @@ export function modifyHover(store: Store, raw: Point, inf: Inference, shift: boo
   } else if (d?.type === 'mirror') {
     s.setDraft({ ...d, b: p });
     if (dist(d.a, p) > 0) s.commitFromBase((base) => mirrorItems(base, d.ids, d.a, p, d.flip, fitterFor(s)).doc);
+  } else if (d?.type === 'array') {
+    if (s.arraySettings.mode === 'grid') {
+      s.setDraft({ ...d, to: p });
+      showArray(store);
+    }
   } else if (d?.type === 'stretch') {
     if (!d.boxDone) s.setDraft({ ...d, x2: raw.x, y2: raw.y });
     else if (d.base) {
@@ -303,6 +312,10 @@ export function modifyRelease(store: Store, dragged: boolean) {
 export function modifyEnter(store: Store): boolean {
   const s = store.getState();
   const d = s.draft;
+  if (d?.type === 'array') {
+    finishArray(store);
+    return true;
+  }
   if (s.tool === 'breakWall' && d?.type === 'pick') {
     const wall = wallById(s, d.wallId);
     s.setDraft(null);
@@ -318,6 +331,22 @@ export function modifyMeasure(store: Store, m: Measure): string | null {
   const d = s.draft;
   const units = (mm: number) => mm / MM_PER_UNIT;
   switch (s.tool) {
+    case 'array': {
+      if (d?.type !== 'array' || s.arraySettings.mode !== 'grid' || (m.kind !== 'length' && m.kind !== 'vector'))
+        return 'Click the base point, then type the spacing (a length, or @x,y for a cell) and press Enter.';
+      let to: Point;
+      if (m.kind === 'vector') to = { x: d.base.x + units(m.dx), y: d.base.y - units(m.dy) };
+      else {
+        const lock = s.axisLock === 'x' ? { x: 1, y: 0 } : s.axisLock === 'y' ? { x: 0, y: 1 } : s.shiftLock;
+        const dir = lock ?? { x: d.to.x - d.base.x, y: d.to.y - d.base.y };
+        const len = Math.hypot(dir.x, dir.y) || 1;
+        const u = Math.hypot(dir.x, dir.y) > 1e-9 ? { x: dir.x / len, y: dir.y / len } : { x: 1, y: 0 };
+        to = { x: d.base.x + u.x * units(m.mm), y: d.base.y + u.y * units(m.mm) };
+      }
+      s.setDraft({ ...d, to });
+      finishArray(store);
+      return null;
+    }
     case 'offset': {
       if (d?.type !== 'offset' || m.kind !== 'length')
         return 'Click the wall or line to offset, then type the distance.';
@@ -393,6 +422,11 @@ export function modifyReadout(s: PlannerState): { label: string; value: string }
   switch (s.tool) {
     case 'offset':
       return { label: 'Distance', value: d?.type === 'offset' ? len(d.dist) : '' };
+    case 'array':
+      return {
+        label: 'Spacing',
+        value: d?.type === 'array' && s.arraySettings.mode === 'grid' ? len(dist(d.to, d.base)) : '',
+      };
     case 'fillet':
       return { label: 'Radius', value: len(s.filletRadius) };
     case 'chamfer':
@@ -421,7 +455,25 @@ export function modifyHint(s: PlannerState): string {
     case 'mirror':
       return d?.type === 'mirror'
         ? `Click the second point of the mirror line. ${d.flip ? 'Flipping the originals (Ctrl to copy instead).' : 'Making a mirrored copy (Ctrl to flip the originals instead).'}`
-        : 'Select what to mirror, then click the first point of the mirror line.';
+        : s.selectedIds.length
+          ? 'Click the first point of the mirror line.'
+          : 'Select what to mirror, then click the first point of the mirror line.';
+    case 'array': {
+      const a = s.arraySettings;
+      if (a.mode === 'path')
+        return s.selectedIds.length
+          ? `Click the wall, layout line, wire or pipe to put ${a.count} copies along.`
+          : 'Select what to copy (or click it), then click the wall, layout line, wire or pipe to copy it along.';
+      if (a.mode === 'polar')
+        return d?.type === 'array'
+          ? 'Click or press Enter to keep these copies; change the count or angle in the panel first if you like.'
+          : 'Select what to copy (or click it), then click the centre to copy it round.';
+      if (d?.type === 'array')
+        return a.rows > 1 && a.cols > 1
+          ? 'Move to size one cell (across, then down) and click, or type @x,y.'
+          : 'Move to set the gap and direction and click, or type the spacing.';
+      return `Select what to copy (or click it), then click a base point for ${a.cols} × ${a.rows} copies.`;
+    }
     case 'trim':
       return 'Click the piece of a wall or line to cut away, up to the walls and lines crossing it. (Shift+click with the Eraser does the same.)';
     case 'extend':
@@ -454,4 +506,91 @@ export function modifyHint(s: PlannerState): string {
     default:
       return '';
   }
+}
+
+/** The selection, or the item clicked (which becomes the selection). */
+function arrayTargets(store: Store, raw: Point): Id[] | null {
+  const s = store.getState();
+  if (!s.selectedIds.length) {
+    const hit = findElementNear(s.pickableElements(), raw, s.hitTolerance());
+    if (hit) s.select(hit.id);
+  }
+  const ids = store.getState().selectedIds;
+  return ids.length ? ids : null;
+}
+
+/** The plan with the array shown, from the plan before it. */
+function arrayPlan(s: PlannerState, d: Extract<PlannerState['draft'], { type: 'array' }>) {
+  const a = s.arraySettings;
+  return (base: PlanDoc) =>
+    a.mode === 'polar'
+      ? polarArray(base, d.ids, d.base, a.count, a.fillDeg, a.turn)
+      : gridArray(base, d.ids, a.cols, a.rows, { x: d.to.x - d.base.x, y: d.to.y - d.base.y });
+}
+
+/** Show the array so far (also after its settings change in the panel). */
+export function showArray(store: Store) {
+  const s = store.getState();
+  const d = s.draft;
+  if (d?.type !== 'array') return;
+  const plan = arrayPlan(s, d);
+  s.commitFromBase((base) => plan(base).doc);
+}
+
+/** Keep the array shown, and select the originals with their copies. */
+function finishArray(store: Store) {
+  const s = store.getState();
+  const d = s.draft;
+  if (d?.type !== 'array') return;
+  const plan = arrayPlan(s, d);
+  let made: Id[] = [];
+  s.commitFromBase((base) => {
+    const out = plan(base);
+    made = out.ids;
+    return out.doc;
+  });
+  s.endBatch();
+  s.setDraft(null);
+  s.setSelection([...d.ids, ...made]);
+}
+
+function arrayPress(store: Store, raw: Point, p: Point) {
+  const s = store.getState();
+  const d = s.draft;
+  const a = s.arraySettings;
+  if (d?.type === 'array') {
+    if (a.mode === 'grid' && dist(d.to, d.base) <= tolOf(s)) return;
+    return finishArray(store);
+  }
+  if (a.mode === 'path') {
+    const ids = s.selectedIds;
+    if (!ids.length) {
+      if (!arrayTargets(store, raw))
+        s.setWarning(
+          'Select what to copy (or click it), then click the wall, layout line, wire or pipe to copy along.',
+        );
+      return;
+    }
+    const taken = new Set(ids);
+    const path = findElementNear(
+      s.pickableElements().filter((el) => isArrayPath(el) && !taken.has(el.id)),
+      raw,
+      s.hitTolerance() * 1.5,
+    );
+    if (!path) return s.setWarning('Click a wall, layout line, wire or pipe to copy along.');
+    let made: Id[] = [];
+    s.commit((doc) => {
+      const out = pathArray(doc, ids, path, a.count, a.turn);
+      made = out.ids;
+      return out.doc;
+    });
+    s.setWarning(null);
+    return s.setSelection([...ids, ...made]);
+  }
+  const ids = arrayTargets(store, raw);
+  if (!ids) return s.setWarning('Select what to copy (or click it), then click a base point.');
+  s.setWarning(null);
+  s.beginBatch();
+  s.setDraft({ type: 'array', ids, base: p, to: p });
+  if (a.mode === 'polar') showArray(store);
 }

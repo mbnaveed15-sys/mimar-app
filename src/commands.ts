@@ -436,8 +436,11 @@ export function buildCommands(ctx: CommandContext): Command[] {
       menu: 'view',
       group: 0,
       keys: ['PageUp'],
-      run: () => stepLevel(1),
-      enabled: (s) => floorAt(s) < floorList(s).length - 1,
+      // With no floor above, it says how to add one rather than doing nothing.
+      run: () =>
+        floorAt(st()) < floorList(st()).length - 1
+          ? stepLevel(1)
+          : st().setWarning('There is no floor above. Add one with View › Add floor above (or the floor menu).'),
     },
     {
       id: 'view.levelDown',

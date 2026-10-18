@@ -1,5 +1,5 @@
 import { cleanText } from './text';
-import { isRunSystem } from './services';
+import { isRunSystem, isService } from './services';
 import { DEFAULT_CUSTOM, isPaperSize, paperSideOf } from './paper';
 import { curveOf } from './curvedEdges';
 import { MAX_RISE_MM } from './site';
@@ -163,7 +163,10 @@ function roofOpeningsOf(raw: Record<string, unknown>): Pick<Roof, 'skylights' | 
 
 /** Height above the floor and window sill, kept only when set and sensible. */
 const heightsOf = (raw: Record<string, unknown>) => ({
-  ...(inRange(raw.elevMm, -5000, 30000) && raw.elevMm !== 0 ? { elevMm: raw.elevMm } : {}),
+  // A service point's 0 is a height of its own (its default is somewhere else).
+  ...(inRange(raw.elevMm, -5000, 30000) && (raw.elevMm !== 0 || isService(raw.kind as string | undefined))
+    ? { elevMm: raw.elevMm }
+    : {}),
   ...(inRange(raw.sillMm, 0, 3000) ? { sillMm: raw.sillMm } : {}),
 });
 

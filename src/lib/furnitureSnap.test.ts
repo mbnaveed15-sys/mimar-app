@@ -38,11 +38,18 @@ describe('furniture snapping to walls', () => {
   });
 
   it('tucks into a corner, and leaves the middle of the room alone', () => {
-    const corner = snapToWalls(bed, { x: 90, y: 110 }, walls)!;
+    const corner = snapToWalls(bed, { x: 110, y: 90 }, walls)!;
     expect(corner.rotation).toBe(0);
     expect(corner.x).toBeCloseTo(T / 2 + 68.5);
     expect(corner.y).toBeCloseTo(T / 2 + 97.5);
     expect(snapToWalls({ w: 60, h: 60 }, { x: 250, y: 250 }, walls)).toBeNull();
+  });
+
+  it('backs onto the wall nearest the pointer, not the one nearest its far edge', () => {
+    // Just below the top wall and further from the left one, yet the bed's left edge is nearer it.
+    const top = snapToWalls(bed, { x: 160, y: 25 }, walls)!;
+    expect(top.rotation).toBe(0);
+    expect(top.y).toBeCloseTo(T / 2 + 97.5);
   });
 });
 

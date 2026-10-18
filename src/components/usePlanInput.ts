@@ -1,6 +1,6 @@
 import { snapsOn } from '../lib/checks';
 import { finishStep } from '../tools/finish';
-import { useRef, type MouseEvent, type PointerEvent } from 'react';
+import { useEffect, useRef, type MouseEvent, type PointerEvent } from 'react';
 import {
   findElementNear,
   isNear,
@@ -19,7 +19,7 @@ import { faceOf } from '../lib/pushPull';
 import { itemsInBox, moveItems } from '../lib/selection';
 import { dragDimension } from '../lib/dimensions';
 import { dragCorner, dragSide, isCornerGrip, isSideGrip } from '../lib/resize';
-import { dragRoomCorner, wallEndsAt } from '../lib/roomGrips';
+import { dragRoomCorner, dragWallJoints, wallEndsAt } from '../lib/roomGrips';
 import { hasOwnPlinth, plinthAt } from '../lib/plinth';
 import { snapFurniture } from '../tools/furnitureTool';
 import { plinthWallOf } from '../walls';
@@ -222,6 +222,27 @@ export function usePlanInput(
   const pressRef = useRef<{ x: number; y: number } | null>(null);
   /** The last left press, to count double and triple clicks (browsers report none on pointer-down). */
   const clickRef = useRef({ t: -Infinity, x: 0, y: 0, n: 0 });
+  // Esc while dragging something puts it back where it was (before the shortcut keys see the Esc).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const drag = dragRef.current;
+      if (e.key !== 'Escape' || !drag || drag.kind === 'pan' || drag.kind === 'zoom' || drag.kind === 'zoomBox') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      dragRef.current = null;
+      pressRef.current = null;
+      const s = plannerStore.getState();
+      if (drag.kind === 'box' || drag.kind === 'erase') {
+        screenBox?.show(null);
+        s.setDraft(null);
+      } else {
+        s.cancelBatch();
+        s.setInference(null);
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
 
   /** 1 for a single click, 2 for the second of a double-click, 3 for a triple. */
   function clickCount(e: PointerEvent<Element>) {
@@ -524,7 +545,17 @@ export function usePlanInput(
             const target = STRAIGHT_PIECES.has(orig.type)
               ? snapGrip(moved, orig.id)
               : snapItemCorner(orig, raw.x - drag.start.x, raw.y - drag.start.y, raw, moved);
-            s.updateElement(translateElement(orig, target.x - anchor.x, target.y - anchor.y));
+            const dx = target.x - anchor.x;
+            const dy = target.y - anchor.y;
+            // A wall takes the walls meeting its ends with it, so its corners (and rooms) stay closed.
+            if (orig.type === 'wall' && !orig.plotId)
+              s.commitFromBase((base) =>
+                dragWallJoints(base, orig.id, [
+                  { end: 'start', dx, dy },
+                  { end: 'end', dx, dy },
+                ]),
+              );
+            else s.updateElement(translateElement(orig, dx, dy));
           }
           break;
         }
@@ -539,7 +570,12 @@ export function usePlanInput(
           const o = drag.orig;
           const was = Math.hypot(o.x2 - o.x1, o.y2 - o.y1);
           if (o.bow && was) next.bow = (o.bow * Math.hypot(next.x2 - next.x1, next.y2 - next.y1)) / was;
-          if (next.x1 !== next.x2 || next.y1 !== next.y2) s.updateElement(next);
+          if (o.type === 'wall' && !o.plotId) {
+            // The walls meeting that end go with it.
+            const end = drag.kind === 'wall-start' ? 'start' : 'end';
+            const from = end === 'start' ? { x: o.x1, y: o.y1 } : { x: o.x2, y: o.y2 };
+            s.commitFromBase((base) => dragWallJoints(base, o.id, [{ end, dx: p.x - from.x, dy: p.y - from.y }]));
+          } else if (next.x1 !== next.x2 || next.y1 !== next.y2) s.updateElement(next);
           break;
         }
         case 'wall-bend': {
@@ -708,6 +744,9 @@ export function usePlanInput(
         s.setInference(null);
         // A length typed next sets that size exactly.
         if (drag.kind === 'side') s.setLastResize({ id: drag.orig.id, grip: drag.grip });
+        // A length typed after moving (or just clicking) a wall's, line's or beam's end sets its length.
+        if (['wall-start', 'wall-end', 'beam-start', 'beam-end'].includes(drag.kind) && 'orig' in drag)
+          s.setLastResize({ id: drag.orig.id, grip: drag.kind.endsWith('start') ? 'end-start' : 'end-end' });
       }
       return;
     }

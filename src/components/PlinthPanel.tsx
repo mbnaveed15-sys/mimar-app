@@ -19,7 +19,7 @@ export function PlinthPanel({ wallId }: { wallId: string }) {
       className="mb-3 flex flex-col gap-2 rounded-md border border-line bg-raised p-2 text-xs"
       data-testid="plinth-panel"
     >
-      <div className="font-medium">Selected: plinth</div>
+      <div className="font-medium">Selected: Plinth</div>
       <div className="text-muted">
         The plinth under the ground floor’s walls. These settings are for all of it, except under walls with their own;
         Delete leaves it off under this wall only.

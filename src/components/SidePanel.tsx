@@ -13,6 +13,7 @@ import { TOOL_INFO } from '../tools/toolInfo';
 import { ComponentsPanel } from './ComponentsPanel';
 import { FurnitureLibrary } from './FurnitureLibrary';
 import { RunOptions } from './RunOptions';
+import { ArrayOptions } from './ArrayOptions';
 import { GridSettings } from './GridSettings';
 import { Inspector } from './Inspector';
 import { LayersPanel } from './LayersPanel';
@@ -206,6 +207,7 @@ function ToolOptions() {
   if (tool === 'column' || tool === 'beam' || tool === 'slab') return <StructureOptions />;
   if (tool === 'roof') return <RoofToolOptions />;
   if (tool === 'scale') return <ScaleOptions />;
+  if (tool === 'array') return <ArrayOptions />;
   if (tool === 'shape') return <ShapeOptions />;
   if (tool === 'level' || tool === 'contour' || tool === 'pad') return <GroundToolOptions />;
   if (tool === 'brush')
@@ -320,7 +322,7 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
     <div className="flex flex-col gap-2 p-3">
       <h2 className="m-heading">{hasSelection ? 'Properties' : TOOL_INFO[tool].label}</h2>
       {/* The Shape tool's choice stays in view, as each new shape is selected once drawn. */}
-      {(!hasSelection || tool === 'shape' || tool === 'scale') && <ToolOptions />}
+      {(!hasSelection || tool === 'shape' || tool === 'scale' || tool === 'array') && <ToolOptions />}
       <Inspector />
     </div>
   );

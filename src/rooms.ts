@@ -307,3 +307,52 @@ export function labelPoint(pts: Point[]): Point {
 
 /** Floor area of a room in square millimetres. */
 export const roomAreaSqMm = (room: Room) => polygonArea(room.points) * MM_PER_UNIT * MM_PER_UNIT;
+
+/** Areas smaller than this (1 m²) are shafts or gaps, not rooms. */
+const MIN_AUTO_ROOM_SQ_MM = 1e6;
+
+/**
+ * What a change to the walls does to the rooms: areas it has just closed (enclosed now but not before,
+ * big enough to be a room and not inside a room) become new outlines in `added`; a room whose area a
+ * new wall splits keeps the part round its middle (`changed`, by id) and the other parts are added.
+ */
+export function roomsAfterWalls(
+  before: PlanElement[],
+  after: PlanElement[],
+  rooms: Room[],
+): { added: Point[][]; changed: Map<string, Point[]> } {
+  const key = (f: Point[]) =>
+    f
+      .map((p) => `${Math.round(p.x)},${Math.round(p.y)}`)
+      .sort()
+      .join(';');
+  const had = new Set(wallFaces(roomWalls(before)).map(key));
+  const faces = wallFaces(roomWalls(after));
+  const has = new Set(faces.map(key));
+  let fresh = faces.filter(
+    (f) => !had.has(key(f)) && polygonArea(f) * MM_PER_UNIT * MM_PER_UNIT >= MIN_AUTO_ROOM_SQ_MM,
+  );
+  const added: Point[][] = [];
+  const changed = new Map<string, Point[]>();
+  for (const r of rooms) {
+    if (!had.has(key(r.points)) || has.has(key(r.points))) continue;
+    const parts = fresh.filter((f) => pointInPolygon(labelPoint(f), r.points));
+    if (!parts.length) continue;
+    const mid = labelPoint(r.points);
+    const kept =
+      parts.find((f) => pointInPolygon(mid, f)) ?? parts.reduce((a, b) => (polygonArea(b) > polygonArea(a) ? b : a));
+    changed.set(r.id, kept);
+    added.push(...parts.filter((f) => f !== kept));
+    fresh = fresh.filter((f) => !parts.includes(f));
+  }
+  added.push(...fresh.filter((f) => !rooms.some((r) => pointInPolygon(labelPoint(f), r.points))));
+  return { added, changed };
+}
+
+/**
+ * The areas a change to the walls has just closed: enclosed now but not before, big enough to be a
+ * room and not already inside one of `rooms`. Each is an outline as Room tool clicks make them.
+ */
+export function newlyClosed(before: PlanElement[], after: PlanElement[], rooms: Room[]): Point[][] {
+  return roomsAfterWalls(before, after, rooms).added;
+}

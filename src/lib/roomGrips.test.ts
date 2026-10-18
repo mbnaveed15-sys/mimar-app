@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PlanDoc, Wall } from '../types';
 import { detectRoom } from '../rooms';
 import { emptyDoc } from './storage';
-import { dragRoomCorner, wallEndsAt } from './roomGrips';
+import { dragRoomCorner, dragWallJoints, wallEndsAt } from './roomGrips';
 
 const wall = (id: string, x1: number, y1: number, x2: number, y2: number): Wall => ({
   id,
@@ -81,5 +81,26 @@ describe('room corner grips', () => {
     const d = twoRooms();
     expect(dragRoomCorner(d, 'A', 99, { x: 0, y: 0 })).toBe(d);
     expect(dragRoomCorner(d, 'nope', 0, { x: 0, y: 0 })).toBe(d);
+  });
+});
+
+describe('dragging a wall', () => {
+  it('takes the walls meeting its ends with it, and the rooms reshape', () => {
+    const doc = dragWallJoints(twoRooms(), 'right', [
+      { end: 'start', dx: 40, dy: 0 },
+      { end: 'end', dx: 40, dy: 0 },
+    ]);
+    const w = (id: string) => doc.elements.find((el) => el.id === id) as Wall;
+    expect([w('right').x1, w('right').x2]).toEqual([240, 240]);
+    expect([w('top-r').x2, w('bot-r').x2, w('top-r').x1]).toEqual([240, 240, 100]);
+    expect(maxX(doc.rooms[1].points)).toBeGreaterThan(220);
+    expect(doc.rooms[0].points).toEqual(twoRooms().rooms[0].points);
+  });
+
+  it('takes the walls meeting one end with that end', () => {
+    const doc = dragWallJoints(twoRooms(), 'mid', [{ end: 'start', dx: 0, dy: -30 }]);
+    const w = (id: string) => doc.elements.find((el) => el.id === id) as Wall;
+    expect([w('mid').y1, w('top-l').y2, w('top-r').y1, w('top-l').y1]).toEqual([-30, -30, -30, 0]);
+    expect(minY(doc.rooms[0].points)).toBeLessThan(0);
   });
 });

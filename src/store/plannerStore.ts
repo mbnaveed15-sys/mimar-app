@@ -24,7 +24,7 @@ import { syncDimensions } from '../lib/dimensions';
 import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { DEFAULT_SERVICE_KIND, isService, kindPlaced, syncRuns } from '../lib/services';
 import { resetElementSize, type ScaleAxis } from '../lib/resize';
-import { detectRoom, openWallEnds } from '../rooms';
+import { detectRoom, openWallEnds, roomsAfterWalls } from '../rooms';
 import type { Inference } from '../lib/inference';
 import {
   boundsCentre,
@@ -100,7 +100,9 @@ import { getViewControls, requestCamera } from '../three/viewControls';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SITE_LEVEL } from '../types';
 import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
+import { DEFAULT_ARRAY } from '../lib/array';
 import type {
+  ArraySettings,
   RoofKind,
   Roof,
   Skylight,
@@ -637,7 +639,8 @@ export interface PlannerState {
   duplicateSelected: () => void;
 
   /** A new wall from a to b on the active floor; with a bow, curved (see Wall.bow). */
-  addWall: (a: Point, b: Point, bow?: number) => void;
+  /** `makeRooms`: as the Wall tool draws, an area the wall closes becomes a room (same undo step). */
+  addWall: (a: Point, b: Point, bow?: number, makeRooms?: boolean) => void;
   /**
    * Place a door or window on the wall near p, or a typed distance from the nearer corner; false
    * (with a warning saying why) when it doesn't fit.
@@ -726,6 +729,9 @@ export interface PlannerState {
   /** Which way the Scale tool stretches: both ways, or only across (x) or only up and down (y). */
   scaleAxis: ScaleAxis;
   setScaleAxis: (axis: ScaleAxis) => void;
+  /** How the Array tool lays out its copies. */
+  arraySettings: ArraySettings;
+  setArraySettings: (patch: Partial<ArraySettings>) => void;
   /** Alt is held: snapping works the other way round (off while it is on, on while it is off). */
   snapFlip: boolean;
   setSnapFlip: (flip: boolean) => void;
@@ -1007,6 +1013,7 @@ export function createPlannerStore(
       furnitureAngle: 0,
       furnitureGhost: null,
       scaleAxis: 'both',
+      arraySettings: DEFAULT_ARRAY,
       lastResize: null,
       snapFlip: false,
       wallThicknessMm: prefs.wallThicknessMm,
@@ -1159,7 +1166,7 @@ export function createPlannerStore(
       setTool: (tool) => {
         abandonDraft();
         // Tools that work on the selection keep it.
-        const keep = ['select', 'move', 'rotate', 'mirror', 'scale'].includes(tool);
+        const keep = ['select', 'move', 'rotate', 'mirror', 'array', 'scale'].includes(tool);
         set((s) => ({
           tool,
           draft: null,
@@ -1441,7 +1448,7 @@ export function createPlannerStore(
         get().setSelection(copies);
       },
 
-      addWall: (a, b, bow) => {
+      addWall: (a, b, bow, makeRooms) => {
         if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
         const wall: PlanElement = onActive({
           id: newId(),
@@ -1455,7 +1462,25 @@ export function createPlannerStore(
           material: activeMat(),
           ...kindFields(get().site.wallKind),
         } as PlanElement);
-        updateElements((els) => [...els, wall]);
+        // A wall that closes a loop makes a room there too, in the same undo step.
+        const before = get().levelElements();
+        const level = get().activeLevel;
+        const { added, changed } = makeRooms
+          ? roomsAfterWalls(
+              before,
+              [...before, wall],
+              get().doc.rooms.filter((r) => levelOf(r) === level),
+            )
+          : { added: [], changed: new Map<Id, Point[]>() };
+        let n = get().levelRooms().length;
+        const rooms = added.map((points) => onActive<Room>({ id: newId(), name: `Room ${++n}`, points }));
+        get().commit((d) => ({
+          ...d,
+          elements: [...d.elements, wall],
+          ...((rooms.length || changed.size) && {
+            rooms: [...d.rooms.map((r) => (changed.has(r.id) ? { ...r, points: changed.get(r.id)! } : r)), ...rooms],
+          }),
+        }));
       },
       placeOpening: (type, p, typedMm) => {
         const at = openingAt(get(), type, p, typedMm);
@@ -1569,8 +1594,23 @@ export function createPlannerStore(
             ? doc.elements.filter((el) => !gone.has(el.id) && !('wallId' in el && gone.has(el.wallId)))
             : doc.elements;
           const masks = doc.masks.filter((m) => !pointInPolygon(p, m.points));
-          // Rooms are only erased by clicking inside them away from walls and furniture.
-          const rooms = gone.size
+          // Rooms are only erased by clicking inside them away from walls and furniture (locked ones too).
+          const covered =
+            gone.size ||
+            get()
+              .visibleElements()
+              .some((el) => el.type !== 'plot' && isNear(el, p, tol));
+          if (
+            !gone.size &&
+            covered &&
+            get()
+              .visibleElements()
+              .some(
+                (el) => isNear(el, p, tol) && isLocked(el, { layers: doc.layers, showFurniture: get().showFurniture }),
+              )
+          )
+            get().setWarning('That item is locked (on its own or by its layer): unlock it to erase it.');
+          const rooms = covered
             ? doc.rooms
             : doc.rooms.filter((r) => !(pickRooms.has(r.id) && pointInPolygon(p, r.points)));
           if (elements === doc.elements && masks.length === doc.masks.length && rooms.length === doc.rooms.length) {
@@ -1698,6 +1738,7 @@ export function createPlannerStore(
       setFurnitureAngle: (deg) => set({ furnitureAngle: (((Math.round(deg * 100) / 100) % 360) + 360) % 360 }),
       setFurnitureGhost: (furnitureGhost) => set({ furnitureGhost }),
       setScaleAxis: (scaleAxis) => set({ scaleAxis }),
+      setArraySettings: (patch) => set((s) => ({ arraySettings: { ...s.arraySettings, ...patch } })),
       setLastResize: (lastResize) => set({ lastResize }),
       setSnapFlip: (snapFlip) => {
         if (get().snapFlip !== snapFlip) set({ snapFlip });

@@ -138,8 +138,8 @@ test('a bigger gap in Settings flags doors too near a corner, and one click move
 
 test('drawing lines up with the ends of other walls, with a dotted guide', async ({ page }) => {
   await tool(page, 'wall');
+  // A dragged wall ends there; the Wall tool stays on (Esc now would go back to Select).
   await drag(page, P(4, 4), P(10, 4));
-  await page.keyboard.press('Escape');
   // Straight below the wall's end at 10', away from anything else.
   await page.mouse.move(...(await at(page, ...P(10.1, 9.4))), { steps: 3 });
   await expect(page.getByTestId('snap-marker')).toHaveAttribute('data-snap', 'aligned');

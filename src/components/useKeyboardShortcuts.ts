@@ -100,6 +100,12 @@ export function useKeyboardShortcuts(commands: Command[]) {
       if (isTyping(e.target, e.key)) {
         // In a dialog (the search box, say) only saving reaches the app.
         const inDialog = e.target instanceof HTMLElement && !!e.target.closest('[role="dialog"], [role="alertdialog"]');
+        // Esc in a side-panel field leaves it, so the next key picks a tool again (the field keeps what was typed).
+        if (e.key === 'Escape' && !inDialog && e.target instanceof HTMLElement && !e.target.closest('[role="menu"]')) {
+          e.preventDefault();
+          e.target.blur();
+          return;
+        }
         const keys = inDialog ? ['Ctrl+S', 'Ctrl+Shift+S'] : ANYWHERE;
         if (!keys.some((k) => matchesKeys(e, k))) return;
         const cmd = commands.find((c) => c.keys?.some((k) => matchesKeys(e, k)));
@@ -134,10 +140,12 @@ export function useKeyboardShortcuts(commands: Command[]) {
       }
 
       if (e.key === 'Escape') {
-        // Cancel the current step, then close an open group, then drop the selection.
+        // Cancel the current step, then close an open group, then drop the selection, then (as in
+        // AutoCAD) go back to Select.
         if (cancel(plannerStore)) return;
         if (s.selectedIds.length || s.selectedPlinth) s.select(null);
         else if (s.openGroupId) s.closeGroup();
+        else if (s.tool !== 'select' && !s.measureText) s.setTool('select');
         return;
       }
       if (e.key === 'Enter') {

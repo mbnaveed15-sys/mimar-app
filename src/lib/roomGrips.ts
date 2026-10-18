@@ -67,3 +67,60 @@ export function dragRoomCorner(doc: PlanDoc, roomId: Id, index: number, to: Poin
   });
   return { ...doc, elements, rooms };
 }
+
+/**
+ * Drag a wall, or one of its ends: the ends of the other walls on its floor that meet it there go
+ * with it (so corners stay closed), and the rooms with a corner there are found again from the walls.
+ * Returns the plan unchanged when the wall isn't there or a wall would shrink to nothing.
+ */
+export function dragWallJoints(
+  doc: PlanDoc,
+  wallId: Id,
+  moves: { end: 'start' | 'end'; dx: number; dy: number }[],
+): PlanDoc {
+  const wall = doc.elements.find((el): el is Wall => el.id === wallId && el.type === 'wall');
+  if (!wall || moves.every((m) => !m.dx && !m.dy)) return doc;
+  const level = levelOf(wall);
+  const corners = moves.map((m) => ({
+    ...m,
+    at: m.end === 'start' ? { x: wall.x1, y: wall.y1 } : { x: wall.x2, y: wall.y2 },
+  }));
+  const moved = new Map<Id, Wall>();
+  for (const c of corners) {
+    for (const el of doc.elements) {
+      if (el.type !== 'wall' || levelOf(el) !== level) continue;
+      // Other walls follow unless they are locked or a plot's own; the wall dragged always does.
+      if (el.id !== wallId && (el.locked || el.plotId)) continue;
+      const ends: ('start' | 'end')[] =
+        el.id === wallId
+          ? [c.end]
+          : (['start', 'end'] as const).filter((e) =>
+              near(
+                e === 'start' ? { x: el.x1, y: el.y1 } : { x: el.x2, y: el.y2 },
+                c.at,
+                Math.max(1, thicknessOf(el) / 2),
+              ),
+            );
+      for (const end of ends) {
+        const next = moveEnd(moved.get(el.id) ?? el, end, c.dx, c.dy);
+        if (Math.hypot(next.x2 - next.x1, next.y2 - next.y1) < 1) return doc;
+        moved.set(el.id, next);
+      }
+    }
+  }
+  const elements = doc.elements.map((el) => moved.get(el.id) ?? el);
+  const levelEls: PlanElement[] = elements.filter((el) => levelOf(el) === level);
+  const reach = Math.max(1, ...[...moved.values()].map(reachOf));
+  const rooms = doc.rooms.map((r) => {
+    if (levelOf(r) !== level) return r;
+    let hit = false;
+    const shifted = r.points.map((p) => {
+      const c = corners.find((k) => near(p, k.at, reach));
+      if (!c) return p;
+      hit = true;
+      return { x: p.x + c.dx, y: p.y + c.dy };
+    });
+    return hit ? { ...r, points: detectRoom(levelEls, labelPoint(shifted)) ?? shifted } : r;
+  });
+  return { ...doc, elements, rooms };
+}

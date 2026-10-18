@@ -30,6 +30,7 @@ import {
   type Point,
   type SketchLine,
   type Tool,
+  type Wall,
 } from '../types';
 import { MODIFY_TOOLS } from '../types';
 import { wallPolygon, wallsOf } from '../walls';
@@ -66,6 +67,7 @@ import {
   curveRelease,
 } from './curveTool';
 import { setSideSize, sideSize } from '../lib/resize';
+import { dragWallJoints } from '../lib/roomGrips';
 import {
   FURNITURE_HINT,
   SERVICES_HINT,
@@ -96,6 +98,7 @@ export const MEASURE_TOOLS: Partial<Record<Tool, MeasureKind>> = {
   run: 'length',
   offset: 'length',
   mirror: 'none',
+  array: 'move',
   trim: 'none',
   extend: 'none',
   breakWall: 'length',
@@ -215,7 +218,7 @@ export function inferAt(s: PlannerState, raw: Point, from: Point | null, ignoreI
   // While Stretch, Scale, Rotate or Mirror shows its result, snap to the plan as it was before (as
   // AutoCAD does), not to the moving preview.
   const shown = s.visibleElements();
-  const previewing = !!s.batchBase && ['stretch', 'scale', 'rotate', 'mirror'].includes(s.draft?.type ?? '');
+  const previewing = !!s.batchBase && ['stretch', 'scale', 'rotate', 'mirror', 'array'].includes(s.draft?.type ?? '');
   const ids = previewing ? new Set(shown.map((el) => el.id)) : null;
   const elements = previewing && ids ? s.batchBase!.elements.filter((el) => ids.has(el.id)) : shown;
   const allow = snapAllowed({ ...s.snaps, on: snapsOn(s) }, s.checks);
@@ -319,6 +322,7 @@ export function currentDirection(s: PlannerState): Point | null {
     return sub({ x: d.x2, y: d.y2 }, { x: d.x1, y: d.y1 });
   if (d.type === 'tape') return sub(d.b, d.a);
   if (d.type === 'move') return sub(d.to, d.base);
+  if (d.type === 'array') return sub(d.to, d.base);
   if (
     d.type === 'plotPoly' ||
     d.type === 'contour' ||
@@ -337,6 +341,41 @@ function resizedItem(s: PlannerState): PlanElement | null {
   const r = s.lastResize;
   if (!r || s.tool !== 'select' || s.selectedIds.length !== 1 || s.selectedIds[0] !== r.id) return null;
   return s.doc.elements.find((el) => el.id === r.id) ?? null;
+}
+
+/**
+ * Set a wall's, layout line's or beam's length by moving the end whose grip was last used, along the line
+ * from the other end. A wall's joined walls go with that end; a curved one keeps its shape.
+ */
+function setEndLength(store: Store, el: PlanElement, start: boolean, length: number): boolean {
+  if ((el.type !== 'wall' && el.type !== 'line' && el.type !== 'beam') || length <= 0) return false;
+  const fixed = start ? { x: el.x2, y: el.y2 } : { x: el.x1, y: el.y1 };
+  const moving = start ? { x: el.x1, y: el.y1 } : { x: el.x2, y: el.y2 };
+  const was = Math.hypot(moving.x - fixed.x, moving.y - fixed.y);
+  if (!was) return false;
+  const p = {
+    x: fixed.x + ((moving.x - fixed.x) / was) * length,
+    y: fixed.y + ((moving.y - fixed.y) / was) * length,
+  };
+  const s = store.getState();
+  if (el.type === 'wall' && !el.plotId) {
+    const end = start ? 'start' : 'end';
+    s.commit((doc) => {
+      const next = dragWallJoints(doc, el.id, [{ end, dx: p.x - moving.x, dy: p.y - moving.y }]);
+      if (!el.bow) return next;
+      return {
+        ...next,
+        elements: next.elements.map((e) =>
+          e.id === el.id && e.type === 'wall' ? { ...e, bow: (el.bow! * length) / was } : e,
+        ),
+      };
+    });
+    return true;
+  }
+  const next = start ? { ...el, x1: p.x, y1: p.y } : { ...el, x2: p.x, y2: p.y };
+  if ('bow' in el && el.bow) (next as Wall | SketchLine).bow = (el.bow * length) / was;
+  s.updateElement(next);
+  return true;
 }
 
 /** What the active tool takes typed: a plot drawn corner by corner takes lengths, as walls do. */
@@ -609,6 +648,11 @@ function finishMove(store: Store) {
   s.setDraft(null);
   s.setSelection(selection);
   s.setLastCopy(lastCopy);
+  // Copy (CO) carries on: the next copy hangs on the pointer from the same base.
+  if (d.repeat && d.copy && (dx || dy)) {
+    s.beginBatch();
+    s.setDraft({ type: 'move', ids: d.ids, base: d.base, to: d.base, copy: true, repeat: true });
+  }
 }
 
 /** Pointer pressed on the plan with a measuring tool. Returns true if the tool used it. */
@@ -707,7 +751,11 @@ export function press(
       s.setLastCopy(null);
       s.beginBatch();
       s.setDraft({ type: 'move', ids: store.getState().selectedIds, base: p, to: p, copy: false });
-      if (!!opts.ctrl !== takeCopyNext()) toggleCopy(store);
+      const viaCopy = takeCopyNext();
+      if (!!opts.ctrl !== viaCopy) toggleCopy(store);
+      const started = store.getState().draft;
+      if (viaCopy && started?.type === 'move' && started.copy && !loneOpening(s, started))
+        s.setDraft({ ...started, repeat: true });
       return true;
     }
     case 'rotate': {
@@ -748,7 +796,7 @@ function finishWallAt(store: Store, p: Point, tol: number) {
   if (d?.type !== 'wall') return;
   const start = { x: d.x1, y: d.y1 };
   if (same(start, p, 0.01)) return;
-  s.addWall(start, p);
+  s.addWall(start, p, undefined, true);
   s.setAxisLock(null);
   const closed = d.chainStart && same(p, d.chainStart, tol) && !same(start, d.chainStart, 0.01);
   s.setDraft(
@@ -774,7 +822,7 @@ export function finishArcWall(store: Store, bow: number, tol: number, carryOn = 
     { x: d.x1, y: d.y1 },
     { x: d.x2, y: d.y2 },
   ];
-  s.addWall(start, end, bow);
+  s.addWall(start, end, bow, true);
   const closed = d.chainStart && same(end, d.chainStart, tol) && !same(start, d.chainStart, 0.01);
   s.setDraft(
     closed || !carryOn
@@ -816,7 +864,7 @@ export function release(store: Store, dragged: boolean) {
   if (s.tool !== 'wall' || d?.type !== 'wall' || d.chain) return;
   if (dragged && s.site.wallArc) startBend(store, { x: d.x2, y: d.y2 });
   else if (dragged) {
-    s.addWall({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 });
+    s.addWall({ x: d.x1, y: d.y1 }, { x: d.x2, y: d.y2 }, undefined, true);
     s.setDraft(null);
   } else {
     s.setDraft({ ...d, chain: true });
@@ -861,7 +909,14 @@ export function applyMeasure(store: Store, text: string): boolean {
   const resized = resizedItem(s);
   if (resized && s.lastResize) {
     if (m.kind !== 'length' || m.mm <= 0) return fail("Type the new size, e.g. 6'6 or 2m.");
-    const next = setSideSize(resized, s.lastResize.grip, m.mm / MM_PER_UNIT);
+    const grip = s.lastResize.grip;
+    if (grip === 'end-start' || grip === 'end-end') {
+      const ok = setEndLength(store, resized, grip === 'end-start', m.mm / MM_PER_UNIT);
+      if (!ok) return fail("Type the new length, e.g. 12'6 or 4m.");
+      s.setWarning(null);
+      return true;
+    }
+    const next = setSideSize(resized, grip, m.mm / MM_PER_UNIT);
     if (!next) return fail('It can’t be made that size from this side.');
     s.updateElement(next);
     s.setWarning(null);
@@ -944,6 +999,11 @@ export function applyMeasure(store: Store, text: string): boolean {
     }
     case 'move': {
       if (m.kind === 'copies') {
+        // Typed while Copy (CO) waits for the next copy: that one is dropped, and the last one repeats.
+        if (d?.type === 'move' && d.repeat) {
+          s.cancelBatch();
+          s.setDraft(null);
+        }
         if (!s.lastCopy) return fail('Move with Ctrl to make a copy first, then type 3x or /3.');
         const { ids, dx, dy, copyIds } = s.lastCopy;
         const step = m.spread ? { x: dx / m.n, y: dy / m.n } : { x: dx, y: dy };
@@ -1043,7 +1103,7 @@ export function cancel(store: Store): boolean {
     else s.setOpeningStamp([]);
     return true;
   }
-  if (['move', 'rotate', 'mirror', 'stretch', 'scale', 'push'].includes(d.type)) s.cancelBatch();
+  if (['move', 'rotate', 'mirror', 'array', 'stretch', 'scale', 'push'].includes(d.type)) s.cancelBatch();
   // Esc while placing a paste takes the paste back too.
   if (d.type === 'move' && d.pasted) s.discardLastStep();
   if (d.type === 'brush') s.endBatch();
@@ -1074,6 +1134,8 @@ export function measureReadout(s: PlannerState): { label: string; value: string 
   const len = (v: Point) => formatLength(Math.hypot(v.x, v.y) * MM_PER_UNIT, s.units);
   const resized = resizedItem(s);
   if (resized && s.lastResize) {
+    if (s.lastResize.grip.startsWith('end-') && 'x1' in resized)
+      return { label: 'Length', value: len(sub({ x: resized.x2, y: resized.y2 }, { x: resized.x1, y: resized.y1 })) };
     const size = sideSize(resized, s.lastResize.grip);
     return { label: 'Size', value: size ? formatLength(size * MM_PER_UNIT, s.units) : '' };
   }
@@ -1120,6 +1182,8 @@ export function toolHint(s: PlannerState): string {
   const d = s.draft;
   switch (s.tool) {
     case 'select':
+      if (resizedItem(s) && s.lastResize?.grip.startsWith('end-'))
+        return 'Type the length and press Enter: the end you moved slides along the line; the other end stays.';
       if (resizedItem(s))
         return 'Type the size and press Enter to set it exactly; the opposite side stays where it is.';
       return 'Click to select, drag to move. Square grips move one side. Right-click for more. Space selects from any tool.';
@@ -1171,19 +1235,25 @@ export function toolHint(s: PlannerState): string {
         return 'Pasted: click where it goes (it hangs by its bottom-left corner and snaps), or type a distance. Esc takes the paste back.';
       if (d?.type === 'move')
         return d.copy
-          ? 'Copying: click where the copy goes, or type a distance. Then type 3x or /3 for more copies.'
+          ? d.repeat
+            ? 'Copying: click where each copy goes, or type a distance. Esc when done; 3x or /3 repeats the last one.'
+            : 'Copying: click where the copy goes, or type a distance. Then type 3x or /3 for more copies.'
           : s.view3d
             ? 'Click where it goes, or type a distance. Arrow up/down moves it up and down; Ctrl copies.'
             : 'Click where it goes, or type a distance. Press Ctrl to make a copy instead.';
       return s.lastCopy
         ? 'Type 3x for three copies in a row, or /3 to spread them across the distance.'
-        : 'Click a point on the item to move from (or select it first). Hold Ctrl to copy.';
+        : s.selectedIds.length
+          ? 'Click the base point to move the selection from. Hold Ctrl to copy.'
+          : 'Click a point on the item to move from (or select it first). Hold Ctrl to copy.';
     case 'rotate':
       if (d?.type === 'rotate')
         return d.start
           ? 'Click to set the angle (it snaps to 15°; hold Shift for any angle), or type one.'
           : 'Click to set the start direction, or type an angle such as 90 and press Enter.';
-      return 'Click the item to rotate (it turns about the point you click), or select it first.';
+      return s.selectedIds.length
+        ? 'Click the point to turn the selection about.'
+        : 'Click the item to rotate (it turns about the point you click), or select it first.';
     case 'tape':
       return d?.type === 'tape' && !d.done
         ? s.view3d

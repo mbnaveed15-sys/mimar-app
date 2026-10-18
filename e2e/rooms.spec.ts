@@ -43,7 +43,8 @@ test('rooms show their area in sq ft and marla, and the covered area adds up', a
 
   await page.getByLabel('Name', { exact: true }).fill('Drawing room');
   await page.getByLabel('Name', { exact: true }).press('Enter');
-  await expect(page.locator('[data-type="room-label"] text').first()).toHaveText('Drawing room');
+  // The walls made the rooms as they closed; the room there is picked.
+  await expect(page.locator('[data-type="room-label"] text', { hasText: 'Drawing room' })).toHaveCount(1);
 
   await page.mouse.click(...(await at(page, 20, 10)));
   await expect(page.getByTestId('area-summary')).toContainText('Room area600 sq ft · 2.67 marla');
@@ -52,11 +53,12 @@ test('rooms show their area in sq ft and marla, and the covered area adds up', a
   await expect(page.getByTestId('area-summary')).toContainText('2.20 marla');
 
   // On the plan a room shows sq ft only, unless marla (or both) is picked.
-  await expect(page.getByTestId('room-area').first()).toHaveText('240 sq ft');
+  const areas = page.getByTestId('room-area');
+  await expect(areas.filter({ hasText: /^240 sq ft$/ })).toHaveCount(1);
   await page.getByLabel('Room areas in').selectOption('both');
-  await expect(page.getByTestId('room-area').first()).toHaveText('240 sq ft · 0.88 marla');
+  await expect(areas.filter({ hasText: '240 sq ft · 0.88 marla' })).toHaveCount(1);
   await page.getByLabel('Room areas in').selectOption('marla');
-  await expect(page.getByTestId('room-area').first()).toHaveText('0.88 marla');
+  await expect(areas.filter({ hasText: /^0.88 marla$/ })).toHaveCount(1);
 });
 
 test('clicking outside closed walls explains what to do', async ({ page }) => {

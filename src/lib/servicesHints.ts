@@ -127,7 +127,7 @@ export function servicesHints(doc: PlanDoc, levelName: (id: Id) => string): Hint
   // Runs joined to an item that doesn't take them (a gas pipe to a light).
   const byId = new Map(items.map((f) => [f.id, f] as const));
   for (const r of runs)
-    for (const id of [r.from, r.to]) {
+    for (const id of new Set([r.from, r.to])) {
       const f = id ? byId.get(id) : undefined;
       if (f && !runsOf(f).includes(r.system))
         hints.push({

@@ -559,7 +559,13 @@ export function mirrorItems(
       const bow = el.type === 'line' && el.bow ? { bow: -el.bow } : {};
       mirrored.set(el.id, { ...el, ...fresh, id, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, ...bow });
     } else if (hasPoints(el)) {
-      mirrored.set(el.id, { ...mapOutline(el, (p) => reflect(p, a, b), true), ...fresh, id });
+      // A copied wire or pipe joins the copies of its items.
+      mirrored.set(
+        el.id,
+        flip
+          ? mapOutline(el, (p) => reflect(p, a, b), true)
+          : remapJoins({ ...mapOutline(el, (p) => reflect(p, a, b), true), ...fresh, id }, idMap),
+      );
     } else if (el.type === 'level') {
       mirrored.set(el.id, { ...el, ...fresh, id, ...reflect(el, a, b) });
     } else if (el.type === 'dimension') {
@@ -589,7 +595,8 @@ export function mirrorItems(
         id,
         x: p.x,
         y: p.y,
-        rotation: (((2 * lineDeg - (el.rotation ?? 0)) % 360) + 360) % 360,
+        // Its back (the wall side, up in its own frame) mirrors too: a bed against one wall lands against the other.
+        rotation: (((2 * lineDeg - (el.rotation ?? 0) + 180) % 360) + 360) % 360,
       });
     }
   }

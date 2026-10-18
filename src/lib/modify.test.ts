@@ -114,7 +114,7 @@ describe('offset, mirror, scale and stretch', () => {
     const bed: Furniture = { id: 'f', type: 'furniture', x: 10, y: 5, w: 4, h: 6, rotation: 30 };
     const m = mirrorItems(plan(bed), ['f'], { x: 20, y: -10 }, { x: 20, y: 10 }, false);
     expect(m.doc.elements).toHaveLength(2);
-    expect(m.doc.elements[1]).toMatchObject({ x: 30, y: 5, rotation: 150 });
+    expect(m.doc.elements[1]).toMatchObject({ x: 30, y: 5, rotation: 330 });
     expect(mirrorItems(plan(bed), ['f'], { x: 20, y: -10 }, { x: 20, y: 10 }, true).doc.elements).toHaveLength(1);
   });
 
