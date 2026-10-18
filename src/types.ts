@@ -48,6 +48,8 @@ export interface Material {
 /** How a material's texture is laid on one item in 3D: centred on it and/or shifted, in millimetres. */
 export interface TexturePlace {
   centre?: boolean;
+  /** Size of the texture on this item against the material's own (2 = twice as big); 1 when missing. */
+  scale?: number;
   xMm?: number;
   yMm?: number;
 }

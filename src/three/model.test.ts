@@ -97,7 +97,7 @@ describe('3D model', () => {
   });
 
   it("lays an item's texture where it asks: centred and shifted, on every face", () => {
-    const place = { centre: true, xMm: 100, yMm: -50 };
+    const place = { centre: true, xMm: 100, yMm: -50, scale: 2 };
     const doc: PlanDoc = {
       ...docWith({ ...wall, material: 'mat_brick', materialA: 'mat_wood', texPlace: place }),
       rooms: [
@@ -116,6 +116,8 @@ describe('3D model', () => {
     };
     const model = buildModel(doc, opts);
     expect(model.solids[0].finish).toMatchObject({ pattern: 'brick', centre: true, shiftM: [0.1, -0.05] });
+    const plain = buildModel(docWith({ ...wall, material: 'mat_brick' }), opts).solids[0].finish!;
+    expect(model.solids[0].finish!.spanM).toBeCloseTo(plain.spanM * 2);
     expect(model.solids[0].sides?.plus?.finish).toMatchObject({ pattern: 'wood', centre: true });
     expect(model.floors[0].finish).toMatchObject({ pattern: 'wood', shiftM: [0.2, 0] });
     expect(buildModel(docWith({ ...wall, material: 'mat_brick' }), opts).solids[0].finish?.shiftM).toBeUndefined();

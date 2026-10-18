@@ -15,6 +15,7 @@ export function TexturePlaceFields({
     const next = { ...place, ...patch };
     const kept: TexturePlace = {
       ...(next.centre && { centre: true }),
+      ...(next.scale && next.scale !== 1 && { scale: next.scale }),
       ...(next.xMm && { xMm: next.xMm }),
       ...(next.yMm && { yMm: next.yMm }),
     };
@@ -31,6 +32,26 @@ export function TexturePlaceFields({
           onChange={(e) => set({ centre: e.target.checked })}
         />
         Centre a whole tile on it
+      </label>
+      <label className="flex items-center gap-2">
+        <span className="text-muted">Size</span>
+        <input
+          key={place?.scale ?? 1}
+          type="number"
+          aria-label="Texture size percent"
+          min={5}
+          max={2000}
+          step={5}
+          defaultValue={Math.round((place?.scale ?? 1) * 100)}
+          onBlur={(e) => {
+            const pct = Number(e.currentTarget.value);
+            if (Number.isFinite(pct) && pct >= 5 && pct <= 2000) set({ scale: pct / 100 });
+            else e.currentTarget.value = String(Math.round((place?.scale ?? 1) * 100));
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+          className="w-20 rounded-sm border p-1"
+        />
+        <span className="text-muted">% of the material's size</span>
       </label>
       <div className="grid grid-cols-2 gap-2">
         <LengthField

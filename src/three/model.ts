@@ -1148,7 +1148,12 @@ function placeTextures(doc: PlanDoc, model: Model3D) {
   for (const it of [...doc.elements, ...doc.rooms]) if (it.texPlace) places.set(it.id, it.texPlace);
   if (!places.size) return;
   const placed = (f: Finish | undefined, p: TexturePlace): Finish | undefined =>
-    f && { ...f, centre: p.centre, shiftM: [mmToM(p.xMm ?? 0), mmToM(p.yMm ?? 0)] };
+    f && {
+      ...f,
+      spanM: f.spanM * (p.scale ?? 1),
+      centre: p.centre,
+      shiftM: [mmToM(p.xMm ?? 0), mmToM(p.yMm ?? 0)],
+    };
   const visit = (s: { id?: string; finish?: Finish; sides?: Sides }) => {
     const p = s.id ? places.get(s.id) : undefined;
     if (!p) return;

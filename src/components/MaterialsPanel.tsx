@@ -4,6 +4,7 @@ import { swatchUrl } from '../lib/patterns';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import type { Material, Pattern } from '../types';
 import { HATCHES, hatchOfMaterial, type Hatch } from '../lib/hatch';
+import { LengthField } from './LengthField';
 
 function Swatch({ mat, size = 'h-4 w-6' }: { mat: Pick<Material, 'color' | 'pattern'>; size?: string }) {
   return (
@@ -72,6 +73,26 @@ function CustomEditor({ mat }: { mat: Material }) {
   );
 }
 
+/** Size of one tile, brick or plank of a patterned material, as it shows in 3D (on every item using it). */
+function MaterialSize({ mat }: { mat: Material }) {
+  const updateMaterial = usePlanner((s) => s.updateMaterial);
+  const units = usePlanner((s) => s.units);
+  if (!mat.pattern || mat.pattern === 'plain') return null;
+  return (
+    <div className="text-xs">
+      <LengthField
+        key={mat.id}
+        id="material-size"
+        label="Tile size in 3D (one tile, brick or plank)"
+        mm={mat.sizeMm ?? 1000}
+        units={units}
+        min={10}
+        onCommit={(mm) => updateMaterial(mat.id, { sizeMm: Math.min(mm, 10000) })}
+      />
+    </div>
+  );
+}
+
 /** The hatch a material shows on 2D drawings: automatic (from its name and pattern), one picked, or none. */
 function HatchPicker({ mat }: { mat: Material }) {
   const updateMaterial = usePlanner((s) => s.updateMaterial);
@@ -129,6 +150,7 @@ export function MaterialsPanel() {
       <div className="text-xs font-medium text-muted">In this plan</div>
       <div className="flex flex-wrap gap-1.5">{materials.map(button)}</div>
       {active?.id.startsWith('mat_custom_') && <CustomEditor mat={active} />}
+      {active && <MaterialSize mat={active} />}
       {active && <HatchPicker mat={active} />}
       <button onClick={addMaterial} className="m-btn self-start text-xs">
         New colour…

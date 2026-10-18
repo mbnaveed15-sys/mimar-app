@@ -136,6 +136,7 @@ const texPlaceOf = (raw: Record<string, unknown>) => {
   if (!isObject(t)) return {};
   const place = {
     ...(t.centre === true && { centre: true }),
+    ...(inRange(t.scale, 0.05, 20) && t.scale !== 1 && { scale: t.scale }),
     ...(inRange(t.xMm, -100000, 100000) && t.xMm !== 0 && { xMm: t.xMm }),
     ...(inRange(t.yMm, -100000, 100000) && t.yMm !== 0 && { yMm: t.yMm }),
   };
