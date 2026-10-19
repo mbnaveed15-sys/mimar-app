@@ -185,3 +185,14 @@
     padding: 0 4px;
   }
 }
+
+/* A number box's label can be dragged left or right to change it (lib/numberScrub.ts, LengthField). */
+label:has(> input[type='number']),
+.m-scrub {
+  cursor: ew-resize;
+  user-select: none;
+  touch-action: none;
+}
+label:has(> input[type='number']) input {
+  cursor: auto;
+}

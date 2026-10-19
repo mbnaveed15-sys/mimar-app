@@ -1264,8 +1264,8 @@ export function toolHint(s: PlannerState): string {
         : 'Click two points to measure between them.';
     case 'paint':
       return s.view3d
-        ? 'Click a wall, room or item to give it the chosen material. On a wall, only the side (or top) you click is painted.'
-        : 'Click a wall, room or item to give it the chosen material.';
+        ? 'Click a wall, room or item to give it the chosen material. On a wall, only the side (or top) you click is painted. Shift+click paints every one like it on this floor with the same material.'
+        : 'Click a wall, room or item to give it the chosen material. Shift+click paints every one like it on this floor with the same material.';
     case 'brush':
       return 'Drag over items to paint them with the chosen material.';
     case 'mask':

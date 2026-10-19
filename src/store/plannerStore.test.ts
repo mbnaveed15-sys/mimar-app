@@ -231,6 +231,25 @@ describe('rooms, walls and modes', () => {
     expect(s().doc.rooms).toHaveLength(1);
   });
 
+  it('Shift+paint repaints every wall on the floor with the same material, in one step', () => {
+    const store = setup();
+    square(store);
+    const s = () => store.getState();
+    s().selectMaterial('mat_brick');
+    s().paintAt({ x: 150, y: 0 });
+    s().selectMaterial('mat_marble');
+    s().paintAt({ x: 300, y: 100 }, true);
+    const mats = () => s().doc.elements.map((el) => el.material);
+    expect(mats()).toEqual(['mat_brick', 'mat_marble', 'mat_marble', 'mat_marble']);
+    // Shift on the brick wall replaces brick only.
+    s().selectMaterial('mat_wood');
+    s().paintAt({ x: 150, y: 0 }, true);
+    expect(mats()).toEqual(['mat_wood', 'mat_marble', 'mat_marble', 'mat_marble']);
+    s().undo();
+    s().undo();
+    expect(mats()).toEqual(['mat_brick', 'mat_concrete', 'mat_concrete', 'mat_concrete']);
+  });
+
   it('erasing a wall inside a room keeps the room', () => {
     const store = setup();
     square(store);

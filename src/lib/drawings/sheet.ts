@@ -80,8 +80,8 @@ const MARGIN = 10;
 const TITLE_BLOCK = 18;
 /** Space between the frame and the drawings, and between drawings. */
 const GAP = 8;
-/** Below each drawing: its name and scale. */
-const CAPTION = 11;
+/** Below each drawing on a sheet of several: its name (the title block gives the scale). */
+const CAPTION = 7;
 /** Room to the right of a section or elevation for its level marks. */
 const LEVEL_ROOM = 36;
 /** Room round a plan for its dimension lines and labels, on paper. */
@@ -245,13 +245,14 @@ interface Placed {
 /** Rows of drawings, left to right, each row centred; null when they don't fit the paper. */
 function pack(src: SheetSource, items: SheetItem[], paper: PaperSetting): { placed: Placed[]; fits: boolean } {
   const area = drawingArea(paper);
+  const captionH = items.length > 1 ? CAPTION : 0;
   const boxes = items
     .map((item) => ({ item, size: drawingSize(src, item.drawing, item.scale) }))
     .filter((b): b is { item: SheetItem; size: { w: number; h: number } } => b.size !== null);
   const rows: { items: typeof boxes; w: number; h: number }[] = [];
   for (const b of boxes) {
     const row = rows[rows.length - 1];
-    const h = b.size.h + CAPTION;
+    const h = b.size.h + captionH;
     if (row && row.w + GAP + b.size.w <= area.w) {
       row.items.push(b);
       row.w += GAP + b.size.w;
@@ -266,7 +267,7 @@ function pack(src: SheetSource, items: SheetItem[], paper: PaperSetting): { plac
     let x = area.x + Math.max(0, (area.w - r.w) / 2);
     for (const b of r.items) {
       // Drawings in a row share a bottom line, like drawings on a board.
-      placed.push({ item: b.item, x, y: y + r.h - CAPTION - b.size.h, w: b.size.w, h: b.size.h });
+      placed.push({ item: b.item, x, y: y + r.h - captionH - b.size.h, w: b.size.w, h: b.size.h });
       x += b.size.w + GAP;
     }
     y += r.h + GAP;
@@ -281,7 +282,10 @@ export interface SheetLayout {
   overflow: boolean;
 }
 
-/** Lay out a sheet: frame, drawings with their names and scales, and the title block. */
+/**
+ * Lay out a sheet: frame, drawings, and the title block, which names the drawing and gives its scale. Only on a
+ * sheet of several drawings is each one named under it.
+ */
 export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count: number): SheetLayout {
   const paper = paperMm(sheet);
   const prims: Prim[] = [];
@@ -314,8 +318,7 @@ export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count
       const d = src.side(ref);
       if (d) prims.push(...sidePrims(d, p.item.scale, p.x, p.y, src.doc.drawing));
     }
-    const notToScale = ref.kind === 'view3d' || (ref.kind === 'view' && !plan);
-    caption(prims, drawingTitle(src.doc, ref) ?? '', notToScale ? null : p.item.scale, p.x, p.y + p.h, p.w);
+    if (placed.length > 1) caption(prims, drawingTitle(src.doc, ref) ?? '', p.x, p.y + p.h, p.w);
   }
   if (placed.some((p) => planOf(src.doc, p.item.drawing))) {
     const area = drawingArea(sheet);
@@ -325,22 +328,14 @@ export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count
   return { paper, prims, overflow: !fits };
 }
 
-/** A drawing's name, underlined, and its scale, centred under it. */
-function caption(prims: Prim[], title: string, scale: number | null, x: number, bottom: number, w: number) {
+/** A drawing's name, underlined, centred under it. */
+function caption(prims: Prim[], title: string, x: number, bottom: number, w: number) {
   const cx = x + w / 2;
   const y = bottom + 5.5;
   const text = title.toUpperCase();
   prims.push({ t: 'text', x: cx, y, text, size: 3.5, bold: true, align: 'center' });
   const half = Math.min(w / 2, text.length * 1.25);
   prims.push({ t: 'line', a: [cx - half, y + 1.2], b: [cx + half, y + 1.2], w: PEN.thin });
-  prims.push({
-    t: 'text',
-    x: cx,
-    y: y + 5,
-    text: scale ? `Scale 1:${scale}` : 'Not to scale',
-    size: 2.5,
-    align: 'center',
-  });
 }
 
 /** A section or elevation at 1:scale with its top-left corner at (x, y), in the plan's drawing style. */
@@ -482,7 +477,7 @@ function frame(src: SheetSource, sheet: Sheet, index: number, count: number): Pr
     { label: 'Drawing', value: sheet.name, share: 3, big: true },
     {
       label: 'Scale',
-      value: scales.length === 1 ? `1:${scales[0]} on ${paperName(sheet)}` : `As shown, ${paperName(sheet)}`,
+      value: `${scales.map((s) => `1:${s}`).join(', ')} on ${paperName(sheet)}`,
       share: 1.4,
     },
     { label: 'Date', value: src.date, share: 1.4 },

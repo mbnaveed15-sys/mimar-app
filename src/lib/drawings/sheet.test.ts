@@ -120,7 +120,7 @@ describe('sheets', () => {
         '2 of 3',
         'GROUND FLOOR PLAN',
         'SECTION A–A',
-        'Scale 1:100',
+        '1:100 on A3',
         'Drawn with MIMAR 1.35.0',
       ]),
     );
@@ -247,6 +247,10 @@ describe('services layouts', () => {
     expect(sheets[3].items.map((i) => i.drawing)).toEqual([{ kind: 'plan', levelId: first.id, services: 'hvac' }]);
     // A plain plan draws no services; a layout only its own trade's.
     const prims = layoutSheet(src, sheets[2], 3, 8).prims.filter((p) => p.t === 'plan');
+    // A sheet of one drawing names it only in the title block, not under the drawing.
+    const words = texts(layoutSheet(src, sheets[2], 3, 8).prims);
+    expect(words).not.toContain('GROUND FLOOR ELECTRICAL LAYOUT');
+    expect(words).toContain('Electrical layout');
     expect(prims.map((p) => p.services)).toEqual(['electrical']);
     expect(layoutSheet(src, sheets[0], 1, 8).prims.find((p) => p.t === 'plan')?.services).toBe('none');
     expect(drawingTitle(src.doc, sheets[2].items[0].drawing)).toBe('Ground floor electrical layout');
@@ -269,6 +273,16 @@ describe('services layouts', () => {
     expect(ids('electrical')).toEqual(['s1', 'l1', 'r1']);
     expect(ids('plumbing')).toEqual(['b1', 'h1']);
     expect(ids()).toEqual(['s1', 'l1', 'b1', 'h1', 'r1']);
+    // Section lines are drawn on the floor plans only, not on a trade's layout.
+    const cut = {
+      ...doc,
+      elements: [...doc.elements, { id: 'a', type: 'section', x1: 0, y1: -9, x2: 0, y2: 99, label: 'A' }],
+    };
+    const sections = (services?: Parameters<typeof levelContent>[3]) =>
+      levelContent({ ...s, doc: cut as PlanDoc }, cut as PlanDoc, ground, services).doc.elements.filter(
+        (el) => el.type === 'section',
+      ).length;
+    expect([sections('none'), sections('electrical'), sections()]).toEqual([2, 0, 2]);
   });
 
   it('keeps a services layout when the plan is opened again', () => {
