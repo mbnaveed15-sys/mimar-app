@@ -96,6 +96,33 @@ describe('3D model', () => {
     expect(model.solids[0].sides?.minus).toBeUndefined();
   });
 
+  it("lays an item's texture where it asks: centred and shifted, on every face", () => {
+    const place = { centre: true, xMm: 100, yMm: -50, scale: 2 };
+    const doc: PlanDoc = {
+      ...docWith({ ...wall, material: 'mat_brick', materialA: 'mat_wood', texPlace: place }),
+      rooms: [
+        {
+          id: 'r',
+          name: 'Room',
+          material: 'mat_wood',
+          texPlace: { xMm: 200 },
+          points: [
+            { x: 0, y: 0 },
+            { x: 100, y: 0 },
+            { x: 100, y: 100 },
+          ],
+        },
+      ],
+    };
+    const model = buildModel(doc, opts);
+    expect(model.solids[0].finish).toMatchObject({ pattern: 'brick', centre: true, shiftM: [0.1, -0.05] });
+    const plain = buildModel(docWith({ ...wall, material: 'mat_brick' }), opts).solids[0].finish!;
+    expect(model.solids[0].finish!.spanM).toBeCloseTo(plain.spanM * 2);
+    expect(model.solids[0].sides?.plus?.finish).toMatchObject({ pattern: 'wood', centre: true });
+    expect(model.floors[0].finish).toMatchObject({ pattern: 'wood', shiftM: [0.2, 0] });
+    expect(buildModel(docWith({ ...wall, material: 'mat_brick' }), opts).solids[0].finish?.shiftM).toBeUndefined();
+  });
+
   it('uses painted colours and turns rooms into floors', () => {
     const doc: PlanDoc = {
       ...docWith({ ...wall, material: 'mat_brick' }),
@@ -208,10 +235,18 @@ describe('3D site', () => {
         { x: 0, y: 100 },
       ],
     };
-    const { solids, floors } = buildModel(docWith(stair, plot), opts);
-    const steps = solids.filter((s) => s.role === 'stair');
-    expect(steps).toHaveLength(17);
-    expect(Math.max(...steps.map((s) => s.h))).toBeCloseTo((17 * 3200) / 18 / 1000);
+    const { solids, floors, panels } = buildModel(docWith(stair, plot), opts);
+    // A stair between floors is one flight: a waist slab with its 17 steps on top, not 17 blocks.
+    expect(solids.filter((s) => s.role === 'stair')).toHaveLength(0);
+    const flight = panels.filter((p) => p.role === 'stair');
+    expect(flight).toHaveLength(1);
+    const heights = flight[0].outline.map(([, t]) => t);
+    expect(Math.max(...heights)).toBeCloseTo((17 * 3200) / 18 / 1000);
+    // Open underneath: at the top end the slab is only its waist deep under the last step.
+    const [end, top] = [flight[0].outline.at(-1)!, flight[0].outline.at(-2)!];
+    expect(end[0]).toBeCloseTo(top[0]);
+    expect(top[1] - end[1]).toBeLessThan(0.4);
+    expect(flight[0].outline).toHaveLength(2 + 2 * 17 + 1);
     expect(floors).toHaveLength(1);
     expect(floors[0].y).toBe(0);
   });

@@ -740,6 +740,9 @@ export function usePlanInput(
         return;
       }
       if (!VIEW_DRAGS.has(drag.kind)) {
+        // Dragged out into the garden (or in under the roof): onto the lawn or the floor, in the same step.
+        if (drag.kind === 'move') s.settleGround([drag.orig.id]);
+        if (drag.kind === 'moveMany') s.settleGround(drag.ids);
         s.endBatch();
         s.setInference(null);
         // A length typed next sets that size exactly.

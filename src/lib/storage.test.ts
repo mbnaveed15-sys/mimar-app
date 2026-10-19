@@ -102,6 +102,31 @@ describe('storage', () => {
     expect(doc.elements.find((el) => el.id === 'n')).toMatchObject({ sillMm: 600 });
   });
 
+  it('keeps where a texture sits on items and rooms, and drops nonsense', () => {
+    const col = { type: 'column', x: 0, y: 0, w: 23, h: 23, shape: 'rect' };
+    const doc = normaliseDoc({
+      ...emptyDoc(),
+      elements: [
+        { ...col, id: 'a', texPlace: { centre: true, xMm: 150, yMm: 'up', scale: 99 } },
+        { ...col, id: 'b', texPlace: { centre: 'yes', xMm: 0, scale: 1 } },
+      ],
+      rooms: [
+        {
+          id: 'r',
+          name: 'Hall',
+          points: [
+            { x: 0, y: 0 },
+            { x: 9, y: 0 },
+            { x: 9, y: 9 },
+          ],
+          texPlace: { yMm: -40, scale: 0.5 },
+        },
+      ],
+    });
+    expect(doc.elements.map((el) => el.texPlace)).toEqual([{ centre: true, xMm: 150 }, undefined]);
+    expect(doc.rooms[0].texPlace).toEqual({ yMm: -40, scale: 0.5 });
+  });
+
   it('keeps blocks, slab voids and shaped openings, and drops broken ones', () => {
     const sq = [
       { x: 0, y: 0 },

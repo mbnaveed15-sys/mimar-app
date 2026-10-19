@@ -433,3 +433,26 @@ export function nearestWallEnd(
   }
   return best;
 }
+
+/** The pieces of segment a→b that lie inside the polygon (for crossing out an L-shaped opening). */
+export function clipSegment(a: Point, b: Point, poly: Point[]): [Point, Point][] {
+  const ts = [0, 1];
+  const d = { x: b.x - a.x, y: b.y - a.y };
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    const e = { x: q.x - p.x, y: q.y - p.y };
+    const den = d.x * e.y - d.y * e.x;
+    if (Math.abs(den) < 1e-12) continue;
+    const t = ((p.x - a.x) * e.y - (p.y - a.y) * e.x) / den;
+    const u = ((p.x - a.x) * d.y - (p.y - a.y) * d.x) / den;
+    if (t > 0 && t < 1 && u >= 0 && u <= 1) ts.push(t);
+  }
+  ts.sort((x, y) => x - y);
+  const at = (t: number) => ({ x: a.x + d.x * t, y: a.y + d.y * t });
+  const out: [Point, Point][] = [];
+  for (let i = 0; i + 1 < ts.length; i++)
+    if (ts[i + 1] - ts[i] > 1e-9 && pointInPolygon(at((ts[i] + ts[i + 1]) / 2), poly))
+      out.push([at(ts[i]), at(ts[i + 1])]);
+  return out;
+}

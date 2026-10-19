@@ -332,3 +332,23 @@ describe('undoing a new floor', () => {
     expect(s().doc.levels.some((l) => l.id === s().activeLevel)).toBe(true);
   });
 });
+
+describe('car porches', () => {
+  it('draws a porch with the Rectangle tool: a room, a roof slab and columns where no wall holds it, one undo', () => {
+    const store = setup();
+    const s = () => store.getState();
+    // The house's front wall along y = 0; the porch hangs off it towards the road.
+    s().addWall({ x: -200, y: 0 }, { x: 600, y: 0 });
+    s().setSite({ rectPorch: true });
+    s().addRectangle({ x: 0, y: 0 }, { x: 350, y: 560 });
+    expect(s().doc.rooms.map((r) => r.name)).toEqual(['Car porch']);
+    const types = s().doc.elements.map((e) => e.type);
+    expect(types.filter((t) => t === 'slab')).toHaveLength(1);
+    expect(types.filter((t) => t === 'wall')).toHaveLength(1);
+    // Two corners stand on the house wall: columns only at the two out by the road.
+    expect(types.filter((t) => t === 'column')).toHaveLength(2);
+    s().undo();
+    expect(s().doc.rooms).toHaveLength(0);
+    expect(s().doc.elements.map((e) => e.type)).toEqual(['wall']);
+  });
+});

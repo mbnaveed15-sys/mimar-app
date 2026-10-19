@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { COLLECTIONS, PATTERNS, searchLibrary } from '../lib/materials';
 import { swatchUrl } from '../lib/patterns';
-import { usePlanner } from '../store/plannerStore';
+import { plannerStore, usePlanner } from '../store/plannerStore';
 import type { Material, Pattern } from '../types';
 import { HATCHES, hatchOfMaterial, type Hatch } from '../lib/hatch';
+import { LengthField } from './LengthField';
 
 function Swatch({ mat, size = 'h-4 w-6' }: { mat: Pick<Material, 'color' | 'pattern'>; size?: string }) {
   return (
@@ -12,6 +13,13 @@ function Swatch({ mat, size = 'h-4 w-6' }: { mat: Pick<Material, 'color' | 'patt
       style={{ background: `${mat.color} url(${swatchUrl(mat)}) center / cover` }}
     />
   );
+}
+
+/** Picking a material takes up the paint bucket with it (the panel stays on the materials). */
+function paintWith(id: string) {
+  const s = plannerStore.getState();
+  s.pickMaterial(id);
+  if (s.tool !== 'paint') s.setTool('paint');
 }
 
 /** Name, colour and pattern of a material the user made. */
@@ -65,6 +73,26 @@ function CustomEditor({ mat }: { mat: Material }) {
   );
 }
 
+/** Size of one tile, brick or plank of a patterned material, as it shows in 3D (on every item using it). */
+function MaterialSize({ mat }: { mat: Material }) {
+  const updateMaterial = usePlanner((s) => s.updateMaterial);
+  const units = usePlanner((s) => s.units);
+  if (!mat.pattern || mat.pattern === 'plain') return null;
+  return (
+    <div className="text-xs">
+      <LengthField
+        key={mat.id}
+        id="material-size"
+        label="Tile size in 3D (one tile, brick or plank)"
+        mm={mat.sizeMm ?? 1000}
+        units={units}
+        min={10}
+        onCommit={(mm) => updateMaterial(mat.id, { sizeMm: Math.min(mm, 10000) })}
+      />
+    </div>
+  );
+}
+
 /** The hatch a material shows on 2D drawings: automatic (from its name and pattern), one picked, or none. */
 function HatchPicker({ mat }: { mat: Material }) {
   const updateMaterial = usePlanner((s) => s.updateMaterial);
@@ -98,7 +126,6 @@ function HatchPicker({ mat }: { mat: Material }) {
 export function MaterialsPanel() {
   const materials = usePlanner((s) => s.doc.materials);
   const selectedMat = usePlanner((s) => s.selectedMat);
-  const pickMaterial = usePlanner((s) => s.pickMaterial);
   const addMaterial = usePlanner((s) => s.addMaterial);
   const [query, setQuery] = useState('');
   const active = materials.find((m) => m.id === selectedMat) ?? materials[0];
@@ -108,7 +135,7 @@ export function MaterialsPanel() {
   const button = (mat: Material) => (
     <button
       key={mat.id}
-      onClick={() => pickMaterial(mat.id)}
+      onClick={() => paintWith(mat.id)}
       aria-pressed={mat.id === active?.id}
       className="m-btn px-1.5 py-1 text-xs"
       title={mat.name}
@@ -123,6 +150,7 @@ export function MaterialsPanel() {
       <div className="text-xs font-medium text-muted">In this plan</div>
       <div className="flex flex-wrap gap-1.5">{materials.map(button)}</div>
       {active?.id.startsWith('mat_custom_') && <CustomEditor mat={active} />}
+      {active && <MaterialSize mat={active} />}
       {active && <HatchPicker mat={active} />}
       <button onClick={addMaterial} className="m-btn self-start text-xs">
         New colour…
@@ -161,16 +189,15 @@ export function MaterialsPanel() {
           </details>
         ))
       )}
-      <div className="text-xs text-muted">Pick a material, then use Paint (B) on the plan.</div>
+      <div className="text-xs text-muted">Pick a material to paint with it: click items on the plan.</div>
     </div>
   );
 }
 
 function LibraryRow({ mat, added, active }: { mat: Material; added: boolean; active: boolean }) {
-  const pickMaterial = usePlanner((s) => s.pickMaterial);
   return (
     <button
-      onClick={() => pickMaterial(mat.id)}
+      onClick={() => paintWith(mat.id)}
       aria-pressed={active}
       className="m-btn flex items-center gap-2 px-1.5 py-1 text-left text-xs"
     >

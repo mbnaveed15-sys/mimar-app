@@ -72,8 +72,9 @@ test('3D: paint one side of a wall, and a drag from a wall draws a selection box
 
   // From the front, the middle of the view is the front wall's outside face.
   await page.getByLabel('Standard view').selectOption('front');
+  // Picking a material takes up the paint bucket, and the panel stays on the materials.
   await page.getByRole('button', { name: 'Brick', exact: true }).click();
-  await page.keyboard.press('b');
+  await expect(page.getByRole('button', { name: 'Brick', exact: true })).toBeVisible();
   await clickAt(page, 0.5, 0.5);
   await page.keyboard.press('Space');
   await clickAt(page, 0.5, 0.5);

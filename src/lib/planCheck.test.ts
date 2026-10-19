@@ -248,3 +248,19 @@ describe('plan check', () => {
     expect(ruleFor(authorityById('lda')!, 50 * 90, 50)?.label).toBe('1 kanal to 30 marla');
   });
 });
+
+describe('car porches in the setbacks', () => {
+  it('lets a porch’s columns and roof slab stand in the setback, but not other items', () => {
+    // 10' front setback; a porch 10' deep running from 5' to 15' in from the road (y = 90).
+    const plot: Plot = { ...plotOf(50, 90, undefined), setbacks: { front: 10 * 304.8, rear: 0, sides: 0 } };
+    const porch = room('cp', 'Car porch', 2, 75, 12, 10);
+    const slab: PlanElement = { id: 's', type: 'slab', points: porch.points, thickness: 15 };
+    const column: PlanElement = { id: 'c', type: 'column', x: 2.5 * FT, y: 84.5 * FT, w: 23, h: 23, shape: 'rect' };
+    const rows = (els: PlanElement[], rooms: Room[]) => planCheck(docOf([plot, ...els], rooms), ctx)!.rows;
+    const ok = rows([slab, column], [porch]);
+    expect(ok.find((r) => r.id === 'setbacks')?.status).toBe('ok');
+    expect(ok.find((r) => r.id === 'setback-items')).toBeUndefined();
+    // Without the porch room they are items in the setback to check.
+    expect(rows([slab, column], []).find((r) => r.id === 'setback-items')?.status).toBe('check');
+  });
+});

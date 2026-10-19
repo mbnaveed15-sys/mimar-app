@@ -45,6 +45,15 @@ export interface Material {
   hatch?: Hatch | 'none';
 }
 
+/** How a material's texture is laid on one item in 3D: centred on it and/or shifted, in millimetres. */
+export interface TexturePlace {
+  centre?: boolean;
+  /** Size of the texture on this item against the material's own (2 = twice as big); 1 when missing. */
+  scale?: number;
+  xMm?: number;
+  yMm?: number;
+}
+
 /** Membership of a group or component copy, and the floor (level) an item is on. */
 export interface Grouped {
   /** The level this item is on; missing means the ground floor. */
@@ -59,6 +68,8 @@ export interface Grouped {
   groupId?: Id;
   /** For a component copy: which item of the component definition this is. */
   defKey?: string;
+  /** Where its material's texture sits on it in 3D (the plain run of the pattern when missing). */
+  texPlace?: TexturePlace;
 }
 
 /** Walls other than ordinary ones. */

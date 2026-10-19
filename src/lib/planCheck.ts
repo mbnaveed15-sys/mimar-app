@@ -20,7 +20,7 @@ import { MM_PER_UNIT } from './scale';
 import { isCornerPlot, leftRightOf, outlinePoints, plotSides, sideLine, sideSetbacks, SIDE_KIND_NAMES } from './plot';
 import { distanceToWall } from './arc';
 import { buildableArea } from './site';
-import { basementOf, groundIndex, isSiteLevel, levelWallMm, slabMm } from './levels';
+import { basementOf, groundIndex, isSiteLevel, levelWallMm, MUMTY_FLOOR, MUMTY_ROOM, slabMm } from './levels';
 import { outsideOutline } from './outline';
 import { BUILDING_USES, projectOf, shows } from './project';
 import { formatLength, MM_PER_FOOT } from './units';
@@ -44,7 +44,7 @@ import { isBuildingWall, thicknessOf, wallsOf } from '../walls';
 import { visibleShapes } from './itemShape';
 import { isHidden } from './layers';
 import { directionAlong, pointAlong, runLength } from './arc';
-import { voidsOver } from './voids';
+import { voidsOver, within } from './voids';
 
 export type CheckStatus = 'ok' | 'fail' | 'check';
 
@@ -148,9 +148,18 @@ export function builtAreaSqFt(doc: PlanDoc, levelId: string): number {
   return (Math.max(0, units2) * MM_PER_UNIT * MM_PER_UNIT) / SQ_MM_PER_SQ_FT;
 }
 
-/** Rooms named as a mumty (stair tower), and floor names that mean the roof. */
-const MUMTY_ROOM = /mumty|mumtee|stair ?tower/i;
-const MUMTY_LEVEL = /mumty|mumtee|stair ?tower|roof/i;
+/** How far past a porch's outline its columns and slab may reach (a column's half width): 9". */
+const PORCH_SLACK = 228.6 / MM_PER_UNIT;
+
+/** An outline pushed out by `d` from its middle (enough for a porch's columns at its corners). */
+function grow(pts: Point[], d: number): Point[] {
+  const c = labelPoint(pts);
+  return pts.map((p) => {
+    const l = Math.hypot(p.x - c.x, p.y - c.y) || 1;
+    return { x: p.x + ((p.x - c.x) / l) * d * Math.SQRT2, y: p.y + ((p.y - c.y) / l) * d * Math.SQRT2 };
+  });
+}
+
 /** Rooms that are car porches (or garages). */
 export const PORCH_ROOM = /porch|garage/i;
 
@@ -159,7 +168,7 @@ export function mumtyLevelIds(doc: PlanDoc): Set<string> {
   return new Set(
     doc.levels
       .slice(groundIndex(doc) + 1)
-      .filter((l) => MUMTY_LEVEL.test(l.name) || doc.rooms.some((r) => levelOf(r) === l.id && MUMTY_ROOM.test(r.name)))
+      .filter((l) => MUMTY_FLOOR.test(l.name) || doc.rooms.some((r) => levelOf(r) === l.id && MUMTY_ROOM.test(r.name)))
       .map((l) => l.id),
   );
 }
@@ -304,10 +313,15 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
     const hard: Id[] = [];
     const soft: Id[] = [];
     const walls = wallsOf(doc.elements);
+    // A car porch may stand in the side setback: its columns, roof slab and beams are allowed there.
+    const porches = doc.rooms.filter((r) => !r.hidden && PORCH_ROOM.test(r.name)).map((r) => r.points);
+    const porchPart = (el: PlanElement, pts: Point[]) =>
+      (el.type === 'column' || el.type === 'slab' || el.type === 'beam') &&
+      porches.some((outline) => within(pts, grow(outline, PORCH_SLACK)));
     for (const el of doc.elements) {
       if (isHidden(el, { layers: doc.layers, showFurniture: true })) continue;
       const pts = itemOutline(el, walls);
-      if (!pts || !outside(pts)) continue;
+      if (!pts || !outside(pts) || porchPart(el, pts)) continue;
       if (el.type === 'wall' || (el.type === 'block' && el.heightMm > 0)) hard.push(el.id);
       else soft.push(el.id);
     }

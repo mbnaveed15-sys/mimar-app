@@ -80,11 +80,26 @@ export function RectCornerPicker() {
   const radius = usePlanner((s) => s.site.rectRadiusMm);
   const units = usePlanner((s) => s.units);
   const setSite = usePlanner((s) => s.setSite);
+  const porch = usePlanner((s) => !!s.site.rectPorch);
   const rounded = radius > 0;
   return (
     <div className={box}>
-      <div className="font-medium">Corners</div>
-      <div className="flex flex-wrap gap-1">
+      <div className="font-medium">Makes</div>
+      <div className="flex flex-wrap gap-1" role="group" aria-label="The Rectangle tool makes">
+        <button className="m-btn px-2 py-0.5" aria-pressed={!porch} onClick={() => setSite({ rectPorch: false })}>
+          Room with walls
+        </button>
+        <button className="m-btn px-2 py-0.5" aria-pressed={porch} onClick={() => setSite({ rectPorch: true })}>
+          Car porch
+        </button>
+      </div>
+      {porch && (
+        <div className="text-muted">
+          Draw it over the driveway: a roof slab on columns, open on its sides. It may stand in the side setback.
+        </div>
+      )}
+      {!porch && <div className="font-medium">Corners</div>}
+      <div className="flex flex-wrap gap-1" hidden={porch}>
         <button className="m-btn px-2 py-0.5" aria-pressed={!rounded} onClick={() => setSite({ rectRadiusMm: 0 })}>
           Square
         </button>
@@ -96,7 +111,7 @@ export function RectCornerPicker() {
           Rounded
         </button>
       </div>
-      {rounded && (
+      {rounded && !porch && (
         <LengthField
           id="rect-radius"
           label="Corner radius"

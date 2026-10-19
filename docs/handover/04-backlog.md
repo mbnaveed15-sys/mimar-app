@@ -158,6 +158,9 @@ import them as fixed shapes, not editable walls; no furniture, terrain, neighbou
 beyond space quantities; stairs are one element (no flights and landings); not yet opened in Revit or ArchiCAD
 themselves (checked with IfcOpenShell only).
 
+Left for later (owner, 18 Oct 2026): custom textures (the user's own picture of a surface as a material); 1.51.7
+only added centring and shifting a texture on an item.
+
 ## Known rough edges
 
 - 3D on very big plans opens in about 1 s at 1,000 walls on the test machine's software graphics (orbiting is

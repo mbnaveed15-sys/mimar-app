@@ -1,4 +1,4 @@
-import { elementOutline, fromFurnitureLocal, planBounds, wallLength, wallParam } from '../geometry';
+import { clipSegment, elementOutline, fromFurnitureLocal, planBounds, wallLength, wallParam } from '../geometry';
 import { formatPitch, roofEaves, roofShape } from './roof/roof';
 import { dormerParts, skylightParts } from './roof/roofOpenings';
 import { bentSymbol, openingSymbol } from './openingKinds';
@@ -571,10 +571,16 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
   // Open to below: the double-height rooms under this floor, dashed and crossed through.
   for (const v of opts.voids ?? []) {
     const pts = v.points;
-    const n = pts.length;
     dxf.poly('A-FLOR-OPEN', pts);
-    dxf.line('A-FLOR-OPEN', pts[0], pts[Math.floor(n / 2)]);
-    dxf.line('A-FLOR-OPEN', pts[Math.floor(n / 4)], pts[Math.floor((3 * n) / 4)]);
+    // Its box's diagonals, only where they cross the opening (an L-shaped stairwell's too).
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    for (const [a, b] of [
+      ...clipSegment({ x: x0, y: y0 }, { x: x1, y: y1 }, pts),
+      ...clipSegment({ x: x1, y: y0 }, { x: x0, y: y1 }, pts),
+    ])
+      dxf.line('A-FLOR-OPEN', a, b);
     dxf.text('A-FLOR-OPEN', labelPoint(pts), 'OPEN TO BELOW');
   }
 

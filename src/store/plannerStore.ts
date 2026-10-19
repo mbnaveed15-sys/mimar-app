@@ -74,7 +74,8 @@ import {
 import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
 import { CURTAIN_MM, hasPlinth, isBuildingWall } from '../walls';
-import { wallPath, type WallLine } from '../lib/arc';
+import { distanceToWall, wallPath, type WallLine } from '../lib/arc';
+import { PORCH_ROOM } from '../lib/planCheck';
 import { pathOutline, roundedRect, type CurveMode } from '../lib/curves';
 import { splitSolidsByLine } from '../lib/splitSolids';
 import { DEFAULT_SUN } from '../lib/sun';
@@ -99,6 +100,7 @@ import { setActivePicker } from '../three/picker';
 import { getViewControls, requestCamera } from '../three/viewControls';
 import { applyTheme, type ThemeId } from '../theme/themes';
 import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SITE_LEVEL } from '../types';
+import { houseOutlines, settleOnGround } from '../lib/groundSpot';
 import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
 import { DEFAULT_ARRAY } from '../lib/array';
 import type {
@@ -189,6 +191,8 @@ export interface SiteSpec {
   pathWidthMm: number;
   /** The Rectangle tool rounds its corners to this radius (mm); 0 for square corners. */
   rectRadiusMm: number;
+  /** The Rectangle tool makes a car porch (a room open on its sides, a roof slab and columns), not walls. */
+  rectPorch?: boolean;
   /** Door tool places a door or a gate. */
   gate: boolean;
   gateWidthMm: number;
@@ -642,6 +646,14 @@ export interface PlannerState {
   /** `makeRooms`: as the Wall tool draws, an area the wall closes becomes a room (same undo step). */
   addWall: (a: Point, b: Point, bow?: number, makeRooms?: boolean) => void;
   /**
+   * A car porch over these corners (over a driveway, say), on the ground floor: a room named Car porch
+   * with no walls, a roof slab over it at the floor's ceiling, and a column at each corner the house's
+   * walls don't already hold up. One undo step.
+   */
+  addCarPorch: (corners: Point[]) => void;
+  /** After a move on Ground: these items go to the floor or the lawn by where they now stand. */
+  settleGround: (ids: Id[]) => void;
+  /**
    * Place a door or window on the wall near p, or a typed distance from the nearer corner; false
    * (with a warning saying why) when it doesn't fit.
    */
@@ -914,6 +926,12 @@ export function createPlannerStore(
     const onActive = <T extends { levelId?: Id }>(item: T): T => {
       const level = get().activeLevel;
       return level === GROUND_LEVEL ? item : { ...item, levelId: level };
+    };
+    /** A new item: on Ground, on the floor or the lawn by where it stands; else on the active floor. */
+    const placed = <T extends PlanElement>(item: T): T => {
+      const { doc, activeLevel } = get();
+      const here = onActive(item);
+      return activeLevel === GROUND_LEVEL || activeLevel === SITE_LEVEL ? settleOnGround(doc, here) : here;
     };
     /** Keep only selected items that still exist (after undo, erase, hiding furniture). */
     const refreshSelection = () => {
@@ -1361,6 +1379,10 @@ export function createPlannerStore(
           return;
         }
         const corners = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
+        if (get().site.rectPorch) {
+          get().addCarPorch(corners);
+          return;
+        }
         const radius = get().site.rectRadiusMm / MM_PER_UNIT;
         get().beginBatch();
         if (radius > 0)
@@ -1448,6 +1470,59 @@ export function createPlannerStore(
         get().setSelection(copies);
       },
 
+      addCarPorch: (corners) => {
+        const { doc, structure, activeLevel } = get();
+        // On Ground (its floor or lawn) the porch belongs to the ground floor; elsewhere to the floor shown.
+        const on = activeLevel === SITE_LEVEL ? GROUND_LEVEL : activeLevel;
+        const at = <T extends { levelId?: Id }>(it: T): T => (on === GROUND_LEVEL ? it : { ...it, levelId: on });
+        const walls = doc.elements.filter((el): el is Wall => el.type === 'wall' && levelOf(el) === on);
+        const c = {
+          x: corners.reduce((t, p) => t + p.x, 0) / corners.length,
+          y: corners.reduce((t, p) => t + p.y, 0) / corners.length,
+        };
+        const half = structure.columnW / 2;
+        const columns = corners
+          .filter((p) => !walls.some((w) => distanceToWall(w, p) < (w.thickness ?? 0) / 2 + half * 2))
+          .map((p) =>
+            at<PlanElement>({
+              id: newId(),
+              type: 'column',
+              // Just inside the corner.
+              x: p.x + Math.sign(c.x - p.x) * half,
+              y: p.y + Math.sign(c.y - p.y) * (structure.columnShape === 'round' ? half : structure.columnH / 2),
+              w: structure.columnW,
+              h: structure.columnShape === 'round' ? structure.columnW : structure.columnH,
+              shape: structure.columnShape,
+            }),
+          );
+        const slab = at<PlanElement>({
+          id: newId(),
+          type: 'slab',
+          points: corners,
+          thickness: structure.slabThickness,
+        });
+        const n = doc.rooms.filter((r) => levelOf(r) === on && PORCH_ROOM.test(r.name)).length;
+        const room = at<Room>({ id: newId(), name: n ? `Car porch ${n + 1}` : 'Car porch', points: corners });
+        get().commit((d) => ({ ...d, elements: [...d.elements, slab, ...columns], rooms: [...d.rooms, room] }));
+        get().select(room.id);
+        set({ warnings: [] });
+      },
+      settleGround: (ids) => {
+        const { activeLevel } = get();
+        if (activeLevel !== GROUND_LEVEL && activeLevel !== SITE_LEVEL) return;
+        const moved = new Set(ids);
+        get().commit((doc) => {
+          const outlines = houseOutlines(doc);
+          let changed = false;
+          const elements = doc.elements.map((el) => {
+            if (!moved.has(el.id)) return el;
+            const next = settleOnGround(doc, el, outlines);
+            if (next !== el) changed = true;
+            return next;
+          });
+          return changed ? { ...doc, elements } : doc;
+        });
+      },
       addWall: (a, b, bow, makeRooms) => {
         if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
         const wall: PlanElement = onActive({
@@ -1512,7 +1587,7 @@ export function createPlannerStore(
           h: mmToPx(size.d),
           ...(rotation ? { rotation } : {}),
         };
-        updateElements((els) => [...els, onActive(el)]);
+        updateElements((els) => [...els, placed(el)]);
         // Show the new item so it is visible even if the furniture layer was hidden.
         if (!get().showFurniture && !isService(kind)) get().setLayer('showFurniture', true);
       },
@@ -1733,7 +1808,7 @@ export function createPlannerStore(
           ...(from && { from }),
           ...(to && { to }),
         };
-        updateElements((els) => [...els, onActive(el)]);
+        updateElements((els) => [...els, placed(el)]);
       },
       setFurnitureAngle: (deg) => set({ furnitureAngle: (((Math.round(deg * 100) / 100) % 360) + 360) % 360 }),
       setFurnitureGhost: (furnitureGhost) => set({ furnitureGhost }),
@@ -2108,7 +2183,7 @@ export function createPlannerStore(
           h: c.columnShape === 'round' ? c.columnW : c.columnH,
           shape: c.columnShape,
         };
-        updateElements((els) => [...els, onActive(col)]);
+        updateElements((els) => [...els, placed(col)]);
       },
       addLine: (a, b, bow) => {
         if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
@@ -2159,7 +2234,7 @@ export function createPlannerStore(
             path: true,
             ...(concrete && { material: 'mat_concrete' }),
           };
-          updateElements((els) => [...els, onActive(block)]);
+          updateElements((els) => [...els, placed(block)]);
           get().select(null);
           return;
         }
@@ -2423,7 +2498,7 @@ export function createPlannerStore(
           ...(on.slabId ? { slabId: on.slabId } : {}),
           ...(on.elevMm ? { elevMm: on.elevMm } : {}),
         };
-        updateElements((els) => [...els, onActive(block)]);
+        updateElements((els) => [...els, placed(block)]);
         get().select(block.id);
         return block.id;
       },
@@ -2691,7 +2766,7 @@ export function createPlannerStore(
           w: layout.w,
           h: layout.h,
         };
-        updateElements((els) => [...els, onActive(stair)]);
+        updateElements((els) => [...els, placed(stair)]);
       },
       addParapetAround: (slabId) => {
         const slab = get().doc.elements.find((el): el is Slab => el.type === 'slab' && el.id === slabId);
