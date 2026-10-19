@@ -107,7 +107,7 @@ describe('saved views', () => {
     const picture = l.prims.find((p) => p.t === 'picture');
     expect(picture).toMatchObject({ camera: { distance: 25, azimuth: 0.6 } });
     const names = l.prims.flatMap((p) => (p.t === 'text' ? [p.text] : []));
-    expect(names).toEqual(expect.arrayContaining(['KITCHEN CORNER', 'FROM THE STREET', '1:50, 1:100 on A3']));
+    expect(names).toEqual(expect.arrayContaining(['1', '2', 'Kitchen corner  1:50', 'From the street  Not to scale', 'As listed, A3']));
     // The 3D view in lines is drawn (lines on the sheet beside the plan).
     const without = layoutSheet(source(doc), { ...sheet, items: sheet.items.slice(0, 1) }, 0, 1);
     const lines = (ps: typeof l.prims) => ps.filter((p) => p.t === 'line').length;

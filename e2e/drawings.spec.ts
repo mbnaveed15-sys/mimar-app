@@ -77,7 +77,7 @@ test('draws a section, shows it with the elevations and sheets, and exports them
   await editor.getByLabel('Custom scale of Section A–A').press('Enter');
   await expect(page.getByTestId('drawing-svg')).toContainText('1:60');
   await expect(view.getByTestId('sheet-3')).toHaveText('3. Elevations and section (A1)');
-  await expect(page.getByTestId('drawing-svg')).toContainText('SECTION A–A');
+  await expect(page.getByTestId('drawing-svg')).toContainText('Section A–A');
   await expect(page.getByTestId('drawing-svg')).toContainText('3 of 4');
 
   // Sheets are saved with the plan.

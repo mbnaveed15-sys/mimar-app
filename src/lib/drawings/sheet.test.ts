@@ -74,7 +74,7 @@ describe('sheets', () => {
     ]);
     const l3d = layoutSheet(src, sheets[4], 5, 5);
     expect(l3d.prims.filter((p) => p.t === 'picture')).toHaveLength(1);
-    expect(texts(l3d.prims)).toEqual(expect.arrayContaining(['ISOMETRIC VIEW', '3D VIEW']));
+    expect(texts(l3d.prims)).toEqual(expect.arrayContaining(['Isometric view  Not to scale', '3D view  Not to scale']));
     expect(sheetsOf(src)).toEqual(sheets);
     // Once the plan has its own sheets (even none), those are used.
     expect(sheetsOf(source({ ...src.doc, sheets: [] }))).toEqual([]);
@@ -118,9 +118,13 @@ describe('sheets', () => {
         'Plan and section',
         '28 September 2026',
         '2 of 3',
-        'GROUND FLOOR PLAN',
-        'SECTION A–A',
-        '1:100 on A3',
+        // Several drawings: numbered under each, and listed by number with their scales in the title block.
+        '1',
+        '2',
+        'DRAWINGS',
+        'Ground floor plan  1:100',
+        'Section A–A  1:100',
+        'As listed, A3',
         'Drawn with MIMAR 1.35.0',
       ]),
     );

@@ -80,8 +80,19 @@ const MARGIN = 10;
 const TITLE_BLOCK = 18;
 /** Space between the frame and the drawings, and between drawings. */
 const GAP = 8;
-/** Below each drawing on a sheet of several: its name (the title block gives the scale). */
-const CAPTION = 7;
+/** Below each drawing on a sheet of several: its number (the title block lists each by number). */
+const CAPTION = 9;
+/** On a sheet of several drawings, the title block's list of them: one line each, in columns this wide. */
+const KEY_LINE = 5;
+const KEY_COLUMN = 95;
+
+/** Rows and columns of the title block's list of drawings, for `n` drawings on a sheet `width` mm wide. */
+function keyGrid(n: number, width: number) {
+  if (n < 2) return { cols: 0, rows: 0, h: 0 };
+  const cols = Math.max(1, Math.min(n, Math.floor((width - 2 * MARGIN) / KEY_COLUMN)));
+  const rows = Math.ceil(n / cols);
+  return { cols, rows, h: rows * KEY_LINE + 7 };
+}
 /** Room to the right of a section or elevation for its level marks. */
 const LEVEL_ROOM = 36;
 /** Room round a plan for its dimension lines and labels, on paper. */
@@ -228,10 +239,16 @@ function sideExtent(d: SideDrawing) {
   };
 }
 
-/** The drawing area of a sheet: inside the frame, above the title block. */
-function drawingArea(paper: PaperSetting) {
+/** The drawing area of a sheet of `n` drawings: inside the frame, above the title block (and its list of drawings). */
+function drawingArea(paper: PaperSetting, n = 1) {
   const p = paperMm(paper);
-  return { x: MARGIN + GAP, y: MARGIN + GAP, w: p.w - 2 * (MARGIN + GAP), h: p.h - 2 * MARGIN - TITLE_BLOCK - 2 * GAP };
+  const key = keyGrid(n, p.w).h;
+  return {
+    x: MARGIN + GAP,
+    y: MARGIN + GAP,
+    w: p.w - 2 * (MARGIN + GAP),
+    h: p.h - 2 * MARGIN - TITLE_BLOCK - key - 2 * GAP,
+  };
 }
 
 interface Placed {
@@ -244,7 +261,7 @@ interface Placed {
 
 /** Rows of drawings, left to right, each row centred; null when they don't fit the paper. */
 function pack(src: SheetSource, items: SheetItem[], paper: PaperSetting): { placed: Placed[]; fits: boolean } {
-  const area = drawingArea(paper);
+  const area = drawingArea(paper, items.length);
   const captionH = items.length > 1 ? CAPTION : 0;
   const boxes = items
     .map((item) => ({ item, size: drawingSize(src, item.drawing, item.scale) }))
@@ -283,8 +300,8 @@ export interface SheetLayout {
 }
 
 /**
- * Lay out a sheet: frame, drawings, and the title block, which names the drawing and gives its scale. Only on a
- * sheet of several drawings is each one named under it.
+ * Lay out a sheet: frame, drawings, and the title block, which names the drawing and gives its scale. On a sheet of
+ * several drawings each is numbered under it, and the title block lists them by number with their scales.
  */
 export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count: number): SheetLayout {
   const paper = paperMm(sheet);
@@ -318,24 +335,29 @@ export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count
       const d = src.side(ref);
       if (d) prims.push(...sidePrims(d, p.item.scale, p.x, p.y, src.doc.drawing));
     }
-    if (placed.length > 1) caption(prims, drawingTitle(src.doc, ref) ?? '', p.x, p.y + p.h, p.w);
+    if (sheet.items.length > 1) caption(prims, sheet.items.indexOf(p.item) + 1, p.x, p.y + p.h, p.w);
   }
   if (placed.some((p) => planOf(src.doc, p.item.drawing))) {
-    const area = drawingArea(sheet);
+    const area = drawingArea(sheet, sheet.items.length);
     prims.push(...northArrowPrims(area.x + area.w - 6, area.y + 8, src.doc.northDeg ?? 0));
   }
   prims.push(...frame(src, sheet, index, count));
   return { paper, prims, overflow: !fits };
 }
 
-/** A drawing's name, underlined, centred under it. */
-function caption(prims: Prim[], title: string, x: number, bottom: number, w: number) {
+/** A drawing's number in a circle, centred under it. */
+function caption(prims: Prim[], n: number, x: number, bottom: number, w: number) {
   const cx = x + w / 2;
-  const y = bottom + 5.5;
-  const text = title.toUpperCase();
-  prims.push({ t: 'text', x: cx, y, text, size: 3.5, bold: true, align: 'center' });
-  const half = Math.min(w / 2, text.length * 1.25);
-  prims.push({ t: 'line', a: [cx - half, y + 1.2], b: [cx + half, y + 1.2], w: PEN.thin });
+  const cy = bottom + 4.5;
+  prims.push({ t: 'circle', x: cx, y: cy, r: 3.2, lw: PEN.thin });
+  prims.push({ t: 'text', x: cx, y: cy + 1.3, text: String(n), size: 3.5, bold: true, align: 'center' });
+}
+
+/** A drawing's name and scale for the title block's list. */
+function keyEntry(src: SheetSource, item: SheetItem): string {
+  const ref = item.drawing;
+  const notToScale = ref.kind === 'view3d' || (ref.kind === 'view' && !planOf(src.doc, ref));
+  return `${drawingTitle(src.doc, ref) ?? ''}  ${notToScale ? 'Not to scale' : `1:${item.scale}`}`;
 }
 
 /** A section or elevation at 1:scale with its top-left corner at (x, y), in the plan's drawing style. */
@@ -472,12 +494,13 @@ function frame(src: SheetSource, sheet: Sheet, index: number, count: number): Pr
   const top = p.h - MARGIN - TITLE_BLOCK;
   const bottom = p.h - MARGIN;
   const scales = [...new Set(sheet.items.map((i) => i.scale))];
+  const key = keyGrid(sheet.items.length, p.w);
   const cols: { label: string; value: string; share: number; big?: boolean }[] = [
     { label: 'Project', value: src.projectName, share: 3, big: true },
     { label: 'Drawing', value: sheet.name, share: 3, big: true },
     {
       label: 'Scale',
-      value: `${scales.map((s) => `1:${s}`).join(', ')} on ${paperName(sheet)}`,
+      value: key.cols ? `As listed, ${paperName(sheet)}` : `1:${scales[0]} on ${paperName(sheet)}`,
       share: 1.4,
     },
     { label: 'Date', value: src.date, share: 1.4 },
@@ -487,6 +510,23 @@ function frame(src: SheetSource, sheet: Sheet, index: number, count: number): Pr
     { t: 'rect', x: x0, y: MARGIN, w: x1 - x0, h: p.h - 2 * MARGIN, lw: PEN.frame },
     { t: 'line', a: [x0, top], b: [x1, top], w: PEN.frame },
   ];
+  // Several drawings: a list of them by number, with their scales, over the title block.
+  if (key.cols) {
+    const keyTop = top - key.h;
+    prims.push({ t: 'line', a: [x0, keyTop], b: [x1, keyTop], w: PEN.frame });
+    prims.push({ t: 'text', x: x0 + 3, y: keyTop + 4, text: 'DRAWINGS', size: 2.2 });
+    const colW = (x1 - x0) / key.cols;
+    sheet.items.forEach((item, i) => {
+      const col = Math.floor(i / key.rows);
+      const row = i % key.rows;
+      const x = x0 + 3 + col * colW;
+      const y = keyTop + 9 + row * KEY_LINE;
+      prims.push({ t: 'text', x, y, text: `${i + 1}`, size: 3, bold: true });
+      const room = Math.floor((colW - 12) / (3 * 0.52));
+      const text = keyEntry(src, item);
+      prims.push({ t: 'text', x: x + 6, y, text: text.length > room ? `${text.slice(0, room - 1)}…` : text, size: 3 });
+    });
+  }
   const total = cols.reduce((s, c) => s + c.share, 0);
   let x = x0;
   cols.forEach((c, i) => {
