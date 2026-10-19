@@ -402,8 +402,9 @@ export function usePlanInput(
         else if (painted) s.setPlinth({ material: s.selectedMat });
         else if (pickId) {
           const id = idAt(e, raw);
-          if (id) s.applyMaterial(id, wallFaceAt(s, e, id));
-        } else s.paintAt(raw);
+          // Shift paints every item like it on the floor that has the same material, as in SketchUp.
+          if (id) (e.shiftKey ? s.paintAlike : s.applyMaterial)(id, wallFaceAt(s, e, id));
+        } else s.paintAt(raw, e.shiftKey);
         break;
       }
       case 'brush':

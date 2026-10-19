@@ -678,7 +678,12 @@ export interface PlannerState {
   applyMaterial: (id: Id, side?: 1 | -1 | 0) => void;
   /** Take a wall side's own material off, so it shows the wall's material again. */
   clearWallSide: (id: Id, side: 1 | -1) => void;
-  paintAt: (p: Point) => void;
+  /**
+   * Paint an item and every item like it on its floor that has the same material (SketchUp's Shift+click):
+   * walls with walls, rooms with rooms, and so on. `side` paints one face of each wall, as for one wall.
+   */
+  paintAlike: (id: Id, side?: 1 | -1 | 0) => void;
+  paintAt: (p: Point, alike?: boolean) => void;
   brushAt: (p: Point) => void;
   eraseAt: (p: Point) => void;
   deleteElement: (id: Id) => void;
@@ -1626,9 +1631,36 @@ export function createPlannerStore(
             : els,
         );
       },
-      paintAt: (p) => {
+      paintAlike: (id, side) => {
+        const s = get();
+        const room = s.doc.rooms.find((r) => r.id === id);
+        const el = room ? undefined : s.doc.elements.find((x) => x.id === id);
+        if (!room && !el) return;
+        // The material showing where it was clicked: a wall side's own, else the item's.
+        const shown = (x: PlanElement | Room) =>
+          'type' in x && x.type === 'wall' && side === 1
+            ? (x.materialA ?? x.material)
+            : 'type' in x && x.type === 'wall' && side === -1
+              ? (x.materialB ?? x.material)
+              : x.material;
+        const target = shown((room ?? el)!);
+        const ids = room
+          ? s
+              .levelRooms()
+              .filter((r) => !r.locked && !r.hidden && shown(r) === target)
+              .map((r) => r.id)
+          : s
+              .pickableElements()
+              .filter((x) => x.type === el!.type && shown(x) === target)
+              .map((x) => x.id);
+        const batching = !!s.batchBase;
+        if (!batching) s.beginBatch();
+        for (const each of ids.includes(id) ? ids : [id, ...ids]) get().applyMaterial(each, side);
+        if (!batching) get().endBatch();
+      },
+      paintAt: (p, alike) => {
         const hit = findElementNear(get().pickableElements(), p, get().hitTolerance()) ?? get().roomAt(p);
-        if (hit) get().applyMaterial(hit.id);
+        if (hit) (alike ? get().paintAlike : get().applyMaterial)(hit.id);
       },
       brushAt: (p) => {
         const mat = activeMat();
