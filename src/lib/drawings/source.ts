@@ -53,7 +53,11 @@ export function levelContent(
     return true;
   };
   const elements = shown.elements.filter(
-    (el) => (onLevel(el) || el.type === 'section') && (s.exportLines || el.type !== 'line') && wanted(el),
+    (el) =>
+      // Section lines belong on the floor plans, not on a trade's layout.
+      (el.type === 'section' ? !services || services === 'none' : onLevel(el)) &&
+      (s.exportLines || el.type !== 'line') &&
+      wanted(el),
   );
   const doc = { ...shown, elements, rooms: shown.rooms.filter(onLevel) };
   const { units, marlaSqFt, areaIn, showDimensions, showFurniture, showRoomLabels, showRoomFills } = s;
