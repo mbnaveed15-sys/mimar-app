@@ -57,6 +57,8 @@ export interface PlanDrawingProps {
   showZones?: boolean;
   /** The wall whose automatic plinth is selected (it shows highlighted where it stands out). */
   selectedPlinth?: string | null;
+  /** Structure marks (C1, B2, F1 ...) on columns, beams and footings: structure drawings. */
+  marks?: boolean;
 }
 
 /**
@@ -315,6 +317,46 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
           part="label"
         />
       ))}
+
+      {/* Structure marks: on columns, along beams, in footings. */}
+      {props.marks &&
+        doc.elements.map((el) => {
+          if (!('mark' in el) || !el.mark || (el.type === 'slab' && !el.footing)) return null;
+          let at: Point;
+          let angle = 0;
+          if (el.type === 'beam') {
+            const len = Math.hypot(el.x2 - el.x1, el.y2 - el.y1) || 1;
+            angle = (Math.atan2(el.y2 - el.y1, el.x2 - el.x1) * 180) / Math.PI;
+            if (angle > 90 || angle <= -90) angle += 180;
+            // Tie beams' marks on the other side, clear of the plinth beams' over them.
+            const off = (el.width / 2 + 8 * k) * (el.kind === 'tie' ? -1 : 1);
+            at = {
+              x: (el.x1 + el.x2) / 2 + (-(el.y2 - el.y1) / len) * off,
+              y: (el.y1 + el.y2) / 2 + ((el.x2 - el.x1) / len) * off,
+            };
+          } else if (el.type === 'column') at = { x: el.x + Math.max(el.w, el.h) / 2 + 6 * k, y: el.y - 6 * k };
+          else if (el.type === 'slab') {
+            const pts = el.points;
+            at = { x: pts.reduce((t, p) => t + p.x, 0) / pts.length, y: pts.reduce((t, p) => t + p.y, 0) / pts.length };
+          } else return null;
+          return (
+            <text
+              key={`mark-${el.id}`}
+              data-testid="frame-mark"
+              x={at.x}
+              y={at.y}
+              fontSize={9 * k}
+              textAnchor={el.type === 'column' ? 'start' : 'middle'}
+              dominantBaseline="middle"
+              transform={angle ? `rotate(${angle} ${at.x} ${at.y})` : undefined}
+              style={{ fill: PLAN.dim, stroke: PLAN.paper }}
+              strokeWidth={3 * k}
+              paintOrder="stroke"
+            >
+              {el.mark}
+            </text>
+          );
+        })}
 
       {/* Items raised above (or sunk below) their floor carry their height, e.g. +2' 0". */}
       {doc.elements.map((el) => {

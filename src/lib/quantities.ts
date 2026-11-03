@@ -3,6 +3,7 @@
  * (cft), square feet (sqft), running feet (rft) and counts. Walls are measured along their centre
  * lines (the usual centre-line method), with doors and windows taken out.
  */
+import { lintelsOf } from './structure/lintels';
 import { plinthProjectMm } from './plinth';
 import { pointInPolygon, wallLength } from '../geometry';
 import { directionAlong, pointAlong } from './arc';
@@ -80,6 +81,11 @@ export interface FloorQuantities {
   glazingSqft: number;
   /** Pitched roofs: the sloping area of their covering, sqft. */
   roofSqft: number;
+  /** Footings generated with the structure: their concrete (cft) and plan area (sqft, for digging and PCC). */
+  footingCft: number;
+  footingSqft: number;
+  /** Lintels over the openings (generated with the structure), cft. */
+  lintelCft: number;
 }
 
 /** A basement floor (raft) assumed 12" thick. */
@@ -130,6 +136,9 @@ function emptyFloor(levelId: string, name: string): FloorQuantities {
     fillCft: 0,
     glazingSqft: 0,
     roofSqft: 0,
+    footingCft: 0,
+    footingSqft: 0,
+    lintelCft: 0,
   };
 }
 
@@ -158,6 +167,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
     return PATTERN_KIND[mat.pattern ?? 'plain'] ?? 'other';
   };
   const site = groundOf(doc);
+  const lintels = lintelsOf(doc, wallHeightMm);
   const floors = levels.map((level) => {
     const ground = level.id === GROUND_LEVEL;
     // The Ground (site) level: the plinth you draw yourself, standing on the ground.
@@ -251,20 +261,38 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       }
     }
 
+    // Concrete standing in the walls: their brickwork is less by it.
+    let inWall = 0;
+    for (const l of lintels.filter((x) => x.levelId === level.id)) {
+      const cft = mmFt(l.lengthMm) * l.width * FT * mmFt(l.depthMm);
+      q.lintelCft += cft;
+      inWall += cft;
+    }
     for (const el of els) {
       switch (el.type) {
         case 'slab': {
+          if (el.footing) {
+            const area = areaSqft(el.points);
+            q.footingCft += area * el.thickness * FT;
+            q.footingSqft += area;
+            break;
+          }
           // Less the double-height rooms under it.
           const voids = holesOver.map((r) => r.points).filter((v) => within(v, el.points));
           q.slabCft += areaSqft(el.points, [...(el.holes ?? []), ...voids]) * el.thickness * FT;
           break;
         }
-        case 'beam':
-          q.beamCft += Math.hypot(el.x2 - el.x1, el.y2 - el.y1) * FT * el.width * FT * el.depth * FT;
+        case 'beam': {
+          const cft = Math.hypot(el.x2 - el.x1, el.y2 - el.y1) * FT * el.width * FT * el.depth * FT;
+          q.beamCft += cft;
+          // A generated beam in a wall (a floor or roof beam, a band, a plinth beam) takes its brickwork out.
+          if (el.auto && el.kind !== 'secondary' && el.kind !== 'landing' && el.kind !== 'tie') inWall += cft;
           break;
+        }
         case 'column': {
           const plan = el.shape === 'round' ? Math.PI * ((el.w / 2) * FT) ** 2 : el.w * FT * el.h * FT;
-          q.columnCft += plan * mmFt(el.heightMm ?? levelMm + slabMm(doc));
+          q.columnCft += plan * (mmFt(el.heightMm ?? levelMm + slabMm(doc)) + mmFt(el.belowMm ?? 0));
+          if (el.auto) inWall += plan * mmFt(el.heightMm ?? levelMm);
           break;
         }
         case 'stair': {
@@ -327,8 +355,9 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
       q.fillCft = earth.fillM3 * CFT_PER_M3;
     }
     // No slab is reckoned over the plinth on the Ground (site) level.
-    if (!siteLevel && !els.some((el) => el.type === 'slab' || el.type === 'roof'))
+    if (!siteLevel && !els.some((el) => (el.type === 'slab' && !el.footing) || el.type === 'roof'))
       q.slabEstimateCft = Math.max(0, q.coveredSqft - openSqft) * ESTIMATED_SLAB_FT;
+    q.brickworkCft = Math.max(0, q.brickworkCft - inWall);
     // Spaces inside the plinth walls on the Ground (site) level are earth, not floors.
     for (const r of siteLevel ? [] : rooms) {
       const kind = floorKind(r);

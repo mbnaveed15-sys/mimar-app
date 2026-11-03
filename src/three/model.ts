@@ -7,6 +7,7 @@ import { doorKindOf, SWING_KINDS } from '../lib/openingKinds';
 import { openingProfileMm } from '../lib/shapes';
 import { buildableArea, stairLayout, type StairPart } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
+import { lintelsOf } from '../lib/structure/lintels';
 import { basementOf, buildingLevels, groundIndex, isSiteLevel, lawnMm, levelWallMm, slabMm } from '../lib/levels';
 import { outsideOutline } from '../lib/outline';
 import { houseOutlines, OUTDOOR_ROOM } from '../lib/groundSpot';
@@ -195,6 +196,8 @@ export interface ModelOptions {
   closedDoors?: boolean;
   /** Build the ground and the neighbours (on unless false; off for a preview of what is being drawn). */
   terrain?: boolean;
+  /** Only the structure (columns, beams, lintels, stairs, slabs and footings): no walls, furniture or ground. */
+  frame?: boolean;
 }
 
 const WALL_COLOR = '#eceae4';
@@ -1098,6 +1101,15 @@ function columnSolid(c: Column, top: number, color?: string): Solid {
   };
 }
 
+/** How far generated items are drawn inside their size (plan units: 4 mm), to sit inside the walls. */
+const INSET = 0.4;
+
+/** A beam whose top is at a height of its own (a plinth or tie beam, a band), metres above its floor. */
+function beamAt(b: Beam, top: number, color?: string): Solid | null {
+  const s = beamSolid(b, Math.max(top, m(b.depth)), color);
+  return s && { ...s, y0: top - m(b.depth) - (b.auto ? 0.002 : 0) };
+}
+
 function beamSolid(b: Beam, top: number, color?: string): Solid | null {
   const len = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
   if (!len) return null;
@@ -1218,6 +1230,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   /** The ground where walls and steps stand (null on a flat site: they stand at ±0). */
   const terrain = site && !site.flat ? site.ground : null;
 
+  const lintels = doc.layers?.lintels?.hidden ? [] : lintelsOf(doc, options.wallHeightMm);
   levels.forEach((level) => {
     const base = doc.levels.length ? levelBaseM(doc, level.id, options.wallHeightMm) : plinth;
     const ground = level.id === GROUND_LEVEL;
@@ -1307,6 +1320,24 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         );
       }
     }
+    // Lintels over the openings (generated with the structure), inside the wall over each head.
+    for (const l of lintels) {
+      const host = l.levelId === level.id && !l.curved ? walls.find((w) => w.id === l.wallId) : undefined;
+      if (!host) continue;
+      const beam: Beam = {
+        id: l.id,
+        type: 'beam',
+        x1: l.a.x,
+        y1: l.a.y,
+        x2: l.b.x,
+        y2: l.b.y,
+        width: l.width - INSET,
+        depth: l.depthMm / MM_PER_UNIT,
+        auto: true,
+      };
+      const b = beamAt(beam, mmToM(l.bottomMm + l.depthMm) + 0.002, CONCRETE);
+      if (b) solids.push(from(l.id)(raise(host)(lift(withFinish(undefined, 'concrete')(b)))));
+    }
     for (const door of openings) {
       const host = walls.find((w) => w.id === door.wallId);
       if (door.type !== 'door' || !host) continue;
@@ -1348,10 +1379,19 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
             .map(from(el.id)),
         );
       }
-      // A column outside the house runs down through the plinth's height to the ground.
-      const down = el.type === 'column' && !el.elevMm && outdoors(el) ? base : 0;
+      // A column outside the house runs down through the plinth's height to the ground; one generated
+      // with the structure runs down to its footing.
+      const below = el.type === 'column' && el.belowMm ? mmToM(el.belowMm) : 0;
+      const down = el.type === 'column' ? below || (!el.elevMm && outdoors(el) ? base : 0) : 0;
       const columnTop = el.type === 'column' ? (el.heightMm ? mmToM(el.heightMm) : wallTop) + down : 0;
       const standing = <T extends Part>(s: T): T => (down ? { ...s, y0: s.y0 + base - down } : lift(s));
+      // Generated items a hair inside the walls they stand in, so their faces never flicker against the wall's.
+      const inset = <T extends Column | Beam>(it: T): T =>
+        !it.auto
+          ? it
+          : it.type === 'column'
+            ? { ...it, w: it.w - INSET, h: it.h - INSET }
+            : { ...it, width: (it as Beam).width - INSET };
       if (el.type === 'column' && el.shape === 'round')
         blocks.push(
           from(el.id)(
@@ -1361,11 +1401,16 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
       else if (el.type === 'column')
         solids.push(
           from(el.id)(
-            raise(el)(standing(withFinish(el.material, 'concrete')(columnSolid(el, columnTop, colorOf(el.material))))),
+            raise(el)(
+              standing(withFinish(el.material, 'concrete')(columnSolid(inset(el), columnTop, colorOf(el.material)))),
+            ),
           ),
         );
       if (el.type === 'beam') {
-        const b = beamSolid(el, wallTop, colorOf(el.material));
+        const b =
+          el.topMm !== undefined
+            ? beamAt(inset(el), mmToM(el.topMm), colorOf(el.material))
+            : beamSolid(inset(el), wallTop - (el.auto ? 0.002 : 0), colorOf(el.material));
         if (b) solids.push(from(el.id)(raise(el)(lift(withFinish(el.material, 'concrete')(b)))));
       }
       if (el.type === 'stair') {
@@ -1422,14 +1467,17 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         });
       if (el.type === 'slab') {
         // Double-height rooms and stairwells under it leave it open over them.
-        const open = slabVoids(doc, level.id)
-          .map((r) => r.points)
-          .filter((pts) => within(pts, el.points));
+        const open = el.footing
+          ? []
+          : slabVoids(doc, level.id)
+              .map((r) => r.points)
+              .filter((pts) => within(pts, el.points));
         const holes = [...(el.holes ?? []), ...open];
         slabs.push({
           points: el.points.map(toXZ),
           ...(holes.length ? { holes: holes.map((h) => h.map(toXZ)) } : {}),
-          y0: base + wallTop + mmToM(el.elevMm ?? 0),
+          // A footing lies under its floor; a floor or roof slab on top of the walls.
+          y0: el.footing ? base - mmToM(el.belowMm ?? 0) - m(el.thickness) : base + wallTop + mmToM(el.elevMm ?? 0),
           h: m(el.thickness),
           color: colorOf(el.material) ?? CONCRETE,
           finish: finishOf(el.material, 'concrete'),
@@ -1507,6 +1555,18 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
   const size = xs.length ? Math.max(hi(xs) - lo(xs), hi(zs) - lo(zs), 4) : 16;
   const model: Model3D = { solids, floors, slabs, blocks, panels, roofs, guides, centre, size };
   placeTextures(doc, model);
+  // Only the structure: columns, beams, lintels, stairs, slabs and footings, with no ground.
+  if (options.frame) {
+    const keep = (p: { role?: string }) => p.role === 'column' || p.role === 'beam' || p.role === 'stair';
+    return {
+      ...model,
+      solids: solids.filter(keep),
+      panels: panels.filter(keep),
+      blocks: blocks.filter(keep),
+      floors: [],
+      roofs: [],
+    };
+  }
   if (!site) return model;
   return { ...model, terrain: site.terrain, context: site.context, groundY: site.groundY };
 }

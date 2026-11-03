@@ -1,3 +1,4 @@
+import { FrameFacts, OpeningLintel } from './FramePanels';
 import { wallLength, withWallLength } from '../geometry';
 import { FURNITURE_CATALOG, type FurnitureKind } from '../furniture/catalog';
 import { sideName, USE_ZONES, zoneOf } from '../furniture/useZones';
@@ -71,6 +72,16 @@ const ROOM_NAMES = [
   'Laundry',
 ];
 
+const BEAM_NAMES = {
+  floor: 'beam',
+  roof: 'roof beam',
+  secondary: 'secondary beam',
+  landing: 'stair opening beam',
+  plinth: 'plinth beam',
+  tie: 'tie beam',
+  band: 'band',
+} as const;
+
 const SHAPE_NAMES = { rect: 'rectangle', circle: 'circle', arch: 'arch', polygon: 'polygon' } as const;
 
 /** Heights of the ground are kept within a kilometre of the road level. */
@@ -106,6 +117,8 @@ function itemName(el: PlanElement): string {
   if (el.type === 'contour') return 'contour line';
   if (el.type === 'pad') return 'levelled area';
   if (el.type === 'roof') return `${el.shape} roof`;
+  if (el.type === 'slab' && el.footing) return el.footing === 'strip' ? 'strip footing' : `${el.footing} footing`;
+  if (el.type === 'beam' && el.kind) return BEAM_NAMES[el.kind];
   if (el.type === 'context') return el.kind === 'road' ? 'road (surroundings)' : 'building (surroundings)';
   return el.type;
 }
@@ -886,6 +899,8 @@ export function Inspector() {
             )}
             {el.type === 'wall' && <WallSides wall={el} materialName={materialName} />}
             {el.type === 'wall' && <WallPlinth wall={el} />}
+            {(el.type === 'door' || el.type === 'window') && !el.flat && <OpeningLintel opening={el} />}
+            {(el.type === 'column' || el.type === 'beam' || el.type === 'slab') && <FrameFacts el={el} />}
             <div className="flex flex-wrap gap-2">
               {!isAnnotation(el) && !isSiteItem(el) && (
                 <button onClick={() => applyMaterial(el.id)} className={btn}>

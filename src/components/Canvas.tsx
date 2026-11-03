@@ -61,6 +61,7 @@ const MAX_BEND_GRIPS = 48;
 
 export function Canvas({ svgRef, onContextMenu }: Props) {
   const doc = useLevelDoc()!;
+  const frameView = usePlanner((s) => s.frameView);
   // The floor below, drawn faintly so the walls above can be traced over it (Ground's floor and
   // lawn show together, at full strength).
   const onSite = usePlanner((s) => !!s.doc.levels.find((l) => l.id === s.activeLevel)?.site);
@@ -284,7 +285,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         marlaSqFt={marlaSqFt}
         areaIn={areaIn}
         showDimensions={showDimensions}
-        showFurniture={showFurniture}
+        showFurniture={showFurniture && !frameView}
         showRoomLabels={showRoomLabels}
         showRoomFills={showRoomFills}
         k={k}
@@ -293,6 +294,7 @@ export function Canvas({ svgRef, onContextMenu }: Props) {
         ground={ground}
         voids={voids}
         selectedPlinth={selectedPlinth}
+        marks={frameView}
       />
 
       {otherSections.map((line) => (

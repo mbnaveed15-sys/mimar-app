@@ -1,6 +1,6 @@
 {
   "name": "mimar",
-  "version": "1.51.10",
+  "version": "1.52.0",
   "private": true,
   "scripts": {
     "dev": "vite",

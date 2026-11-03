@@ -72,6 +72,18 @@ export interface Grouped {
   texPlace?: TexturePlace;
 }
 
+/** What Generate structure marks on the columns, beams and slabs it adds (see `lib/structure`). */
+export interface Generated {
+  /** Added by Generate structure; Regenerate replaces it unless it has been edited or locked since. */
+  auto?: boolean;
+  /** Where it was generated from (a wall junction, a wall line), so Regenerate keeps its mark. */
+  autoKey?: string;
+  /** Its mark on the structure drawings and schedule (C1, B2, F1, ...). */
+  mark?: string;
+  /** Its shape when it was generated: when it no longer matches, it has been edited and Regenerate keeps it. */
+  autoSig?: string;
+}
+
 /** Walls other than ordinary ones. */
 export type WallKind = 'boundary' | 'parapet' | 'retaining' | 'curtain';
 
@@ -128,6 +140,13 @@ export interface Wall extends Grouped {
   plotSide?: number | 'splay';
 }
 
+/** An opening's own lintel settings; the structure's own when missing. */
+export interface LintelSpec {
+  off?: boolean;
+  depthMm?: number;
+  bearingMm?: number;
+}
+
 /** How a door opens: one leaf, two, sliding, folding, a rolling shutter, or no door (a doorway). */
 export type DoorKind = 'single' | 'double' | 'sliding' | 'folding' | 'shutter' | 'opening';
 /** How a window opens: sliding panes, one or two casement sashes, fixed glass, or a small high ventilator. */
@@ -162,6 +181,8 @@ export interface Opening extends Grouped {
   profile?: Point[];
   /** An open hole: no glass. */
   open?: boolean;
+  /** Its lintel (Generate structure): left off, or its own depth and bearing past each side (mm). */
+  lintel?: LintelSpec;
   /** Only drawn on the wall's face so far; Push/Pull it through the wall to cut it. */
   flat?: boolean;
   /** For a flat shape: the face it is drawn on (1 = the left side going from the wall's start to its end). */
@@ -192,7 +213,7 @@ export interface Furniture extends Grouped {
 }
 
 /** A structural column, drawn solid in plan and running floor to ceiling in 3D. */
-export interface Column extends Grouped {
+export interface Column extends Grouped, Generated {
   id: Id;
   type: 'column';
   x: number;
@@ -204,11 +225,20 @@ export interface Column extends Grouped {
   shape: 'rect' | 'round';
   /** Height in millimetres, when it differs from floor to ceiling. */
   heightMm?: number;
+  /** It also runs this far below its floor, down to its footing (mm; none when missing). */
+  belowMm?: number;
   material?: Id;
 }
 
+/**
+ * What a beam is: a floor or roof beam under the slab (the default), a secondary beam across a wide
+ * room, a beam round a stair opening, a plinth beam under the ground floor's walls, a tie beam joining
+ * the footings, or a band (a load-bearing wall's roof or lintel band).
+ */
+export type BeamKind = 'floor' | 'roof' | 'secondary' | 'landing' | 'plinth' | 'tie' | 'band';
+
 /** A beam under the ceiling, drawn dashed in plan (it is above the cut line). */
-export interface Beam extends Grouped {
+export interface Beam extends Grouped, Generated {
   id: Id;
   type: 'beam';
   x1: number;
@@ -218,6 +248,10 @@ export interface Beam extends Grouped {
   /** Width in plan and depth below the ceiling, in plan units. */
   width: number;
   depth: number;
+  /** What kind of beam (a floor beam when missing). */
+  kind?: BeamKind;
+  /** Height of its top above its floor, mm (below zero: under the floor); the top of the walls when missing. */
+  topMm?: number;
   material?: Id;
 }
 
@@ -231,9 +265,16 @@ export interface EdgeCurve {
 }
 
 /** A floor or roof slab: an outline with a thickness, at the top of its level. */
-export interface Slab extends Grouped {
+export interface Slab extends Grouped, Generated {
   id: Id;
   type: 'slab';
+  /**
+   * A footing under the columns or walls (a pad, a combined pad or a strip) rather than a floor or roof
+   * slab: it lies `belowMm` under its floor instead of at the top of the walls.
+   */
+  footing?: 'pad' | 'combined' | 'strip';
+  /** A footing's top, this far under its floor (mm). */
+  belowMm?: number;
   points: Point[];
   /** Curved edges (see `curvedEdges.ts`). */
   curve?: EdgeCurve;
@@ -405,6 +446,10 @@ export interface SketchLine extends Grouped {
 
 /** What a service run carries: a circuit (wiring) or a pipe. */
 export type RunSystem = 'lighting' | 'power' | 'ac' | 'data' | 'fire' | 'cold' | 'hot' | 'drain' | 'rain' | 'gas';
+
+/** What a plan drawing shows over the floor: one trade's services, the foundations, or the framing. */
+export type PlanOverlay = ServiceTrade | StructurePlan;
+export type StructurePlan = 'foundation' | 'framing';
 
 /** Which services drawing (and layer) a service point or run belongs to. */
 export type ServiceTrade = 'electrical' | 'plumbing' | 'drainage' | 'gas' | 'hvac' | 'data' | 'fire';
@@ -707,6 +752,41 @@ export interface PlanDoc {
   northArrow?: Point;
   /** The 3D view's sun: shadows, and the real sun for a date and time (see sun.ts). */
   sun?: SunSettings;
+  /** Generate structure's settings, and what the plan was when it last ran (none until it has). */
+  frame?: FrameDoc;
+}
+
+/** How the structure is generated: a framed RCC building, or load-bearing brick walls with RCC bands. */
+export type FrameSystem = 'framed' | 'bearing';
+
+/** Generate structure's settings (only what differs from the defaults in `lib/structure/settings.ts`). */
+export interface FrameSettings {
+  system?: FrameSystem;
+  /** Columns no further apart than this along a wall, mm. */
+  maxSpanMm?: number;
+  /** A room whose short side is longer than this gets a secondary beam, mm. */
+  slabSpanMm?: number;
+  /** Openings this wide or wider get a column at each side, mm. */
+  wideOpeningMm?: number;
+  /** The soil's safe bearing capacity, tons a square foot. */
+  soilTsf?: number;
+  /** The bottom of the footings below the natural ground, mm. */
+  footingDepthMm?: number;
+  /** How far a lintel sits on the wall past each side of its opening, mm. */
+  bearingMm?: number;
+  /** Seismic zone (Building Code of Pakistan): 2B and up adds a lintel band to load-bearing walls. */
+  zone?: SeismicZone;
+  /** Parts left out (all are made when missing). */
+  skip?: FramePart[];
+}
+
+export type SeismicZone = '1' | '2A' | '2B' | '3' | '4';
+export type FramePart = 'footings' | 'tie' | 'plinth' | 'columns' | 'beams' | 'lintels' | 'slabs';
+
+export interface FrameDoc {
+  settings?: FrameSettings;
+  /** What the walls, openings and floors were when the structure was last generated (for "out of date"). */
+  madeFrom?: string;
 }
 
 /** Dimension text sizes: about 2.5, 3.5 and 5 mm on paper. */
@@ -747,8 +827,11 @@ export type ElevationSide = 'front' | 'back' | 'left' | 'right';
 
 /** A drawing that can go on a sheet: a floor plan, a section or an elevation. */
 export type DrawingRef =
-  /** A floor plan: without the services, or with one trade's services only (its services layout). */
-  | { kind: 'plan'; levelId: Id; services?: ServiceTrade }
+  /**
+   * A floor plan: without the services, with one trade's services only (its services layout), or a
+   * structure plan (the foundations, or a floor's framing).
+   */
+  | { kind: 'plan'; levelId: Id; services?: PlanOverlay }
   | { kind: 'section'; id: Id }
   | { kind: 'elevation'; side: ElevationSide }
   | { kind: 'view3d'; style: View3dStyle }

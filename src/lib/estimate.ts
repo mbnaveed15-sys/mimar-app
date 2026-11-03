@@ -158,25 +158,38 @@ export function estimate(q: FloorQuantities, rates: Rates, ratios: Ratios): Esti
     const rate = rateOf(rates, rateKey);
     lines.push({ id, label, qty, unit, rateKey, rate, amount: qty * rate, ...(estimated && { estimated }) });
   };
-  const trench = q.foundationRft * ratios.footingWidthFt;
+  // Drawn footings (Generate structure) are dug for and laid on PCC themselves; else a trench under the walls.
+  const drawn = (q.footingSqft ?? 0) > 0;
+  const trench = drawn ? q.footingSqft : q.foundationRft * ratios.footingWidthFt;
   const excavation = trench * ratios.footingDepthFt;
   const pcc = trench * ratios.pccFt;
+  const footingCft = q.footingCft ?? 0;
+  const lintelCft = q.lintelCft ?? 0;
   const rccStructural =
-    q.slabCft + q.slabEstimateCft + q.beamCft + q.columnCft + q.stairCft + q.retainingCft + q.raftCft;
+    q.slabCft +
+    q.slabEstimateCft +
+    q.beamCft +
+    q.columnCft +
+    q.stairCft +
+    q.retainingCft +
+    q.raftCft +
+    footingCft +
+    lintelCft;
   const steelKg =
-    (q.slabCft + q.slabEstimateCft + q.raftCft) * ratios.steelSlab +
+    (q.slabCft + q.slabEstimateCft + q.raftCft + footingCft) * ratios.steelSlab +
     q.retainingCft * ratios.steelRetaining +
-    q.beamCft * ratios.steelBeam +
+    (q.beamCft + lintelCft) * ratios.steelBeam +
     q.columnCft * ratios.steelColumn +
     q.stairCft * ratios.steelStair;
   const brick = q.brickworkCft + q.boundaryCft;
 
-  add('excavation', 'Excavation for foundations', excavation, 'cft', 'excavation', true);
+  add('excavation', 'Excavation for foundations', excavation, 'cft', 'excavation', !drawn);
   add('basementExcavation', 'Excavation for the basement', q.excavationCft, 'cft', 'excavation');
   add('cut', 'Cutting the site down to the finished level', q.cutCft, 'cft', 'cut');
   add('fill', 'Filling the site up to the finished level (in layers, compacted)', q.fillCft, 'cft', 'fill');
   add('cartAway', 'Earth to cart away (cut less fill)', q.cutCft - q.fillCft, 'cft', 'cartAway');
-  add('pcc', 'Plain concrete (PCC 1:4:8) under foundations', pcc, 'cft', 'pcc', true);
+  add('pcc', 'Plain concrete (PCC 1:4:8) under foundations', pcc, 'cft', 'pcc', !drawn);
+  add('footing', 'RCC 1:2:4 footings', footingCft, 'cft', 'rcc');
   add('brickwork', 'Brickwork in 1:6 (walls and plinth)', q.brickworkCft, 'cft', 'brickwork');
   add('boundary', 'Brickwork in 1:6 (boundary and parapet walls)', q.boundaryCft, 'cft', 'brickwork');
   add('slab', 'RCC 1:2:4 slabs', q.slabCft, 'cft', 'rcc');
@@ -190,6 +203,7 @@ export function estimate(q: FloorQuantities, rates: Rates, ratios: Ratios): Esti
   );
   add('beam', 'RCC 1:2:4 beams', q.beamCft, 'cft', 'rcc');
   add('column', 'RCC 1:2:4 columns', q.columnCft, 'cft', 'rcc');
+  add('lintel', 'RCC 1:2:4 lintels', lintelCft, 'cft', 'rcc');
   add('stair', 'RCC 1:2:4 stairs', q.stairCft, 'cft', 'rcc', true);
   add('retaining', 'RCC 1:2:4 retaining walls (basement)', q.retainingCft, 'cft', 'rcc');
   add('raft', 'RCC 1:2:4 basement floor (12" raft)', q.raftCft, 'cft', 'rcc', true);

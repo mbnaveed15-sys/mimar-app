@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { withoutHidden } from '../lib/layers';
+import { layerOf, withoutHidden } from '../lib/layers';
 import { onSharedLevel, sharedLevelIds } from '../lib/levels';
 import { levelOf, type PlanDoc } from '../types';
 import { usePlanner } from './plannerStore';
@@ -11,8 +11,13 @@ import { usePlanner } from './plannerStore';
 export function useLevelDoc(offset = 0): PlanDoc | null {
   const full = usePlanner((s) => s.doc);
   const showFurniture = usePlanner((s) => s.showFurniture);
-  // Hidden items are left out of what is drawn.
-  const doc = useMemo(() => withoutHidden(full, { layers: full.layers, showFurniture }), [full, showFurniture]);
+  const frameView = usePlanner((s) => s.frameView);
+  // Hidden items are left out of what is drawn; so are footings, tie and plinth beams unless only the
+  // structure is shown.
+  const doc = useMemo(() => {
+    const shown = withoutHidden(full, { layers: full.layers, showFurniture });
+    return frameView ? shown : { ...shown, elements: shown.elements.filter((el) => layerOf(el) !== 'foundations') };
+  }, [full, showFurniture, frameView]);
   const activeLevel = usePlanner((s) => s.activeLevel);
   return useMemo(() => {
     // Ground's floor and lawn are one: the floors above and below are past both.

@@ -1,4 +1,13 @@
-import { clipSegment, elementOutline, fromFurnitureLocal, planBounds, wallLength, wallParam } from '../geometry';
+import { lintelsOf } from './structure/lintels';
+import {
+  centroid,
+  clipSegment,
+  elementOutline,
+  fromFurnitureLocal,
+  planBounds,
+  wallLength,
+  wallParam,
+} from '../geometry';
 import { formatPitch, roofEaves, roofShape } from './roof/roof';
 import { dormerParts, skylightParts } from './roof/roofOpenings';
 import { bentSymbol, openingSymbol } from './openingKinds';
@@ -48,6 +57,11 @@ const LAYERS = {
   'S-COLS': { color: 1, ltype: 'CONTINUOUS' },
   'S-BEAM': { color: 1, ltype: 'DASHED' },
   'S-SLAB': { color: 1, ltype: 'DASHED' },
+  'S-FOOT': { color: 1, ltype: 'DASHED' },
+  'S-TIEB': { color: 1, ltype: 'DASHED' },
+  'S-PLBM': { color: 1, ltype: 'DASHED' },
+  'S-LINT': { color: 1, ltype: 'DASHED' },
+  'S-ANNO-MARK': { color: 2, ltype: 'CONTINUOUS' },
   'C-PROP': { color: 5, ltype: 'CONTINUOUS' },
   'C-PROP-SETB': { color: 5, ltype: 'DASHED' },
   'A-ANNO-LAYT': { color: 9, ltype: 'CONTINUOUS' },
@@ -133,6 +147,8 @@ export interface DxfOptions {
   ground?: GroundOnPlan | null;
   /** Double-height rooms on the floor below: drawn open to below. */
   voids?: Room[];
+  /** The usual wall height, for the lintels (10' when missing). */
+  wallHeightMm?: number;
 }
 
 /** Text height on paper-like scale: 150 mm reads well at 1:100. */
@@ -567,6 +583,17 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
   const walls = wallsOf(doc.elements);
   // Shapes only drawn on a wall's face don't cut it (and aren't built), so they're left out.
   const openings = doc.elements.filter((el): el is Opening => (el.type === 'door' || el.type === 'window') && !el.flat);
+  // Lintels over the openings (above the cut: dashed), once the structure is generated.
+  for (const l of lintelsOf(doc, opts.wallHeightMm ?? 3048)) {
+    const len = Math.hypot(l.b.x - l.a.x, l.b.y - l.a.y) || 1;
+    const n = { x: (-(l.b.y - l.a.y) / len) * (l.width / 2), y: ((l.b.x - l.a.x) / len) * (l.width / 2) };
+    dxf.poly('S-LINT', [
+      { x: l.a.x + n.x, y: l.a.y + n.y },
+      { x: l.b.x + n.x, y: l.b.y + n.y },
+      { x: l.b.x - n.x, y: l.b.y - n.y },
+      { x: l.a.x - n.x, y: l.a.y - n.y },
+    ]);
+  }
 
   // Open to below: the double-height rooms under this floor, dashed and crossed through.
   for (const v of opts.voids ?? []) {
@@ -723,6 +750,8 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
         break;
       }
       case 'column':
+        if (el.mark)
+          dxf.text('S-ANNO-MARK', { x: el.x + Math.max(el.w, el.h) / 2 + 10, y: el.y }, el.mark, 0, TEXT_MM * 0.5);
         if (el.shape === 'round') dxf.circle('S-COLS', { x: el.x, y: el.y }, el.w / 2);
         else dxf.poly('S-COLS', elementOutline(el));
         if (doc.drawing?.planHatch !== false) {
@@ -741,7 +770,16 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
         const len = Math.hypot(el.x2 - el.x1, el.y2 - el.y1) || 1;
         const nx = (-(el.y2 - el.y1) / len) * (el.width / 2);
         const ny = ((el.x2 - el.x1) / len) * (el.width / 2);
-        dxf.poly('S-BEAM', [
+        const beamLayer = el.kind === 'tie' ? 'S-TIEB' : el.kind === 'plinth' ? 'S-PLBM' : 'S-BEAM';
+        if (el.mark)
+          dxf.text(
+            'S-ANNO-MARK',
+            { x: (el.x1 + el.x2) / 2 + nx * 2, y: (el.y1 + el.y2) / 2 + ny * 2 },
+            el.mark,
+            0,
+            TEXT_MM * 0.5,
+          );
+        dxf.poly(beamLayer, [
           { x: el.x1 + nx, y: el.y1 + ny },
           { x: el.x2 + nx, y: el.y2 + ny },
           { x: el.x2 - nx, y: el.y2 - ny },
@@ -750,8 +788,9 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
         break;
       }
       case 'slab':
-        dxf.poly('S-SLAB', el.points);
+        dxf.poly(el.footing ? 'S-FOOT' : 'S-SLAB', el.points);
         for (const h of el.holes ?? []) dxf.poly('S-SLAB', h);
+        if (el.footing && el.mark) dxf.text('S-ANNO-MARK', centroid(el.points), el.mark, 0, TEXT_MM * 0.5);
         break;
       case 'roof': {
         // The eaves dashed (above the cut); ridges, hips and valleys, and the pitch.

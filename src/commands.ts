@@ -5,6 +5,7 @@ import { shows } from './lib/project';
 import {
   exportCostCsv,
   exportServicesCsv,
+  exportStructureCsv,
   exportDrawingsDxf,
   exportIfc,
   exportModel,
@@ -159,6 +160,13 @@ export function buildCommands(ctx: CommandContext): Command[] {
       menu: 'file',
       group: 2,
       run: exportServicesCsv,
+    },
+    {
+      id: 'file.structure',
+      label: 'Export structure schedule (CSV)',
+      menu: 'file',
+      group: 2,
+      run: exportStructureCsv,
     },
     {
       id: 'file.glb',
@@ -661,6 +669,23 @@ export function buildCommands(ctx: CommandContext): Command[] {
       run: () => ctx.showSection('layout'),
       hidden: (s) => !shows(s.doc, 'roomList'),
       aliases: ['plan', 'rooms', 'auto'],
+    },
+    {
+      id: 'draw.structure',
+      label: 'Generate structure…',
+      menu: 'draw',
+      group: 2,
+      run: () => ctx.showSection('structure'),
+      aliases: ['structure', 'frame', 'columns', 'beams', 'footings', 'lintels'],
+    },
+    {
+      id: 'view.frame',
+      label: 'Only the structure in 3D',
+      menu: 'view',
+      group: 3,
+      run: () => st().setFrameView(!st().frameView),
+      kind: 'check',
+      checked: (s) => s.frameView,
     },
     ...MODIFY_TOOLS.map((t) => toolCommand(t, 'modify', ['offset', 'mirror', 'scale', 'stretch'].includes(t) ? 0 : 1)),
     ...TOOLS.filter((t) => !DRAW_TOOLS.includes(t) && !MODIFY_TOOLS.includes(t)).map((t) =>

@@ -5,6 +5,7 @@ export const PANELS = [
   { id: 'project', label: 'Project', tab: 'Project', icon: 'sheet' },
   { id: 'ground', label: 'Ground and site', tab: 'Site', icon: 'level' },
   { id: 'layout', label: 'Layout from a room list', tab: 'Layout', icon: 'room' },
+  { id: 'structure', label: 'Structure', tab: 'Frame', icon: 'column' },
   { id: 'check', label: 'Plan check', tab: 'Check', icon: 'check' },
   { id: 'cost', label: 'Quantities & cost', tab: 'Cost', icon: 'tape' },
   { id: 'materials', label: 'Materials', tab: 'Materials', icon: 'paint' },

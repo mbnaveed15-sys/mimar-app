@@ -95,7 +95,7 @@ import {
 import { groundOf, roundLevel } from '../lib/terrain/ground';
 import type { Built } from '../lib/layoutBuild';
 import { MATERIAL_LIBRARY, planMaterial } from '../lib/materials';
-import { isHidden, isLocked, withoutHidden, type LayerFlags, type LayerId } from '../lib/layers';
+import { isHidden, isLocked, layerOf, withoutHidden, type LayerFlags, type LayerId } from '../lib/layers';
 import { clampGap, type Hand } from '../lib/openingPlace';
 import { besideOpening, loneOpenings, nounOf, openingAt, refitOpening, tidy } from './openingAt';
 import { setActivePicker } from '../three/picker';
@@ -105,6 +105,8 @@ import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SITE_LEVEL } from '../types'
 import { houseOutlines, settleOnGround } from '../lib/groundSpot';
 import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
 import { DEFAULT_ARRAY } from '../lib/array';
+import { generateFrame, withoutFrame, type FrameCounts } from '../lib/structure/generate';
+import { frameRules, settingsOf, type FrameRules } from '../lib/structure/settings';
 import type {
   ArraySettings,
   RoofKind,
@@ -365,6 +367,23 @@ export interface PlannerState {
   selectPlinth: (wallId: Id | null) => void;
   /** Change the automatic plinth's projection past the walls or its material (undefined: back to the usual). */
   setPlinth: (patch: Partial<PlinthSpec>) => void;
+  /** Generate structure's settings (only what differs from the defaults is kept). */
+  setFrameRules: (rules: FrameRules) => void;
+  /**
+   * Generate (or regenerate) the structure for every floor, keeping what was edited or locked since
+   * (one undo step). Says why and returns null when there are no walls.
+   */
+  generateStructure: () => { counts: FrameCounts; kept: number } | null;
+  /** Take the generated structure away (items edited since stay, as the owner's own). */
+  removeStructure: () => void;
+  /** An opening's own lintel settings; null fields go back to the structure's own. */
+  setOpeningLintel: (
+    id: Id,
+    patch: { off?: boolean | null; depthMm?: number | null; bearingMm?: number | null },
+  ) => void;
+  /** The 3D view shows only the structure (walls, doors, windows, furniture and the ground hidden). */
+  frameView: boolean;
+  setFrameView: (on: boolean) => void;
   /** The plinth's own projection (mm) and material under one wall; null goes back to the plinth's own setting. */
   setWallPlinthOwn: (wallId: Id, patch: { projectMm?: number | null; material?: Id | null }) => void;
   /** Build the automatic plinth under a wall, or leave it off. */
@@ -1107,6 +1126,7 @@ export function createPlannerStore(
       wallHeightMm: initial.project?.wallHeightMm ?? prefs.wallHeightMm,
       view3d: false,
       split: false,
+      frameView: false,
       drawing: null,
       measureText: '',
       inference: null,
@@ -1911,7 +1931,9 @@ export function createPlannerStore(
         const { doc, showFurniture, activeLevel } = get();
         const v = { layers: doc.layers, showFurniture };
         // On Ground, its floor and its lawn show (and can be picked) together.
-        const els = doc.elements.filter(onSharedLevel(doc, activeLevel));
+        const shared = doc.elements.filter(onSharedLevel(doc, activeLevel));
+        // Footings, tie and plinth beams show (and can be picked) with Only the structure on.
+        const els = get().frameView ? shared : shared.filter((el) => layerOf(el) !== 'foundations');
         const hiddenWalls = new Set(els.filter((el) => el.type === 'wall' && isHidden(el, v)).map((el) => el.id));
         return els.filter((el) => !isHidden(el, v) && !('wallId' in el && hiddenWalls.has(el.wallId)));
       },
@@ -2118,6 +2140,52 @@ export function createPlannerStore(
         if (get().openGroupId) get().closeGroup();
         set({ selectedPlinth: wallId, selectedId: null, selectedIds: [] });
       },
+      setFrameRules: (rules) =>
+        get().commit((doc) => {
+          const settings = settingsOf(rules);
+          const frame = { ...doc.frame, ...(settings ? { settings } : {}) };
+          if (!settings) delete frame.settings;
+          if (JSON.stringify(frame) === JSON.stringify(doc.frame ?? {})) return doc;
+          const next: PlanDoc = { ...doc, frame };
+          if (!Object.keys(frame).length) delete next.frame;
+          return next;
+        }),
+      generateStructure: () => {
+        const doc = get().doc;
+        const r = generateFrame(doc, get().wallHeightMm, frameRules(doc));
+        if (r.problem) {
+          get().setWarning(r.problem);
+          return null;
+        }
+        get().commit((d) => ({ ...d, elements: r.elements, frame: { ...d.frame, madeFrom: r.madeFrom } }));
+        get().select(null);
+        get().setWarning(null);
+        return { counts: r.counts, kept: r.kept };
+      },
+      removeStructure: () =>
+        get().commit((doc) => {
+          const frame = { ...doc.frame };
+          delete frame.madeFrom;
+          const next: PlanDoc = { ...doc, elements: withoutFrame(doc), frame };
+          if (!Object.keys(frame).length) delete next.frame;
+          return next;
+        }),
+      setOpeningLintel: (id, patch) =>
+        updateElements((els) =>
+          els.map((el) => {
+            if (el.id !== id || (el.type !== 'door' && el.type !== 'window')) return el;
+            const lintel = { ...el.lintel };
+            for (const k of ['off', 'depthMm', 'bearingMm'] as const) {
+              const v = patch[k];
+              if (v === null || v === false) delete lintel[k];
+              else if (v !== undefined) (lintel as Record<string, unknown>)[k] = v;
+            }
+            const next: Opening = { ...el, lintel };
+            if (!Object.keys(lintel).length) delete next.lintel;
+            return next;
+          }),
+        ),
+      setFrameView: (frameView) => set({ frameView }),
       setPlinth: (patch) =>
         get().commit((doc) => {
           const merged: PlinthSpec = { ...doc.plinth, ...patch };
