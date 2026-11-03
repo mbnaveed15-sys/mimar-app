@@ -12,6 +12,8 @@ import {
   type PaperSize,
   type PlanDoc,
   type SavedCamera,
+  type PlanElement,
+  type PlanOverlay,
   type ServiceTrade,
   type Sheet,
   type SheetItem,
@@ -25,9 +27,10 @@ import { formatLength } from '../units';
 import { drawingKey, drawingTitle, savedView, sideDrawingRefs, type SideDrawing } from './views';
 import { TRADE_LAYOUTS } from './refs';
 import { tradeOf } from '../services';
+import { layerOf } from '../layers';
 
 /** What a plan drawing shows of the services: none, one trade's only, or (missing) all of them. */
-export type PlanServices = ServiceTrade | 'none';
+export type PlanServices = PlanOverlay | 'none';
 
 /** The usual scales, offered in the scale lists; any other whole number can be typed. */
 export const SHEET_SCALES: SheetScale[] = [20, 25, 50, 75, 100, 125, 150, 200, 250, 500];
@@ -635,6 +638,21 @@ export function suggestedSheets(src: SheetSource): Sheet[] {
         .filter((l) => doc.elements.some((el) => levelOf(el) === l.id && tradeOf(el) === trade))
         .map((l): DrawingRef => ({ kind: 'plan', levelId: l.id, services: trade })),
     );
+  // The structure, once generated: the foundation plan, and the framing of each floor.
+  if (doc.frame?.madeFrom) {
+    const levels = doc.levels.filter((l) => !l.site);
+    const has = (id: string, test: (el: PlanElement) => boolean) =>
+      doc.elements.some((el) => levelOf(el) === id && test(el));
+    const lowest = levels[0];
+    if (lowest && has(lowest.id, (el) => layerOf(el) === 'foundations'))
+      add('Foundation plan', [{ kind: 'plan', levelId: lowest.id, services: 'foundation' }]);
+    add(
+      'Framing plans',
+      levels
+        .filter((l) => has(l.id, (el) => (el.type === 'beam' || el.type === 'slab') && layerOf(el) !== 'foundations'))
+        .map((l): DrawingRef => ({ kind: 'plan', levelId: l.id, services: 'framing' })),
+    );
+  }
   const sides = sideDrawingRefs(doc).filter((ref) => src.side(ref)?.bounds);
   add(
     'Sections',

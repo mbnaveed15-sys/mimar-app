@@ -25,7 +25,17 @@ import {
   type Solid,
 } from '../three/model';
 import { plinthWallOf, thicknessOf } from '../walls';
-import { levelOf, type Id, type Opening, type PlanDoc, type PlanElement, type Point, type Wall } from '../types';
+import {
+  levelOf,
+  type BeamKind,
+  type Id,
+  type Opening,
+  type PlanDoc,
+  type PlanElement,
+  type Point,
+  type Wall,
+} from '../types';
+import { lintelOpening } from './structure/lintels';
 
 /*
  * IFC (the open file format for building models that Revit, ArchiCAD, BlenderBIM and others read),
@@ -154,6 +164,7 @@ type IfcClass =
   | 'IFCROOF'
   | 'IFCCOLUMN'
   | 'IFCBEAM'
+  | 'IFCFOOTING'
   | 'IFCSTAIR'
   | 'IFCDOOR'
   | 'IFCWINDOW'
@@ -184,6 +195,16 @@ export interface IfcOptions {
   time?: string;
 }
 
+const BEAM_NAME: Record<BeamKind, string> = {
+  floor: 'Beam',
+  roof: 'Roof beam',
+  secondary: 'Secondary beam',
+  landing: 'Stair opening beam',
+  plinth: 'Plinth beam',
+  tie: 'Tie beam',
+  band: 'Band',
+};
+
 const DEFAULT_MATERIAL: Record<IfcClass, string> = {
   IFCWALL: 'Masonry',
   IFCCURTAINWALL: 'Glass and aluminium',
@@ -191,6 +212,7 @@ const DEFAULT_MATERIAL: Record<IfcClass, string> = {
   IFCROOF: 'Roofing',
   IFCCOLUMN: 'Concrete',
   IFCBEAM: 'Concrete',
+  IFCFOOTING: 'Concrete',
   IFCSTAIR: 'Concrete',
   IFCDOOR: 'Timber',
   IFCWINDOW: 'Glass',
@@ -321,6 +343,28 @@ export function planToIfc(doc: PlanDoc, opts: IfcOptions): string {
     level: Id | undefined,
     part: 'solid' | 'panel' | 'slab' | 'roof' | 'skylight',
   ): Item | null => {
+    // A lintel (worked out from its opening) is a beam of its own.
+    const lintelOf = lintelOpening(id);
+    if (lintelOf) {
+      const o = byId.get(lintelOf);
+      if (!o) return null;
+      const k = `${id}@${level ?? levelOf(o)}`;
+      let item = items.get(k);
+      if (!item) {
+        item = {
+          key: k,
+          cls: 'IFCBEAM',
+          name: 'Lintel',
+          predefined: '.LINTEL.',
+          level: level ?? levelOf(o),
+          shapes: [],
+          material: '',
+          kind: 'swept',
+        };
+        items.set(k, item);
+      }
+      return item;
+    }
     // The automatic plinth goes with the wall over it.
     const el = id ? byId.get(plinthWallOf(id) ?? id) : undefined;
     if (!el) return null;
@@ -356,13 +400,15 @@ export function planToIfc(doc: PlanDoc, opts: IfcOptions): string {
         [cls, name, predefined] = ['IFCCOLUMN', 'Column', '.COLUMN.'];
         break;
       case 'beam':
-        [cls, name, predefined] = ['IFCBEAM', 'Beam', '.BEAM.'];
+        [cls, name, predefined] = ['IFCBEAM', BEAM_NAME[el.kind ?? 'floor'], '.BEAM.'];
         break;
       case 'stair':
         [cls, name] = ['IFCSTAIR', 'Stair'];
         break;
       case 'slab':
-        [cls, name, predefined] = ['IFCSLAB', 'Slab', '.FLOOR.'];
+        [cls, name, predefined] = el.footing
+          ? ['IFCFOOTING', 'Footing', el.footing === 'strip' ? '.STRIP_FOOTING.' : '.PAD_FOOTING.']
+          : ['IFCSLAB', 'Slab', '.FLOOR.'];
         break;
       case 'block':
         [cls, name] = ['IFCBUILDINGELEMENTPROXY', 'Block'];

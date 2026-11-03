@@ -42,11 +42,19 @@ import {
   type SunSettings,
   type DimTie,
   type PlinthSpec,
+  type BeamKind,
+  type FrameDoc,
+  type FramePart,
+  type FrameSettings,
+  type FrameSystem,
+  type Generated,
+  type LintelSpec,
+  type SeismicZone,
 } from '../types';
 import { isFurnitureKind } from '../furniture/catalog';
 import { authorityById, type AuthorityId } from './bylaws';
 import { LAYERS, type LayerState } from './layers';
-import { isTrade } from './drawings/refs';
+import { isPlanOverlay } from './drawings/refs';
 import { defaultMaterials, PATTERNS } from './materials';
 import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
 import { parseHatch } from './hatch';
@@ -64,9 +72,10 @@ export const STORAGE_KEY = 'mimar.plan';
  * plinth; 18 furniture heights, items on the lawn of the one Ground level, and the plinth's own settings;
  * 19 the plinth's own projection and material under single walls; 20 dimension text size and ends,
  * drawing options, a pitch per roof side, skylights and dormers; 21 services (electrical, plumbing and
- * the rest) and their wire and pipe runs.
+ * the rest) and their wire and pipe runs; 22 the structure Generate structure adds (beam kinds, footings,
+ * lintels, marks and its settings).
  */
-export const CURRENT_VERSION = 21;
+export const CURRENT_VERSION = 22;
 
 /** The automatic plinth's projection (0 to 1 m) and material; nothing when neither is set. */
 function normalisePlinth(raw: unknown): PlinthSpec | undefined {
@@ -172,6 +181,55 @@ function roofOpeningsOf(raw: Record<string, unknown>): Pick<Roof, 'skylights' | 
       : [];
   });
   return { ...(skylights.length && { skylights }), ...(dormers.length && { dormers }) };
+}
+
+/** What Generate structure marks on its items, kept only when set. */
+const generatedOf = (raw: Record<string, unknown>): Generated => ({
+  ...(raw.auto === true ? { auto: true } : {}),
+  ...(typeof raw.autoKey === 'string' && raw.autoKey ? { autoKey: raw.autoKey.slice(0, 200) } : {}),
+  ...(typeof raw.mark === 'string' && raw.mark.trim() ? { mark: cleanText(raw.mark).slice(0, 12) } : {}),
+  ...(typeof raw.autoSig === 'string' && raw.autoSig ? { autoSig: raw.autoSig.slice(0, 32) } : {}),
+});
+
+const BEAM_KINDS: BeamKind[] = ['floor', 'roof', 'secondary', 'landing', 'plinth', 'tie', 'band'];
+
+/** An opening's own lintel settings, kept only when set and sensible. */
+function lintelOf(raw: unknown): LintelSpec | undefined {
+  if (!isObject(raw)) return undefined;
+  const out: LintelSpec = {
+    ...(raw.off === true ? { off: true } : {}),
+    ...(inRange(raw.depthMm, 50, 1500) ? { depthMm: raw.depthMm } : {}),
+    ...(inRange(raw.bearingMm, 0, 1000) ? { bearingMm: raw.bearingMm } : {}),
+  };
+  return Object.keys(out).length ? out : undefined;
+}
+
+const SYSTEMS: FrameSystem[] = ['framed', 'bearing'];
+const ZONES: SeismicZone[] = ['1', '2A', '2B', '3', '4'];
+const PARTS: FramePart[] = ['footings', 'tie', 'plinth', 'columns', 'beams', 'lintels', 'slabs'];
+
+/** Generate structure's settings and fingerprint; nothing until it has been used. */
+function normaliseFrame(raw: unknown): FrameDoc | undefined {
+  if (!isObject(raw)) return undefined;
+  const r = isObject(raw.settings) ? raw.settings : {};
+  const settings: FrameSettings = {
+    ...(SYSTEMS.includes(r.system as FrameSystem) ? { system: r.system as FrameSystem } : {}),
+    ...(inRange(r.maxSpanMm, 1500, 12000) ? { maxSpanMm: r.maxSpanMm } : {}),
+    ...(inRange(r.slabSpanMm, 1500, 12000) ? { slabSpanMm: r.slabSpanMm } : {}),
+    ...(inRange(r.wideOpeningMm, 600, 12000) ? { wideOpeningMm: r.wideOpeningMm } : {}),
+    ...(inRange(r.soilTsf, 0.25, 10) ? { soilTsf: r.soilTsf } : {}),
+    ...(inRange(r.footingDepthMm, 300, 5000) ? { footingDepthMm: r.footingDepthMm } : {}),
+    ...(inRange(r.bearingMm, 0, 1000) ? { bearingMm: r.bearingMm } : {}),
+    ...(ZONES.includes(r.zone as SeismicZone) ? { zone: r.zone as SeismicZone } : {}),
+    ...(Array.isArray(r.skip) && r.skip.some((x) => PARTS.includes(x as FramePart))
+      ? { skip: PARTS.filter((x) => (r.skip as unknown[]).includes(x)) }
+      : {}),
+  };
+  const out: FrameDoc = {
+    ...(Object.keys(settings).length ? { settings } : {}),
+    ...(typeof raw.madeFrom === 'string' ? { madeFrom: raw.madeFrom.slice(0, 64) } : {}),
+  };
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** Height above the floor and window sill, kept only when set and sensible. */
@@ -290,6 +348,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
             ? (raw.windowKind as WindowKind)
             : undefined,
         ...(raw.type === 'window' ? windowShapeOf(raw) : {}),
+        ...(lintelOf(raw.lintel) ? { lintel: lintelOf(raw.lintel) } : {}),
       };
       return el.wallId && [el.x, el.y, el.angle, el.width].every(Number.isFinite) && el.width > 0 ? el : null;
     }
@@ -322,6 +381,8 @@ function normaliseElement(raw: unknown): PlanElement | null {
         rotation: typeof raw.rotation === 'number' && Number.isFinite(raw.rotation) ? raw.rotation : undefined,
         shape: raw.shape === 'round' ? ('round' as const) : ('rect' as const),
         ...(inRange(raw.heightMm, 50, 30000) ? { heightMm: raw.heightMm } : {}),
+        ...(inRange(raw.belowMm, 1, 10000) ? { belowMm: raw.belowMm } : {}),
+        ...generatedOf(raw),
       };
       return [el.x, el.y, el.w, el.h].every(Number.isFinite) && el.w > 0 && el.h > 0 ? el : null;
     }
@@ -407,6 +468,9 @@ function normaliseElement(raw: unknown): PlanElement | null {
         y2: num('y2'),
         width: num('width'),
         depth: num('depth'),
+        ...(BEAM_KINDS.includes(raw.kind as BeamKind) && raw.kind !== 'floor' ? { kind: raw.kind as BeamKind } : {}),
+        ...(inRange(raw.topMm, -10000, 30000) ? { topMm: raw.topMm } : {}),
+        ...generatedOf(raw),
       };
       return [el.x1, el.y1, el.x2, el.y2, el.width, el.depth].every(Number.isFinite) ? el : null;
     }
@@ -430,6 +494,10 @@ function normaliseElement(raw: unknown): PlanElement | null {
             ...(holes.length ? { holes } : {}),
             ...(holeCurves.some((c) => c) && { holeCurves }),
             ...(curve && { curve }),
+            ...(raw.footing === 'pad' || raw.footing === 'combined' || raw.footing === 'strip'
+              ? { footing: raw.footing, ...(inRange(raw.belowMm, 0, 10000) ? { belowMm: raw.belowMm } : {}) }
+              : {}),
+            ...generatedOf(raw),
           }
         : null;
     }
@@ -786,6 +854,7 @@ export function normaliseDoc(raw: unknown): PlanDoc {
       ? { northArrow: { x: obj.northArrow.x as number, y: obj.northArrow.y as number } }
       : {}),
     ...(normaliseSun(obj.sun) ? { sun: normaliseSun(obj.sun) } : {}),
+    ...(normaliseFrame(obj.frame) ? { frame: normaliseFrame(obj.frame) } : {}),
     ...(isObject(obj.location) && inRange(obj.location.lat, -90, 90) && inRange(obj.location.lon, -180, 180)
       ? { location: { lat: obj.location.lat, lon: obj.location.lon } }
       : {}),
@@ -838,7 +907,11 @@ const SIDES: ElevationSide[] = ['front', 'back', 'left', 'right'];
 function normaliseDrawingRef(raw: unknown): DrawingRef | null {
   if (!isObject(raw)) return null;
   if (raw.kind === 'plan' && raw.levelId !== undefined)
-    return { kind: 'plan', levelId: String(raw.levelId), ...(isTrade(raw.services) && { services: raw.services }) };
+    return {
+      kind: 'plan',
+      levelId: String(raw.levelId),
+      ...(isPlanOverlay(raw.services) && { services: raw.services }),
+    };
   if (raw.kind === 'section' && raw.id !== undefined) return { kind: 'section', id: String(raw.id) };
   if (raw.kind === 'elevation' && SIDES.includes(raw.side as ElevationSide))
     return { kind: 'elevation', side: raw.side as ElevationSide };

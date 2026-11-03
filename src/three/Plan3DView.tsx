@@ -531,6 +531,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
   const doc = useShownDoc();
   const showFurniture = usePlanner((s) => s.showFurniture);
   const wallHeightMm = usePlanner((s) => s.wallHeightMm);
+  const frameView = usePlanner((s) => s.frameView);
   const setWallHeightMm = usePlanner((s) => s.setWallHeightMm);
   const units = usePlanner((s) => s.units);
   const fileName = usePlanner((s) => s.fileName);
@@ -757,7 +758,9 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     if (!stage || !host) return;
     const started = performance.now();
     const shown = withoutHiddenFloors(withoutHidden(doc, { layers: doc.layers, showFurniture }));
-    const model = buildModel(shown, { wallHeightMm, showFurniture });
+    const model = buildModel(shown, { wallHeightMm, showFurniture, frame: frameView });
+    // Only the structure: no ground, so the footings show.
+    stage.ground.visible = !frameView;
     clearHighlight(stage);
     stage.scene.remove(stage.model);
     disposeGroup(stage.model);
@@ -814,7 +817,7 @@ export default function Plan3DView({ onContextMenu }: { onContextMenu?: (target:
     );
     stage.render();
     lastBuildMs = performance.now() - started;
-  }, [doc, wallHeightMm, showFurniture]);
+  }, [doc, wallHeightMm, showFurniture, frameView]);
 
   // Follow the theme: canvas colour for the sky, room floor colour for the ground.
   useEffect(() => {

@@ -129,6 +129,13 @@ material and cost rates for buildings; a floor-to-floor height field (today the 
 Left from use zones for later: the room minimums table (1.49) isn't used by the layout generator yet; check the
 "General practice" figures against local homes.
 
+Left from Generate structure (1.52) for later: cantilever beams under slabs standing out past the walls; brick pillars
+along boundary walls; schedules printed on the sheets (today a CSV and the marks on the foundation and framing plans);
+a faint preview before generating; confined masonry; roof beams for pitched roofs; raft and pile foundations; steel
+frames; bar sizes and bending schedules; curved beams (generated as short straight pieces) and lintels on curved walls in
+3D (counted, not drawn); the "to be checked by a structural engineer" note in the sheet title block (it is on the panel and
+the schedule).
+
 Left from basements for later: more than one basement; sloping sites; footings and columns drawn for the
 basement; ramps down for cars; air shafts or light wells drawn for you; basement figures for CDA private schemes
 and Bahria (the check says "check").

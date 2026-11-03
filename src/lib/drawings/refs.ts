@@ -8,7 +8,9 @@ import type {
   PlanDoc,
   SavedView,
   SectionLine,
+  PlanOverlay,
   ServiceTrade,
+  StructurePlan,
   View3dStyle,
 } from '../../types';
 
@@ -53,6 +55,15 @@ export const TRADE_LAYOUTS: Record<ServiceTrade, string> = {
 
 export const isTrade = (v: unknown): v is ServiceTrade => typeof v === 'string' && v in TRADE_LAYOUTS;
 
+/** The structure plans: the foundations (on the lowest floor) and each floor's framing. */
+export const STRUCTURE_PLANS: Record<StructurePlan, string> = {
+  foundation: 'Foundation plan',
+  framing: 'Framing plan',
+};
+
+export const isStructurePlan = (v: unknown): v is StructurePlan => v === 'foundation' || v === 'framing';
+export const isPlanOverlay = (v: unknown): v is PlanOverlay => isTrade(v) || isStructurePlan(v);
+
 /** A stable key for a drawing, e.g. "section:abc", "elevation:front", "plan:ground" or "view3d:iso". */
 export function drawingKey(ref: DrawingRef): string {
   if (ref.kind === 'plan') return ref.services ? `plan:${ref.levelId}:${ref.services}` : `plan:${ref.levelId}`;
@@ -66,7 +77,7 @@ export function drawingFromKey(key: string): DrawingRef | null {
   const [kind, rest] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
   if (kind === 'plan' && rest) {
     const [levelId, services] = [rest.slice(0, rest.lastIndexOf(':')), rest.slice(rest.lastIndexOf(':') + 1)];
-    return levelId && isTrade(services) ? { kind: 'plan', levelId, services } : { kind: 'plan', levelId: rest };
+    return levelId && isPlanOverlay(services) ? { kind: 'plan', levelId, services } : { kind: 'plan', levelId: rest };
   }
   if (kind === 'section' && rest) return { kind: 'section', id: rest };
   if (kind === 'elevation' && ELEVATION_SIDES.includes(rest as ElevationSide))
@@ -123,6 +134,8 @@ export function drawingTitle(doc: PlanDoc, ref: DrawingRef): string | null {
   if (ref.kind === 'plan') {
     const level = doc.levels.find((l) => l.id === ref.levelId);
     if (!level) return null;
+    if (ref.services === 'foundation') return STRUCTURE_PLANS.foundation;
+    if (ref.services === 'framing') return `${level.name} framing plan`;
     return ref.services
       ? `${level.name} ${TRADE_LAYOUTS[ref.services].replace(/^\w/, (c) => c.toLowerCase())}`
       : `${level.name} plan`;

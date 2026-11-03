@@ -23,6 +23,7 @@ import { dragRoomCorner, dragWallJoints, wallEndsAt } from '../lib/roomGrips';
 import { hasOwnPlinth, plinthAt } from '../lib/plinth';
 import { snapFurniture } from '../tools/furnitureTool';
 import { plinthWallOf } from '../walls';
+import { lintelOpening } from '../lib/structure/lintels';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, type PlannerState } from '../store/plannerStore';
 import { cornerSnap, DRAG_PX, hover, inferAt, MEASURE_TOOLS, press, release } from '../tools/controller';
@@ -352,6 +353,12 @@ export function usePlanInput(
           s.selectPlinth(plinth);
           return;
         }
+        // A lintel picks the opening under it (its settings are in the opening's Properties).
+        const lintel = screenBox ? lintelOpening(pickId?.(e)) : null;
+        if (lintel && !e.shiftKey) {
+          s.select(lintel);
+          return;
+        }
         const hit = hitAt(e, raw);
         // On the plan, the plinth standing out round the ground floor's walls is its own item too.
         const plinthHere =
@@ -432,6 +439,7 @@ export function usePlanInput(
               : plinthAt({ ...s.doc, elements: s.pickableElements() }, raw);
         const click = () => {
           if (plinth) s.setWallPlinth(plinth, false);
+          else if (lintelOpening(picked)) s.setOpeningLintel(lintelOpening(picked)!, { off: true });
           else if (wall) s.commit((doc) => trimAt(doc, wall.id, raw, 10 * s.pxUnits()));
           else if (picked) s.deleteElement(picked);
           else s.eraseAt(raw);

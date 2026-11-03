@@ -1,3 +1,4 @@
+import { structureCsv } from './structure/schedule';
 import { servicesCsv } from './servicesSchedule';
 import { isService } from './services';
 import { GROUND_LEVEL, levelOf, type DrawingRef } from '../types';
@@ -235,6 +236,7 @@ export function exportPlanDxf() {
       showDimensions: s.showDimensions,
       showFurniture: s.showFurniture,
       showRoomLabels: s.showRoomLabels,
+      wallHeightMm: s.wallHeightMm,
     });
     saveBlob(text, 'application/dxf', `${exportName()}.dxf`);
   } catch (e) {
@@ -265,6 +267,21 @@ export function exportServicesCsv() {
   }
   const name = baseName(s.fileName);
   saveBlob('\ufeff' + servicesCsv(s.doc, `${name} services schedule`, s.units), 'text/csv', `${name} services.csv`);
+}
+
+/** Download the structure schedule: each mark's size, number, length and concrete. */
+export function exportStructureCsv() {
+  const s = plannerStore.getState();
+  if (!s.doc.frame?.madeFrom) {
+    s.setWarning('There is no structure yet. Generate it in the Structure section.');
+    return;
+  }
+  const name = baseName(s.fileName);
+  saveBlob(
+    '\ufeff' + structureCsv(s.doc, `${name} structure schedule`, s.units, s.wallHeightMm),
+    'text/csv',
+    `${name} structure.csv`,
+  );
 }
 
 export type ModelFormat = 'glb' | 'dae' | 'obj';

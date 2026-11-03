@@ -3,6 +3,7 @@
  * doors? Do the living rooms get daylight? Are rooms a comfortable size for their name? Pure: plan
  * in, hints out. Rooms are recognised by their names.
  */
+import { structureHints } from './structure/hints';
 import { pointInPolygon } from '../geometry';
 import { WET_ROOM } from './bylaws';
 import { mumtyLevelIds, PORCH_ROOM } from './planCheck';
@@ -37,7 +38,7 @@ import { buildingUseHints, type FloorInfo } from './buildingUse';
 import { servicesHints } from './servicesHints';
 import { standsOnFloor } from './services';
 
-export type HintKind = 'reach' | 'daylight' | 'size' | 'layout' | 'use' | 'services';
+export type HintKind = 'reach' | 'daylight' | 'size' | 'layout' | 'use' | 'services' | 'structure';
 
 export interface Hint {
   id: string;
@@ -584,5 +585,6 @@ export function planHints(
   // Offices, schools, clinics, shops and mosques: exits, stairs, corridors, doors, toilets and access.
   if (type === 'building') hints.push(...buildingUseHints(doc, projectOf(doc).use ?? 'other', floors, len));
   hints.push(...servicesHints(doc, (id) => levelNames.get(id) ?? ''));
+  hints.push(...structureHints(doc, ctx.units));
   return hints;
 }

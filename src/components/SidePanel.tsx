@@ -25,6 +25,7 @@ import { PlanCheckPanel } from './PlanCheckPanel';
 import { ShapeOptions } from './ShapeOptions';
 import { RoofToolOptions } from './RoofOptions';
 import { StructureOptions } from './StructureOptions';
+import { StructurePanel } from './StructurePanel';
 import { ThemePicker } from './ThemePicker';
 import { UpdatePanel } from './UpdatePanel';
 import type { useOpenSections } from './useOpenSections';
@@ -289,6 +290,8 @@ export function SidePanel({ sections }: { sections: ReturnType<typeof useOpenSec
         return isOpen ? <GroundPanel /> : null;
       case 'layout':
         return isOpen ? <LayoutPanel /> : null;
+      case 'structure':
+        return isOpen ? <StructurePanel /> : null;
       case 'check':
         return <PlanCheckPanel />;
       case 'cost':

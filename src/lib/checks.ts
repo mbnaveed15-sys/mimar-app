@@ -8,7 +8,7 @@ import type { Hint } from './planHints';
  */
 
 export type CheckCategory =
-  'plot' | 'size' | 'rooms' | 'basement' | 'use' | 'layout' | 'daylight' | 'openings' | 'zones';
+  'plot' | 'size' | 'rooms' | 'basement' | 'use' | 'layout' | 'daylight' | 'openings' | 'zones' | 'structure';
 
 export const CHECK_CATEGORIES: { id: CheckCategory; label: string; title: string }[] = [
   {
@@ -32,6 +32,11 @@ export const CHECK_CATEGORIES: { id: CheckCategory; label: string; title: string
   { id: 'daylight', label: 'Daylight and air', title: 'Outside walls, windows and air shafts' },
   { id: 'openings', label: 'Door and window gaps', title: 'Doors and windows kept clear of corners and of each other' },
   { id: 'zones', label: 'Furniture space', title: 'The free space furniture needs around it' },
+  {
+    id: 'structure',
+    label: 'Structure',
+    title: 'The generated structure: out of date, long spans, thin slabs, floating columns, columns in doorways',
+  },
 ];
 
 export interface ChecksPrefs {
@@ -69,6 +74,7 @@ export function hintCategory(hint: Pick<Hint, 'id' | 'kind' | 'fix'>): CheckCate
   if (hint.id.startsWith('use-')) return 'use';
   if (hint.kind === 'size') return 'rooms';
   if (hint.kind === 'daylight') return 'daylight';
+  if (hint.kind === 'structure') return 'structure';
   return 'layout';
 }
 

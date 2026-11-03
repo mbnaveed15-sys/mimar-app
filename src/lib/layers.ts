@@ -11,6 +11,8 @@ export const LAYERS = [
   { id: 'columns', label: 'Columns' },
   { id: 'beams', label: 'Beams' },
   { id: 'slabs', label: 'Slabs' },
+  { id: 'foundations', label: 'Footings, tie & plinth beams' },
+  { id: 'lintels', label: 'Lintels' },
   { id: 'roofs', label: 'Roofs' },
   { id: 'blocks', label: 'Blocks & shapes' },
   { id: 'stairs', label: 'Stairs & ramps' },
@@ -66,6 +68,9 @@ export function layerOf(item: PlanElement | Room): LayerId {
   // Services and runs go on their trade's layer.
   if (item.type === 'run') return RUN_SYSTEMS[item.system].trade;
   if (item.type === 'furniture' && item.kind && SERVICES[item.kind]) return SERVICES[item.kind].trade;
+  // Footings and the beams at the plinth and below it are the foundations.
+  if (item.type === 'slab' && item.footing) return 'foundations';
+  if (item.type === 'beam' && (item.kind === 'tie' || item.kind === 'plinth')) return 'foundations';
   return BY_TYPE[item.type];
 }
 

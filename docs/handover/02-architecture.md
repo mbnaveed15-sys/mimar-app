@@ -212,6 +212,18 @@ autosaves to local storage on every change.
   tabs view.
 - `src/commands.ts`: every menu item, shortcut and Ctrl+K palette entry in one registry.
 
+- Generate structure (1.52): `src/lib/structure/` (pure). `generateFrame(doc, wallHeightMm, rules)` drops untouched
+  generated items (`isUntouched`: `auto` and `autoSig === frameSig(el)`, not locked), keeps edited ones as the owner's
+  own (without `auto`) and builds round them and other manual columns, beams, slabs and footings. Columns come from
+  `wallGraph` junctions and `runColumns` (spacing, off openings, jambs of wide ones), clustered across floors top-down
+  (`u(250)`) so a column runs down every floor; ground columns carry `belowMm` to their footing. Beams have `kind`
+  (floor, roof, secondary, landing, plinth, tie, band) and an optional `topMm` (plinth and tie beams, bands; the 3D
+  `beamAt`). Footings are `Slab`s with `footing` and `belowMm` (3D: under the floor). Lintels are never stored:
+  `lintelsOf(doc, wallHeightMm)` works them out once `doc.frame.madeFrom` is set (3D ids `lintel:<opening>`, picked as
+  the opening; Erase turns `Opening.lintel.off`). `frameFingerprint` vs `doc.frame.madeFrom` gives the "out of date"
+  hint. In 3D generated items are drawn `INSET` (4 mm) smaller so they hide in the walls; `ModelOptions.frame` keeps only
+  columns, beams, stairs and slabs (store `frameView`, which also shows the `foundations` layer on the plan).
+
 ## Drawing
 
 - 2D: `Canvas.tsx` (SVG) → `PlanDrawing.tsx` → shapes in `src/components/shapes/`. The same drawing makes the
