@@ -879,6 +879,43 @@ export function generateLayouts(
   return bestOf(best, opts.count ?? 3);
 }
 
+/**
+ * Plans for a program, or when none fit, for the nearest lighter one: first more tries, then without the car
+ * porch, the drawing room, both, and then a bedroom fewer. `dropped` names what was left out (empty when
+ * nothing was), so the panel can say so.
+ */
+export function fitLayouts(
+  program: Program,
+  W: number,
+  D: number,
+  opts: { seed?: number; count?: number; tries?: number } = {},
+): { plans: Layout[]; dropped: string } {
+  const seed = opts.seed ?? 1;
+  const tries = opts.tries ?? 1500;
+  const at = (p: Program, s = seed) => generateLayouts(p, W, D, { ...opts, seed: s, tries });
+  let plans = at(program);
+  // At the margin a few more random arrangements usually find one.
+  for (let k = 1; !plans.length && k <= 2; k++) plans = at(program, seed + 1000 * k);
+  if (plans.length) return { plans, dropped: '' };
+  const lighter: [Partial<Program>, string][] = [];
+  if (program.porch) lighter.push([{ porch: false }, 'the car porch']);
+  if (program.drawing) lighter.push([{ drawing: false }, 'the drawing room']);
+  if (program.porch && program.drawing)
+    lighter.push([{ porch: false, drawing: false }, 'the car porch and the drawing room']);
+  if (program.bedrooms > 1) {
+    const fewer = {
+      bedrooms: program.bedrooms - 1,
+      attachedBaths: Math.min(program.attachedBaths, program.bedrooms - 1),
+    };
+    lighter.push([{ ...fewer, porch: false, drawing: false }, 'a bedroom, the car porch and the drawing room']);
+  }
+  for (const [patch, dropped] of lighter) {
+    plans = at({ ...program, ...patch });
+    if (plans.length) return { plans, dropped };
+  }
+  return { plans: [], dropped: '' };
+}
+
 /** The best plans kept, that differ in more than the order of small rooms. */
 function bestOf(best: Map<string, Layout>, count: number): Layout[] {
   // Plans with a room that can't be reached come last (shown only when nothing better fits).

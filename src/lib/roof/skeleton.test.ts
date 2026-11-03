@@ -307,7 +307,9 @@ describe('skeletonRoof', () => {
     expect(flat.peak).toBe(0);
     expect(flat.heightAt(P(200, 200))).toBe(0);
     expect(flat.faces.every((f) => f.points.every((p) => p.z === 0))).toBe(true);
-    expect(kinds(flat, 'valley')).toHaveLength(1);
+    // One face, with no hips or valleys on it (1.51.10: so a roof light can go anywhere).
+    expect(flat.faces).toHaveLength(1);
+    expect(kinds(flat, 'valley')).toHaveLength(0);
   });
 
   it('fails safe on degenerate input', () => {

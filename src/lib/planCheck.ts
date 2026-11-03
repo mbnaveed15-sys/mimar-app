@@ -9,6 +9,7 @@ import {
   GENERAL,
   plotRule,
   plotSetbacks,
+  roadWidthFt,
   roomRuleFor,
   withTyped,
   type Authority,
@@ -26,6 +27,7 @@ import { BUILDING_USES, projectOf, shows } from './project';
 import { formatLength, MM_PER_FOOT } from './units';
 import { boxOf, cellFor, GridIndex } from './spatial';
 import { labelPoint, polygonArea, roomAreaSqMm, wallFaces } from '../rooms';
+import { narrowWidth } from './roomMinimums';
 import { levelBaseM } from '../three/model';
 import {
   BASEMENT_HEIGHT_MM,
@@ -279,6 +281,17 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       actual: 'None picked: only the plot’s own setbacks are checked',
       status: 'check',
       clause: 'General',
+    });
+
+  // LDA's built-up areas: the limits on a road up to 25' are lower, so an untyped road width is asked for.
+  if (found?.authority.id === 'lda-builtup' && roadWidthFt(plot) === undefined)
+    rows.push({
+      id: 'road-width',
+      label: 'Road width',
+      required: "Type the road's width in the Plot panel: on a road up to 25' the FAR is lower and the height 38'",
+      actual: 'Not typed: the wider road’s limits are used',
+      status: 'check',
+      clause: '2.1.3',
     });
 
   {
@@ -595,9 +608,8 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       if (!rr) continue;
       checked++;
       const area = roomAreaSqMm(r) / SQ_MM_PER_SQ_FT;
-      const xs = r.points.map((p) => p.x);
-      const ys = r.points.map((p) => p.y);
-      const width = Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * MM_PER_UNIT;
+      // Its narrowest way across: a turned room square to its sides, an L-shaped one its narrowest leg.
+      const width = narrowWidth(r.points) * MM_PER_UNIT;
       if (area < rr.minSqFt - 0.5 || (rr.minWidthMm && width < rr.minWidthMm - 5))
         small.push({ id: r.id, name: r.name });
     }

@@ -14,6 +14,12 @@ export const MAX_ARRAY = 400;
 
 type Out = { doc: PlanDoc; ids: Id[] };
 
+/** The most cells a grid array has (rows × columns), so one array never stalls the app. */
+export const MAX_GRID = 1000;
+/** Columns (or rows) kept so that, with `other` rows (or columns), the grid has at most MAX_GRID cells. */
+export const gridCount = (n: number, other: number) =>
+  Math.min(arrayCount(n), Math.max(1, Math.floor(MAX_GRID / arrayCount(other))));
+
 /** Keep a count to a whole number from `min` to MAX_ARRAY. */
 export const arrayCount = (n: number, min = 1) => Math.max(min, Math.min(MAX_ARRAY, Math.round(n) || min));
 
@@ -22,15 +28,15 @@ export const arrayCount = (n: number, min = 1) => Math.max(min, Math.min(MAX_ARR
  * down); with one row or one column it is the gap between copies, at any angle.
  */
 export function gridArray(doc: PlanDoc, ids: Id[], cols: number, rows: number, step: Point): Out {
-  cols = arrayCount(cols);
   rows = arrayCount(rows);
+  cols = gridCount(cols, rows);
   const grid = cols > 1 && rows > 1;
   const across = grid || rows === 1 ? (grid ? { x: step.x, y: 0 } : step) : { x: 0, y: 0 };
   const down = grid ? { x: 0, y: step.y } : rows > 1 ? step : { x: 0, y: 0 };
   let out: Out = { doc, ids: [] };
   for (let r = 0; r < rows; r++)
     for (let c = 0; c < cols; c++) {
-      if ((!r && !c) || out.ids.length >= MAX_ARRAY * 50) continue;
+      if (!r && !c) continue;
       const dx = across.x * c + down.x * r;
       const dy = across.y * c + down.y * r;
       if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) continue;

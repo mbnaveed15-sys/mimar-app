@@ -129,6 +129,8 @@ export function moveToolbar(layout: ToolbarLayout, id: ToolbarId, area: DockArea
 
 /** Sizes of the tool buttons (px), for packing tool bars into columns without a scrollbar. */
 export const BUTTON_PX = 36;
+/** A tool button's height with a coarse pointer (h-11). */
+export const TOUCH_BUTTON_PX = 44;
 export const BUTTON_GAP_PX = 2;
 /** A bar's grip and the space between bars. */
 export const GRIP_PX = 12;
@@ -142,8 +144,10 @@ export const BAR_GAP_PX = 6;
 export function packColumns(
   bars: { id: ToolbarId; count: number }[],
   height: number,
+  /** A button's height: bigger with a finger (touch screens and touch laptops). */
+  buttonPx = BUTTON_PX,
 ): { id: ToolbarId; from: number; to: number }[][] {
-  const button = BUTTON_PX + BUTTON_GAP_PX;
+  const button = buttonPx + BUTTON_GAP_PX;
   const columns: { id: ToolbarId; from: number; to: number }[][] = [[]];
   let used = 0;
   for (const bar of bars) {

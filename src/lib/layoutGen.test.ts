@@ -4,6 +4,7 @@ import { buildLayout, largestRect, layoutSite, terraceDepth, upperSite } from '.
 import {
   DEFAULT_PROGRAM,
   feetToUnits as ft,
+  fitLayouts,
   generateLayouts,
   generateUpperLayouts,
   mirrorLayout,
@@ -88,6 +89,13 @@ describe('plans from a room list', () => {
 
   it('finds nothing when the rooms can’t stand side by side', () => {
     expect(generateLayouts(DEFAULT_PROGRAM, ft(14), ft(30), { seed: 1 })).toEqual([]);
+  });
+
+  it('on a 7 marla plot leaves out the car porch so the rest fits, and says so (1.51.10)', () => {
+    const fit = fitLayouts(DEFAULT_PROGRAM, ft(28.25), ft(50), { seed: 1 });
+    expect(fit.plans.length).toBeGreaterThan(0);
+    expect(fit.dropped).toBe('the car porch');
+    expect(fitLayouts(DEFAULT_PROGRAM, ft(40), ft(60), { seed: 1 }).dropped).toBe('');
   });
 
   it('mirrors a plan left for right, keeping who is next to whom', () => {

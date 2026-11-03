@@ -5,7 +5,7 @@ import { builtAreaSqFt } from './planCheck';
 import { planHints } from './planHints';
 import { quantities } from './quantities';
 import { emptyDoc, normaliseDoc } from './storage';
-import { openRooms, overlaps, voidsOver, within } from './voids';
+import { clipToConvex, openRooms, overlaps, voidsOver, within } from './voids';
 
 const FT = 30.48;
 const rect = (x0: number, y0: number, x1: number, y1: number): Point[] => [
@@ -93,5 +93,24 @@ describe('double-height rooms', () => {
     const hints = planHints(house(true), { units: 'imperial' });
     expect(hints.filter((h) => h.id.startsWith('over-void-')).map((h) => h.ids)).toEqual([['study']]);
     expect(planHints(house(false), { units: 'imperial' }).some((h) => h.id.startsWith('over-void-'))).toBe(false);
+  });
+});
+
+describe('clipToConvex (1.51.10)', () => {
+  it('gives the part of a stairwell over each of two rooms', () => {
+    const sq = (x0: number, y0: number, x1: number, y1: number) => [
+      { x: x0, y: y0 },
+      { x: x1, y: y0 },
+      { x: x1, y: y1 },
+      { x: x0, y: y1 },
+    ];
+    const well = sq(40, 0, 60, 30);
+    const left = clipToConvex(sq(0, 0, 50, 100), well)!;
+    const right = clipToConvex(sq(50, 0, 100, 100), [...well].reverse())!;
+    const area = (p: { x: number; y: number }[]) =>
+      Math.abs(p.reduce((s, a, i) => s + a.x * p[(i + 1) % p.length].y - p[(i + 1) % p.length].x * a.y, 0)) / 2;
+    expect(area(left)).toBeCloseTo(300);
+    expect(area(right)).toBeCloseTo(300);
+    expect(clipToConvex(sq(0, 0, 10, 10), well)).toBeNull();
   });
 });

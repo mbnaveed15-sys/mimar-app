@@ -1,4 +1,4 @@
-import { arrayCount } from '../lib/array';
+import { arrayCount, gridCount, MAX_GRID } from '../lib/array';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import { showArray } from '../tools/modifyTools';
 import type { ArraySettings } from '../types';
@@ -62,10 +62,11 @@ export function ArrayOptions() {
       </div>
       {a.mode === 'grid' && (
         <>
-          {number('array-cols', 'Columns', a.cols, (n) => set({ cols: arrayCount(n) }))}
-          {number('array-rows', 'Rows', a.rows, (n) => set({ rows: arrayCount(n) }))}
+          {number('array-cols', 'Columns', a.cols, (n) => set({ cols: gridCount(n, a.rows) }))}
+          {number('array-rows', 'Rows', a.rows, (n) => set({ rows: gridCount(n, a.cols) }))}
           <div className="text-muted">
-            Click a base point, then the next copy's spot (one cell, with rows and columns). Or type the spacing.
+            Click a base point, then the next copy's spot (one cell, with rows and columns). Or type the spacing. At
+            most {MAX_GRID.toLocaleString()} in all (rows × columns).
           </div>
         </>
       )}

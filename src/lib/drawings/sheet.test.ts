@@ -254,7 +254,7 @@ describe('services layouts', () => {
     // A sheet of one drawing names it only in the title block, not under the drawing.
     const words = texts(layoutSheet(src, sheets[2], 3, 8).prims);
     expect(words).not.toContain('GROUND FLOOR ELECTRICAL LAYOUT');
-    expect(words).toContain('Electrical layout');
+    expect(words).toContain('Ground floor electrical layout');
     expect(prims.map((p) => p.services)).toEqual(['electrical']);
     expect(layoutSheet(src, sheets[0], 1, 8).prims.find((p) => p.t === 'plan')?.services).toBe('none');
     expect(drawingTitle(src.doc, sheets[2].items[0].drawing)).toBe('Ground floor electrical layout');
@@ -324,5 +324,28 @@ describe('custom scales', () => {
       ],
     });
     expect(doc.sheets?.[0].items.map((i) => i.scale)).toEqual([75, 100]);
+  });
+});
+
+describe('title block fixes (1.51.10)', () => {
+  it('says not to scale for a lone 3D view, and gives no scale on an empty sheet', () => {
+    const src = source(house());
+    const blank = { id: 's', name: 'Sheet 9', paper: 'A3', items: [] } as unknown as Sheet;
+    expect(texts(layoutSheet(src, blank, 0, 1).prims).join(' ')).not.toContain('undefined');
+    const iso = {
+      ...blank,
+      items: [{ drawing: { kind: 'view3d', style: 'picture' }, scale: 100 }],
+    } as unknown as Sheet;
+    const words = texts(layoutSheet(src, iso, 0, 1).prims).join(' ');
+    expect(words).toContain('Not to scale');
+    expect(words).not.toContain('1:100');
+  });
+
+  it('keeps the whole scale, date and sheet number on A4 portrait', () => {
+    const src = source(house());
+    const sheet = suggestedSheets(src)[0];
+    const words = texts(layoutSheet(src, { ...sheet, paper: 'A4', portrait: true } as Sheet, 10, 11).prims);
+    expect(words.some((w) => /^1:\d+ on A4/.test(w) && !w.endsWith('…'))).toBe(true);
+    expect(words).toContain('11 of 11');
   });
 });

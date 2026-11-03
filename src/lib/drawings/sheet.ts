@@ -93,8 +93,13 @@ function keyGrid(n: number, width: number) {
   const rows = Math.ceil(n / cols);
   return { cols, rows, h: rows * KEY_LINE + 7 };
 }
-/** Room to the right of a section or elevation for its level marks. */
+/** Least room to the right of a section or elevation for its level marks. */
 const LEVEL_ROOM = 36;
+/** Room for the level marks: wide enough for the longest height and name, so long names don't run on. */
+function levelRoom(d: SideDrawing): number {
+  const widest = Math.max(0, ...d.levels.map((m) => 9.5 + m.label.length * 1.5 + m.name.length * 2.1 * 0.55));
+  return Math.max(LEVEL_ROOM, Math.ceil(widest + 3));
+}
 /** Room round a plan for its dimension lines and labels, on paper. */
 const PLAN_PAD = 12;
 
@@ -171,7 +176,7 @@ function drawingSize(src: SheetSource, ref: DrawingRef, scale: number): { w: num
   const e = sideExtent(d);
   const room = dimRoom(d, src.doc.drawing);
   return {
-    w: ((e.maxU - e.minU) * 1000) / scale + (d.iso ? 0 : LEVEL_ROOM) + room.left,
+    w: ((e.maxU - e.minU) * 1000) / scale + (d.iso ? 0 : levelRoom(d)) + room.left,
     h: ((e.maxV - e.minV) * 1000) / scale + room.below,
   };
 }
@@ -307,10 +312,24 @@ export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count
   const paper = paperMm(sheet);
   const prims: Prim[] = [];
   const { placed: packed, fits } = pack(src, sheet.items, sheet);
-  // Each drawing where the sheet places it, moved by its own offset.
-  const placed = packed.map((p) =>
-    p.item.offsetMm ? { ...p, x: p.x + p.item.offsetMm.x, y: p.y + p.item.offsetMm.y } : p,
-  );
+  const area = drawingArea(sheet, sheet.items.length);
+  const captionH = sheet.items.length > 1 ? CAPTION : 0;
+  const bottom = area.y + area.h + 0.01;
+  const right = area.x + area.w + 0.01;
+  // Each drawing where the sheet places it, moved by its own offset but kept inside the frame.
+  const moved = packed.map((p) => {
+    const o = p.item.offsetMm;
+    if (!o) return p;
+    const clamp = (v: number, lo: number, hi: number) => (hi < lo ? v : Math.min(hi, Math.max(lo, v)));
+    return {
+      ...p,
+      x: clamp(p.x + o.x, area.x, right - p.w),
+      y: clamp(p.y + o.y, area.y, bottom - p.h - captionH),
+    };
+  });
+  // A drawing that would run over the title block or off the paper is left off (the sheet says they don't all
+  // fit), unless it is the only one.
+  const placed = moved.length > 1 ? moved.filter((p) => p.y + p.h + captionH <= bottom && p.x + p.w <= right) : moved;
   for (const p of placed) {
     const ref = p.item.drawing;
     const plan = planOf(src.doc, ref);
@@ -338,11 +357,10 @@ export function layoutSheet(src: SheetSource, sheet: Sheet, index: number, count
     if (sheet.items.length > 1) caption(prims, sheet.items.indexOf(p.item) + 1, p.x, p.y + p.h, p.w);
   }
   if (placed.some((p) => planOf(src.doc, p.item.drawing))) {
-    const area = drawingArea(sheet, sheet.items.length);
     prims.push(...northArrowPrims(area.x + area.w - 6, area.y + 8, src.doc.northDeg ?? 0));
   }
   prims.push(...frame(src, sheet, index, count));
-  return { paper, prims, overflow: !fits };
+  return { paper, prims, overflow: !fits || placed.length < packed.length };
 }
 
 /** A drawing's number in a circle, centred under it. */
@@ -495,17 +513,42 @@ function frame(src: SheetSource, sheet: Sheet, index: number, count: number): Pr
   const bottom = p.h - MARGIN;
   const scales = [...new Set(sheet.items.map((i) => i.scale))];
   const key = keyGrid(sheet.items.length, p.w);
-  const cols: { label: string; value: string; share: number; big?: boolean }[] = [
-    { label: 'Project', value: src.projectName, share: 3, big: true },
-    { label: 'Drawing', value: sheet.name, share: 3, big: true },
-    {
-      label: 'Scale',
-      value: key.cols ? `As listed, ${paperName(sheet)}` : `1:${scales[0]} on ${paperName(sheet)}`,
-      share: 1.4,
-    },
-    { label: 'Date', value: src.date, share: 1.4 },
-    { label: 'Sheet', value: `${index + 1} of ${count}`, share: 1 },
+  const only = sheet.items.length === 1 ? sheet.items[0] : null;
+  const onlyRef = only?.drawing;
+  const notToScale = !!onlyRef && (onlyRef.kind === 'view3d' || (onlyRef.kind === 'view' && !planOf(src.doc, onlyRef)));
+  // One drawing: the title block names it (with the sheet's own name when that differs) and gives its scale.
+  const title = onlyRef ? drawingTitle(src.doc, onlyRef) : null;
+  const scale = key.cols
+    ? `As listed, ${paperName(sheet)}`
+    : notToScale
+      ? `Not to scale, ${paperName(sheet)}`
+      : scales.length
+        ? `1:${scales[0]} on ${paperName(sheet)}`
+        : `– on ${paperName(sheet)}`;
+  const small = [
+    { label: 'Scale', value: scale },
+    { label: 'Date', value: src.date },
+    { label: 'Sheet', value: `${index + 1} of ${count}` },
   ];
+  // The scale, date and sheet number are given the room they need (in smaller text on narrow paper); the
+  // project and drawing names share the rest.
+  const chars = small.reduce((n, c) => n + Math.max(c.value.length, c.label.length * 0.65), 0);
+  const smallSize = Math.max(2.2, Math.min(3.4, (x1 - x0 - 60 - 6 * small.length) / (chars * 0.52)));
+  const cols: { label: string; value: string; w: number; size: number; big?: boolean }[] = small.map((c) => ({
+    ...c,
+    w: Math.max(c.value.length, c.label.length * 0.65) * smallSize * 0.52 + 6.5,
+    size: smallSize,
+  }));
+  const rest = Math.max(20, (x1 - x0 - cols.reduce((n, c) => n + c.w, 0)) / 2);
+  const drawingName = !title
+    ? sheet.name
+    : title.toLowerCase().includes(sheet.name.toLowerCase())
+      ? title
+      : `${sheet.name}: ${title}`;
+  cols.unshift(
+    { label: 'Project', value: src.projectName, w: rest, size: 4.2, big: true },
+    { label: 'Drawing', value: drawingName, w: rest, size: 4.2, big: true },
+  );
   const prims: Prim[] = [
     { t: 'rect', x: x0, y: MARGIN, w: x1 - x0, h: p.h - 2 * MARGIN, lw: PEN.frame },
     { t: 'line', a: [x0, top], b: [x1, top], w: PEN.frame },
@@ -527,13 +570,12 @@ function frame(src: SheetSource, sheet: Sheet, index: number, count: number): Pr
       prims.push({ t: 'text', x: x + 6, y, text: text.length > room ? `${text.slice(0, room - 1)}…` : text, size: 3 });
     });
   }
-  const total = cols.reduce((s, c) => s + c.share, 0);
   let x = x0;
   cols.forEach((c, i) => {
-    const w = ((x1 - x0) * c.share) / total;
+    const w = c.w;
     if (i > 0) prims.push({ t: 'line', a: [x, top], b: [x, bottom], w: PEN.thin });
     prims.push({ t: 'text', x: x + 3, y: top + 5, text: c.label.toUpperCase(), size: 2.2 });
-    const size = c.big ? 4.2 : 3.4;
+    const size = c.size;
     // Long names are cut short rather than running into the next box.
     const room = Math.floor((w - 6) / (size * 0.52));
     const value = c.value.length > room ? `${c.value.slice(0, Math.max(1, room - 1))}…` : c.value;

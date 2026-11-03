@@ -134,7 +134,9 @@ export function useKeyboardShortcuts(commands: Command[]) {
         }
         if (e.key === 'Enter' && s.measureText) {
           e.preventDefault();
-          if (applyMeasure(plannerStore, s.measureText)) s.setMeasureText('');
+          // A refused entry is cleared too (its message stays), so the next typing starts afresh.
+          applyMeasure(plannerStore, s.measureText);
+          plannerStore.getState().setMeasureText('');
           return;
         }
       }

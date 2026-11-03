@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ifcGuid, planToIfc, stepString } from './exportIfc';
 import { buildSamplePlan } from './samplePlan';
 import { emptyDoc } from './storage';
+import { DEFAULT_PREFS } from './prefs';
+import { createPlannerStore } from '../store/plannerStore';
 import type { PlanDoc, PlanElement } from '../types';
 
 const opts = { wallHeightMm: 3048, name: 'House', time: '2026-09-28T12:00:00' };
@@ -120,5 +122,14 @@ describe('IFC export', () => {
     expect(stepString("Ali's room")).toBe("'Ali''s room'");
     expect(stepString('Café')).toBe("'Caf\\X2\\00E9\\X0\\'");
     expect(stepString('کمرہ')).toBe("'\\X2\\06A9\\X0\\\\X2\\0645\\X0\\\\X2\\0631\\X0\\\\X2\\06C1\\X0\\'");
+  });
+
+  it('styles each shape once when a floor is duplicated above (IFC allows one style an item)', () => {
+    const store = createPlannerStore(buildSamplePlan(), undefined, DEFAULT_PREFS);
+    store.getState().duplicateLevel();
+    const ifc = planToIfc(store.getState().doc, opts);
+    const styledIds = [...ifc.matchAll(/=IFCSTYLEDITEM\((#\d+),/g)].map((m) => m[1]);
+    expect(styledIds.length).toBeGreaterThan(0);
+    expect(new Set(styledIds).size).toBe(styledIds.length);
   });
 });

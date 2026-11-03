@@ -143,8 +143,7 @@ export function exportPlanPdf() {
   const covered = builtAreaSqFt(doc, plannerStore.getState().activeLevel) * SQ_MM_PER_SQ_FT;
   exportPdf(exportContent(), exportArea(), {
     title: name,
-    // The quick one-page plan stays on A4 or A3 (A1 is for drawing sheets).
-    paper: paper === 'A1' ? 'A3' : paper,
+    paper,
     unitsNote: `Dimensions in ${UNIT_LABELS[units].toLowerCase()}`,
     areaNote: covered ? `Covered area: ${formatArea(covered, units)}  ·  ${formatMarla(covered, marlaSqFt)}` : '',
     version: __APP_VERSION__,

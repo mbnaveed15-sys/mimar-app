@@ -674,6 +674,8 @@ export function skeletonRoof(outline: Point[], slope: number, gable: boolean[] =
   const clean = cleanOutline(outline, gable, tol, weight);
   const m = clean.pts.length;
   if (m < 3 || Math.abs(signedArea(clean.pts)) <= tol * scale) return emptyShape();
+  // A flat roof is one face, so a roof light can go anywhere on it clear of the edges.
+  if (rise === 0) return flatShape(outline, clean, tol);
   // Work counter-clockwise (y up): q-edge j is clean edge cEdge(j).
   const flip = signedArea(clean.pts) < 0;
   const q = flip ? clean.pts.slice().reverse() : clean.pts;

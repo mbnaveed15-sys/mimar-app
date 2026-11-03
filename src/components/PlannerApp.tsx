@@ -123,6 +123,8 @@ export default function PlannerApp() {
     const { panels, setPanels } = plannerStore.getState();
     if (panels.view === 'tabs' || compact) setPanels({ tab: 'properties', folded: false });
     if (compact) revealPanel();
+    // On a touch screen focusing a box would pop up the keyboard over the panel.
+    if (compact || window.matchMedia?.('(pointer: coarse)').matches) return;
     requestAnimationFrame(() => {
       const field = document.querySelector<HTMLElement>('aside[aria-label="Properties"] input');
       field?.focus();
@@ -130,7 +132,7 @@ export default function PlannerApp() {
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-surface text-ink">
+    <div className="flex h-dvh flex-col overflow-hidden bg-surface text-ink">
       <MenuBar commands={commands} onSearch={() => setDialog('search')} />
       {!phone && <ToolDock area="top" />}
       {/* On a phone the plan fills the width, with the panel as a sheet over its bottom. */}

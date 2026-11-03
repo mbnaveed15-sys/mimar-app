@@ -129,3 +129,50 @@ function properCross(a: Point, b: Point, c: Point, d: Point): boolean {
 /** The area (plan units²) of the voids in this floor's own floor. */
 export const voidAreaOver = (doc: Pick<PlanDoc, 'levels' | 'rooms'>, levelId: Id): number =>
   voidsOver(doc, levelId).reduce((s, r) => s + polygonArea(r.points), 0);
+
+const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+/** Whether an outline is convex (either way round). */
+export function isConvex(pts: Point[]): boolean {
+  let sign = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const c = cross(pts[i], pts[(i + 1) % pts.length], pts[(i + 2) % pts.length]);
+    if (Math.abs(c) < 1e-9) continue;
+    if (sign && Math.sign(c) !== sign) return false;
+    sign = Math.sign(c);
+  }
+  return true;
+}
+
+/**
+ * The part of `subject` inside a convex outline `clip` (Sutherland–Hodgman), or null when they don't overlap.
+ * A room's floor gets the part of a stairwell over it as a hole, when the stairwell lies under two rooms.
+ */
+export function clipToConvex(subject: Point[], clip: Point[]): Point[] | null {
+  const ccw = clip.reduce((a, p, i) => a + cross(clip[0], p, clip[(i + 1) % clip.length]), 0) > 0;
+  let out = subject;
+  for (let i = 0; i < clip.length && out.length; i++) {
+    const a = clip[i];
+    const b = clip[(i + 1) % clip.length];
+    const inside = (p: Point) => (ccw ? cross(a, b, p) : -cross(a, b, p)) >= -1e-9;
+    const cut = (p: Point, q: Point): Point => {
+      const dp = cross(a, b, p);
+      const dq = cross(a, b, q);
+      const t = dp / (dp - dq);
+      return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t };
+    };
+    const input = out;
+    out = [];
+    for (let j = 0; j < input.length; j++) {
+      const p = input[j];
+      const q = input[(j + 1) % input.length];
+      if (inside(q)) {
+        if (!inside(p)) out.push(cut(p, q));
+        out.push(q);
+      } else if (inside(p)) out.push(cut(p, q));
+    }
+  }
+  if (out.length < 3) return null;
+  const area = Math.abs(out.reduce((a, p, i) => a + cross(out[0], p, out[(i + 1) % out.length]), 0)) / 2;
+  return area > 1e-6 ? out : null;
+}

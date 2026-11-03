@@ -31,3 +31,29 @@ describe('room minimums', () => {
     expect(narrowWidth(turned)).toBeCloseTo(10);
   });
 });
+
+describe('narrow legs (1.51.10)', () => {
+  it('measures an L-shaped room by its narrowest leg, and ignores a shallow recess', () => {
+    const ell = [
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 6 },
+      { x: 6, y: 6 },
+      { x: 6, y: 20 },
+      { x: 0, y: 20 },
+    ];
+    expect(narrowWidth(ell)).toBeCloseTo(6);
+    // A 12 × 10 room with a 4' wide, 2' deep bay on one side is not measured as narrow.
+    const bay = [
+      { x: 0, y: 0 },
+      { x: 12, y: 0 },
+      { x: 12, y: 10 },
+      { x: 8, y: 10 },
+      { x: 8, y: 12 },
+      { x: 4, y: 12 },
+      { x: 4, y: 10 },
+      { x: 0, y: 10 },
+    ];
+    expect(narrowWidth(bay)).toBeGreaterThanOrEqual(10);
+  });
+});
