@@ -1101,6 +1101,74 @@ function columnSolid(c: Column, top: number, color?: string): Solid {
   };
 }
 
+/** Pieces thinner than this (m) are left out when a wall is cut round the structure. */
+const SLIVER = 0.006;
+
+/**
+ * A wall's boxes with the columns, beams and lintels that pass right through it taken out: the wall
+ * stops at a column's faces, under a beam and over a lintel, so concrete and brick never overlap.
+ * Structure narrower than the wall (a 9" beam in a 13½" wall) stays hidden inside it.
+ */
+export function cutWallsByFrame(solids: Solid[]): Solid[] {
+  const cutters = solids.filter((s) => s.role === 'column' || s.role === 'beam');
+  if (!cutters.length) return solids;
+  const reach = (s: Solid) => Math.hypot(s.w, s.d) / 2;
+  const out: Solid[] = [];
+  for (const wall of solids) {
+    if (wall.role !== 'wall' || wall.opacity !== undefined) {
+      out.push(wall);
+      continue;
+    }
+    let pieces = [wall];
+    for (const c of cutters) {
+      if (Math.hypot(c.x - wall.x, c.z - wall.z) > reach(c) + reach(wall)) continue;
+      pieces = pieces.flatMap((p) => cutBox(p, c));
+    }
+    out.push(...pieces);
+  }
+  return out;
+}
+
+/** A wall box less a column or beam box that crosses its whole thickness (unchanged otherwise). */
+function cutBox(p: Solid, c: Solid): Solid[] {
+  const turn = (((c.rotY - p.rotY) % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2);
+  if (Math.min(turn, Math.PI / 2 - turn) > 0.02) return [p];
+  // The cutter's corners in the wall's frame: along (u) and across (v), from the wall's centre.
+  const u = { x: Math.cos(p.rotY), z: -Math.sin(p.rotY) };
+  const v = { x: Math.sin(p.rotY), z: Math.cos(p.rotY) };
+  const cu = { x: Math.cos(c.rotY), z: -Math.sin(c.rotY) };
+  const cv = { x: Math.sin(c.rotY), z: Math.cos(c.rotY) };
+  const along: number[] = [];
+  const across: number[] = [];
+  for (const [a, b] of [
+    [1, 1],
+    [1, -1],
+    [-1, 1],
+    [-1, -1],
+  ]) {
+    const x = c.x + (a * c.w * cu.x) / 2 + (b * c.d * cv.x) / 2 - p.x;
+    const z = c.z + (a * c.w * cu.z) / 2 + (b * c.d * cv.z) / 2 - p.z;
+    along.push(x * u.x + z * u.z);
+    across.push(x * v.x + z * v.z);
+  }
+  const [a0, a1] = [Math.max(Math.min(...along), -p.w / 2), Math.min(Math.max(...along), p.w / 2)];
+  const [y0, y1] = [Math.max(c.y0, p.y0), Math.min(c.y0 + c.h, p.y0 + p.h)];
+  if (a1 - a0 < SLIVER || y1 - y0 < SLIVER) return [p];
+  // Only structure through the whole wall: what is narrower stays inside it.
+  const tol = 0.01;
+  if (Math.min(...across) > -p.d / 2 + tol || Math.max(...across) < p.d / 2 - tol) return [p];
+  const box = (s0: number, s1: number, b0: number, b1: number): Solid[] =>
+    s1 - s0 < SLIVER || b1 - b0 < SLIVER
+      ? []
+      : [{ ...p, x: p.x + ((s0 + s1) / 2) * u.x, z: p.z + ((s0 + s1) / 2) * u.z, w: s1 - s0, y0: b0, h: b1 - b0 }];
+  return [
+    ...box(-p.w / 2, a0, p.y0, p.y0 + p.h),
+    ...box(a1, p.w / 2, p.y0, p.y0 + p.h),
+    ...box(a0, a1, p.y0, y0),
+    ...box(a0, a1, y1, p.y0 + p.h),
+  ];
+}
+
 /** How far generated items are drawn inside their size (plan units: 4 mm), to sit inside the walls. */
 const INSET = 0.4;
 
@@ -1232,6 +1300,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
 
   const lintels = doc.layers?.lintels?.hidden ? [] : lintelsOf(doc, options.wallHeightMm);
   levels.forEach((level) => {
+    const first = solids.length;
     const base = doc.levels.length ? levelBaseM(doc, level.id, options.wallHeightMm) : plinth;
     const ground = level.id === GROUND_LEVEL;
     // The Ground (site) level: what is drawn on it stands on the finished ground.
@@ -1540,6 +1609,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         level: level.id,
       });
     }
+    // The walls stop where the floor's columns, beams and lintels are, so the two never overlap.
+    solids.splice(first, solids.length - first, ...cutWallsByFrame(solids.slice(first)));
   });
 
   const flat = [

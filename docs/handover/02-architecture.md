@@ -222,7 +222,9 @@ autosaves to local storage on every change.
   `lintelsOf(doc, wallHeightMm)` works them out once `doc.frame.madeFrom` is set (3D ids `lintel:<opening>`, picked as
   the opening; Erase turns `Opening.lintel.off`). `frameFingerprint` vs `doc.frame.madeFrom` gives the "out of date"
   hint. In 3D generated items are drawn `INSET` (4 mm) smaller so they hide in the walls; `ModelOptions.frame` keeps only
-  columns, beams, stairs and slabs (store `frameView`, which also shows the `foundations` layer on the plan).
+  columns, beams, stairs and slabs (store `frameView`, which also shows the `foundations` layer on the plan). Since
+  1.52.1 `cutWallsByFrame` cuts each floor's wall boxes round every column and beam box (lintels included) that crosses
+  the wall's whole thickness, so they never overlap; `suggestedSheets` gives each floor its own framing plan sheet.
 
 ## Drawing
 

@@ -10,8 +10,9 @@ import { levelContent } from '../lib/drawings/source';
 import { planHints } from '../lib/planHints';
 import { lintelsOf } from '../lib/structure/lintels';
 import { structureCsv } from '../lib/structure/schedule';
-import { buildModel } from '../three/model';
+import { buildModel, cutWallsByFrame } from '../three/model';
 import { createPlannerStore } from './plannerStore';
+import type { PlanDoc } from '../types';
 
 const WALL = 3048;
 const FT = 30.48;
@@ -77,7 +78,8 @@ describe('Generate structure in the app', () => {
     expect(cost.lines.some((l) => l.id === 'footing')).toBe(true);
     expect(structureCsv(doc, 'Test', 'imperial', WALL)).toContain('C1');
     const sheets = suggestedSheets({ doc, side: () => null, projectName: 'T', version: '1', date: '' });
-    expect(sheets.map((x) => x.name)).toEqual(expect.arrayContaining(['Foundation plan', 'Framing plans']));
+    expect(sheets.map((x) => x.name)).toContain('Foundation plan');
+    expect(sheets.filter((x) => x.name.endsWith(' framing plan'))).toHaveLength(1);
     // The foundation plan shows the footings; the floor plan doesn't.
     const look = { ...s(), doc };
     const plan = levelContent(look, doc, 'ground');
@@ -109,6 +111,20 @@ describe('Generate structure in the app', () => {
     s().removeStructure();
     expect(s().doc.elements.some((el) => 'auto' in el && el.auto)).toBe(false);
     expect(lintelsOf(s().doc, WALL)).toHaveLength(0);
+  });
+
+  it('cuts the walls round the columns, beams and lintels in 3D', () => {
+    const s = setup();
+    const volume = (doc: PlanDoc) =>
+      buildModel(doc, { wallHeightMm: WALL, showFurniture: true })
+        .solids.filter((p) => p.role === 'wall')
+        .reduce((t, p) => t + p.w * p.d * p.h, 0);
+    const before = volume(s().doc);
+    s().generateStructure();
+    const model = buildModel(s().doc, { wallHeightMm: WALL, showFurniture: true });
+    expect(volume(s().doc)).toBeLessThan(before * 0.9);
+    // Nothing left to cut: no wall box overlaps the structure.
+    expect(cutWallsByFrame(model.solids)).toHaveLength(model.solids.length);
   });
 
   it('turns a lintel off from its opening', () => {
