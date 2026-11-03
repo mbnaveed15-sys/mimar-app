@@ -638,7 +638,7 @@ export function suggestedSheets(src: SheetSource): Sheet[] {
         .filter((l) => doc.elements.some((el) => levelOf(el) === l.id && tradeOf(el) === trade))
         .map((l): DrawingRef => ({ kind: 'plan', levelId: l.id, services: trade })),
     );
-  // The structure, once generated: the foundation plan, and the framing of each floor.
+  // The structure, once generated: the foundation plan, then each floor's framing plan.
   if (doc.frame?.madeFrom) {
     const levels = doc.levels.filter((l) => !l.site);
     const has = (id: string, test: (el: PlanElement) => boolean) =>
@@ -646,12 +646,11 @@ export function suggestedSheets(src: SheetSource): Sheet[] {
     const lowest = levels[0];
     if (lowest && has(lowest.id, (el) => layerOf(el) === 'foundations'))
       add('Foundation plan', [{ kind: 'plan', levelId: lowest.id, services: 'foundation' }]);
-    add(
-      'Framing plans',
-      levels
-        .filter((l) => has(l.id, (el) => (el.type === 'beam' || el.type === 'slab') && layerOf(el) !== 'foundations'))
-        .map((l): DrawingRef => ({ kind: 'plan', levelId: l.id, services: 'framing' })),
-    );
+    // Each floor's framing on a sheet of its own, from the lowest up: its columns (which run on down
+    // to the footings) and the beams and slab they carry.
+    for (const l of levels)
+      if (has(l.id, (el) => (el.type === 'beam' || el.type === 'slab') && layerOf(el) !== 'foundations'))
+        add(`${l.name} framing plan`, [{ kind: 'plan', levelId: l.id, services: 'framing' }]);
   }
   const sides = sideDrawingRefs(doc).filter((ref) => src.side(ref)?.bounds);
   add(
