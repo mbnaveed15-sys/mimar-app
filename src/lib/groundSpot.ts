@@ -20,14 +20,17 @@ const SETTLES = new Set<PlanElement['type']>(['furniture', 'run', 'column', 'sta
 
 export const settlesOnGround = (el: PlanElement) => SETTLES.has(el.type);
 
-/** The house's outlines on the ground floor (null when it has no walls or rooms yet). */
+/** Rooms that are outdoors though drawn on the ground floor: their items go on the lawn, not the floor. */
+export const OUTDOOR_ROOM = /lawn|garden|drive ?way|porch|garage/i;
+
+/** The house's outlines on the ground floor (null when it has no walls or rooms yet); outdoor rooms aren't in it. */
 export function houseOutlines(doc: Pick<PlanDoc, 'elements' | 'rooms'>): Point[][] | null {
   const walls = doc.elements.filter(
     (el): el is Wall => el.type === 'wall' && el.kind !== 'boundary' && levelOf(el) === GROUND_LEVEL,
   );
   const outlines = [
     ...wallFaces(walls, true),
-    ...doc.rooms.filter((r) => levelOf(r) === GROUND_LEVEL).map((r) => r.points),
+    ...doc.rooms.filter((r) => levelOf(r) === GROUND_LEVEL && !OUTDOOR_ROOM.test(r.name)).map((r) => r.points),
   ];
   return outlines.length ? outlines : null;
 }

@@ -512,7 +512,9 @@ export function planHints(
       const g = GOOD_SIZES.find((s) => s.names.test(r.name));
       if (!g) continue;
       const floor = roomAreaSqMm(r);
-      const [short, long] = boxSides(r.points).map((u) => u * MM_PER_UNIT);
+      const [boxShort, long] = boxSides(r.points).map((u) => u * MM_PER_UNIT);
+      // A narrow leg of an L-shaped or turned room counts too.
+      const short = Math.min(boxShort, narrowWidth(r.points) * MM_PER_UNIT);
       const minW = g.widthFt * MM_PER_FOOT;
       const minL = (g.lengthFt ?? 0) * MM_PER_FOOT;
       if (floor >= g.sqft * SQ_MM_PER_SQ_FT - 1 && short >= minW - 5 && long >= minL - 5) continue;

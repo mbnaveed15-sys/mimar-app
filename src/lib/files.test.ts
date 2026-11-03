@@ -17,4 +17,10 @@ describe('plan files', () => {
     expect(() => parsePlanFile(text)).toThrow(PlanFileError);
     expect(() => parsePlanFile(text)).toThrow(message);
   });
+
+  it('refuses a file with no plan in it, or with nothing readable', () => {
+    expect(() => parsePlanFile('{"format":"mimar-plan","version":21}')).toThrow(PlanFileError);
+    const junk = { format: 'mimar-plan', version: 21, doc: { elements: [{ type: 'wall', x1: 'a' }, null, 5] } };
+    expect(() => parsePlanFile(JSON.stringify(junk))).toThrow(PlanFileError);
+  });
 });

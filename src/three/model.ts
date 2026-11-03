@@ -1,6 +1,6 @@
 import { SHAPES } from '../furniture/shapes';
 import { runSolids, serviceSolid } from './services3d';
-import { centroid, fromFurnitureLocal, wallLength, wallParam } from '../geometry';
+import { centroid, fromFurnitureLocal, pointInPolygon, wallLength, wallParam } from '../geometry';
 import { patternSpanMm } from '../lib/patterns';
 import { MM_PER_UNIT } from '../lib/scale';
 import { doorKindOf, SWING_KINDS } from '../lib/openingKinds';
@@ -9,7 +9,8 @@ import { buildableArea, stairLayout, type StairPart } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
 import { basementOf, buildingLevels, groundIndex, isSiteLevel, lawnMm, levelWallMm, slabMm } from '../lib/levels';
 import { outsideOutline } from '../lib/outline';
-import { floorVoids, slabVoids, within } from '../lib/voids';
+import { houseOutlines, OUTDOOR_ROOM } from '../lib/groundSpot';
+import { clipToConvex, floorVoids, isConvex, overlaps, slabVoids, within } from '../lib/voids';
 import {
   GROUND_LEVEL,
   levelOf,
@@ -1240,6 +1241,10 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
     // The plinth standing out past the walls' faces: the walls as wide as it, for its joins.
     const wider = ground ? plinthWalls(doc, walls) : null;
     const openings = els.filter((el): el is Opening => el.type === 'door' || el.type === 'window');
+    // On the ground floor, columns and outdoor rooms (a car porch, a driveway) outside the house stand on the
+    // ground, not up on the plinth.
+    const house = ground && !siteLevel ? houseOutlines(doc) : null;
+    const outdoors = (p: Point) => !!house && !house.some((o) => pointInPolygon(p, o));
 
     for (const wall of walls) {
       const own = openings.filter((o) => o.wallId === wall.id);
@@ -1343,24 +1348,20 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
             .map(from(el.id)),
         );
       }
-      const columnTop = el.type === 'column' ? (el.heightMm ? mmToM(el.heightMm) : wallTop) : 0;
+      // A column outside the house runs down through the plinth's height to the ground.
+      const down = el.type === 'column' && !el.elevMm && outdoors(el) ? base : 0;
+      const columnTop = el.type === 'column' ? (el.heightMm ? mmToM(el.heightMm) : wallTop) + down : 0;
+      const standing = <T extends Part>(s: T): T => (down ? { ...s, y0: s.y0 + base - down } : lift(s));
       if (el.type === 'column' && el.shape === 'round')
         blocks.push(
           from(el.id)(
-            raise(el)(lift(withFinish(el.material, 'concrete')(columnRound(el, columnTop, colorOf(el.material))))),
+            raise(el)(standing(withFinish(el.material, 'concrete')(columnRound(el, columnTop, colorOf(el.material))))),
           ),
         );
       else if (el.type === 'column')
         solids.push(
           from(el.id)(
-            raise(el)(
-              lift(
-                withFinish(
-                  el.material,
-                  'concrete',
-                )(columnSolid(el, el.heightMm ? mmToM(el.heightMm) : wallTop, colorOf(el.material))),
-              ),
-            ),
+            raise(el)(standing(withFinish(el.material, 'concrete')(columnSolid(el, columnTop, colorOf(el.material))))),
           ),
         );
       if (el.type === 'beam') {
@@ -1470,11 +1471,21 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
     for (const r of doc.rooms.filter((room) => levelOf(room) === level.id)) {
       // No floor over a double-height room below.
       if (voids.some((v) => within(r.points, v))) continue;
-      const holes = voids.filter((v) => within(v, r.points));
+      // A stairwell wholly in the room is a hole in its floor; one under two rooms, the part over each.
+      const holes = voids.flatMap((v) => {
+        if (within(v, r.points)) return [v];
+        if (!isConvex(v) || !overlaps(v, r.points)) return [];
+        const part = clipToConvex(r.points, v);
+        if (!part) return [];
+        // A hair in from the room's edge, so the floor's outline and the hole never share a line.
+        const c = part.reduce((t, p) => ({ x: t.x + p.x / part.length, y: t.y + p.y / part.length }), { x: 0, y: 0 });
+        return [part.map((p) => ({ x: p.x + (c.x - p.x) * 0.002, y: p.y + (c.y - p.y) * 0.002 }))];
+      });
       floors.push({
         points: r.points.map((p) => [m(p.x), m(p.y)] as [number, number]),
         ...(holes.length ? { holes: holes.map((h) => h.map((p) => [m(p.x), m(p.y)] as [number, number])) } : {}),
-        y: base,
+        // An outdoor room outside the house (a car porch, a driveway) is paved at the ground, just over the lawn.
+        y: OUTDOOR_ROOM.test(r.name) && outdoors(centroid(r.points)) ? base - mmToM(doc.plinthMm) + 0.01 : base,
         color: colorOf(r.material) ?? DEFAULT_FLOOR,
         finish: finishOf(r.material),
         id: r.id,

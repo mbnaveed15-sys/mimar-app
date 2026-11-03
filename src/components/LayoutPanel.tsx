@@ -4,7 +4,7 @@ import { newId } from '../lib/ids';
 import { basementOutline, buildLayout, layoutSite, terraceDepth, upperSite } from '../lib/layoutBuild';
 import {
   DEFAULT_PROGRAM,
-  generateLayouts,
+  fitLayouts,
   generateUpperLayouts,
   mirrorLayout,
   programArea,
@@ -231,6 +231,8 @@ export function LayoutPanel() {
   const program = inBasement ? programs.basement : upper ? programs.upper : programs.house;
   const [seed, setSeed] = useState(1);
   const [plans, setPlans] = useState<Layout[] | null>(null);
+  /** What was left out so the plans fit (empty when nothing was). */
+  const [dropped, setDropped] = useState('');
   const [mirrored, setMirrored] = useState<boolean[]>([]);
   const [confirm, setConfirm] = useState<number | null>(null);
 
@@ -323,9 +325,11 @@ export function LayoutPanel() {
     ? Math.round(Math.min(ft(over.fullW) * ft(over.fullD), firstMax ?? Infinity))
     : Math.round(ft(room.fullW) * ft(room.fullD));
   const make = (s: number) => {
-    const found = over
-      ? generateUpperLayouts(plan, over.W, over.D, { ...over.ground, terrace }, { seed: s })
-      : generateLayouts(plan, site.W, site.D, { seed: s });
+    const fit = over ? null : fitLayouts(plan, site.W, site.D, { seed: s });
+    const found = fit
+      ? fit.plans
+      : generateUpperLayouts(plan, over!.W, over!.D, { ...over!.ground, terrace }, { seed: s });
+    setDropped(fit?.dropped ?? '');
     setSeed(s);
     setPlans(found);
     setMirrored(found.map(() => false));
@@ -556,6 +560,11 @@ export function LayoutPanel() {
           {over
             ? `These rooms don’t fit round the stair over the ground floor (${len(over.W)} wide inside the walls). Try fewer rooms or smaller sizes.`
             : `These rooms don’t fit side by side on this plot (${len(site.W)} wide inside the walls). Try fewer rooms, smaller sizes, or leave out the drawing room or the stair.`}
+        </div>
+      )}
+      {plans && plans.length > 0 && dropped && (
+        <div className="text-ink" data-testid="layout-dropped">
+          {`The rooms ticked don’t fit side by side on this plot (${len(site.W)} wide inside the walls), so these plans leave out ${dropped}.`}
         </div>
       )}
       {plans?.map((_, i) => {

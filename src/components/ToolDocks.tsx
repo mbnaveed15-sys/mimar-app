@@ -16,11 +16,14 @@ import {
   GRIP_PX,
   packColumns,
   TOOLBARS,
+  TOUCH_BUTTON_PX,
+  BUTTON_PX,
   type DockArea,
   type ToolbarId,
 } from '../lib/toolbars';
 import type { Tool } from '../types';
 import { Icon } from './Icon';
+import { useCoarsePointer } from './useCompact';
 import { useMenuKeys } from './useFocus';
 
 /** A tool bar being dragged by its grip: where the pointer is, and where the bar would go. */
@@ -208,6 +211,8 @@ export function ToolDock({ area }: { area: DockArea }) {
   const toolsOf = useBarTools();
   const vertical = VERTICAL(area);
   const [columnsRef, height] = useHeight<HTMLDivElement>();
+  // With a finger the buttons are bigger, so fewer fit a column.
+  const coarse = useCoarsePointer();
 
   const bars = layout.map((id) => ({ id, tools: toolsOf(id) })).filter((b) => b.tools.length);
   const hasUndo = area === 'left';
@@ -242,6 +247,7 @@ export function ToolDock({ area }: { area: DockArea }) {
     ? packColumns(
         bars.map((b) => ({ id: b.id, count: b.tools.length })),
         height,
+        coarse ? TOUCH_BUTTON_PX : BUTTON_PX,
       )
     : [bars.map((b) => ({ id: b.id, from: 0, to: b.tools.length }))];
   return (

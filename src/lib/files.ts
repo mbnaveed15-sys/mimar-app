@@ -52,7 +52,14 @@ export function parsePlanFile(text: string): PlanDoc {
   if (typeof version === 'number' && version > CURRENT_VERSION) {
     throw new PlanFileError('This plan was made with a newer version of MIMAR. Please update the app.');
   }
-  return normaliseDoc(doc);
+  if (typeof doc !== 'object' || doc === null || Array.isArray(doc))
+    throw new PlanFileError('This file has no plan in it, or it is damaged.');
+  const plan = normaliseDoc(doc);
+  // A file whose items are all unreadable would open as an empty plan: say so instead, and keep the current one.
+  const raw = (doc as { elements?: unknown }).elements;
+  if (Array.isArray(raw) && raw.length && !plan.elements.length)
+    throw new PlanFileError('This file is damaged: none of its walls or other items could be read.');
+  return plan;
 }
 
 export const baseName = (name: string) => name.replace(/\.mimar$/i, '');

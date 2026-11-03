@@ -25,6 +25,8 @@ import { DEFAULT_FURNITURE_KIND, FURNITURE_CATALOG, type FurnitureKind } from '.
 import { DEFAULT_SERVICE_KIND, isService, kindPlaced, syncRuns } from '../lib/services';
 import { resetElementSize, type ScaleAxis } from '../lib/resize';
 import { detectRoom, openWallEnds, roomsAfterWalls } from '../rooms';
+import { uncoveredSpans } from '../lib/wallOverlap';
+import { stairsFollow } from '../lib/stairFollow';
 import type { Inference } from '../lib/inference';
 import {
   boundsCentre,
@@ -928,6 +930,60 @@ export function createPlannerStore(
       return { kind, heightMm: KIND_HEIGHT_MM[kind] };
     };
     /** Put a new item on the active floor. */
+    /**
+     * The walls a Wall or Rectangle side from a to b adds on the floor being viewed: a straight one only where no
+     * straight wall (here, or in `planned`) already lies along it, so walls are never doubled.
+     */
+    const wallsFor = (a: Point, b: Point, bow?: number, planned: PlanElement[] = []): PlanElement[] => {
+      const curved = !!bow && Math.abs(bow) > 0.05;
+      const spans: [Point, Point][] = curved
+        ? [[a, b]]
+        : uncoveredSpans(a, b, [...get().levelElements(), ...planned], MIN_WALL_PX);
+      return spans.map(([p, q]) =>
+        onActive({
+          id: newId(),
+          type: 'wall',
+          x1: p.x,
+          y1: p.y,
+          x2: q.x,
+          y2: q.y,
+          ...(curved && { bow }),
+          thickness: get().wallThicknessMm / MM_PER_UNIT,
+          material: activeMat(),
+          ...kindFields(get().site.wallKind),
+        } as PlanElement),
+      );
+    };
+    /**
+     * The plan with new walls added and the rooms they make: areas they close become rooms, and a room they cross
+     * is split. With `centre` (a rectangle's middle), the area round it becomes a room even inside a bigger one.
+     */
+    const roomKey = (pts: Point[]) =>
+      pts
+        .map((p) => `${Math.round(p.x)},${Math.round(p.y)}`)
+        .sort()
+        .join(';');
+    const withRooms = (d: PlanDoc, walls: PlanElement[], centre?: Point): PlanDoc => {
+      const before = get().levelElements();
+      const after = [...before, ...walls];
+      const level = get().activeLevel;
+      const levelRooms = d.rooms.filter((r) => levelOf(r) === level);
+      const { added, changed } = roomsAfterWalls(before, after, levelRooms);
+      if (centre) {
+        const made = [...added, ...changed.values()].some((pts) => pointInPolygon(centre, pts));
+        const own = made ? null : detectRoom(after, centre);
+        if (own && !levelRooms.some((r) => roomKey(r.points) === roomKey(own))) added.push(own);
+      }
+      let n = levelRooms.length;
+      const rooms = added.map((points) => onActive<Room>({ id: newId(), name: `Room ${++n}`, points }));
+      return {
+        ...d,
+        elements: [...d.elements, ...walls],
+        ...((rooms.length || changed.size) && {
+          rooms: [...d.rooms.map((r) => (changed.has(r.id) ? { ...r, points: changed.get(r.id)! } : r)), ...rooms],
+        }),
+      };
+    };
     const onActive = <T extends { levelId?: Id }>(item: T): T => {
       const level = get().activeLevel;
       return level === GROUND_LEVEL ? item : { ...item, levelId: level };
@@ -1389,14 +1445,25 @@ export function createPlannerStore(
           return;
         }
         const radius = get().site.rectRadiusMm / MM_PER_UNIT;
-        get().beginBatch();
-        if (radius > 0)
-          // Corners rounded to the tool's radius: straight sides and a quarter circle at each corner.
-          for (const piece of roundedRect(a, b, radius))
-            get().addWall({ x: piece.x1, y: piece.y1 }, { x: piece.x2, y: piece.y2 }, piece.bow);
-        else corners.forEach((p, i) => get().addWall(p, corners[(i + 1) % 4]));
-        get().addRoomAt({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-        get().endBatch();
+        const sides =
+          radius > 0
+            ? // Corners rounded to the tool's radius: straight sides and a quarter circle at each corner.
+              roundedRect(a, b, radius).map((piece) => ({
+                a: { x: piece.x1, y: piece.y1 },
+                b: { x: piece.x2, y: piece.y2 },
+                bow: piece.bow,
+              }))
+            : corners.map((p, i) => ({ a: p, b: corners[(i + 1) % 4], bow: undefined }));
+        // Sides along walls already there reuse them (a room drawn beside another shares its wall).
+        const walls: PlanElement[] = [];
+        for (const side of sides) walls.push(...wallsFor(side.a, side.b, side.bow, walls));
+        const centre = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        if (!walls.length) {
+          // Every side is there already: the room inside is picked, or made.
+          get().addRoomAt(centre);
+          return;
+        }
+        get().commit((d) => withRooms(d, walls, centre));
         get().setWarning(null);
       },
       copySelected: () => {
@@ -1530,37 +1597,13 @@ export function createPlannerStore(
       },
       addWall: (a, b, bow, makeRooms) => {
         if (Math.hypot(b.x - a.x, b.y - a.y) <= MIN_WALL_PX) return;
-        const wall: PlanElement = onActive({
-          id: newId(),
-          type: 'wall',
-          x1: a.x,
-          y1: a.y,
-          x2: b.x,
-          y2: b.y,
-          ...(bow && Math.abs(bow) > 0.05 && { bow }),
-          thickness: get().wallThicknessMm / MM_PER_UNIT,
-          material: activeMat(),
-          ...kindFields(get().site.wallKind),
-        } as PlanElement);
+        const walls = wallsFor(a, b, bow);
+        if (!walls.length) {
+          get().setWarning('A wall is already there.');
+          return;
+        }
         // A wall that closes a loop makes a room there too, in the same undo step.
-        const before = get().levelElements();
-        const level = get().activeLevel;
-        const { added, changed } = makeRooms
-          ? roomsAfterWalls(
-              before,
-              [...before, wall],
-              get().doc.rooms.filter((r) => levelOf(r) === level),
-            )
-          : { added: [], changed: new Map<Id, Point[]>() };
-        let n = get().levelRooms().length;
-        const rooms = added.map((points) => onActive<Room>({ id: newId(), name: `Room ${++n}`, points }));
-        get().commit((d) => ({
-          ...d,
-          elements: [...d.elements, wall],
-          ...((rooms.length || changed.size) && {
-            rooms: [...d.rooms.map((r) => (changed.has(r.id) ? { ...r, points: changed.get(r.id)! } : r)), ...rooms],
-          }),
-        }));
+        get().commit((d) => (makeRooms ? withRooms(d, walls) : { ...d, elements: [...d.elements, ...walls] }));
       },
       placeOpening: (type, p, typedMm) => {
         const at = openingAt(get(), type, p, typedMm);
@@ -2857,7 +2900,11 @@ export function createPlannerStore(
         });
       },
       setPlinthMm: (mm) =>
-        get().commit((doc) => (doc.plinthMm === mm ? doc : { ...doc, plinthMm: Math.max(0, Math.min(3000, mm)) })),
+        get().commit((doc) => {
+          if (doc.plinthMm === mm) return doc;
+          const wh = get().wallHeightMm;
+          return stairsFollow(doc, { ...doc, plinthMm: Math.max(0, Math.min(3000, mm)) }, wh, wh);
+        }),
       setWallThicknessMm: (wallThicknessMm) => {
         set({ wallThicknessMm });
         persistPrefs();
@@ -2880,11 +2927,15 @@ export function createPlannerStore(
       },
       setWallHeightMm: (mm) => {
         const wallHeightMm = Math.min(6000, Math.max(2000, mm));
+        // Stairs that climbed a whole floor keep climbing it.
+        const before = get().wallHeightMm;
         set({ wallHeightMm });
         persistPrefs();
         const { doc } = get();
-        if (doc.project && doc.project.wallHeightMm !== wallHeightMm)
-          set({ doc: { ...doc, project: { ...doc.project, wallHeightMm } } });
+        if (doc.project && doc.project.wallHeightMm !== wallHeightMm) {
+          const next = { ...doc, project: { ...doc.project, wallHeightMm } };
+          set({ doc: stairsFollow(doc, next, before, wallHeightMm) });
+        } else if (before !== wallHeightMm) set({ doc: stairsFollow(doc, doc, before, wallHeightMm) });
       },
       setTheme: (theme) => {
         set({ theme });
@@ -3254,7 +3305,10 @@ export function createPlannerStore(
         get().fitToPlan();
       },
       setProject: (patch) => {
-        get().commit((doc) => ({ ...doc, project: { ...projectOf(doc), ...patch } }));
+        const wh = get().wallHeightMm;
+        get().commit((doc) =>
+          stairsFollow(doc, { ...doc, project: { ...projectOf(doc), ...patch } }, wh, patch.wallHeightMm ?? wh),
+        );
         get().applyProject();
       },
       applyProject: () => {
@@ -3268,7 +3322,8 @@ export function createPlannerStore(
           if (!level || level.heightMm === mm) return doc;
           const next = { ...level, ...(mm === undefined ? {} : { heightMm: mm }) };
           if (mm === undefined) delete next.heightMm;
-          return { ...doc, levels: doc.levels.map((l) => (l === level ? next : l)) };
+          const wh = get().wallHeightMm;
+          return stairsFollow(doc, { ...doc, levels: doc.levels.map((l) => (l === level ? next : l)) }, wh, wh);
         }),
       loadDocument: (doc, file) => {
         set({ doc, savedDoc: doc, fileName: file.name, filePath: file.path, ...resetHistory });
@@ -3285,36 +3340,44 @@ const loaded = loadPlan();
 export const plannerStore = createPlannerStore(loaded.doc, loaded.warning, undefined, loadFileInfo());
 
 let autosaveWarned = false;
+/**
+ * Set when another window of MIMAR autosaved after this one: this window then stops autosaving, so it can't
+ * overwrite that window's plan (the last to save would win), and says so after each change.
+ */
+let otherWindow = false;
+const OTHER_WINDOW =
+  'MIMAR is open in another window, which saved after this one. To keep that plan, changes here are no longer autosaved: save this plan to a file (Ctrl+S), or reload to pick up the other window’s plan.';
 plannerStore.subscribe((state, prev) => {
   if (state.doc !== prev.doc) {
-    const ok = savePlan(state.doc);
-    if (!ok && !autosaveWarned)
-      state.setWarning(
-        "Autosave failed: the browser's storage is full. Save the plan to a file (Ctrl+S) so nothing is lost.",
-      );
-    autosaveWarned = !ok;
+    if (otherWindow) {
+      // After the change's own messages, so it stays on screen.
+      queueMicrotask(() => plannerStore.getState().setWarning(OTHER_WINDOW));
+    } else {
+      const ok = savePlan(state.doc);
+      if (!ok && !autosaveWarned)
+        state.setWarning(
+          "Autosave failed: the browser's storage is full. Save the plan to a file (Ctrl+S) so nothing is lost.",
+        );
+      autosaveWarned = !ok;
+    }
   }
   if (
-    state.doc !== prev.doc ||
-    state.savedDoc !== prev.savedDoc ||
-    state.fileName !== prev.fileName ||
-    state.filePath !== prev.filePath
+    !otherWindow &&
+    (state.doc !== prev.doc ||
+      state.savedDoc !== prev.savedDoc ||
+      state.fileName !== prev.fileName ||
+      state.filePath !== prev.filePath)
   )
     saveFileInfo({ name: state.fileName, path: state.filePath, dirty: state.doc !== state.savedDoc });
   if (state.theme !== prev.theme) applyTheme(state.theme);
 });
 
-// Another window of Mimar saving the same autosave: say so once, as the two would overwrite each other.
+// Another window of Mimar saving the same autosave: stop autosaving here, and say so.
 if (typeof window !== 'undefined') {
-  let told = false;
   window.addEventListener('storage', (e) => {
-    if (e.key !== STORAGE_KEY || told) return;
-    told = true;
-    plannerStore
-      .getState()
-      .setWarning(
-        'MIMAR is open in another window too. Both save to the same place, so the last change wins: close one of them, or save this plan to a file.',
-      );
+    if (e.key !== STORAGE_KEY || otherWindow) return;
+    otherWindow = true;
+    plannerStore.getState().setWarning(OTHER_WINDOW);
   });
 }
 // Before the first paint, so the app never flashes in the wrong colours.

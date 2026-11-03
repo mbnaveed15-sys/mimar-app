@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatLength, LENGTH_HINT, MAX_LENGTH_MM, readLength } from '../lib/units';
 import type { Units } from '../types';
 
@@ -13,7 +13,7 @@ interface Props {
 }
 
 /** One step of the arrows and of dragging the label: an inch, or 10 mm (Shift: a foot, or 100 mm). */
-const stepMm = (units: Units, big: boolean) => (units === 'imperial' ? 25.4 : 10) * (big ? 12 : 1);
+const stepMm = (units: Units, big: boolean) => (units === 'imperial' ? (big ? 304.8 : 25.4) : big ? 100 : 10);
 /** Pixels of drag for one step. */
 const PX_PER_STEP = 4;
 
@@ -25,6 +25,16 @@ export function LengthField({ id, label, mm, units, onCommit, min = 10 }: Props)
   const shown = mm === null ? '' : formatLength(mm, units);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  /** Set by a label drag, so the click that ends it doesn't put the caret in the box (Ctrl+Z then undoes it). */
+  const dragged = useRef(false);
+
+  // Show a value changed elsewhere (dragging, undo, another selection). The same box stays, so it keeps the
+  // focus while the arrows or the Up and Down keys step it.
+  useEffect(() => {
+    const el = input.current;
+    if (el && (document.activeElement !== el || read(el.value.trim()) !== mm)) el.value = shown;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown]);
 
   /** The length in the box now, or null when it can't be read. */
   function read(text: string): number | null {
@@ -60,12 +70,15 @@ export function LengthField({ id, label, mm, units, onCommit, min = 10 }: Props)
     const next = from + steps * stepMm(units, big);
     return Math.min(MAX_LENGTH_MM, Math.max(min, Math.round(next * 10) / 10));
   }
-  const base = () => (input.current && read(input.current.value.trim())) ?? mm ?? Math.max(min, 0);
+  /** The length to step from: what is typed, else the value; null on a "Mixed" box with nothing typed. */
+  const base = () => (input.current && read(input.current.value.trim())) ?? mm;
 
   function nudge(steps: number, big: boolean) {
     const el = input.current;
-    if (!el) return;
-    el.value = formatLength(stepped(base(), steps, big), units);
+    const from = base();
+    // Several items with different lengths have no one length to step from: each keeps its own.
+    if (!el || from === null) return;
+    el.value = formatLength(stepped(from, steps, big), units);
     commit(el);
   }
 
@@ -74,6 +87,7 @@ export function LengthField({ id, label, mm, units, onCommit, min = 10 }: Props)
     const el = input.current;
     const startX = e.clientX;
     const start = base();
+    if (start === null) return;
     let moved = false;
     const move = (ev: PointerEvent) => {
       const steps = Math.trunc((ev.clientX - startX) / PX_PER_STEP);
@@ -86,7 +100,10 @@ export function LengthField({ id, label, mm, units, onCommit, min = 10 }: Props)
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
-      if (moved) commit(el);
+      if (moved) {
+        dragged.current = true;
+        commit(el);
+      }
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -94,16 +111,23 @@ export function LengthField({ id, label, mm, units, onCommit, min = 10 }: Props)
   }
 
   const arrow =
-    'flex h-1/2 w-5 items-center justify-center text-[9px] leading-none text-muted hover:bg-sunken hover:text-ink';
+    'flex h-1/2 w-5 items-center pointer-coarse:min-h-6 pointer-coarse:w-9 justify-center text-[9px] leading-none text-muted hover:bg-sunken hover:text-ink';
   return (
     <div className="flex flex-col gap-0.5">
-      <label htmlFor={id} className="m-scrub text-muted" onPointerDown={scrub} title="Drag left or right to change">
+      <label
+        htmlFor={id}
+        className="m-scrub text-muted"
+        onPointerDown={scrub}
+        onClick={(e) => {
+          if (dragged.current) e.preventDefault();
+          dragged.current = false;
+        }}
+        title="Drag left or right to change"
+      >
         {label}
       </label>
       <div className="flex items-stretch">
         <input
-          // Remount when the value changes elsewhere (dragging, undo) so the field shows it.
-          key={shown}
           ref={input}
           id={id}
           defaultValue={shown}

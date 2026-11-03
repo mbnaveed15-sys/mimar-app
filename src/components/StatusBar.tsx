@@ -66,7 +66,9 @@ export function StatusBar() {
           onFocus={(e) => e.currentTarget.select()}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && measureText) {
-              if (applyMeasure(plannerStore, measureText)) state.setMeasureText('');
+              // A refused entry is cleared too (its message stays), so the next typing starts afresh.
+              applyMeasure(plannerStore, measureText);
+              plannerStore.getState().setMeasureText('');
             } else if (e.key === 'Escape') {
               state.setMeasureText('');
               e.currentTarget.blur();

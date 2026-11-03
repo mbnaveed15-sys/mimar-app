@@ -38,6 +38,20 @@ export function servicesHints(doc: PlanDoc, levelName: (id: Id) => string): Hint
   for (const r of runs)
     for (const id of [r.from, r.to]) if (id) joined.set(id, new Set([...(joined.get(id) ?? []), r.system]));
 
+  // Lights wired to a switch (through other lights too), wherever the switch is: a bath's is often outside its door.
+  const switched = new Set<Id>();
+  const kindOf = new Map(items.map((f) => [f.id, f.kind!] as const));
+  const next = items.filter((f) => SWITCHES.has(f.kind!)).map((f) => f.id);
+  while (next.length) {
+    const id = next.pop()!;
+    for (const r of runs) {
+      const other = r.from === id ? r.to : r.to === id ? r.from : undefined;
+      if (!other || switched.has(other) || !LIGHTS.has(kindOf.get(other)!)) continue;
+      switched.add(other);
+      next.push(other);
+    }
+  }
+
   const roomsOn = (levelId: Id) => doc.rooms.filter((r) => !r.hidden && levelOf(r) === levelId);
   const inRoom = (r: Room, f: Furniture) => pointInPolygon({ x: f.x, y: f.y }, r.points);
 
@@ -60,7 +74,8 @@ export function servicesHints(doc: PlanDoc, levelName: (id: Id) => string): Hint
           ids: [room.id],
         });
       // Lights (or a ceiling fan) with nothing to switch them on.
-      if ([...k].some((x) => LIGHTS.has(x)) && ![...k].some((x) => SWITCHES.has(x)))
+      const lights = here.filter((f) => LIGHTS.has(f.kind!) && inRoom(room, f));
+      if (lights.length && ![...k].some((x) => SWITCHES.has(x)) && !lights.some((f) => switched.has(f.id)))
         hints.push({
           id: `switch-${room.id}`,
           kind: 'services',

@@ -151,3 +151,15 @@ describe('IFC', () => {
     if (process.env.IFC_OUT) writeFileSync(process.env.IFC_OUT, ifc);
   });
 });
+
+describe('flat roofs (1.51.10)', () => {
+  it('take a roof light in the middle and on the diagonals', () => {
+    const flat: Roof = { ...roof, shape: 'flat' };
+    for (const [x, y] of [
+      [600, 400],
+      [400, 400],
+      [200, 200],
+    ])
+      expect(skylightParts(flat, { ...sky, x, y })).not.toBeNull();
+  });
+});

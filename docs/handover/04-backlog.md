@@ -187,3 +187,5 @@ only added centring and shifting a texture on an item.
 - Layout lines only snap to walls and lines (not to furniture or columns).
 - `Ctrl+L` / `Ctrl+H` in the browser version may be taken by the browser before the app sees them; the Edit menu
   and right-click menu always work.
+
+From the 1.51.9 playtest, left after 1.51.10 (see `/mnt/project-files/mimar-1.51.9-playtest/`): continuous textures along a whole wall (brick breaks at jambs, lintels and the plinth line; "centre a whole tile" per piece; per-side painted walls lack texture controls); a layout generator that fits narrower plots with all rooms; L/U stair 28 mm landing gap, stairs duplicated to the top floor, stairs past a slab edge; long room names and labels piling up at low zoom; a room drawn wholly inside another is counted in both areas; the tool rail at small desktop windows; the remaining Minor and Polish items in the reports.

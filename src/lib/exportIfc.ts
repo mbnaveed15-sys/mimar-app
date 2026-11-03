@@ -473,10 +473,17 @@ export function planToIfc(doc: PlanDoc, opts: IfcOptions): string {
   const contained = new Map<Id, string[]>();
   const byMaterial = new Map<string, string[]>();
   const elementIds = new Map<Id, string>();
+  // A shape shared by two items (a floor duplicated above gives word-for-word the same solids) is styled once:
+  // IFC allows one style on an item.
+  const styled = new Set<string>();
   for (const item of items.values()) {
     if (!item.shapes.length) continue;
     const storey = storeyOf(item.level);
-    for (const s of item.shapes) step.add(`IFCSTYLEDITEM(${s.id},(${s.look}),$)`, false);
+    for (const s of item.shapes) {
+      if (styled.has(s.id)) continue;
+      styled.add(s.id);
+      step.add(`IFCSTYLEDITEM(${s.id},(${s.look}),$)`, false);
+    }
     const rep = step.add(
       `IFCSHAPEREPRESENTATION(${body},'Body','${item.kind === 'mesh' ? 'Tessellation' : 'SweptSolid'}',${refs(item.shapes.map((s) => s.id))})`,
       false,
