@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    # Playwright 1.56 has no browser build for ubuntu-latest (26.04) yet.
+    runs-on: ubuntu-24.04
     env:
       # The Electron binary is only needed to package the app, not to test it.
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
