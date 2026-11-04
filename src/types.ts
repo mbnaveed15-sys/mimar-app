@@ -787,6 +787,11 @@ export interface FrameDoc {
   settings?: FrameSettings;
   /** What the walls, openings and floors were when the structure was last generated (for "out of date"). */
   madeFrom?: string;
+  /**
+   * How the outside looks: plastered (missing) has the walls' finish cover the columns, beams and lintels in 3D
+   * and the elevations; exposed shows the concrete frame in the walls.
+   */
+  facade?: 'exposed';
 }
 
 /** Dimension text sizes: about 2.5, 3.5 and 5 mm on paper. */

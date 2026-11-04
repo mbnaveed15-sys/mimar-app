@@ -162,6 +162,21 @@ export function StructurePanel() {
       )}
       {note && <div data-testid="frame-note">{note}</div>}
       {made && (
+        <label className="flex items-center justify-between gap-2">
+          Facade
+          <select
+            id="frame-facade"
+            data-testid="frame-facade"
+            className="rounded-sm border p-1"
+            value={doc.frame?.facade ?? 'plastered'}
+            onChange={(e) => s.setFacade(e.target.value as 'plastered' | 'exposed')}
+          >
+            <option value="plastered">Plastered: walls cover the frame</option>
+            <option value="exposed">Exposed: the concrete frame shows</option>
+          </select>
+        </label>
+      )}
+      {made && (
         <div className="flex flex-wrap gap-2">
           <label className="flex items-center gap-1">
             <input

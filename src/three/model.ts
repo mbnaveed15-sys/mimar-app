@@ -30,7 +30,7 @@ import {
 } from '../types';
 import { isBuildingWall, plinthId, thicknessOf, wallReach, wallsOf } from '../walls';
 import { plinthMaterialOf, plinthWalls } from '../lib/plinth';
-import { bendPath, openingBend, paramAlong, pointAlong, straightPieces, type Bend } from '../lib/arc';
+import { bendPath, distanceToWall, openingBend, paramAlong, pointAlong, straightPieces, type Bend } from '../lib/arc';
 import { FRAME_MM, isCurtain, metricProject, mullionStops, transomMm } from '../lib/curtain';
 import { eaveMm, gableWalls, GABLE_WALL_MM, slopedFaces, thicknessUpMm, triangulateHoles } from '../lib/roof/roof';
 import { DORMER_WALL_THICK_MM, dormerParts, skylightParts } from '../lib/roof/roofOpenings';
@@ -1461,6 +1461,26 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           : it.type === 'column'
             ? { ...it, w: it.w - INSET, h: it.h - INSET }
             : { ...it, width: (it as Beam).width - INSET };
+      // A plastered facade: generated columns and beams above the plinth (with no material of their own)
+      // are plastered like the walls round them; the only-the-structure view keeps them concrete.
+      const plaster =
+        !options.frame &&
+        doc.frame?.facade !== 'exposed' &&
+        (el.type === 'column' || el.type === 'beam') &&
+        el.auto &&
+        !el.material &&
+        !(el.type === 'beam' && el.topMm !== undefined);
+      // Plastered like the wall it stands in (or carries), in that wall's own colour.
+      const at =
+        el.type === 'column' ? el : el.type === 'beam' ? { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 } : null;
+      const host = plaster && at ? walls.find((w) => distanceToWall(w, at) <= thicknessOf(w) / 2 + 1) : undefined;
+      const look = host?.material
+        ? { color: colorOf(host.material) ?? WALL_COLOR, finish: finishOf(host.material) }
+        : null;
+      const finished = <T extends { color: string; finish?: Finish }>(sol: T): T =>
+        plaster
+          ? { ...sol, color: look?.color ?? WALL_COLOR, ...(look?.finish ? { finish: look.finish } : {}) }
+          : withFinish(el.material, 'concrete')(sol);
       if (el.type === 'column' && el.shape === 'round')
         blocks.push(
           from(el.id)(
@@ -1469,18 +1489,14 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         );
       else if (el.type === 'column')
         solids.push(
-          from(el.id)(
-            raise(el)(
-              standing(withFinish(el.material, 'concrete')(columnSolid(inset(el), columnTop, colorOf(el.material)))),
-            ),
-          ),
+          from(el.id)(raise(el)(standing(finished(columnSolid(inset(el), columnTop, colorOf(el.material)))))),
         );
       if (el.type === 'beam') {
         const b =
           el.topMm !== undefined
             ? beamAt(inset(el), mmToM(el.topMm), colorOf(el.material))
             : beamSolid(inset(el), wallTop - (el.auto ? 0.002 : 0), colorOf(el.material));
-        if (b) solids.push(from(el.id)(raise(el)(lift(withFinish(el.material, 'concrete')(b)))));
+        if (b) solids.push(from(el.id)(raise(el)(lift(finished(b)))));
       }
       if (el.type === 'stair') {
         // Steps up the plinth start from the natural ground; others from the floor they are on.
@@ -1609,8 +1625,10 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
         level: level.id,
       });
     }
-    // The walls stop where the floor's columns, beams and lintels are, so the two never overlap.
-    solids.splice(first, solids.length - first, ...cutWallsByFrame(solids.slice(first)));
+    // An exposed frame: the walls stop where the floor's columns, beams and lintels are, so the concrete
+    // shows. Plastered (the default), the walls' finish runs over them and they stay hidden in the walls.
+    if (doc.frame?.facade === 'exposed')
+      solids.splice(first, solids.length - first, ...cutWallsByFrame(solids.slice(first)));
   });
 
   const flat = [

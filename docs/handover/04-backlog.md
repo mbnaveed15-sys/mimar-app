@@ -136,6 +136,11 @@ frames; bar sizes and bending schedules; curved beams (generated as short straig
 3D (counted, not drawn); the "to be checked by a structural engineer" note in the sheet title block (it is on the panel and
 the schedule).
 
+Next for the facade (owner chose 4 Nov 2026: the plastered/exposed setting in 1.52.2, cladding as its own release):
+a **cladding skin** on outer walls (stone, tile, brick tile, ACP, glass, wood; its own thickness) covering the frame in
+3D and elevations, counted in the setbacks check (walls on the building line move in by its thickness, or it warns), in
+quantities and cost, DXF and IFC. Plastered columns use their host wall's colour only (not each face's own material).
+
 Left from basements for later: more than one basement; sloping sites; footings and columns drawn for the
 basement; ramps down for cars; air shafts or light wells drawn for you; basement figures for CDA private schemes
 and Bahria (the check says "check").

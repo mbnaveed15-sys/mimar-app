@@ -228,6 +228,7 @@ function normaliseFrame(raw: unknown): FrameDoc | undefined {
   const out: FrameDoc = {
     ...(Object.keys(settings).length ? { settings } : {}),
     ...(typeof raw.madeFrom === 'string' ? { madeFrom: raw.madeFrom.slice(0, 64) } : {}),
+    ...(raw.facade === 'exposed' ? { facade: 'exposed' as const } : {}),
   };
   return Object.keys(out).length ? out : undefined;
 }

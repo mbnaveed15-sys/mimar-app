@@ -13,7 +13,9 @@ import { newId } from '../ids';
 import { buildingLevels, levelWallMm, slabMm } from '../levels';
 import { MM_PER_UNIT } from '../scale';
 import { roomsSlab } from '../slabOutline';
-import { slabVoids } from '../voids';
+import { clipToConvex, isConvex, slabVoids } from '../voids';
+import { outsideOutline } from '../outline';
+import { insideOffset, keepInside } from './fit';
 import { isBuildingWall, thicknessOf } from '../../walls';
 import {
   GROUND_LEVEL,
@@ -344,7 +346,16 @@ export interface FrameResult {
 }
 
 /** The plan's structure, generated afresh round anything edited or locked since the last run. */
-export function generateFrame(doc: PlanDoc, wallHeightMm: number, rules: FrameRules = frameRules(doc)): FrameResult {
+/**
+ * The structure for the plan. With `keepIn` (the building line), every generated item sits inside it
+ * so the setbacks check passes; columns on outer walls also sit flush with the walls' outer faces.
+ */
+export function generateFrame(
+  doc: PlanDoc,
+  wallHeightMm: number,
+  rules: FrameRules = frameRules(doc),
+  keepIn: Point[] | null = null,
+): FrameResult {
   // Untouched generated items go; edited ones stay as the owner's own.
   let kept = 0;
   const elements: PlanElement[] = [];
@@ -414,9 +425,20 @@ export function generateFrame(doc: PlanDoc, wallHeightMm: number, rules: FrameRu
   }
   const tribSqFt = (reach: number) => (mmOf(reach) / FT) ** 2 / 4;
   const columnsOn = new Map<number, Column[]>();
+  const clusterOf = new Map<Column, Cluster>();
+  // The outer faces of each floor's walls: columns there are moved in to sit flush with them.
+  const faces = levels.map((l) => {
+    const outline = outsideOutline(wallsOn(l.id));
+    return outline ? [outline] : [];
+  });
+  const angleOf = (dir: Point) => (Math.atan2(dir.y, dir.x) * 180) / Math.PI;
   const padThick = (storeys: number) => padSize(1, storeys, rules.soilTsf).thick;
   if (framed && makes(rules, 'columns'))
     for (const k of clusters) {
+      // One move for the whole stack (sized as its lowest, biggest column), so it stays plumb.
+      const big = columnSize(k.top + 1, k.wallMm, tribSqFt(k.reach));
+      const shape = rect(k.p, u(big.along), u(big.across), angleOf(k.on.get(0)?.dir ?? k.dir));
+      const off = insideOffset(shape, [...[...k.on.keys()].flatMap((i) => faces[i]), keepIn]);
       for (let i = 0; i <= k.top; i++) {
         const level = levels[i];
         if (own('column', level.id).some((c) => Math.hypot(c.x - k.p.x, c.y - k.p.y) < u(300))) continue;
@@ -428,8 +450,8 @@ export function generateFrame(doc: PlanDoc, wallHeightMm: number, rules: FrameRu
         const col: Column = {
           id: newId(),
           type: 'column',
-          x: k.p.x,
-          y: k.p.y,
+          x: k.p.x + off.x,
+          y: k.p.y + off.y,
           w: u(size.along),
           h: u(size.across),
           shape: 'rect',
@@ -442,10 +464,15 @@ export function generateFrame(doc: PlanDoc, wallHeightMm: number, rules: FrameRu
           autoKey: `col:${level.id}:${keyOf(k.p)}`,
         };
         added.push(col);
+        clusterOf.set(col, k);
         columnsOn.set(i, [...(columnsOn.get(i) ?? []), col]);
       }
     }
-  const stopsOn = (i: number): Point[] => [...(columnsOn.get(i) ?? []), ...own('column', levels[i].id)];
+  // Beams stop at the columns' places on the wall lines (a column moved in to the outer face still ends them there).
+  const stopsOn = (i: number): Point[] => [
+    ...(columnsOn.get(i) ?? []).map((c) => clusterOf.get(c)?.p ?? c),
+    ...own('column', levels[i].id),
+  ];
 
   /** Beams along walls, between the columns on them. */
   const beamsAlong = (
@@ -672,7 +699,7 @@ export function generateFrame(doc: PlanDoc, wallHeightMm: number, rules: FrameRu
       let pads: Pad[] = [];
       const bottom = [
         ...(columnsOn.get(0) ?? []).map((c) => {
-          const k = clusters.find((cl) => Math.hypot(cl.p.x - c.x, cl.p.y - c.y) < 1)!;
+          const k = clusterOf.get(c)!;
           return { c: { x: c.x, y: c.y }, storeys: k.top + 1, reach: k.reach, deg: c.rotation ?? 0 };
         }),
         ...own('column', lowest.id).map((c) => ({
@@ -729,7 +756,9 @@ export function generateFrame(doc: PlanDoc, wallHeightMm: number, rules: FrameRu
       const plot = shown.find((el) => el.type === 'plot' && levelOf(el) === GROUND_LEVEL);
       const inside = (pts: Point[]) =>
         !plot || plot.type !== 'plot' || pts.every((q) => pointInPolygon(q, plot.points));
-      const shifted = (pts: Point[]): Point[] => {
+      const shifted = (shape: Point[]): Point[] => {
+        // Inside the building line first (an eccentric footing at the line).
+        const pts = keepInside(shape, keepIn);
         if (inside(pts) || !plot || plot.type !== 'plot') return pts;
         const c = {
           x: pts.reduce((t, q) => t + q.x, 0) / pts.length,
@@ -781,7 +810,14 @@ export function generateFrame(doc: PlanDoc, wallHeightMm: number, rules: FrameRu
       }
     } else
       footings.push(
-        ...stripFootings(wallsOn(lowest.id), STRIP_MM.width, STRIP_MM.thick, padTop(STRIP_MM.thick), lowest.id, 'sf'),
+        ...stripFootings(
+          wallsOn(lowest.id),
+          STRIP_MM.width,
+          STRIP_MM.thick,
+          padTop(STRIP_MM.thick),
+          lowest.id,
+          'sf',
+        ).map((f) => ({ ...f, points: clipInside(f.points, keepIn) })),
       );
     // Boundary walls stand on their own strip footings.
     const boundary = shown.filter(
@@ -801,6 +837,19 @@ export function generateFrame(doc: PlanDoc, wallHeightMm: number, rules: FrameRu
     added.push(...footings.filter((f) => freeOf(f.points[0]) || f.footing === 'strip'));
   }
 
+  // Beams wider than their wall (tie beams) keep inside the outer faces and the building line.
+  for (const [n, el] of added.entries()) {
+    if (el.type !== 'beam') continue;
+    const i = Math.max(
+      0,
+      levels.findIndex((l) => l.id === levelOf(el)),
+    );
+    const along = { x: el.x2 - el.x1, y: el.y2 - el.y1 };
+    const mid = { x: (el.x1 + el.x2) / 2, y: (el.y1 + el.y2) / 2 };
+    const off = insideOffset(rect(mid, Math.hypot(along.x, along.y), el.width, angleOf(along)), [...faces[i], keepIn]);
+    if (off.x || off.y)
+      added[n] = { ...el, x1: el.x1 + off.x, y1: el.y1 + off.y, x2: el.x2 + off.x, y2: el.y2 + off.y };
+  }
   for (const el of added) {
     if (el.type === 'column') counts.columns++;
     else if (el.type === 'beam') counts.beams++;
@@ -811,6 +860,13 @@ export function generateFrame(doc: PlanDoc, wallHeightMm: number, rules: FrameRu
   const result = all.map((el) => (isFrameItem(el) && el.auto ? { ...el, autoSig: frameSig(el) } : el));
   const madeFrom = frameFingerprint({ ...doc, elements: result });
   return { elements: result, madeFrom, counts, kept, problem: null };
+}
+
+/** A footing's outline cut back to the building line (moved in when the line isn't convex). */
+function clipInside(pts: Point[], line: Point[] | null): Point[] {
+  if (!line) return pts;
+  if (isConvex(line)) return clipToConvex(pts, line) ?? pts;
+  return keepInside(pts, line);
 }
 
 /** An opening's head height above its floor, mm. */
