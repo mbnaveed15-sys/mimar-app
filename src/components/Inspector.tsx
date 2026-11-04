@@ -49,6 +49,7 @@ import { PlotSidesPanel } from './PlotSides';
 import { SelectionPanel } from './SelectionPanel';
 import { GroundPlace } from './GroundPlace';
 import { PlinthPanel, WallPlinth } from './PlinthPanel';
+import { WallCladding } from './CladdingPanel';
 import { DividePanel } from './DividePanel';
 import { TexturePlaceFields } from './TexturePlaceFields';
 import { RunFields } from './RunFields';
@@ -899,6 +900,7 @@ export function Inspector() {
             )}
             {el.type === 'wall' && <WallSides wall={el} materialName={materialName} />}
             {el.type === 'wall' && <WallPlinth wall={el} />}
+            {el.type === 'wall' && <WallCladding wall={el} />}
             {(el.type === 'door' || el.type === 'window') && !el.flat && <OpeningLintel opening={el} />}
             {(el.type === 'column' || el.type === 'beam' || el.type === 'slab') && <FrameFacts el={el} />}
             <div className="flex flex-wrap gap-2">

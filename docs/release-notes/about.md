@@ -28,6 +28,7 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 
 ### Draw the plan
 - **Walls** in 4½", 9" and 13½" brick, retaining walls, and **glass curtain walls** with mullions and transoms. Walls can be straight or **curved** (true arcs).
+- **Cladding** on any wall's face: stone, marble, granite, brick tiles, tiles, terracotta, ACP, glass, wood or textured plaster, at its usual thickness, cut round the doors and windows in 3D, on the plan and in the cost, and checked against the setbacks.
 - **Curves:** a Curve tool draws arcs (by their ends and a bend, by 3 points, by their centre, or carrying on smoothly from the last piece), **circles**, **ovals** and **freeform curves**, as walls, layout lines or **paths and driveways** of a set width. Circles, ovals and closed curves get their room inside. The Rectangle tool can round its corners, and slab, slab-void, levelled-area and plot edges can be bent into curves.
 - **Rooms** show their area in sq ft or m², in **marla** (225 or 272.25 sq ft), or both, measured to the centre of the walls.
 - **Doors:** single, double, sliding, folding, rolling shutter, a plain opening, and gates. **Windows:** sliding, casement, double casement, fixed and ventilator. Placing one shows the clear distance to each corner and never puts it flush against a corner. Doors and windows in a curved wall follow the curve.

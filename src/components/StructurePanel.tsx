@@ -3,7 +3,8 @@ import { exportStructureCsv } from '../lib/exportActions';
 import { frameCount, frameFingerprint } from '../lib/structure/generate';
 import { FRAME_PARTS, SEISMIC_ZONES, frameRules, type FrameRules } from '../lib/structure/settings';
 import { plannerStore, usePlanner } from '../store/plannerStore';
-import type { FramePart, FrameSystem, SeismicZone } from '../types';
+import type { CladdingKind, FramePart, FrameSystem, SeismicZone } from '../types';
+import { CLADDING, CLADDING_KINDS } from '../lib/cladding';
 import { LengthField } from './LengthField';
 
 /** Generate structure: its settings, Generate / Regenerate, Remove, the frame-only 3D view and the schedule. */
@@ -12,6 +13,7 @@ export function StructurePanel() {
   const units = usePlanner((s) => s.units);
   const frameView = usePlanner((s) => s.frameView);
   const [note, setNote] = useState<string | null>(null);
+  const [cladKind, setCladKind] = useState<CladdingKind>('stone');
   const s = plannerStore.getState();
   const rules = frameRules(doc);
   const count = frameCount(doc);
@@ -161,6 +163,37 @@ export function StructurePanel() {
         </div>
       )}
       {note && <div data-testid="frame-note">{note}</div>}
+      <div className="flex flex-wrap items-center gap-2" data-testid="clad-outside">
+        <label className="flex items-center gap-2">
+          Clad the outside walls in
+          <select
+            id="clad-kind"
+            className="rounded-sm border p-1"
+            value={cladKind}
+            onChange={(e) => setCladKind(e.target.value as CladdingKind)}
+          >
+            {CLADDING_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {CLADDING[k].name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="m-btn"
+          data-testid="clad-all"
+          onClick={() => {
+            const n = s.cladOutsideWalls(cladKind);
+            setNote(
+              n
+                ? `Clad ${n} outside ${n === 1 ? 'wall' : 'walls'} in ${CLADDING[cladKind].name.toLowerCase()}.`
+                : 'There are no outside walls to clad.',
+            );
+          }}
+        >
+          Clad all
+        </button>
+      </div>
       {made && (
         <label className="flex items-center justify-between gap-2">
           Facade

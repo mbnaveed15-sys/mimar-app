@@ -30,6 +30,7 @@ import { curveOf, facetOutline } from '../lib/curvedEdges';
 import { outlinePoints } from '../lib/plot';
 import { isService } from '../lib/services';
 import { HatchArea, HatchDefs } from './shapes/Hatching';
+import { CLADDING_HATCH, claddingPieces } from '../lib/cladding';
 
 export interface PlanDrawingProps {
   doc: PlanDoc;
@@ -104,6 +105,13 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
         }
       }
   const wallHatch = (w: Wall) => cutHatches.get(w.id) ?? null;
+  // Cladding: a band along each clad wall's face, hatched by its kind.
+  const clads = [...claddingPieces(walls).entries()].map(([wallId, piece]) => {
+    const host = walls.find((w) => w.id === wallId)!;
+    const hatch = CLADDING_HATCH[host.cladding!.kind];
+    if (cutHatch) used.add(hatch);
+    return { wallId, hatch, d: ringsPath([piece.outline]) };
+  });
   const cutOf = (el: PlanElement) => {
     const h = cutHatches.get(el.id);
     return h ? { uid, hatch: h } : undefined;
@@ -197,6 +205,17 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
         metric={metricProject(doc)}
         hatch={wallHatches}
       />
+
+      {clads.map((c) => (
+        <g key={`clad-${c.wallId}`} data-type="cladding" data-id={c.wallId}>
+          <path
+            d={c.d}
+            style={{ fill: PLAN.paper, stroke: selected.has(c.wallId) ? PLAN.selection : PLAN.wallEdge }}
+            strokeWidth={k}
+          />
+          {cutHatch && <HatchArea uid={uid} hatch={c.hatch} d={c.d} />}
+        </g>
+      ))}
 
       {doc.elements.map((el) => {
         const isSelected = selected.has(el.id);

@@ -6,6 +6,7 @@ import { MAX_RISE_MM } from './site';
 import {
   GROUND_LEVEL,
   SITE_LEVEL,
+  type Cladding,
   type ComponentDef,
   type Group,
   type Level,
@@ -58,6 +59,7 @@ import { isPlanOverlay } from './drawings/refs';
 import { defaultMaterials, PATTERNS } from './materials';
 import { DOOR_KINDS, WINDOW_KINDS } from './openingKinds';
 import { parseHatch } from './hatch';
+import { isCladdingKind } from './cladding';
 import { MAX_PITCH_DEG, ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from './roof/roof';
 
 const ROOF_SHAPES: RoofKind[] = ['hip', 'gable', 'shed', 'flat'];
@@ -73,9 +75,20 @@ export const STORAGE_KEY = 'mimar.plan';
  * 19 the plinth's own projection and material under single walls; 20 dimension text size and ends,
  * drawing options, a pitch per roof side, skylights and dormers; 21 services (electrical, plumbing and
  * the rest) and their wire and pipe runs; 22 the structure Generate structure adds (beam kinds, footings,
- * lintels, marks and its settings).
+ * lintels, marks and its settings); 23 cladding on walls.
  */
-export const CURRENT_VERSION = 22;
+export const CURRENT_VERSION = 23;
+
+/** A wall's cladding: a known kind, with its own thickness (5 to 300 mm), side and material when set. */
+function claddingOf(raw: unknown): Cladding | undefined {
+  if (!isObject(raw) || !isCladdingKind(raw.kind)) return undefined;
+  return {
+    kind: raw.kind,
+    ...(inRange(raw.thicknessMm, 5, 300) ? { thicknessMm: raw.thicknessMm } : {}),
+    ...(raw.side === 'A' || raw.side === 'B' ? { side: raw.side } : {}),
+    ...(idOf(raw.material) ? { material: idOf(raw.material) } : {}),
+  };
+}
 
 /** The automatic plinth's projection (0 to 1 m) and material; nothing when neither is set. */
 function normalisePlinth(raw: unknown): PlinthSpec | undefined {
@@ -320,6 +333,7 @@ function normaliseElement(raw: unknown): PlanElement | null {
         ...(num('transomMm') >= 0 && { transomMm: num('transomMm') }),
         materialA: idOf(raw.materialA),
         materialB: idOf(raw.materialB),
+        ...(claddingOf(raw.cladding) && { cladding: claddingOf(raw.cladding) }),
         ...(raw.plotId !== undefined &&
         (raw.plotSide === 'splay' || (Number.isInteger(raw.plotSide) && (raw.plotSide as number) >= 0))
           ? { plotId: idOf(raw.plotId), plotSide: raw.plotSide as number | 'splay' }
