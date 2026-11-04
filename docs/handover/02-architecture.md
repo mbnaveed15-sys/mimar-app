@@ -229,6 +229,10 @@ autosaves to local storage on every change.
   keeps the walls whole and paints generated columns and beams like their host wall. `generateFrame`'s `keepIn` (the
   check's `buildingLine`) and `structure/fit.ts` keep columns flush with the outer faces and every generated item
   inside the building line.
+- Cladding (1.53): `Wall.cladding` on one face (the outside one, `outsideSide`, unless `side` is set). `claddingPieces`
+  (`lib/cladding.ts`) turns each clad wall into a thin wall on its face with a corner reach at each end; the same pieces
+  draw the plan band, the DXF layer, the setbacks outline and (through `wallParts`, cut round the host's openings) the
+  3D skin, ids `clad:<wall id>`. IFC maps those ids to an `IFCCOVERING`.
 
 ## Drawing
 

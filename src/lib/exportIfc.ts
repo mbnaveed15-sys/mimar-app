@@ -1,3 +1,4 @@
+import { CLADDING, claddingWallOf } from './cladding';
 import { doorKindOf } from './openingKinds';
 import {
   isService,
@@ -165,6 +166,7 @@ type IfcClass =
   | 'IFCCOLUMN'
   | 'IFCBEAM'
   | 'IFCFOOTING'
+  | 'IFCCOVERING'
   | 'IFCSTAIR'
   | 'IFCDOOR'
   | 'IFCWINDOW'
@@ -213,6 +215,7 @@ const DEFAULT_MATERIAL: Record<IfcClass, string> = {
   IFCCOLUMN: 'Concrete',
   IFCBEAM: 'Concrete',
   IFCFOOTING: 'Concrete',
+  IFCCOVERING: 'Cladding',
   IFCSTAIR: 'Concrete',
   IFCDOOR: 'Timber',
   IFCWINDOW: 'Glass',
@@ -359,6 +362,28 @@ export function planToIfc(doc: PlanDoc, opts: IfcOptions): string {
           level: level ?? levelOf(o),
           shapes: [],
           material: '',
+          kind: 'swept',
+        };
+        items.set(k, item);
+      }
+      return item;
+    }
+    // A wall's cladding is a covering of its own (CLADDING), named by its kind.
+    const cladOn = claddingWallOf(id);
+    const cladWall = cladOn ? byId.get(cladOn) : undefined;
+    if (cladWall?.type === 'wall' && cladWall.cladding) {
+      const lvl = level ?? levelOf(cladWall);
+      const k = `${cladWall.id}/cladding@${lvl}`;
+      let item = items.get(k);
+      if (!item) {
+        item = {
+          key: k,
+          cls: 'IFCCOVERING',
+          name: `${CLADDING[cladWall.cladding.kind].short} cladding`,
+          level: lvl,
+          predefined: '.CLADDING.',
+          shapes: [],
+          material: CLADDING[cladWall.cladding.kind].name,
           kind: 'swept',
         };
         items.set(k, item);

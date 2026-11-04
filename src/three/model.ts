@@ -8,6 +8,7 @@ import { openingProfileMm } from '../lib/shapes';
 import { buildableArea, stairLayout, type StairPart } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
 import { lintelsOf } from '../lib/structure/lintels';
+import { CLADDING, claddingPieces } from '../lib/cladding';
 import { basementOf, buildingLevels, groundIndex, isSiteLevel, lawnMm, levelWallMm, slabMm } from '../lib/levels';
 import { outsideOutline } from '../lib/outline';
 import { houseOutlines, OUTDOOR_ROOM } from '../lib/groundSpot';
@@ -1328,6 +1329,8 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
     const house = ground && !siteLevel ? houseOutlines(doc) : null;
     const outdoors = (p: Point) => !!house && !house.some((o) => pointInPolygon(p, o));
 
+    // Cladding on the walls' faces, each piece reaching round the corners to meet the next.
+    const clads = claddingPieces(walls);
     for (const wall of walls) {
       const own = openings.filter((o) => o.wallId === wall.id);
       // A retaining wall looks like concrete until it is painted.
@@ -1368,6 +1371,24 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
             }))
           : parts.panels;
       solids.push(...stepped.map(paint).map(place));
+      const clad = clads.get(wall.id);
+      if (clad && wall.cladding) {
+        const c = wall.cladding;
+        const type = CLADDING[c.kind];
+        const look = {
+          color: colorOf(c.material) ?? type.color,
+          finish: finishOf(c.material) ?? { pattern: type.pattern, spanM: mmToM(type.spanMm), name: type.name },
+        };
+        const cut = own.filter((o) => !o.flat);
+        const skin = clad.wall.bow
+          ? curvedWallParts(clad.wall, [], cut, height)
+          : wallParts(clad.wall, [], cut, height, { start: clad.start, end: clad.end });
+        const id = clad.wall.id;
+        const onSlope = <T extends Solid>(list: T[]) =>
+          onGround && terrain ? list.flatMap((x) => stepOnGround(x, terrain)) : list;
+        solids.push(...onSlope(skin.solids.filter((x) => x.role === 'wall')).map((x) => place({ ...x, ...look, id })));
+        panels.push(...skin.panels.filter((x) => x.role === 'wall').map((x) => place({ ...x, ...look, id })));
+      }
       panels.push(...panelsOf.map(paint).map(place));
       if (!isBuildingWall(wall)) continue;
       // The plinth: ground-floor walls carry on down to the ground (not under a raised wall), to the

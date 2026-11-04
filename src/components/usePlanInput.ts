@@ -24,6 +24,7 @@ import { hasOwnPlinth, plinthAt } from '../lib/plinth';
 import { snapFurniture } from '../tools/furnitureTool';
 import { plinthWallOf } from '../walls';
 import { lintelOpening } from '../lib/structure/lintels';
+import { claddingWallOf } from '../lib/cladding';
 import { panBy } from '../lib/view';
 import { MM_PER_UNIT, plannerStore, type PlannerState } from '../store/plannerStore';
 import { cornerSnap, DRAG_PX, hover, inferAt, MEASURE_TOOLS, press, release } from '../tools/controller';
@@ -359,6 +360,12 @@ export function usePlanInput(
           s.select(lintel);
           return;
         }
+        // Cladding picks the wall it is on (its settings are in the wall's Properties).
+        const cladOn = screenBox ? claddingWallOf(pickId?.(e)) : null;
+        if (cladOn && !e.shiftKey) {
+          s.select(cladOn);
+          return;
+        }
         const hit = hitAt(e, raw);
         // On the plan, the plinth standing out round the ground floor's walls is its own item too.
         const plinthHere =
@@ -401,6 +408,12 @@ export function usePlanInput(
         s.addRoomAt(raw);
         break;
       case 'paint': {
+        // Painting cladding gives it that material instead of its kind's look.
+        const cladOn = claddingWallOf(pickId?.(e));
+        if (cladOn) {
+          s.setWallCladding([cladOn], { material: s.selectedMat });
+          break;
+        }
         const painted = plinthWallOf(pickId?.(e));
         const ownWall = painted ? s.doc.elements.find((el) => el.id === painted) : undefined;
         // A wall with its own plinth settings takes the paint under it only.
@@ -440,6 +453,7 @@ export function usePlanInput(
         const click = () => {
           if (plinth) s.setWallPlinth(plinth, false);
           else if (lintelOpening(picked)) s.setOpeningLintel(lintelOpening(picked)!, { off: true });
+          else if (claddingWallOf(picked)) s.setWallCladding([claddingWallOf(picked)!], null);
           else if (wall) s.commit((doc) => trimAt(doc, wall.id, raw, 10 * s.pxUnits()));
           else if (picked) s.deleteElement(picked);
           else s.eraseAt(raw);

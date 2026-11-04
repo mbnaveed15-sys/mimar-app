@@ -135,9 +135,25 @@ export interface Wall extends Grouped {
    */
   materialA?: Id;
   materialB?: Id;
+  /** A skin of stone, tiles, ACP, glass and the like on one face (its outside one unless a side is set). */
+  cladding?: Cladding;
   /** A plot's boundary wall: the plot and the side (or its cut corner) it stands on. It follows the plot. */
   plotId?: Id;
   plotSide?: number | 'splay';
+}
+
+/** What a wall is clad in. */
+export type CladdingKind =
+  'stone' | 'marble' | 'granite' | 'brickTile' | 'tile' | 'terracotta' | 'acp' | 'glass' | 'wood' | 'plaster';
+
+export interface Cladding {
+  kind: CladdingKind;
+  /** With its fixing, mm; the kind's usual thickness when missing. */
+  thicknessMm?: number;
+  /** The face it is on; the wall's outside face (away from the building) when missing. */
+  side?: 'A' | 'B';
+  /** A material of the plan's own, instead of the kind's look. */
+  material?: Id;
 }
 
 /** An opening's own lintel settings; the structure's own when missing. */

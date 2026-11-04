@@ -1,3 +1,4 @@
+import { CLADDING_HATCH, claddingPieces } from './cladding';
 import { lintelsOf } from './structure/lintels';
 import {
   centroid,
@@ -68,6 +69,7 @@ const LAYERS = {
   'A-FLOR-BLCK': { color: 8, ltype: 'CONTINUOUS' },
   'A-WALL-PROJ': { color: 7, ltype: 'DASHED' },
   'A-WALL-PLIN': { color: 8, ltype: 'CONTINUOUS' },
+  'A-WALL-CLAD': { color: 6, ltype: 'CONTINUOUS' },
   'S-WALL-RETN': { color: 1, ltype: 'CONTINUOUS' },
   'A-ANNO-SECT': { color: 2, ltype: 'DASHED' },
   'A-ANNO-SYMB': { color: 2, ltype: 'CONTINUOUS' },
@@ -640,6 +642,13 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
 
   // The plinth where it stands out past the ground floor's walls.
   for (const { points } of plinthOutlines(doc)) dxf.poly('A-WALL-PLIN', points);
+
+  // Cladding on the walls' faces, hatched by its kind.
+  for (const [wallId, piece] of claddingPieces(walls)) {
+    dxf.poly('A-WALL-CLAD', piece.outline);
+    const kind = walls.find((w) => w.id === wallId)?.cladding?.kind;
+    if (kind && doc.drawing?.planHatch !== false) hatchToDxf(dxf, 'A-WALL-PATT', CLADDING_HATCH[kind], piece.outline);
+  }
 
   for (const wall of walls) {
     // A basement's retaining walls are RCC: on the structure layers; glass walls on the glazing ones.

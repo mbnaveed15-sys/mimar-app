@@ -14,7 +14,8 @@ import { dormerParts, skylightParts } from './roof/roofOpenings';
 import { polygonArea } from '../rooms';
 import { outsideOutline } from './outline';
 import { DOOR_HEAD_MM, WINDOW_HEAD_MM, WINDOW_SILL_MM } from '../three/model';
-import { GROUND_LEVEL, levelOf, type Opening, type PlanDoc, type Point, type Room } from '../types';
+import { GROUND_LEVEL, levelOf, type CladdingKind, type Opening, type PlanDoc, type Point, type Room } from '../types';
+import { cladable, claddingSide, sideSign } from './cladding';
 import { levelWallMm, slabMm } from './levels';
 import { thicknessOf, wallsOf } from '../walls';
 import { MM_PER_UNIT } from './scale';
@@ -86,6 +87,8 @@ export interface FloorQuantities {
   footingSqft: number;
   /** Lintels over the openings (generated with the structure), cft. */
   lintelCft: number;
+  /** Cladding on walls' faces by kind (the face less its openings), sqft; those faces aren't plastered. */
+  cladding: Partial<Record<CladdingKind, number>>;
 }
 
 /** A basement floor (raft) assumed 12" thick. */
@@ -139,6 +142,7 @@ function emptyFloor(levelId: string, name: string): FloorQuantities {
     footingCft: 0,
     footingSqft: 0,
     lintelCft: 0,
+    cladding: {},
   };
 }
 
@@ -239,7 +243,14 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
 
       // Each face: towards a room is inside; otherwise (and boundary walls) outside.
       const face = Math.max(0, L * H - holes);
+      const cladSign = wall.cladding && cladable(wall) ? sideSign(claddingSide(wall, walls)) : 0;
       for (const sign of [1, -1]) {
+        // A clad face is measured for its cladding instead of plaster and paint.
+        if (sign === cladSign) {
+          const kind = wall.cladding!.kind;
+          q.cladding[kind] = (q.cladding[kind] ?? 0) + face;
+          continue;
+        }
         const off = (thicknessOf(wall) / 2 + 5) * sign;
         const u = directionAlong(wall, 0.5);
         const mid = { x: centre.x - u.y * off, y: centre.y + u.x * off };
@@ -378,6 +389,8 @@ export function sumFloors(floors: FloorQuantities[]): FloorQuantities {
     }
     for (const [k, v] of Object.entries(f.flooring) as [FloorKind, number][])
       total.flooring[k] = (total.flooring[k] ?? 0) + v;
+    for (const [k, v] of Object.entries(f.cladding ?? {}) as [CladdingKind, number][])
+      total.cladding[k] = (total.cladding[k] ?? 0) + v;
   }
   return total;
 }

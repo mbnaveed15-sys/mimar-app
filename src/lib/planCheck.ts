@@ -47,6 +47,7 @@ import { visibleShapes } from './itemShape';
 import { isHidden } from './layers';
 import { directionAlong, pointAlong, runLength } from './arc';
 import { voidsOver, within } from './voids';
+import { claddingPieces, type CladPiece } from './cladding';
 
 export type CheckStatus = 'ok' | 'fail' | 'check';
 
@@ -330,6 +331,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
     const hard: Id[] = [];
     const soft: Id[] = [];
     const walls = wallsOf(doc.elements);
+    const clads = claddingPieces(walls);
     // A car porch may stand in the side setback: its columns, roof slab and beams are allowed there.
     const porches = doc.rooms.filter((r) => !r.hidden && PORCH_ROOM.test(r.name)).map((r) => r.points);
     const porchPart = (el: PlanElement, pts: Point[]) =>
@@ -337,7 +339,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       porches.some((outline) => within(pts, grow(outline, PORCH_SLACK)));
     for (const el of doc.elements) {
       if (isHidden(el, { layers: doc.layers, showFurniture: true })) continue;
-      const pts = itemOutline(el, walls);
+      const pts = itemOutline(el, walls, clads);
       if (!pts || !outside(pts) || porchPart(el, pts) || boundaryFooting(el)) continue;
       if (el.type === 'wall' || (el.type === 'block' && el.heightMm > 0)) hard.push(el.id);
       else soft.push(el.id);
@@ -765,10 +767,13 @@ export function mumtyRows(
  * count): a curved wall round its curve, a round column round its circle, a stair's own steps, not
  * the box round them.
  */
-function itemOutline(el: PlanElement, walls: Wall[]): Point[] | null {
+function itemOutline(el: PlanElement, walls: Wall[], clads?: Map<Id, CladPiece>): Point[] | null {
   switch (el.type) {
     case 'wall':
-      return el.kind === 'boundary' ? null : visibleShapes(el, walls).flat();
+      // A wall's cladding is part of the building.
+      return el.kind === 'boundary'
+        ? null
+        : [...visibleShapes(el, walls).flat(), ...(clads?.get(el.id)?.outline ?? [])];
     case 'column':
     case 'beam':
     case 'slab':
@@ -796,13 +801,14 @@ function sideRows(doc: PlanDoc, plot: Plot, len: (mm: number) => string, clause:
   const outline = outlinePoints(plot);
   const items: { id: Id; pts: Point[] }[] = [];
   const walls = wallsOf(doc.elements);
+  const clads = claddingPieces(walls);
   for (const el of doc.elements) {
     if (
       isHidden(el, { layers: doc.layers, showFurniture: true }) ||
       !((el.type === 'wall' && el.kind !== 'boundary') || (el.type === 'block' && el.heightMm > 0 && !el.path))
     )
       continue;
-    const pts = itemOutline(el, walls);
+    const pts = itemOutline(el, walls, clads);
     if (pts && pts.some((p) => pointInPolygon(p, outline))) items.push({ id: el.id, pts });
   }
   const rows: CheckRow[] = [];

@@ -4,6 +4,8 @@
  * replaced with a contractor's; everything here is indicative.
  */
 import type { FloorKind, FloorQuantities } from './quantities';
+import type { CladdingKind } from '../types';
+import { CLADDING, CLADDING_KINDS } from './cladding';
 
 export type CostUnit = 'cft' | 'sqft' | 'kg' | 'no';
 
@@ -33,6 +35,8 @@ export interface Rates {
   electrical: number;
   plumbing: number;
   flooring: Record<Exclude<FloorKind, 'none'>, number>;
+  /** Cladding by kind, supplied and fixed, per sqft. */
+  cladding: Record<CladdingKind, number>;
   /** Covered area × rate, for a quick check (per sqft of covered area). */
   area: Record<Grade, number>;
 }
@@ -92,6 +96,18 @@ export const STARTER_RATES: Rates = {
   electrical: 380,
   plumbing: 450,
   flooring: { tiles: 380, marble: 480, granite: 850, wood: 750, stone: 300, concrete: 120, other: 300 },
+  cladding: {
+    stone: 650,
+    marble: 900,
+    granite: 1200,
+    brickTile: 450,
+    tile: 380,
+    terracotta: 900,
+    acp: 1100,
+    glass: 2200,
+    wood: 950,
+    plaster: 160,
+  },
   area: { grey: 3900, basic: 5800, standard: 7200, premium: 9800 },
 };
 
@@ -137,14 +153,18 @@ export interface Estimate {
 /** A rate by its key ("brickwork", "flooring.tiles", "area.standard"). */
 export function rateOf(rates: Rates, key: string): number {
   const [a, b] = key.split('.');
-  const v = b ? (rates[a as 'flooring' | 'area'] as Record<string, number>)[b] : rates[a as keyof Rates];
+  const v = b ? (rates[a as 'flooring' | 'area' | 'cladding'] as Record<string, number>)[b] : rates[a as keyof Rates];
   return typeof v === 'number' ? v : 0;
 }
 
 /** The rates with one changed. */
 export function withRate(rates: Rates, key: string, value: number): Rates {
   const [a, b] = key.split('.');
-  if (b) return { ...rates, [a]: { ...(rates[a as 'flooring' | 'area'] as Record<string, number>), [b]: value } };
+  if (b)
+    return {
+      ...rates,
+      [a]: { ...(rates[a as 'flooring' | 'area' | 'cladding'] as Record<string, number>), [b]: value },
+    };
   return { ...rates, [a]: value };
 }
 
@@ -219,6 +239,14 @@ export function estimate(q: FloorQuantities, rates: Rates, ratios: Ratios): Esti
   add('doors', 'Doors (frame, shutter and fittings)', q.doors, 'no', 'door');
   add('windows', 'Windows (aluminium and glass)', q.windowSqft, 'sqft', 'window');
   add('glazing', 'Glass curtain walls (aluminium frame and glass)', q.glazingSqft, 'sqft', 'glazing');
+  for (const kind of CLADDING_KINDS)
+    add(
+      `clad-${kind}`,
+      `Cladding: ${CLADDING[kind].name.toLowerCase()}`,
+      q.cladding?.[kind] ?? 0,
+      'sqft',
+      `cladding.${kind}`,
+    );
   add('roof', 'Pitched roof covering (sloping area)', q.roofSqft, 'sqft', 'roof');
   add('electrical', 'Electrical wiring and fittings (per sqft covered)', q.coveredSqft, 'sqft', 'electrical', true);
   add('plumbing', 'Plumbing and sanitary fittings (per sqft covered)', q.coveredSqft, 'sqft', 'plumbing', true);

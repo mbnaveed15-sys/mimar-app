@@ -8,6 +8,7 @@ import {
   placeOnWall,
   planBounds,
   pointInPolygon,
+  pointToSegmentDistance,
   reattachOpening,
   wallLength,
 } from '../geometry';
@@ -75,7 +76,8 @@ import {
 } from '../lib/levels';
 import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
-import { CURTAIN_MM, hasPlinth, isBuildingWall } from '../walls';
+import { CURTAIN_MM, hasPlinth, isBuildingWall, wallsOf } from '../walls';
+import { cladable, claddingPieces, outsideSide } from '../lib/cladding';
 import { distanceToWall, wallPath, type WallLine } from '../lib/arc';
 import { planCheck, PORCH_ROOM } from '../lib/planCheck';
 import { pathOutline, roundedRect, type CurveMode } from '../lib/curves';
@@ -120,6 +122,8 @@ import type {
   GroundSettings,
   DoorKind,
   Opening,
+  Cladding,
+  CladdingKind,
   ShapeKind,
   Wall,
   WallKind,
@@ -386,6 +390,13 @@ export interface PlannerState {
   setFrameView: (on: boolean) => void;
   /** Plastered: the walls' finish covers the frame in 3D and elevations; exposed: the concrete shows. */
   setFacade: (facade: 'plastered' | 'exposed') => void;
+  /**
+   * Clad walls (a patch on their cladding; null takes it off). A new kind takes its own usual thickness
+   * unless the patch gives one. Says how many walls' cladding crosses the building line.
+   */
+  setWallCladding: (ids: Id[], patch: Partial<Cladding> | null) => void;
+  /** Clad every floor's outside walls in one kind (one undo step); returns how many walls were clad. */
+  cladOutsideWalls: (kind: CladdingKind) => number;
   /** The plinth's own projection (mm) and material under one wall; null goes back to the plinth's own setting. */
   setWallPlinthOwn: (wallId: Id, patch: { projectMm?: number | null; material?: Id | null }) => void;
   /** Build the automatic plinth under a wall, or leave it off. */
@@ -1068,6 +1079,19 @@ export function createPlannerStore(
     };
     // Every change: a plot's boundary walls follow it, then dimensions follow what they measure.
     const settle = (prev: PlanDoc, next: PlanDoc) => syncDimensions(prev, syncRuns(syncPlotWalls(prev, next)));
+    /** Warn when walls' cladding reaches past the building line (the plan check fails them). */
+    const warnCladding = (ids: Id[]) => {
+      const doc = get().doc;
+      const line = planCheck(doc, { wallHeightMm: get().wallHeightMm, units: 'metric' })?.buildingLine;
+      if (!line) return;
+      const pieces = claddingPieces(wallsOf(doc.elements));
+      const near = (p: Point) => line.some((a, i) => pointToSegmentDistance(p, a, line[(i + 1) % line.length]) <= 1);
+      const out = ids.filter((id) => pieces.get(id)?.outline.some((p) => !pointInPolygon(p, line) && !near(p))).length;
+      if (out)
+        get().setWarning(
+          `The cladding on ${out} ${out === 1 ? 'wall reaches' : 'walls reach'} past the building line: the plan check counts it as the building.`,
+        );
+    };
     const updateElements = (fn: (els: PlanElement[]) => PlanElement[]) =>
       get().commit((doc) => {
         const elements = fn(doc.elements);
@@ -2194,6 +2218,36 @@ export function createPlannerStore(
           }),
         ),
       setFrameView: (frameView) => set({ frameView }),
+      setWallCladding: (ids, patch) => {
+        const want = new Set(ids);
+        get().commit((doc) => ({
+          ...doc,
+          elements: doc.elements.map((el) => {
+            if (!want.has(el.id) || el.type !== 'wall' || !cladable(el)) return el;
+            if (!patch) {
+              const next = { ...el };
+              delete next.cladding;
+              return next;
+            }
+            const kind = patch.kind ?? el.cladding?.kind;
+            if (!kind) return el;
+            const own: Cladding = { ...(kind === el.cladding?.kind ? el.cladding : {}), ...patch, kind };
+            for (const k of ['thicknessMm', 'side', 'material'] as const) if (own[k] === undefined) delete own[k];
+            return { ...el, cladding: own };
+          }),
+        }));
+        warnCladding(ids);
+      },
+      cladOutsideWalls: (kind) => {
+        const doc = get().doc;
+        const walls = wallsOf(doc.elements);
+        const ids = walls
+          .filter((w) => isBuildingWall(w) && cladable(w) && !w.hidden && outsideSide(w, walls))
+          .map((w) => w.id);
+        if (!ids.length) return 0;
+        get().setWallCladding(ids, { kind });
+        return ids.length;
+      },
       setFacade: (facade) =>
         get().commit((doc) => {
           if ((doc.frame?.facade ?? 'plastered') === facade) return doc;
