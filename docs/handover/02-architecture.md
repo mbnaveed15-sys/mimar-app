@@ -225,6 +225,10 @@ autosaves to local storage on every change.
   columns, beams, stairs and slabs (store `frameView`, which also shows the `foundations` layer on the plan). Since
   1.52.1 `cutWallsByFrame` cuts each floor's wall boxes round every column and beam box (lintels included) that crosses
   the wall's whole thickness, so they never overlap; `suggestedSheets` gives each floor its own framing plan sheet.
+  Since 1.52.2 that cut only runs with an exposed facade (`doc.frame.facade === 'exposed'`); plastered (the default)
+  keeps the walls whole and paints generated columns and beams like their host wall. `generateFrame`'s `keepIn` (the
+  check's `buildingLine`) and `structure/fit.ts` keep columns flush with the outer faces and every generated item
+  inside the building line.
 
 ## Drawing
 

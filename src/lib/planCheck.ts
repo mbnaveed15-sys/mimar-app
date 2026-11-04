@@ -74,6 +74,8 @@ export interface PlanCheck {
   note: string;
   /** A building's rule under its authority, where Mimar has one: its rows are added in `fullCheck.ts`. */
   building?: BuildingRule;
+  /** The building line checked against (the plot inset by the setbacks used). */
+  buildingLine?: Point[];
 }
 
 export const SQ_MM_PER_SQ_FT = 92903.04;
@@ -294,6 +296,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       clause: '2.1.3',
     });
 
+  let buildingLine: Point[] | undefined;
   {
     // Setbacks: the plan's own, if they are the bylaws' either way round; otherwise the bylaws'.
     // Without a table row (or for a building), the plot's own setbacks as typed.
@@ -322,6 +325,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       };
     }
     const line = buildableArea(ruled);
+    buildingLine = line;
     const outside = (pts: Point[]) => pts.some((p) => !inside(p, line));
     const hard: Id[] = [];
     const soft: Id[] = [];
@@ -334,7 +338,7 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
     for (const el of doc.elements) {
       if (isHidden(el, { layers: doc.layers, showFurniture: true })) continue;
       const pts = itemOutline(el, walls);
-      if (!pts || !outside(pts) || porchPart(el, pts)) continue;
+      if (!pts || !outside(pts) || porchPart(el, pts) || boundaryFooting(el)) continue;
       if (el.type === 'wall' || (el.type === 'block' && el.heightMm > 0)) hard.push(el.id);
       else soft.push(el.id);
     }
@@ -676,8 +680,11 @@ export function planCheck(doc: PlanDoc, ctx: { wallHeightMm: number; units: Unit
       });
   }
 
-  return { authority, rule, plot, rows, note };
+  return { authority, rule, plot, rows, note, ...(buildingLine ? { buildingLine } : {}) };
 }
+
+/** A generated strip footing under a boundary wall: part of the boundary wall, allowed on the plot line. */
+const boundaryFooting = (el: PlanElement) => el.type === 'slab' && !!el.footing && !!el.autoKey?.startsWith('bf:');
 
 /** The mumty's rows: its area, height and width, against its limits. */
 export function mumtyRows(

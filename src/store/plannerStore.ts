@@ -77,7 +77,7 @@ import { projectOf, unitsFor } from '../lib/project';
 import { outsideOutline } from '../lib/outline';
 import { CURTAIN_MM, hasPlinth, isBuildingWall } from '../walls';
 import { distanceToWall, wallPath, type WallLine } from '../lib/arc';
-import { PORCH_ROOM } from '../lib/planCheck';
+import { planCheck, PORCH_ROOM } from '../lib/planCheck';
 import { pathOutline, roundedRect, type CurveMode } from '../lib/curves';
 import { splitSolidsByLine } from '../lib/splitSolids';
 import { DEFAULT_SUN } from '../lib/sun';
@@ -384,6 +384,8 @@ export interface PlannerState {
   /** The 3D view shows only the structure (walls, doors, windows, furniture and the ground hidden). */
   frameView: boolean;
   setFrameView: (on: boolean) => void;
+  /** Plastered: the walls' finish covers the frame in 3D and elevations; exposed: the concrete shows. */
+  setFacade: (facade: 'plastered' | 'exposed') => void;
   /** The plinth's own projection (mm) and material under one wall; null goes back to the plinth's own setting. */
   setWallPlinthOwn: (wallId: Id, patch: { projectMm?: number | null; material?: Id | null }) => void;
   /** Build the automatic plinth under a wall, or leave it off. */
@@ -2152,7 +2154,13 @@ export function createPlannerStore(
         }),
       generateStructure: () => {
         const doc = get().doc;
-        const r = generateFrame(doc, get().wallHeightMm, frameRules(doc));
+        const r = generateFrame(
+          doc,
+          get().wallHeightMm,
+          frameRules(doc),
+          // Inside the building line, so the setbacks check passes.
+          planCheck(doc, { wallHeightMm: get().wallHeightMm, units: 'metric' })?.buildingLine ?? null,
+        );
         if (r.problem) {
           get().setWarning(r.problem);
           return null;
@@ -2186,6 +2194,16 @@ export function createPlannerStore(
           }),
         ),
       setFrameView: (frameView) => set({ frameView }),
+      setFacade: (facade) =>
+        get().commit((doc) => {
+          if ((doc.frame?.facade ?? 'plastered') === facade) return doc;
+          const frame = { ...doc.frame };
+          if (facade === 'exposed') frame.facade = 'exposed';
+          else delete frame.facade;
+          const next: PlanDoc = { ...doc, frame };
+          if (!Object.keys(frame).length) delete next.frame;
+          return next;
+        }),
       setPlinth: (patch) =>
         get().commit((doc) => {
           const merged: PlinthSpec = { ...doc.plinth, ...patch };

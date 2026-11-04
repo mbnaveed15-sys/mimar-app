@@ -94,10 +94,11 @@ describe('generate structure', () => {
     const door: Opening = { id: 'o2', type: 'door', wallId: 's', x: 7.5 * U, y: 0, angle: 0, width: 8 * U };
     doc.elements.push(win, door);
     const cols = of({ ...doc, elements: generateFrame(doc, 3048).elements }, 'column');
-    const onEast = cols.filter((c) => Math.abs(c.x - 30 * U) < 1 && c.y > 1 && c.y < 20 * U - 1);
+    // (Columns on outer walls move in to sit flush with the outer face: up to 1½".)
+    const onEast = cols.filter((c) => Math.abs(c.x - 30 * U) < 6 && c.y > U && c.y < 19 * U);
     expect(onEast).toHaveLength(1);
     expect(Math.abs(onEast[0].y - 10 * U)).toBeGreaterThan(3 * U);
-    const onSouth = cols.filter((c) => Math.abs(c.y) < 1 && c.x > 1 && c.x < 15 * U - 1);
+    const onSouth = cols.filter((c) => Math.abs(c.y) < 6 && c.x > U && c.x < 14 * U);
     expect(onSouth).toHaveLength(2);
     expect(onSouth.every((c) => Math.abs(c.x - 7.5 * U) > 4 * U)).toBe(true);
   });
@@ -116,7 +117,7 @@ describe('generate structure', () => {
     const out = { ...doc, elements: generateFrame(doc, 3048).elements };
     const ground = of(out, 'column').filter((c) => !c.levelId);
     // The tee at (30, 10) on the first floor needs a column under it on the ground floor.
-    expect(ground.some((c) => Math.abs(c.x - 30 * U) < 1 && Math.abs(c.y - 10 * U) < 1)).toBe(true);
+    expect(ground.some((c) => Math.abs(c.x - 30 * U) < 6 && Math.abs(c.y - 10 * U) < 1)).toBe(true);
     // A beam on the ground floor carries the first floor's cross wall (no wall under it).
     const carry = of(out, 'beam').filter(
       (b) => !b.levelId && !b.kind && Math.abs(b.y1 - 10 * U) < 1 && Math.abs(b.y2 - 10 * U) < 1,
