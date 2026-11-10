@@ -5,7 +5,7 @@ import { projectOf } from '../lib/project';
 import { elementOutline, planBounds } from '../geometry';
 import { formatLength } from '../lib/units';
 import { PLAN } from '../theme/plan';
-import type { AreaIn, EdgeCurve, MarlaSqFt, PlanDoc, PlanElement, Point, Room, Units, Wall } from '../types';
+import type { AreaIn, EdgeCurve, MarlaSqFt, Opening, PlanDoc, PlanElement, Point, Room, Units, Wall } from '../types';
 import { labelPoint, wallFaces } from '../rooms';
 import { metricProject } from '../lib/curtain';
 import { plinthOutlines } from '../lib/plinth';
@@ -30,7 +30,7 @@ import { curveOf, facetOutline } from '../lib/curvedEdges';
 import { outlinePoints } from '../lib/plot';
 import { isService } from '../lib/services';
 import { HatchArea, HatchDefs } from './shapes/Hatching';
-import { CLADDING_HATCH, claddingPieces } from '../lib/cladding';
+import { CLADDING_HATCH, claddingBands, claddingPieces } from '../lib/cladding';
 
 export interface PlanDrawingProps {
   doc: PlanDoc;
@@ -110,7 +110,10 @@ export const PlanDrawing = memo(function PlanDrawing(props: PlanDrawingProps) {
     const host = walls.find((w) => w.id === wallId)!;
     const hatch = CLADDING_HATCH[host.cladding!.kind];
     if (cutHatch) used.add(hatch);
-    return { wallId, hatch, d: ringsPath([piece.outline]) };
+    const own = doc.elements.filter(
+      (el): el is Opening => (el.type === 'door' || el.type === 'window') && el.wallId === wallId,
+    );
+    return { wallId, hatch, d: ringsPath(claddingBands(piece, own)) };
   });
   const cutOf = (el: PlanElement) => {
     const h = cutHatches.get(el.id);

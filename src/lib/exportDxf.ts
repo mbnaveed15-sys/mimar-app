@@ -1,4 +1,4 @@
-import { CLADDING_HATCH, claddingPieces } from './cladding';
+import { CLADDING_HATCH, claddingBands, claddingPieces } from './cladding';
 import { lintelsOf } from './structure/lintels';
 import {
   centroid,
@@ -645,9 +645,15 @@ export function planToDxf(doc: PlanDoc, opts: DxfOptions): string {
 
   // Cladding on the walls' faces, hatched by its kind.
   for (const [wallId, piece] of claddingPieces(walls)) {
-    dxf.poly('A-WALL-CLAD', piece.outline);
     const kind = walls.find((w) => w.id === wallId)?.cladding?.kind;
-    if (kind && doc.drawing?.planHatch !== false) hatchToDxf(dxf, 'A-WALL-PATT', CLADDING_HATCH[kind], piece.outline);
+    const own = doc.elements.filter(
+      (el): el is Opening => (el.type === 'door' || el.type === 'window') && el.wallId === wallId,
+    );
+    // It stops at the wall's doors and windows.
+    for (const band of claddingBands(piece, own)) {
+      dxf.poly('A-WALL-CLAD', band);
+      if (kind && doc.drawing?.planHatch !== false) hatchToDxf(dxf, 'A-WALL-PATT', CLADDING_HATCH[kind], band);
+    }
   }
 
   for (const wall of walls) {

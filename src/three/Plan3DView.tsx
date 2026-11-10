@@ -29,6 +29,7 @@ import { buildMeshes, disposeGroup, KEPT, keep } from './meshes';
 import { shadowsOn, sunDirection } from '../lib/sun';
 import { SunPanel } from '../components/SunPanel';
 import { plinthId } from '../walls';
+import { CLAD_PREFIX } from '../lib/cladding';
 
 function hasWebGL(): boolean {
   try {
@@ -139,7 +140,12 @@ const levelIndex = (s: PlannerState, id: string | undefined) =>
  * an item on another floor moves drawing to that floor.
  */
 function styleMeshes(stage: Stage, s: PlannerState) {
-  const selected = new Set(s.selectedPlinth ? [...s.selectedIds, plinthId(s.selectedPlinth)] : s.selectedIds);
+  // A selected wall's cladding is tinted with it.
+  const selected = new Set([
+    ...s.selectedIds,
+    ...s.selectedIds.map((id) => `${CLAD_PREFIX}${id}`),
+    ...(s.selectedPlinth ? [plinthId(s.selectedPlinth)] : []),
+  ]);
   const erasing = new Set(s.draft?.type === 'erase' ? s.draft.ids : []);
   const cache = (look: string) => {
     let m = stage.extras.get(look);

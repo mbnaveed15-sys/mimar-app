@@ -14,8 +14,17 @@ import { dormerParts, skylightParts } from './roof/roofOpenings';
 import { polygonArea } from '../rooms';
 import { outsideOutline } from './outline';
 import { DOOR_HEAD_MM, WINDOW_HEAD_MM, WINDOW_SILL_MM } from '../three/model';
-import { GROUND_LEVEL, levelOf, type CladdingKind, type Opening, type PlanDoc, type Point, type Room } from '../types';
-import { cladable, claddingSide, sideSign } from './cladding';
+import {
+  GROUND_LEVEL,
+  levelOf,
+  type CladdingKind,
+  type Opening,
+  type PlanDoc,
+  type Point,
+  type Room,
+  type Slab,
+} from '../types';
+import { cladable, claddingOverSlabMm, claddingSide, sideSign } from './cladding';
 import { levelWallMm, slabMm } from './levels';
 import { thicknessOf, wallsOf } from '../walls';
 import { MM_PER_UNIT } from './scale';
@@ -184,6 +193,7 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
     const rooms = doc.rooms.filter((r) => levelOf(r) === level.id);
     const walls = wallsOf(els);
     const openings = els.filter((el): el is Opening => el.type === 'door' || el.type === 'window');
+    const slabsHere = els.filter((el): el is Slab => el.type === 'slab');
     // Rooms and doors looked up by place and by wall, so big plans measure quickly.
     const roomIndex = new GridIndex<Room>(cellFor(rooms.map((r) => boxOf(r.points))));
     for (const r of rooms) roomIndex.add(r, boxOf(r.points));
@@ -248,7 +258,9 @@ export function quantities(doc: PlanDoc, wallHeightMm: number): Quantities {
         // A clad face is measured for its cladding instead of plaster and paint.
         if (sign === cladSign) {
           const kind = wall.cladding!.kind;
-          q.cladding[kind] = (q.cladding[kind] ?? 0) + face;
+          // With the strip over the edge of the slab on the wall.
+          const overSlab = L * mmFt(claddingOverSlabMm(wall, walls, slabsHere));
+          q.cladding[kind] = (q.cladding[kind] ?? 0) + face + overSlab;
           continue;
         }
         const off = (thicknessOf(wall) / 2 + 5) * sign;

@@ -2231,7 +2231,9 @@ export function createPlannerStore(
             }
             const kind = patch.kind ?? el.cladding?.kind;
             if (!kind) return el;
-            const own: Cladding = { ...(kind === el.cladding?.kind ? el.cladding : {}), ...patch, kind };
+            // Another kind takes its own usual thickness and look, on the face the cladding was on.
+            const kept = kind === el.cladding?.kind ? el.cladding : { side: el.cladding?.side };
+            const own: Cladding = { ...kept, ...patch, kind };
             for (const k of ['thicknessMm', 'side', 'material'] as const) if (own[k] === undefined) delete own[k];
             return { ...el, cladding: own };
           }),
@@ -2245,7 +2247,7 @@ export function createPlannerStore(
           .filter((w) => isBuildingWall(w) && cladable(w) && !w.hidden && outsideSide(w, walls))
           .map((w) => w.id);
         if (!ids.length) return 0;
-        get().setWallCladding(ids, { kind });
+        get().setWallCladding(ids, { kind, side: undefined });
         return ids.length;
       },
       setFacade: (facade) =>

@@ -8,7 +8,7 @@ import { openingProfileMm } from '../lib/shapes';
 import { buildableArea, stairLayout, type StairPart } from '../lib/site';
 import { outlinePoints } from '../lib/plot';
 import { lintelsOf } from '../lib/structure/lintels';
-import { CLADDING, claddingPieces } from '../lib/cladding';
+import { CLADDING, claddingOverSlabMm, claddingPieces } from '../lib/cladding';
 import { basementOf, buildingLevels, groundIndex, isSiteLevel, lawnMm, levelWallMm, slabMm } from '../lib/levels';
 import { outsideOutline } from '../lib/outline';
 import { houseOutlines, OUTDOOR_ROOM } from '../lib/groundSpot';
@@ -1331,6 +1331,7 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
 
     // Cladding on the walls' faces, each piece reaching round the corners to meet the next.
     const clads = claddingPieces(walls);
+    const slabsHere = clads.size ? els.filter((el): el is Slab => el.type === 'slab') : [];
     for (const wall of walls) {
       const own = openings.filter((o) => o.wallId === wall.id);
       // A retaining wall looks like concrete until it is painted.
@@ -1380,9 +1381,11 @@ export function buildModel(doc: PlanDoc, options: ModelOptions): Model3D {
           finish: finishOf(c.material) ?? { pattern: type.pattern, spanM: mmToM(type.spanMm), name: type.name },
         };
         const cut = own.filter((o) => !o.flat);
+        // It carries on up over the edge of the slab on the wall.
+        const tall = height + claddingOverSlabMm(wall, walls, slabsHere);
         const skin = clad.wall.bow
-          ? curvedWallParts(clad.wall, [], cut, height)
-          : wallParts(clad.wall, [], cut, height, { start: clad.start, end: clad.end });
+          ? curvedWallParts(clad.wall, [], cut, tall)
+          : wallParts(clad.wall, [], cut, tall, { start: clad.start, end: clad.end });
         const id = clad.wall.id;
         const onSlope = <T extends Solid>(list: T[]) =>
           onGround && terrain ? list.flatMap((x) => stepOnGround(x, terrain)) : list;

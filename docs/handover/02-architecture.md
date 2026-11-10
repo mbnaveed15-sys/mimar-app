@@ -233,6 +233,9 @@ autosaves to local storage on every change.
   (`lib/cladding.ts`) turns each clad wall into a thin wall on its face with a corner reach at each end; the same pieces
   draw the plan band, the DXF layer, the setbacks outline and (through `wallParts`, cut round the host's openings) the
   3D skin, ids `clad:<wall id>`. IFC maps those ids to an `IFCCOVERING`.
+  Since 1.53.1 the corner reach goes by the wall met on the cladding's own side of the corner (so an inside face works
+  like an outside one), `claddingBands` breaks the plan band at openings (the setbacks check keeps the whole outline),
+  and `claddingOverSlabMm` carries the 3D skin up over the slab on the wall.
 
 ## Drawing
 
