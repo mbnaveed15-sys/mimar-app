@@ -6,6 +6,7 @@ import { buildModel, levelBaseM, M_PER_UNIT, type Model3D } from '../../three/mo
 import { buildingLevels, levelWallMm, slabMm } from '../levels';
 import { outsideOutline } from '../outline';
 import { isBuildingWall, plinthWallOf } from '../../walls';
+import { CLADDING_HATCH, claddingWallOf } from '../cladding';
 import { floorVoids, slabVoids, within } from '../voids';
 import { roofTopMm } from '../roof/roof';
 import { hatchOf, hatchOfMaterial, type Hatch } from '../hatch';
@@ -229,6 +230,13 @@ export function hatchLookup(doc: PlanDoc): HatchLookup {
       const material = wall?.type === 'wall' ? plinthMaterialOf(doc, wall) : undefined;
       return hatchOfMaterial(doc.materials.find((m) => m.id === material)) ?? 'brick';
     }
+    // Cladding by its own material, else its kind.
+    const clad = byId.get(claddingWallOf(id) ?? '');
+    if (clad?.type === 'wall' && clad.cladding)
+      return (
+        hatchOfMaterial(doc.materials.find((m) => m.id === clad.cladding!.material)) ??
+        CLADDING_HATCH[clad.cladding.kind]
+      );
     return hatchOf(id ? byId.get(id) : undefined, doc.materials);
   };
 }

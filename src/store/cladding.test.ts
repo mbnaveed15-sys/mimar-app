@@ -7,12 +7,12 @@ import { planToDxf } from '../lib/exportDxf';
 import { planToIfc } from '../lib/exportIfc';
 import { planCheck } from '../lib/planCheck';
 import { plotRect } from '../lib/site';
-import { claddingPieces, outsideSide } from '../lib/cladding';
+import { claddingBands, claddingPieces, outsideSide } from '../lib/cladding';
 import { pointInPolygon } from '../geometry';
 import { buildModel } from '../three/model';
 import { wallsOf } from '../walls';
 import { createPlannerStore } from './plannerStore';
-import type { PlanDoc, Plot, Wall } from '../types';
+import type { Opening, PlanDoc, Plot, Wall } from '../types';
 
 const WALL = 3048;
 const FT = 30.48;
@@ -117,6 +117,74 @@ describe('cladding', () => {
     store.getState().setWallCladding(['w0'], null);
     expect(wallsOf(store.getState().doc.elements).some((w) => w.cladding)).toBe(false);
   });
+
+  it('on an inside face stops at the walls it meets; the outside cladding still wraps the corner', () => {
+    const store = createPlannerStore(house(), undefined, DEFAULT_PREFS);
+    const s = store.getState();
+    s.cladOutsideWalls('stone');
+    const ct = 4; // 40 mm of stone, plan units
+    const xs = (id: string) => {
+      const o = claddingPieces(wallsOf(store.getState().doc.elements))
+        .get(id)!
+        .outline.map((p) => p.x);
+      return [Math.min(...o), Math.max(...o)];
+    };
+    const ys = (id: string) => {
+      const o = claddingPieces(wallsOf(store.getState().doc.elements))
+        .get(id)!
+        .outline.map((p) => p.y);
+      return [Math.min(...o), Math.max(...o)];
+    };
+    // The east wall's cladding flipped onto its inside face: between the south and north walls' inside
+    // faces (the north wall's cladding is outside, so nothing more to stop at).
+    s.setWallCladding(['w1'], { side: flip(store.getState().doc, 1) });
+    expect(ys('w1')[0]).toBeCloseTo(H, 1);
+    expect(ys('w1')[1]).toBeCloseTo(20 * FT - H, 1);
+    // The south wall's outside cladding carries on to the east wall's outer face.
+    expect(xs('w0')[1]).toBeCloseTo(30 * FT + H, 1);
+    // Both flipped inside: one runs to the wall's face, the other stops at that cladding.
+    s.setWallCladding(['w0'], { side: flip(store.getState().doc, 0) });
+    expect(xs('w0')[1]).toBeCloseTo(30 * FT - H, 1);
+    expect(ys('w1')[0]).toBeCloseTo(H + ct, 1);
+    // Another kind stays on the face it was on; Clad all puts it back outside.
+    s.setWallCladding(['w0'], { kind: 'marble', thicknessMm: undefined });
+    expect(wallsOf(store.getState().doc.elements)[0].cladding).toEqual({
+      kind: 'marble',
+      side: flip(house(), 0),
+    });
+    s.cladOutsideWalls('marble');
+    expect(wallsOf(store.getState().doc.elements).some((w) => w.cladding?.side)).toBe(false);
+  });
+
+  it('breaks at openings on the plan and covers the edge of the slab on the wall', () => {
+    const doc = house();
+    const out = [
+      { x: -H, y: -H },
+      { x: 30 * FT + H, y: -H },
+      { x: 30 * FT + H, y: 20 * FT + H },
+      { x: -H, y: 20 * FT + H },
+    ];
+    const store = createPlannerStore(doc, undefined, DEFAULT_PREFS);
+    store.getState().cladOutsideWalls('stone');
+    const bare = quantities(store.getState().doc, WALL).total.cladding.stone!;
+    const walls = wallsOf(store.getState().doc.elements);
+    const win = store.getState().doc.elements.filter((el): el is Opening => el.type === 'window');
+    const bands = claddingBands(claddingPieces(walls).get('w0')!, win);
+    expect(bands).toHaveLength(2);
+    // Neither band crosses the window (13' to 17' along the wall).
+    for (const b of bands) expect(b.some((p) => p.x > 13 * FT + 1 && p.x < 17 * FT - 1)).toBe(false);
+    // A 6" slab on the walls: the cladding rises over its edge, and is measured with it.
+    store.getState().commit((d) => ({
+      ...d,
+      elements: [...d.elements, { id: 'slab', type: 'slab', points: out, thickness: 15.24 }],
+    }));
+    const model = buildModel(store.getState().doc, { wallHeightMm: WALL, showFurniture: true });
+    const top = Math.max(...model.solids.filter((x) => x.id === 'clad:w1').map((x) => x.y0 + x.h));
+    const wallTop = Math.max(...model.solids.filter((x) => x.id === 'w1').map((x) => x.y0 + x.h));
+    expect(top - wallTop).toBeCloseTo(0.1524, 3);
+    // 100' of wall, 6" of slab: 50 sq ft more.
+    expect(quantities(store.getState().doc, WALL).total.cladding.stone! - bare).toBeCloseTo(50, 0);
+  });
 });
 
 const onEdge = (p: { x: number; y: number }, poly: { x: number; y: number }[]) =>
@@ -127,8 +195,8 @@ const onEdge = (p: { x: number; y: number }, poly: { x: number; y: number }[]) =
     return cross < 0.5;
   });
 
-/** The face opposite the south wall's outside one. */
-function flip(doc: PlanDoc): 'A' | 'B' {
+/** The face opposite a wall's outside one (the south wall's unless told). */
+function flip(doc: PlanDoc, i = 0): 'A' | 'B' {
   const walls = wallsOf(doc.elements);
-  return outsideSide(walls[0], walls) === 'A' ? 'B' : 'A';
+  return outsideSide(walls[i], walls) === 'A' ? 'B' : 'A';
 }

@@ -139,7 +139,8 @@ the schedule).
 Left from cladding (1.53) for later: panels laid out one by one (joints, mullions); cladding on free-standing columns;
 the plinth clad with its wall; sun-shading fins and jali screens; cladding on curved walls reaching round their corners
 (their ends stop square); openings cut in the IFC covering (its 3D solids already go round them). Plastered columns use
-their host wall's colour only (not each face's own material).
+their host wall's colour only (not each face's own material). From the 1.53.1 check: parapets can't be clad yet;
+cladding starts at the floor, so the plinth below it keeps its own finish; no browser test covers cladding.
 
 Left from basements for later: more than one basement; sloping sites; footings and columns drawn for the
 basement; ramps down for cars; air shafts or light wells drawn for you; basement figures for CDA private schemes
