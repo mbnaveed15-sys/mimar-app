@@ -147,9 +147,8 @@ on very large plans (1,728 walls: 5 s, 26 s with the structure generated); warni
 out).
 
 From the phone, tablet and installer check (1.53.3, `/mnt/project-files/mimar-1.53-bugcheck/devices-report.md`), left for
-later: double-clicking a `.mimar` file does not open it (no file association in the installer, and `electron-main.cjs`
-ignores a path on the command line); two copies of the desktop app can run at once and share one autosave (no
-single-instance lock); the installer is unsigned, so Windows SmartScreen warns on first run (a certificate costs money);
+later (double-click to open and the single-instance lock came in 1.53.4; a plan dropped on the window still does
+nothing, and macOS `open-file` is not handled as there is no Mac build): the installer is unsigned, so Windows SmartScreen warns on first run (a certificate costs money);
 on a tablet the Grid, Snap and Checks chips in the bottom bar are 20 px tall, and number fields' step arrows and plain
 lists are under 30 px; the Windows installer itself and a real update could not be run from Linux.
 

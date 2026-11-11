@@ -16,10 +16,17 @@ export interface SavedFile {
   path?: string;
 }
 
+/** A plan handed to the desktop app from outside (a double-click on a .mimar file), or why it couldn't be read. */
+export type HandedFile = OpenedFile | { name: string; error: string };
+
 /** File access provided by the desktop app's preload script. */
 export interface DesktopFiles {
   open: () => Promise<OpenedFile | null>;
   save: (request: { contents: string; suggestedName: string; path?: string }) => Promise<SavedFile | null>;
+  /** The plan the app was started with, once (null when it was started plain). */
+  launchFile?: () => Promise<HandedFile | null>;
+  /** Plans handed over while the app runs; returns a function that stops listening. */
+  onOpenFile?: (callback: (file: HandedFile) => void) => () => void;
 }
 
 declare global {

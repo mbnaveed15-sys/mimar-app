@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RecentDialog } from './RecentFiles';
 import { buildCommands } from '../commands';
-import { baseName } from '../lib/files';
+import { baseName, type HandedFile } from '../lib/files';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import { Canvas } from './Canvas';
 import {
@@ -46,7 +46,7 @@ export default function PlannerApp() {
   const setWarning = usePlanner((s) => s.setWarning);
   const fileName = usePlanner((s) => s.fileName);
   const dirty = usePlanner((s) => s.doc !== s.savedDoc);
-  const { save, open, openRecentFile, newPlan: clearPlan } = useFileActions();
+  const { save, open, openGiven, openRecentFile, newPlan: clearPlan } = useFileActions();
   const [pending, setPending] = useState<'new' | 'open' | null>(null);
   const [dialog, setDialog] = useState<Dialog>(() => (shouldWelcome() ? 'welcome' : null));
   // A new plan starts blank, then asks what kind of project it is.
@@ -69,6 +69,21 @@ export default function PlannerApp() {
   // Replacing the plan asks first when there are unsaved changes.
   const requestNew = useCallback(() => (isDirty() ? setPending('new') : newPlan()), [newPlan]);
   const requestOpen = useCallback(() => (isDirty() ? setPending('open') : void open()), [open]);
+  // A plan handed to the desktop app (a double-click on a .mimar file), at start or while it runs.
+  useEffect(() => {
+    const files = window.mimarFiles;
+    if (!files?.launchFile || !files.onOpenFile) return;
+    const take = (file: HandedFile | null) => {
+      if (!file) return;
+      if ('error' in file) return setWarning(`${file.name} couldn’t be opened. ${file.error}`);
+      const go = () => openGiven(file);
+      if (isDirty()) setPendingReplace(() => go);
+      else go();
+    };
+    const stop = files.onOpenFile(take);
+    void files.launchFile().then(take);
+    return stop;
+  }, [openGiven, setWarning]);
   const showSection = useCallback(
     (id: string) => {
       setSection(id as SectionId, true);
