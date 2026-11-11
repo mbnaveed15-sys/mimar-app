@@ -66,3 +66,12 @@ test('on-screen buttons finish a wall chain and delete the selection', async ({ 
   await page.getByRole('toolbar', { name: 'Selection actions' }).getByRole('button', { name: 'Delete' }).click();
   await expect(page.locator('[data-type="wall"]')).toHaveCount(1);
 });
+
+test('hints speak of taps, and the Frame panel fits its drawer', async ({ page }) => {
+  await expect(page.getByTestId('tool-hint')).toContainText('Tap to select');
+  await page.getByRole('tablist', { name: 'Panels' }).getByRole('tab', { name: 'Frame' }).click();
+  await expect(page.locator('#frame-system')).toBeVisible();
+  // The Structure list shrinks to the drawer instead of pushing it sideways.
+  const spill = await page.getByTestId('panel-content').evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(spill).toBeLessThanOrEqual(1);
+});

@@ -26,7 +26,7 @@ export function LayersPanel() {
 
   const hidden = (id: LayerId) => (id === 'furniture' ? !showFurniture : !!doc.layers?.[id]?.hidden);
   const locked = (id: LayerId) => !!doc.layers?.[id]?.locked;
-  const btn = 'grid h-6 w-6 place-items-center rounded-sm hover:bg-sunken';
+  const btn = 'grid h-6 w-6 place-items-center rounded-sm hover:bg-sunken pointer-coarse:h-8 pointer-coarse:w-8';
   const sub = (id: string, label: string, checked: boolean, set: (v: boolean) => void) => (
     <label htmlFor={id} className="flex items-center gap-2 pl-8 text-muted">
       <input id={id} type="checkbox" checked={checked} onChange={(e) => set(e.target.checked)} />

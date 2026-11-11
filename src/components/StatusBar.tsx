@@ -1,9 +1,10 @@
 import { SNAP_LABELS } from '../lib/inference';
+import { touchHint } from '../lib/touchWords';
 import { plannerStore, usePlanner } from '../store/plannerStore';
 import { applyMeasure, MEASURE_TOOLS, measureReadout, toolHint } from '../tools/controller';
 import { Icon } from './Icon';
 import { ChecksChip, PointerReadout, SnapChip } from './StatusChips';
-import { usePhone } from './useCompact';
+import { useCoarsePointer, usePhone } from './useCompact';
 
 const AXIS_NAMES = { x: 'Red axis locked', y: 'Green axis locked', z: 'Blue axis locked (up and down)' };
 
@@ -15,7 +16,9 @@ export function StatusBar() {
   const state = usePlanner((s) => s);
   const phone = usePhone();
   const { tool, measureText, inference, axisLock, grid } = state;
-  const hint = toolHint(state);
+  // A finger taps and holds: the hint says so on a tablet or a phone, and after any touch on the plan.
+  const finger = useCoarsePointer() || state.touchInput;
+  const hint = finger ? touchHint(toolHint(state)) : toolHint(state);
   const readout = measureReadout(state);
   const measuring = tool in MEASURE_TOOLS;
   const chip = 'flex h-5 items-center gap-1 rounded-sm border px-1.5 text-[11px] phone:h-8 phone:px-2';

@@ -177,7 +177,7 @@ export function DrawingsView() {
       data-testid={testId}
       aria-pressed={current === key}
       onClick={() => showDrawing(key)}
-      className={`w-full truncate rounded-sm px-2 py-1 text-left ${current === key ? 'bg-accent-soft font-medium text-accent-ink' : 'hover:bg-sunken'}`}
+      className={`w-full truncate rounded-sm px-2 py-1 text-left pointer-coarse:py-2 ${current === key ? 'bg-accent-soft font-medium text-accent-ink' : 'hover:bg-sunken'}`}
     >
       {label}
     </button>

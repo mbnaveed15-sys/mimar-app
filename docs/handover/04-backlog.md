@@ -144,7 +144,14 @@ cladding starts at the floor, so the plinth below it keeps its own finish; no br
 
 From the whole-app check after 1.53.1 (`/mnt/project-files/mimar-1.53-bugcheck/report.md`), left for later: sheets are slow
 on very large plans (1,728 walls: 5 s, 26 s with the structure generated); warnings stay up until dismissed (could time
-out); phone and tablet layouts, the installer and file dialogs were not re-tested.
+out).
+
+From the phone, tablet and installer check (1.53.3, `/mnt/project-files/mimar-1.53-bugcheck/devices-report.md`), left for
+later: double-clicking a `.mimar` file does not open it (no file association in the installer, and `electron-main.cjs`
+ignores a path on the command line); two copies of the desktop app can run at once and share one autosave (no
+single-instance lock); the installer is unsigned, so Windows SmartScreen warns on first run (a certificate costs money);
+on a tablet the Grid, Snap and Checks chips in the bottom bar are 20 px tall, and number fields' step arrows and plain
+lists are under 30 px; the Windows installer itself and a real update could not be run from Linux.
 
 Left from basements for later: more than one basement; sloping sites; footings and columns drawn for the
 basement; ramps down for cars; air shafts or light wells drawn for you; basement figures for CDA private schemes
