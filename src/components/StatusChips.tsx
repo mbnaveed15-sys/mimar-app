@@ -30,7 +30,7 @@ function ChipMenu({ label, children, chipButton }: { label: string; children: Re
     >
       {chipButton}
       <button
-        className="grid h-5 w-3.5 place-items-center text-[9px] text-muted hover:text-ink pointer-coarse:w-6"
+        className="grid h-5 w-3.5 place-items-center text-[9px] text-muted hover:text-ink pointer-coarse:w-8 phone:h-8"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${label} options`}

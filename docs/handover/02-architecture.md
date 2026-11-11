@@ -565,6 +565,11 @@ Checked with IfcOpenShell: `pip install ifcopenshell pytest`, then `python3 -m i
 ## Desktop, web and branding
 
 - `electron-main.cjs`, `preload.cjs`, `updater.cjs`: window, splash, file dialogs, auto-update (electron-updater).
+  `electron-updater` is the only entry under `dependencies` in `package.json`: electron-builder packs every production
+  dependency into the installer, and the page's libraries (react, three, jspdf, zustand) are already bundled into `dist`
+  by Vite, so they live in `devDependencies` (1.53.3).
+- `src/lib/touchWords.ts`: `touchHint` rewords a tool hint for fingers (tap, press and hold); `StatusBar` applies it on
+  touch screens.
 - Web: `src/lib/pwa.ts` registers `sw.js`, which `vite.config.ts` writes after each build from `src/sw-template.js`
   with the exact file list; `public/manifest.webmanifest`; icons in `public/icons/`.
 - Logo: `src/components/Mark.tsx` (in-app) and `scripts/logo.mjs` (all logo files + PNGs); then

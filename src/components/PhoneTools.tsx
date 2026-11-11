@@ -85,7 +85,7 @@ export function PhoneTools() {
             role="radio"
             aria-checked={g.id === group}
             onClick={() => setPicked({ group: g.id, tool })}
-            className={`flex-none rounded-full px-3 py-1 font-medium ${g.id === group ? 'bg-ink text-surface' : 'text-muted active:bg-sunken'}`}
+            className={`flex-none rounded-full px-3 py-1 font-medium pointer-coarse:py-2 ${g.id === group ? 'bg-ink text-surface' : 'text-muted active:bg-sunken'}`}
           >
             {g.label}
           </button>

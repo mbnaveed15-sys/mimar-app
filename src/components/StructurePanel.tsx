@@ -43,7 +43,7 @@ export function StructurePanel() {
         Structure
         <select
           id="frame-system"
-          className="rounded-sm border p-1"
+          className="min-w-0 rounded-sm border p-1"
           value={rules.system}
           onChange={(e) => set({ system: e.target.value as FrameSystem })}
         >
@@ -200,7 +200,7 @@ export function StructurePanel() {
           <select
             id="frame-facade"
             data-testid="frame-facade"
-            className="rounded-sm border p-1"
+            className="min-w-0 rounded-sm border p-1"
             value={doc.frame?.facade ?? 'plastered'}
             onChange={(e) => s.setFacade(e.target.value as 'plastered' | 'exposed')}
           >
