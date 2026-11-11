@@ -107,7 +107,7 @@ import { BASEMENT_HEIGHT_MM, GROUND_LEVEL, levelOf, SITE_LEVEL } from '../types'
 import { houseOutlines, settleOnGround } from '../lib/groundSpot';
 import { ROOF_OVERHANG_MM, ROOF_PITCH_DEG, ROOF_THICKNESS_MM } from '../lib/roof/roof';
 import { DEFAULT_ARRAY } from '../lib/array';
-import { generateFrame, withoutFrame, type FrameCounts } from '../lib/structure/generate';
+import { generateFrame, isUntouched, withoutFrame, type FrameCounts } from '../lib/structure/generate';
 import { frameRules, settingsOf, type FrameRules } from '../lib/structure/settings';
 import type {
   ArraySettings,
@@ -1089,7 +1089,7 @@ export function createPlannerStore(
       const out = ids.filter((id) => pieces.get(id)?.outline.some((p) => !pointInPolygon(p, line) && !near(p))).length;
       if (out)
         get().setWarning(
-          `The cladding on ${out} ${out === 1 ? 'wall reaches' : 'walls reach'} past the building line: the plan check counts it as the building.`,
+          `The cladding on ${out} ${out === 1 ? 'wall' : 'walls'} reaches past the building line: the plan check counts it as the building.`,
         );
     };
     const updateElements = (fn: (els: PlanElement[]) => PlanElement[]) =>
@@ -2110,10 +2110,16 @@ export function createPlannerStore(
         const from = doc.levels.find((l) => l.id === activeLevel);
         // The Ground (site) level isn't a floor to copy upwards.
         if (!from || from.site) return;
+        // The generated structure isn't copied (its footings and roof beams belong to the floor they are on, and
+        // every column below grows with a floor more): the panel says it is out of date, and Regenerate makes it
+        // for the new floor. Items you have moved, resized or locked are yours, and are copied.
         const ids = [
           ...doc.elements.filter(
             (el) =>
-              levelOf(el) === activeLevel && !NOT_COPIED_UP.includes(el.type) && !(el.type === 'wall' && el.plotId),
+              levelOf(el) === activeLevel &&
+              !NOT_COPIED_UP.includes(el.type) &&
+              !(el.type === 'wall' && el.plotId) &&
+              !isUntouched(el),
           ),
           ...doc.rooms.filter((r) => levelOf(r) === activeLevel),
         ].map((it) => it.id);

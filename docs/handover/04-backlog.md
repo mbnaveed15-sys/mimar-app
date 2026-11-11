@@ -142,6 +142,10 @@ the plinth clad with its wall; sun-shading fins and jali screens; cladding on cu
 their host wall's colour only (not each face's own material). From the 1.53.1 check: parapets can't be clad yet;
 cladding starts at the floor, so the plinth below it keeps its own finish; no browser test covers cladding.
 
+From the whole-app check after 1.53.1 (`/mnt/project-files/mimar-1.53-bugcheck/report.md`), left for later: sheets are slow
+on very large plans (1,728 walls: 5 s, 26 s with the structure generated); warnings stay up until dismissed (could time
+out); phone and tablet layouts, the installer and file dialogs were not re-tested.
+
 Left from basements for later: more than one basement; sloping sites; footings and columns drawn for the
 basement; ramps down for cars; air shafts or light wells drawn for you; basement figures for CDA private schemes
 and Bahria (the check says "check").

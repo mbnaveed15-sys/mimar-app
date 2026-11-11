@@ -279,7 +279,17 @@ function joinBeams(beams: Beam[], columns: Point[]): Beam[] {
         joined = true;
       }
   }
-  return out;
+  return out.filter((b, i) => !out.slice(0, i).some((a) => sameBeam(a, b)));
+}
+
+/** Two beams of a kind on the same line between the same ends (walls lying over one another, or a hair apart). */
+function sameBeam(a: Beam, b: Beam): boolean {
+  if (a.kind !== b.kind || a.topMm !== b.topMm || levelOf(a) !== levelOf(b)) return false;
+  const close = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by) < u(50);
+  return (
+    (close(a.x1, a.y1, b.x1, b.y1) && close(a.x2, a.y2, b.x2, b.y2)) ||
+    (close(a.x1, a.y1, b.x2, b.y2) && close(a.x2, a.y2, b.x1, b.y1))
+  );
 }
 
 /** The longest stretch of a line (through `p` along `d`) inside a polygon. */
@@ -437,7 +447,9 @@ export function generateFrame(
     for (const k of clusters) {
       // One move for the whole stack (sized as its lowest, biggest column), so it stays plumb.
       const big = columnSize(k.top + 1, k.wallMm, tribSqFt(k.reach));
-      const shape = rect(k.p, u(big.along), u(big.across), angleOf(k.on.get(0)?.dir ?? k.dir));
+      // A floor's column can be turned another way (a wall joins there on that floor only): every way counts.
+      const turns = [...new Set([k.dir, ...[...k.on.values()].map((c) => c.dir)].map((d) => Math.round(angleOf(d))))];
+      const shape = turns.flatMap((deg) => rect(k.p, u(big.along), u(big.across), deg));
       const off = insideOffset(shape, [...[...k.on.keys()].flatMap((i) => faces[i]), keepIn]);
       for (let i = 0; i <= k.top; i++) {
         const level = levels[i];
@@ -849,6 +861,11 @@ export function generateFrame(
     const off = insideOffset(rect(mid, Math.hypot(along.x, along.y), el.width, angleOf(along)), [...faces[i], keepIn]);
     if (off.x || off.y)
       added[n] = { ...el, x1: el.x1 + off.x, y1: el.y1 + off.y, x2: el.x2 + off.x, y2: el.y2 + off.y };
+  }
+  // One beam where several came out the same.
+  for (let n = added.length - 1; n > 0; n--) {
+    const el = added[n];
+    if (el.type === 'beam' && added.slice(0, n).some((o) => o.type === 'beam' && sameBeam(o, el))) added.splice(n, 1);
   }
   for (const el of added) {
     if (el.type === 'column') counts.columns++;
