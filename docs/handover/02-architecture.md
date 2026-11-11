@@ -564,7 +564,9 @@ Checked with IfcOpenShell: `pip install ifcopenshell pytest`, then `python3 -m i
 
 ## Desktop, web and branding
 
-- `electron-main.cjs`, `preload.cjs`, `updater.cjs`: window, splash, file dialogs, auto-update (electron-updater).
+- `electron-main.cjs`, `preload.cjs`, `updater.cjs`, `open-file.cjs`: window, splash, file dialogs, auto-update
+  (electron-updater), one copy at a time, and plans handed over by a double-click (1.53.4: `planPathFromArgs`,
+  `mimar:launch-file`, `mimar:open-file`; every main-process file must be in `build.files` in `package.json`).
   `electron-updater` is the only entry under `dependencies` in `package.json`: electron-builder packs every production
   dependency into the installer, and the page's libraries (react, three, jspdf, zustand) are already bundled into `dist`
   by Vite, so they live in `devDependencies` (1.53.3).

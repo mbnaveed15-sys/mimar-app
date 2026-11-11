@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { openPlanFile, parsePlanFile, PlanFileError, savePlanFile, serialisePlan } from '../lib/files';
+import { openPlanFile, parsePlanFile, PlanFileError, savePlanFile, serialisePlan, type OpenedFile } from '../lib/files';
 import { plannerStore } from '../store/plannerStore';
 import { noteRecent, openRecent, type RecentFile } from '../lib/recent';
 
@@ -40,6 +40,16 @@ export function useFileActions() {
     }
   }, []);
 
+  /** Load a plan that was already read (one handed to the desktop app by a double-click). */
+  const openGiven = useCallback((file: OpenedFile) => {
+    try {
+      plannerStore.getState().loadDocument(parsePlanFile(file.contents), { name: file.name, path: file.path });
+      noteRecent(file, file.contents);
+    } catch (e) {
+      report(e);
+    }
+  }, []);
+
   /** Open a plan from the recent list; says so when it can't be found any more. */
   const openRecentFile = useCallback(async (r: RecentFile) => {
     try {
@@ -57,5 +67,5 @@ export function useFileActions() {
 
   const newPlan = useCallback(() => plannerStore.getState().newPlan(), []);
 
-  return { save, open, openRecentFile, newPlan };
+  return { save, open, openGiven, openRecentFile, newPlan };
 }

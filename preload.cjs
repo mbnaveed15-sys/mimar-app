@@ -4,6 +4,13 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('mimarFiles', {
   open: () => ipcRenderer.invoke('mimar:open'),
   save: (request) => ipcRenderer.invoke('mimar:save', request),
+  // The plan the app was started with (a double-click on a .mimar file), once; then any handed over while it runs.
+  launchFile: () => ipcRenderer.invoke('mimar:launch-file'),
+  onOpenFile: (callback) => {
+    const listener = (_event, file) => callback(file);
+    ipcRenderer.on('mimar:open-file', listener);
+    return () => ipcRenderer.removeListener('mimar:open-file', listener);
+  },
 });
 
 // Plans opened or saved lately; the app keeps the list, and opens only files on it.

@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require('electron')
 const fs = require('fs/promises');
 const path = require('path');
 const { setupUpdates } = require('./updater.cjs');
+const { planPathFromArgs } = require('./open-file.cjs');
 const { pathToFileURL } = require('url');
 let mainWindow;
 let splash;
@@ -46,6 +47,30 @@ async function readPlan(filePath) {
   await noteRecent(filePath);
   return { name: path.basename(filePath), path: filePath, contents: await fs.readFile(filePath, 'utf8') };
 }
+
+// A plan handed to the app from outside: a double-click on a .mimar file, or "Open with". The plan the app
+// was started with waits here until the page asks for it; one that comes while the app runs is sent over.
+let handedPlan = null;
+let pageAsked = false;
+async function planFromArgs(args, cwd) {
+  const filePath = planPathFromArgs(args, cwd);
+  if (!filePath) return null;
+  try {
+    return await readPlan(filePath);
+  } catch (e) {
+    const gone = e && e.code === 'ENOENT';
+    return {
+      name: path.basename(filePath),
+      error: gone ? 'It may have been moved, renamed or deleted.' : String((e && e.message) || e),
+    };
+  }
+}
+ipcMain.handle('mimar:launch-file', async () => {
+  pageAsked = true;
+  const plan = await handedPlan;
+  handedPlan = null;
+  return plan;
+});
 
 ipcMain.handle('mimar:recent-list', async () =>
   (await readRecent()).map((r) => ({ key: r.path, name: r.name, path: r.path, at: r.at })),
@@ -149,7 +174,28 @@ function createWindow() {
   }
 }
 
+// One copy of the app at a time (two would share one autosave, and the last one closed would win). A second
+// start, such as a double-click on another plan, hands its file to the copy already open and goes away.
+const firstCopy = app.requestSingleInstanceLock();
+if (!firstCopy) app.quit();
+
+app.on('second-instance', async (_event, argv, cwd) => {
+  const win = mainWindow;
+  const open = win && !win.isDestroyed();
+  if (open) {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  }
+  const plan = await planFromArgs(argv.slice(1), cwd);
+  if (!plan) return;
+  if (open && pageAsked) win.webContents.send('mimar:open-file', plan);
+  else handedPlan = plan; // the window is still coming up: its page asks for this
+});
+
 app.whenReady().then(() => {
+  if (!firstCopy) return;
+  handedPlan = planFromArgs(process.argv.slice(1), process.cwd());
   // Mimar draws its own menu bar, so drop Electron's default one (File, Edit, View, Window).
   Menu.setApplicationMenu(null);
   setupUpdates(() => mainWindow);

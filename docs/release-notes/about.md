@@ -16,7 +16,7 @@ It is free, and runs on Windows or in any modern browser.
 
 | | |
 | --- | --- |
-| **Windows (installer)** | `Mimar-Setup-{{VERSION}}.exe` below. It updates itself when a new version comes out. |
+| **Windows (installer)** | `Mimar-Setup-{{VERSION}}.exe` below. It updates itself when a new version comes out, and opens a `.mimar` plan when you double-click it. |
 | **Windows (portable)** | `Mimar-Portable-{{VERSION}}.exe` below. It runs without installing and tells you when an update is available. |
 | **Browser, iPad, tablets and phones** | https://mbnaveed15-sys.github.io/mimar-app/. You can install it from the browser (on iPad: Share › Add to Home Screen), and it works offline. |
 

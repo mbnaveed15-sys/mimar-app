@@ -1,6 +1,6 @@
 {
   "name": "mimar",
-  "version": "1.53.3",
+  "version": "1.53.4",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -72,8 +72,17 @@
       "electron-main.cjs",
       "preload.cjs",
       "updater.cjs",
+      "open-file.cjs",
       "branding/**/*",
       "package.json"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "mimar",
+        "name": "MIMAR.Plan",
+        "description": "MIMAR plan",
+        "role": "Editor"
+      }
     ],
     "portable": {
       "artifactName": "Mimar-Portable-${version}.${ext}"

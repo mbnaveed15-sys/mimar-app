@@ -17,7 +17,7 @@ export default tseslint.config(
   },
   {
     // Electron main and preload processes (CommonJS, Node).
-    files: ['electron-main.cjs', 'preload.cjs', 'updater.cjs'],
+    files: ['electron-main.cjs', 'preload.cjs', 'updater.cjs', 'open-file.cjs'],
     extends: [js.configs.recommended],
     languageOptions: { sourceType: 'commonjs', globals: { ...globals.node, ...globals.browser } },
   },
