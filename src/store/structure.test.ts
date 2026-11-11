@@ -195,4 +195,91 @@ describe('Generate structure in the app', () => {
     s().setOpeningLintel(door.id, { off: null });
     expect(lintelsOf(s().doc, WALL)).toHaveLength(1);
   });
+
+  /** A loop of 9" walls through the corners (ft), on a floor. */
+  const loop = (id: string, c: [number, number][], levelId?: string): Wall[] =>
+    c.map(([x, y], i) => ({
+      id: `${id}${i}`,
+      type: 'wall',
+      x1: x * FT,
+      y1: y * FT,
+      x2: c[(i + 1) % c.length][0] * FT,
+      y2: c[(i + 1) % c.length][1] * FT,
+      thickness: 22.86,
+      ...(levelId ? { levelId } : {}),
+    }));
+
+  it('keeps a column turned on one floor only inside the building line too', () => {
+    // Walls right on the building line; upstairs a cross wall meets the outside walls, turning the columns there.
+    const doc = emptyDoc();
+    doc.levels = [
+      { id: 'ground', name: 'Ground floor' },
+      { id: 'l1', name: 'First floor' },
+    ];
+    const h = 11.43 / FT;
+    const c: [number, number][] = [
+      [5 + h, 5 + h],
+      [35 - h, 5 + h],
+      [35 - h, 25 - h],
+      [5 + h, 25 - h],
+    ];
+    const plot: Plot = {
+      id: 'p',
+      type: 'plot',
+      points: plotRect({ x: 0, y: 0 }, { x: 40 * FT, y: 30 * FT }),
+      front: 2,
+      setbacks: { front: 5 * 304.8, rear: 5 * 304.8, sides: 5 * 304.8 },
+    };
+    const cross: Wall = {
+      id: 'x',
+      type: 'wall',
+      levelId: 'l1',
+      x1: (5 + h) * FT,
+      y1: 15 * FT,
+      x2: (35 - h) * FT,
+      y2: 15 * FT,
+      thickness: 22.86,
+    };
+    doc.elements = [plot, ...loop('g', c), ...loop('f', c, 'l1'), cross];
+    const store = createPlannerStore(doc, undefined, DEFAULT_PREFS);
+    store.getState().generateStructure();
+    const check = planCheck(store.getState().doc, { wallHeightMm: WALL, units: 'imperial' })!;
+    expect(check.rows.find((r) => r.id === 'setback-items')).toBeUndefined();
+  });
+
+  it('leaves the structure out of a duplicated floor, for Regenerate to make', () => {
+    const s = setup();
+    s().generateStructure();
+    s().duplicateLevel();
+    const top = s().activeLevel;
+    const frameOn = (level: string) =>
+      s().doc.elements.filter(
+        (el) => (el.type === 'column' || el.type === 'beam') && (el.levelId ?? 'ground') === level,
+      );
+    expect(frameOn(top)).toHaveLength(0);
+    s().generateStructure();
+    expect(frameOn(top).length).toBeGreaterThan(0);
+    // Every piece is the generator's own again: Remove structure takes them all.
+    expect(frameOn(top).every((el) => 'auto' in el && el.auto)).toBe(true);
+    s().removeStructure();
+    expect(s().doc.elements.some((el) => el.type === 'column' || el.type === 'beam')).toBe(false);
+  });
+
+  it('makes one beam where walls lie over one another', () => {
+    const doc = emptyDoc();
+    const c: [number, number][] = [
+      [0, 0],
+      [30, 0],
+      [30, 20],
+      [0, 20],
+    ];
+    // A second wall over the south one.
+    doc.elements = [...loop('w', c), { ...loop('w', c)[0], id: 'twin' }];
+    const store = createPlannerStore(doc, undefined, DEFAULT_PREFS);
+    store.getState().generateStructure();
+    const beams = store.getState().doc.elements.filter((el) => el.type === 'beam');
+    const key = (b: (typeof beams)[number]) =>
+      b.type === 'beam' ? [b.kind, b.topMm, ...[b.x1, b.y1, b.x2, b.y2].map(Math.round)].join() : '';
+    expect(new Set(beams.map(key)).size).toBe(beams.length);
+  });
 });
