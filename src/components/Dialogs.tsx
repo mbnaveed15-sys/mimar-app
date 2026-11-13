@@ -8,6 +8,7 @@ import { BUILDING_USES, PROJECT_TYPES } from '../lib/project';
 import { canFlipHinge, canFlipSwing } from '../lib/openingKinds';
 import type { BuildingUse, ProjectType } from '../types';
 import { useFocusTrap, useMenuKeys } from './useFocus';
+import { agentConfig, type AgentSetup } from '../lib/agents';
 
 /** A centred dialog over a dimmed app; Esc or a click outside closes it. */
 function Modal({
@@ -179,6 +180,74 @@ export function ShortcutsDialog({ commands, onClose }: { commands: Command[]; on
             </div>
           ))}
         </section>
+      </div>
+    </Modal>
+  );
+}
+
+/** Help > Connect AI agents: the lines to paste into an agent app's settings so it can work on MIMAR plans. */
+export function AgentsDialog({ onClose }: { onClose: () => void }) {
+  const [setup, setSetup] = useState<AgentSetup | null>(null);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void window.mimarAgents?.setup().then((s) => live && setSetup(s));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const text = setup && !setup.portable ? agentConfig(setup) : '';
+  const copy = () =>
+    void navigator.clipboard.writeText(text).then(
+      () => setCopied(true),
+      () => setCopied(false),
+    );
+  return (
+    <Modal label="Connect AI agents" onClose={onClose} wide>
+      <div className="flex items-center justify-between border-b border-line px-4 py-3">
+        <h2 className="text-base font-semibold">Connect AI agents</h2>
+        <button className="m-btn" onClick={onClose} aria-label="Close">
+          <Icon name="close" size={16} />
+        </button>
+      </div>
+      <div className="flex flex-col gap-3 overflow-auto p-4 text-sm">
+        <p>
+          MIMAR has a connector, so an AI agent such as Claude can read your plans, check them against the bylaws, draw
+          walls and rooms, plan a floor from a room list, generate the structure and export DXF or IFC. It works on the
+          plan files on this computer; nothing is sent anywhere by MIMAR.
+        </p>
+        {setup?.portable ? (
+          <p>
+            The portable app can&apos;t be connected, because it runs from a temporary folder. Install MIMAR with
+            Mimar-Setup and open this again.
+          </p>
+        ) : (
+          <>
+            <ol className="list-decimal space-y-1 pl-5">
+              <li>In Claude Desktop, open Settings, then Developer, then Edit Config.</li>
+              <li>
+                Paste the lines below into that file. If it already has an &quot;mcpServers&quot; part, add only the
+                &quot;mimar&quot; entry inside it.
+              </li>
+              <li>Close Claude completely and open it again. MIMAR then shows in its tools.</li>
+            </ol>
+            <pre className="max-h-56 overflow-auto rounded border border-line bg-canvas p-3 font-mono text-xs select-text">
+              {text || 'Finding where MIMAR is installed…'}
+            </pre>
+            <div className="flex items-center gap-3">
+              <button className="m-btn m-btn-primary" onClick={copy} disabled={!text}>
+                Copy
+              </button>
+              <span className="text-xs text-muted" role="status">
+                {copied ? 'Copied.' : 'Other agent apps that take MCP servers use the same lines.'}
+              </span>
+            </div>
+            <p className="text-xs text-muted">
+              Tell the agent the full path of a plan, for example “Check D:\Plans\House.mimar”. If that plan is open
+              here, open it again afterwards to see the agent&apos;s changes.
+            </p>
+          </>
+        )}
       </div>
     </Modal>
   );

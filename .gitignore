@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-mcp/
 release/
 playwright-report/
 test-results/

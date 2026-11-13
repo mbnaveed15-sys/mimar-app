@@ -79,6 +79,7 @@ Windows may say "Windows protected your PC", because the app is not code-signed.
 - **PDF** to a true scale with a title block, a north arrow, the plan check and cost pages. **PNG** images.
 - **DXF** for AutoCAD, with proper layers, true arcs, hatch layers and real DIMENSION entities.
 - **IFC4** for Revit and ArchiCAD. **GLB, DAE and OBJ** for SketchUp, Blender and other 3D tools.
+- **AI agents:** a connector (MCP server) in the installed Windows app lets an agent such as Claude read, check, draw, plan, generate the structure of and export your plan files. Help › Connect AI agents shows how to turn it on.
 - Plans save as `.mimar` files that you can back up, email or move between computers. Work is also autosaved, and **Open recent** brings back the last plans you worked on.
 
 ### Made to fit you

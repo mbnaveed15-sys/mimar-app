@@ -13,6 +13,11 @@ contextBridge.exposeInMainWorld('mimarFiles', {
   },
 });
 
+// How an AI agent's app starts MIMAR's connector (Help > Connect AI agents).
+contextBridge.exposeInMainWorld('mimarAgents', {
+  setup: () => ipcRenderer.invoke('mimar:agent-setup'),
+});
+
 // Plans opened or saved lately; the app keeps the list, and opens only files on it.
 contextBridge.exposeInMainWorld('mimarRecent', {
   list: () => ipcRenderer.invoke('mimar:recent-list'),

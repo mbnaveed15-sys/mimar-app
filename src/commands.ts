@@ -66,6 +66,8 @@ export interface CommandContext {
   /** Open and scroll to a section of the side panel, e.g. 'grid'. */
   showSection: (id: string) => void;
   checkForUpdates?: () => void;
+  /** The desktop app only: how to connect an AI agent to MIMAR. */
+  openAgents?: () => void;
 }
 
 const st = () => plannerStore.getState();
@@ -704,6 +706,9 @@ export function buildCommands(ctx: CommandContext): Command[] {
     { id: 'help.welcome', label: 'Getting started', menu: 'help', group: 0, run: ctx.openWelcome },
     { id: 'help.shortcuts', label: 'Keyboard shortcuts', menu: 'help', group: 0, keys: ['?'], run: ctx.openShortcuts },
     { id: 'help.search', label: 'Search actions…', menu: 'help', group: 0, keys: ['Ctrl+K'], run: ctx.openSearch },
+    ...(ctx.openAgents
+      ? [{ id: 'help.agents', label: 'Connect AI agents…', menu: 'help' as const, group: 1, run: ctx.openAgents }]
+      : []),
     ...(ctx.checkForUpdates
       ? [
           {
