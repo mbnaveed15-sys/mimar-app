@@ -1,10 +1,11 @@
 {
   "name": "mimar",
-  "version": "1.53.4",
+  "version": "1.53.5",
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && vite build -c vite.mcp.config.ts",
+    "mcp": "vite build -c vite.mcp.config.ts && node dist-mcp/mimar-mcp.mjs",
     "preview": "vite preview",
     "app": "vite build && electron .",
     "start": "electron .",
@@ -69,12 +70,16 @@
     },
     "files": [
       "dist/**/*",
+      "dist-mcp/**/*",
       "electron-main.cjs",
       "preload.cjs",
       "updater.cjs",
       "open-file.cjs",
       "branding/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "dist-mcp/**/*"
     ],
     "fileAssociations": [
       {

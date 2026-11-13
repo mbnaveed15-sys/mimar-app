@@ -10,6 +10,7 @@ import {
   DiscardDialog,
   NewProjectDialog,
   ShortcutsDialog,
+  AgentsDialog,
   type ContextMenuState,
 } from './Dialogs';
 import { Icon } from './Icon';
@@ -34,7 +35,7 @@ import { Welcome } from './Welcome';
 const Plan3DView = lazy(() => import('../three/Plan3DView'));
 const DrawingsView = lazy(() => import('./DrawingsView').then((m) => ({ default: m.DrawingsView })));
 
-type Dialog = 'search' | 'shortcuts' | 'welcome' | 'newProject' | 'recent' | null;
+type Dialog = 'search' | 'shortcuts' | 'welcome' | 'newProject' | 'recent' | 'agents' | null;
 
 /** The editor: menu bar, tool rail, plan, side panel and status bar, like a classic desktop CAD app. */
 export default function PlannerApp() {
@@ -96,6 +97,7 @@ export default function PlannerApp() {
     [setSection, compact],
   );
   const updates = typeof window !== 'undefined' ? window.mimarUpdates : undefined;
+  const agents = typeof window !== 'undefined' ? window.mimarAgents : undefined;
 
   const commands = useMemo(
     () =>
@@ -109,8 +111,9 @@ export default function PlannerApp() {
         openWelcome: () => setDialog('welcome'),
         showSection,
         checkForUpdates: updates ? () => void updates.check() : undefined,
+        openAgents: agents ? () => setDialog('agents') : undefined,
       }),
-    [requestNew, requestOpen, save, showSection, updates],
+    [requestNew, requestOpen, save, showSection, updates, agents],
   );
   useKeyboardShortcuts(commands);
 
@@ -197,6 +200,7 @@ export default function PlannerApp() {
       {menuAt && <ContextMenu at={menuAt} onClose={() => setMenuAt(null)} onProperties={focusProperties} />}
       {dialog === 'search' && <CommandPalette commands={commands} onClose={() => setDialog(null)} />}
       {dialog === 'shortcuts' && <ShortcutsDialog commands={commands} onClose={() => setDialog(null)} />}
+      {dialog === 'agents' && <AgentsDialog onClose={() => setDialog(null)} />}
       {dialog === 'newProject' && <NewProjectDialog onClose={() => setDialog(null)} />}
       {dialog === 'recent' && (
         <RecentDialog

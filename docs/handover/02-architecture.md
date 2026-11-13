@@ -564,6 +564,9 @@ Checked with IfcOpenShell: `pip install ifcopenshell pytest`, then `python3 -m i
 
 ## Desktop, web and branding
 
+- **Connector for AI agents** (`src/mcp/`, built to `dist-mcp/mimar-mcp.mjs` by `vite.mcp.config.ts`): an MCP server on
+  stdin/stdout that works on `.mimar` files with the app's own code (a headless store). Add a tool in `tools.ts`
+  (`TOOLS`) and cover it in `tools.test.ts`. See `docs/connector.md` and the 1.53.5 row in `01-status.md`.
 - `electron-main.cjs`, `preload.cjs`, `updater.cjs`, `open-file.cjs`: window, splash, file dialogs, auto-update
   (electron-updater), one copy at a time, and plans handed over by a double-click (1.53.4: `planPathFromArgs`,
   `mimar:launch-file`, `mimar:open-file`; every main-process file must be in `build.files` in `package.json`).

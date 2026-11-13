@@ -65,6 +65,17 @@ async function planFromArgs(args, cwd) {
     };
   }
 }
+// The connector for AI agents (dist-mcp/mimar-mcp.mjs): how an MCP client starts it. The installed app runs
+// it itself as plain Node (ELECTRON_RUN_AS_NODE), so nothing else needs installing. The portable app
+// unpacks to a temporary folder that changes each run, so it has no path to give.
+ipcMain.handle('mimar:agent-setup', () => {
+  if (process.env.PORTABLE_EXECUTABLE_FILE) return { portable: true };
+  const script = app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'dist-mcp', 'mimar-mcp.mjs')
+    : path.join(__dirname, 'dist-mcp', 'mimar-mcp.mjs');
+  return { command: process.execPath, args: [script], env: { ELECTRON_RUN_AS_NODE: '1' } };
+});
+
 ipcMain.handle('mimar:launch-file', async () => {
   pageAsked = true;
   const plan = await handedPlan;
